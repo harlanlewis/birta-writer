@@ -50,7 +50,7 @@ public enum AgentRequest {
     ///
     /// Position is the whole point, and appending is wrong: a template that
     /// ends in the placeholder hands the prompt POSITIONALLY, so a flag added
-    /// after it (`codex exec --full-auto {prompt} --model x`) is read by the
+    /// after it (`codex exec {prompt} --model x`) is read by the
     /// CLI as arguments following the prompt rather than as the prompt's
     /// options, and some read the flag's value as the prompt itself. This is
     /// the same rule `setTemplateFlag` keeps in `src/agentBridge/askAgent.ts`.

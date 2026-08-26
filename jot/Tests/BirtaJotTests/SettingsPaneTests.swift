@@ -332,6 +332,159 @@ final class SettingsPaneTests: XCTestCase {
         return nil
     }
 
+    /// The command field itself: the one monospaced text field on the pane.
+    private func commandField(in view: NSView) -> NSTextField? {
+        if let found = view as? NSTextField, found.isEditable,
+           found.font?.fontName.contains("Mono") == true { return found }
+        for subview in view.subviews {
+            if let found = commandField(in: subview) { return found }
+        }
+        return nil
+    }
+
+    /// The AI Agent pane, built and laid out, with its three agent controls.
+    private func agentPane(of controller: SettingsWindowController)
+        -> (field: NSTextField, popup: NSPopUpButton, link: LinkButton)? {
+        controller.selectTabForTesting("aiAgent")
+        guard let content = controller.window?.contentView else { return nil }
+        content.layoutSubtreeIfNeeded()
+        guard let field = commandField(in: content), let popup = pullDown(in: content),
+              let link = linkButton(in: content) else { return nil }
+        return (field, popup, link)
+    }
+
+    /// Type into the field the way a person does, through the delegate call
+    /// AppKit makes on every keystroke.
+    private func typeIn(_ text: String, _ field: NSTextField,
+                        on controller: SettingsWindowController) {
+        field.stringValue = text
+        controller.controlTextDidChange(
+            Notification(name: NSControl.textDidChangeNotification, object: field))
+    }
+
+    // MARK: the pane follows the field
+
+    /// While typing, not on blur.
+    ///
+    /// The pull-down and the link are a READING of the command, and a reading
+    /// that only refreshes when focus leaves shows somebody the name and the
+    /// documentation page of a tool they have already replaced. The case in
+    /// the report: the field says `claude` and the pane still says Codex CLI
+    /// and links to Codex's docs.
+    func testTypingAToolsNameShouldMoveThePullDownAndTheLinkWithoutLeavingTheField() {
+        let controller = makeController()
+        defer { controller.window?.close() }
+        let original = Prefs.agentCommand
+        defer { Prefs.agentCommand = original }
+        Prefs.agentCommand = AgentPreset.codex.template
+        guard let pane = agentPane(of: controller) else {
+            return XCTFail("the AI Agent pane did not draw its controls")
+        }
+        // The precondition, so this cannot pass on a pane that already said
+        // Claude Code before anything was typed.
+        XCTAssertEqual(pane.popup.title, AgentPreset.codex.title)
+
+        typeIn("claude", pane.field, on: controller)
+
+        XCTAssertEqual(pane.popup.title, AgentPreset.claudeCode.title)
+        XCTAssertEqual(pane.link.url, AgentPreset.claudeCode.documentation)
+        XCTAssertEqual(pane.link.title, AgentPreset.claudeCode.title)
+        XCTAssertEqual(pane.link.superview?.isHidden, false)
+    }
+
+    /// And a command naming nothing takes the link away as it is typed, rather
+    /// than leaving one pointing at the tool that was there before.
+    func testTypingACommandNamingNoToolShouldTakeTheLinkAwayAsItGoes() {
+        let controller = makeController()
+        defer { controller.window?.close() }
+        let original = Prefs.agentCommand
+        defer { Prefs.agentCommand = original }
+        Prefs.agentCommand = AgentPreset.codex.template
+        guard let pane = agentPane(of: controller) else {
+            return XCTFail("the AI Agent pane did not draw its controls")
+        }
+        XCTAssertEqual(pane.link.superview?.isHidden, false)
+
+        typeIn("asd", pane.field, on: controller)
+
+        XCTAssertEqual(pane.link.superview?.isHidden, true)
+        XCTAssertNotEqual(pane.popup.title, AgentPreset.codex.title)
+    }
+
+    // MARK: what reloads the editor, and what does not
+
+    /// Choosing a tool must not tear the editor down and rebuild it.
+    ///
+    /// The page is booted with the host's capabilities, so a change to what
+    /// this host PROVIDES has to be handed to it again, and a reload is the
+    /// only way to do that. Swapping one working command for another changes
+    /// nothing the page was told, and the reload was visible: the note the
+    /// person was reading blinked out and came back because a menu was used.
+    func testSwappingOneWorkingCommandForAnotherShouldNotReloadThePage() {
+        let command = Prefs.agentCommand
+        let enabled = Prefs.agentEnabled
+        defer { Prefs.agentCommand = command; Prefs.agentEnabled = enabled }
+        // Before the controller, which reads the settings it opens on. The
+        // window it mirrors is the one the page was booted with, so a test
+        // that writes afterwards is asking about a disagreement no launch has.
+        Prefs.agentEnabled = true
+        Prefs.agentCommand = AgentPreset.codex.template
+        var reloads = 0
+        let controller = SettingsWindowController(onHotkeyChange: { 0 },
+                                                  onChange: { _ in reloads += 1 },
+                                                  onShowWelcome: {}, onCheckForUpdates: {})
+        defer { controller.window?.close() }
+        guard let pane = agentPane(of: controller) else {
+            return XCTFail("the AI Agent pane did not draw its controls")
+        }
+
+        typeIn(AgentPreset.claudeCode.template, pane.field, on: controller)
+        XCTAssertEqual(reloads, 0, "typing a working command reloaded the editor")
+
+        // And through the pull-down, which is the gesture the report was
+        // about: AppKit sends the item's action after the selection moves.
+        pane.popup.selectItem(withTitle: AgentPreset.gemini.title)
+        _ = NSApp.sendAction(pane.popup.action!, to: pane.popup.target, from: pane.popup)
+        XCTAssertEqual(Prefs.agentCommand, AgentPreset.gemini.template,
+                       "the pull-down did not write the command, so this checked nothing")
+        XCTAssertEqual(reloads, 0, "choosing a tool reloaded the editor")
+    }
+
+    /// The other half, and the one that must not be lost while fixing the
+    /// first: emptying the field withdraws the capability, and the page is
+    /// still offering `/ai` until it is told.
+    func testEmptyingAndRefillingTheCommandShouldReloadThePageEachWay() {
+        let command = Prefs.agentCommand
+        let enabled = Prefs.agentEnabled
+        defer { Prefs.agentCommand = command; Prefs.agentEnabled = enabled }
+        // Before the controller, which reads the settings it opens on. The
+        // window it mirrors is the one the page was booted with, so a test
+        // that writes afterwards is asking about a disagreement no launch has.
+        Prefs.agentEnabled = true
+        Prefs.agentCommand = AgentPreset.codex.template
+        var reloads = 0
+        let controller = SettingsWindowController(onHotkeyChange: { 0 },
+                                                  onChange: { _ in reloads += 1 },
+                                                  onShowWelcome: {}, onCheckForUpdates: {})
+        defer { controller.window?.close() }
+        guard let pane = agentPane(of: controller) else {
+            return XCTFail("the AI Agent pane did not draw its controls")
+        }
+
+        typeIn("", pane.field, on: controller)
+        XCTAssertFalse(Prefs.agentAvailable)
+        XCTAssertEqual(reloads, 1, "an empty command left the page still offering /ai")
+
+        // Whitespace is still nothing to run, so it must not count as a second
+        // change back.
+        typeIn("   ", pane.field, on: controller)
+        XCTAssertEqual(reloads, 1)
+
+        typeIn(AgentPreset.claudeCode.template, pane.field, on: controller)
+        XCTAssertTrue(Prefs.agentAvailable)
+        XCTAssertEqual(reloads, 2, "a command typed into an empty field never reached the page")
+    }
+
     /// The reason this file exists, stated as its own check: every row the
     /// first-run screen asks about is a row somebody can go back to in
     /// Settings, worded the same, ON SCREEN rather than in an array.

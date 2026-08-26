@@ -60,6 +60,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // First, and off the main thread. Running somebody's login shell to
+        // find out where their tools are takes as long as their startup files
+        // take, and the alternative to paying for it now is paying for it in
+        // front of a person who has just asked for an agent.
+        LoginShellPath.shared.prewarm()
         buildMainMenu()
         // BEFORE the Coordinator, and that ordering is the point rather than
         // an arrangement. The notes folder is derived from the product name,

@@ -19,6 +19,21 @@ final class AgentRunner {
     /// Runs in flight, so the panel can stop them and quitting can too.
     private var running: [String: Process] = [:]
 
+    /// The `PATH` every child gets, or nil to leave the environment alone.
+    ///
+    /// The person's own, not `launchd`'s. An app opened from the Finder
+    /// inherits four system directories and nothing else, so every agent CLI
+    /// is off it and the pane's promise that a tool installed and runnable
+    /// from Terminal works here is false for everyone.
+    /// `LoginShellPath` is what asks their shell; `BirtaJotCore.ShellPath`
+    /// holds the reasoning.
+    ///
+    /// A closure so a check can watch what actually reaches the child. Read
+    /// the other way it is the only way to check this at all: the alternative
+    /// is comparing two readings of the same machine, which agree with each
+    /// other whether or not anything was applied.
+    var childPath: () -> String? = { LoginShellPath.shared.childPath() }
+
     /// - Parameters:
     ///   - requestId: the webview's id for this run; every report carries it.
     ///   - line: the composed request line, already including its reference.
@@ -168,6 +183,11 @@ final class AgentRunner {
         process.executableURL = URL(fileURLWithPath: "/bin/sh")
         process.arguments = ["-c", command]
         process.currentDirectoryURL = workingDirectory
+        if let path = childPath() {
+            var environment = ProcessInfo.processInfo.environment
+            environment["PATH"] = path
+            process.environment = environment
+        }
         // Both streams to one pipe: the transcript is for the person reading
         // the failure, and interleaving is how they read it.
         let pipe = Pipe()

@@ -179,7 +179,7 @@ describe("describeAgentRoute", () => {
         expect(describeAgentRoute("claude -p {prompt} --model haiku --effort low", "background")).toEqual({
             configured: true, kind: "shell", harness: "claude", model: "haiku", effort: "low", mode: "background",
         });
-        expect(describeAgentRoute("codex exec --full-auto {prompt}", "terminal")).toEqual({
+        expect(describeAgentRoute("codex exec --sandbox workspace-write --skip-git-repo-check {prompt}", "terminal")).toEqual({
             configured: true, kind: "shell", harness: "codex", model: undefined, effort: undefined, mode: "terminal",
         });
     });

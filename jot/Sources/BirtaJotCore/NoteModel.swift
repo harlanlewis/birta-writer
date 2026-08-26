@@ -159,10 +159,28 @@ public enum AgentPreset: String, CaseIterable, Sendable {
 
     /// What choosing it writes into the command field. `{prompt}` is the
     /// placeholder `AgentRequest.expand` substitutes.
+    ///
+    /// The non-interactive form of each tool, and only ever the flags it takes
+    /// to edit a note in the folder it was pointed at. What a template must
+    /// not carry is a preference: no model, no reasoning effort, no verbosity.
+    /// Those are the user's, the field below the menu is where they add them,
+    /// and a preset that shipped with one would be making that choice for
+    /// everybody who picked a tool from a list.
+    ///
+    /// Codex needs both of its flags to run at all here, and neither is
+    /// optional: `codex exec` refuses outside a git repository, and a notes
+    /// folder is not one; and without a sandbox naming a writable workspace it
+    /// may only read, which is not what `/ai` is for.
+    ///
+    /// A flag is the part of this most likely to move under us, and nothing
+    /// here can notice when one does: a preset is a string, and the tool that
+    /// rejects it is not on this machine. What that costs is the Test button
+    /// saying it did not work, with the tool's own usage message underneath,
+    /// which is the case that button is for.
     public var template: String {
         switch self {
         case .claudeCode: return "claude -p {prompt} --permission-mode acceptEdits"
-        case .codex: return "codex exec --full-auto {prompt}"
+        case .codex: return "codex exec --sandbox workspace-write --skip-git-repo-check {prompt}"
         case .cursor: return "cursor-agent -p {prompt}"
         case .gemini: return "gemini -p {prompt}"
         case .copilot: return "copilot -p {prompt}"
