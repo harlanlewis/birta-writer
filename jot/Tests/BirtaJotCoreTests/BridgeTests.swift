@@ -358,6 +358,16 @@ final class BridgeTests: XCTestCase {
         XCTAssertEqual(on["linkCardsEnabled"] as? Bool, true)
         XCTAssertEqual(on["pasteUnfurl"] as? Bool, true)
         XCTAssertEqual(HostMessage.editorCommand("openFind").jsonString(), #"{"command":"openFind","type":"editorCommand"}"#)
+        // The shape `shared/messages.ts` declares for `hostTooltip`, both ways
+        // round. Hiding sends a null text and NO rect: the page reads the null
+        // as "take it away", and a box for a tooltip that is not being drawn
+        // would be a number nothing means.
+        XCTAssertEqual(
+            HostMessage.hostTooltip(text: "New Note  ⌘N",
+                                    rect: CGRect(x: 136, y: 4, width: 26, height: 24)).jsonString(),
+            #"{"rect":{"height":24,"width":26,"x":136,"y":4},"text":"New Note  ⌘N","type":"hostTooltip"}"#)
+        XCTAssertEqual(HostMessage.hostTooltip(text: nil, rect: nil).jsonString(),
+                       #"{"text":null,"type":"hostTooltip"}"#)
     }
 
     func testEveryNetworkFeatureIsOffByDefault() {

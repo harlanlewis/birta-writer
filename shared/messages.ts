@@ -639,6 +639,17 @@ export type ToWebviewMessage =
     | { type: "scrollToLine"; line: number; column?: number; anchorLine?: number; anchorColumn?: number }
     | { type: "lineMapUpdate"; lineMap: number[]; lineOffset?: number }
     | { type: "setDebugMode"; enabled: boolean }
+    // A tooltip for chrome the HOST draws, which this page cannot see and does
+    // not own. Birta Writer for Mac's titlebar band is half AppKit views and
+    // half this toolbar, and the two are meant to read as one strip of
+    // controls; a system tooltip on one half and this editor's chip on the
+    // other is that strip saying the same kind of thing two ways.
+    //
+    // `rect` is the control's box in the page's own viewport coordinates,
+    // which the shell can compute and the page cannot. A null `text` hides
+    // whatever is showing, which is how the pointer leaving is reported: the
+    // page never learns about that pointer any other way.
+    | { type: "hostTooltip"; text: string | null; rect?: { x: number; y: number; width: number; height: number } }
     | { type: "imageUploaded"; id: string; url: string }
     | { type: "imageUploadError"; id: string; error: string }
     | { type: "projectImagesList"; id: string; images: ProjectImage[] }

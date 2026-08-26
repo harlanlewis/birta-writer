@@ -7,7 +7,7 @@
  * buttons and resets visibility through hideTooltip().
  */
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { applyTooltip, hideTooltip, showTooltipAt } from "../ui/tooltip";
+import { applyTooltip, hideTooltip, showTooltipAt, showTooltipForRect } from "../ui/tooltip";
 
 const tip = () => document.querySelector(".custom-tooltip") as HTMLElement | null;
 const tipVisible = () => tip() !== null && tip()!.style.display !== "none";
@@ -33,6 +33,40 @@ describe("applyTooltip", () => {
         btn.dispatchEvent(new MouseEvent("mouseenter"));
         expect(tipVisible()).toBe(true);
         expect(tip()!.textContent).toBe("Hover text");
+    });
+
+    it("a host rect should get the same chip an element would", () => {
+        // Chrome the page does not own and cannot see: the Mac app's titlebar
+        // buttons are AppKit views drawn over this page, and they name
+        // themselves with THIS tooltip so one band does not label its controls
+        // two ways. The anchor is a box the shell sends rather than an
+        // element, and everything else about the chip is unchanged.
+        showTooltipForRect({ left: 100, top: 4, right: 126, bottom: 28, width: 26, height: 24 },
+                           "New Note  ⌘N");
+        expect(tipVisible()).toBe(true);
+        expect(tip()!.textContent).toBe("New Note  ⌘N");
+        // Below the box it names, by the same margin an element anchor gets.
+        expect(tip()!.style.top).toBe("34px");
+    });
+
+    it("a host tooltip should not be taken away by whatever last owned the chip", () => {
+        // The two kinds of anchor share one element, so ownership has to be
+        // settled or a stale mouseleave from a page button pulls the host's
+        // label out from under it. Nothing in the page owns it while a host
+        // holds it; the host takes it away by asking.
+        const btn = makeButton("a");
+        applyTooltip(btn, "Bold");
+        btn.dispatchEvent(new MouseEvent("mouseenter"));
+        expect(tip()!.textContent).toBe("Bold");
+
+        showTooltipForRect({ left: 100, top: 4, right: 126, bottom: 28, width: 26, height: 24 }, "Open…");
+        expect(tip()!.textContent).toBe("Open…");
+        btn.dispatchEvent(new MouseEvent("mouseleave"));
+        expect(tipVisible()).toBe(true);
+        expect(tip()!.textContent).toBe("Open…");
+
+        hideTooltip();
+        expect(tipVisible()).toBe(false);
     });
 
     it("a control whose own popup is out should show no tooltip", () => {

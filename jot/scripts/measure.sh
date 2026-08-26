@@ -767,6 +767,67 @@ else
     exit 1
 fi
 
+# The label a titlebar button shows, drawn by the PAGE.
+#
+# These buttons used `NSView.toolTip` and that was unaskable: a system tooltip
+# is drawn by the window server out of any view this app can read, so whether
+# it appeared needed a real pointer and a screenshot, and the check that stood
+# here asserted the STRING was set instead. That is a claim about a property,
+# and it passed happily for as long as the tooltip was never delivered at all.
+#
+# Drawn by the page, the chip is an element, and the whole chain is answerable
+# in the running window: a pointer arrives on an AppKit button, the shell turns
+# its box into the page's coordinates, the page draws the chip there. Every
+# link in that is a way this fails silently, and the box is the one worth
+# saying twice: window coordinates grow upward and the page's grow downward, so
+# an inversion draws a correct label at the wrong end of the window and nothing
+# else notices.
+show_panel
+printf '{"type":"__jotHoverButton","index":0,"hovered":true}' > "$SCRATCH_DIR/.debug-message.json"
+kill -URG $PID; sleep 1.0
+rm -f "$SCRATCH_DIR/.debug-message.json"
+TIP="$(grep "^jot-trace hovertooltip " "$LOG" | tail -1 | sed 's/^jot-trace hovertooltip //')"
+TIP_TEXT="$(echo "$TIP" | sed -n 's/.*text="\([^"]*\)".*/\1/p')"
+TIP_Y="$(echo "$TIP" | sed -n 's/.* y=\([0-9-]*\).*/\1/p')"
+TIP_W="$(echo "$TIP" | sed -n 's/.* w=\([0-9-]*\).*/\1/p')"
+# Where the button IS, so the chip can be checked against it rather than
+# against a number written here. The strip trace carries the band's own axis.
+TIP_BAND="$(grep "^jot-trace titlebarstrip " "$LOG" | tail -1 | sed -n 's/.*nativeMidY=\([0-9.]*\).*/\1/p')"
+if [ -z "$TIP" ] || [ "$TIP" = "none" ]; then
+    echo "titlebar tooltip     FAILED: pointing at a file button drew no tooltip in the page" >&2
+    echo "  trace: ${TIP:-<none>}" >&2; exit 1
+fi
+# The text is the menu row's, so it names the button and carries its chord.
+# Compared against the row rather than a literal, for the reason the Swift
+# check gives: a tooltip is a claim about a binding.
+case "$TIP_TEXT" in
+    "New Note"*"N") TIP_TEXT_OK=1 ;;
+    *) TIP_TEXT_OK=0 ;;
+esac
+# BELOW the band, which is the half a wrong flip gets wrong: inverted, the chip
+# lands near the bottom of the window with a perfectly correct label in it.
+TIP_BELOW=0
+if [ -n "$TIP_Y" ] && [ -n "$TIP_BAND" ]; then
+    awk "BEGIN{exit !($TIP_Y > $TIP_BAND && $TIP_Y < $TIP_BAND + 60)}" && TIP_BELOW=1
+fi
+if [ "$TIP_TEXT_OK" = 1 ] && [ "$TIP_BELOW" = 1 ] && [ "${TIP_W:-0}" -gt 0 ]; then
+    echo "titlebar tooltip     ok: the page drew \"$TIP_TEXT\" at y=$TIP_Y, just under the band at $TIP_BAND"
+else
+    echo "titlebar tooltip     FAILED: the page drew a tooltip, but not the right one or not in the right place" >&2
+    echo "  text=\"$TIP_TEXT\" y=$TIP_Y w=$TIP_W band=$TIP_BAND" >&2; exit 1
+fi
+# And it goes when the pointer does, or it sits over the document naming a
+# button nobody is pointing at.
+printf '{"type":"__jotHoverButton","index":0,"hovered":false}' > "$SCRATCH_DIR/.debug-message.json"
+kill -URG $PID; sleep 1.0
+rm -f "$SCRATCH_DIR/.debug-message.json"
+if [ "$(grep "^jot-trace hovertooltip " "$LOG" | tail -1 | sed 's/^jot-trace hovertooltip //')" = "none" ]; then
+    echo "titlebar tooltip     ok: and it goes away when the pointer leaves"
+else
+    echo "titlebar tooltip     FAILED: the tooltip outlived the pointer" >&2
+    grep "^jot-trace hovertooltip " "$LOG" | tail -2 | sed 's/^/  /' >&2; exit 1
+fi
+
 # The formatting row, in THIS window rather than in a browser. The panel's own
 # page carries CSS the harness does not (the titlebar carve-out, the at-rest
 # fade), so "it renders in WebKit" and "it renders here" are separate claims,

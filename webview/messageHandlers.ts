@@ -43,6 +43,7 @@ import type { EditorSelectionContext } from "../shared/agentContext";
 import { renderFrontmatterPanel, refreshFrontmatterEmptyState } from "./components/frontmatter";
 import { dispatchFmSuggestions } from "./components/frontmatter/suggestMenu";
 import { runEditorCommand } from "./editorCommands";
+import { hideTooltip, showTooltipForRect } from "./ui/tooltip";
 import {
     handleImageUploaded,
     handleImageUploadError,
@@ -657,6 +658,22 @@ export function createMessageHandlers(
         },
         lintResults(msg) {
             applyLintResults(msg.id, msg.results);
+        },
+        hostTooltip(msg) {
+            // Chrome the shell draws, borrowing this page's tooltip so the two
+            // halves of a window's titlebar say things the same way. Below the
+            // control, because a control in the window's own chrome has the
+            // whole page under it and nothing above it.
+            if (msg.text === null || !msg.rect) {
+                hideTooltip();
+                return;
+            }
+            const { x, y, width, height } = msg.rect;
+            showTooltipForRect(
+                { left: x, top: y, right: x + width, bottom: y + height, width, height },
+                msg.text,
+                "below",
+            );
         },
         editorCommand(msg) {
             // Command palette / right-click menu action routed to this editor.

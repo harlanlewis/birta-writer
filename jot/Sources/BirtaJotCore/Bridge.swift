@@ -319,12 +319,33 @@ public enum HostMessage: Equatable {
     /// One report about an `/ai` run. `status` drives the gutter marker the
     /// page already draws for the extension.
     case agentRun(requestId: String, status: String, harness: String?, text: String?, message: String?)
+    /// Ask the page to draw a tooltip for a control the SHELL draws, or to
+    /// take one away (`text` nil).
+    ///
+    /// The titlebar band is half AppKit and half the page's toolbar, and the
+    /// two have to read as one strip. `NSView.toolTip` is the obvious way to
+    /// label the native half and it draws the SYSTEM tooltip: a different
+    /// ground, a different shape, and a delay the page's chip does not have,
+    /// on buttons sitting in the same row. So the label is the page's, drawn
+    /// by the page, and this side sends only what the page cannot know.
+    ///
+    /// `rect` is the button's box in the page's viewport coordinates, which is
+    /// this side's to compute: the page is drawn under the titlebar and has no
+    /// idea where an accessory view landed.
+    case hostTooltip(text: String?, rect: CGRect?)
     /// Measurement-only: an arbitrary message object, so `jot/scripts/measure.sh`
     /// can drive the test-only page commands (`__testInsertText`, `__getPerfMarks`).
     case raw(json: String)
 
     public func jsonObject() -> [String: Any] {
         switch self {
+        case let .hostTooltip(text, rect):
+            var object: [String: Any] = ["type": "hostTooltip", "text": text as Any]
+            if let rect {
+                object["rect"] = ["x": rect.origin.x, "y": rect.origin.y,
+                                  "width": rect.width, "height": rect.height]
+            }
+            return object
         case let .raw(json):
             return (json.data(using: .utf8).flatMap { try? JSONSerialization.jsonObject(with: $0) } as? [String: Any]) ?? [:]
         case let .initDoc(content, syncVersion, viewStateJSON):

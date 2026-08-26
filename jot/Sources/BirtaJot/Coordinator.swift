@@ -294,6 +294,31 @@ final class Coordinator {
         // What the set IS, and the argument for every symbol in it, is
         // `TitlebarActionsView.shipped`.
         titleBar.titleView.setActions(TitlebarActionsView.shipped)
+        // The file buttons name themselves with the PAGE'S tooltip, so the two
+        // halves of this band label their controls the same way. `NSView`'s
+        // own `toolTip` is what this replaces: it draws the system tooltip,
+        // which is a different ground and a different shape from the chip the
+        // toolbar's buttons use a few inches away, and arrives after a delay
+        // theirs does not have.
+        //
+        // The conversion is the only part that has to happen here. AppKit
+        // window coordinates grow upward from the bottom and the page's grow
+        // downward from the top, and the page is drawn under the full-height
+        // titlebar, so the web view's box IS the window's and the flip is the
+        // whole of the arithmetic. Getting it wrong draws a correct label at
+        // the other end of the window.
+        titleBar.titleView.onTooltip = { [weak self] label, box in
+            guard let self else { return }
+            guard let label else {
+                self.host.send(.hostTooltip(text: nil, rect: nil))
+                return
+            }
+            let flipped = CGRect(x: box.origin.x,
+                                 y: self.panel.frame.height - box.maxY,
+                                 width: box.width,
+                                 height: box.height)
+            self.host.send(.hostTooltip(text: label, rect: flipped))
+        }
         // The band is one strip to the eye, so pointing anywhere along it
         // offers what the strip holds, rather than only the width of the name.
         // That hover now arrives from the WINDOW rather than from the strip
@@ -468,6 +493,30 @@ final class Coordinator {
             // as well as reports: `__jotSave` was tried here and it writes the
             // buffer, which is the file the autosave check then inspects, so
             // the instrument was changing the thing it measured.
+            // Point at one of the titlebar's file buttons, and report what the
+            // page drew. A pointer on a titlebar accessory is not something a
+            // script can synthesize, so the hover is set the way every other
+            // check here sets it, and what is being asked is the half beyond
+            // it: the message reached the page and the page drew the chip.
+            if obj["type"] as? String == "__jotHoverButton" {
+                measure.mark("debug-hover-button")
+                let index = (obj["index"] as? NSNumber)?.intValue ?? 0
+                let buttons = titleBar.titleView.actionsView.buttons
+                guard index >= 0, index < buttons.count else {
+                    measure.trace("hovertooltip no button at \(index)")
+                    return
+                }
+                let wanted = (obj["hovered"] as? NSNumber)?.boolValue ?? true
+                _ = buttons[index].hoverForMeasurement(wanted)
+                // After the message has had a turn to reach the page and the
+                // page a turn to lay the chip out.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
+                    self?.host.reportTooltip { line in
+                        MainActor.assumeIsolated { self?.measure.trace("hovertooltip \(line)") }
+                    }
+                }
+                return
+            }
             if obj["type"] as? String == "__jotPrefs" {
                 measure.trace("prefs autosave=\(Prefs.autosave ? "yes" : "no")")
                 return
