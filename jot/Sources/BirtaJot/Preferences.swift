@@ -455,9 +455,48 @@ enum Prefs {
         set { d.set(newValue, forKey: Key.tocWidth.rawValue) }
     }
 
-    static var viewStateJSON: String? {
-        get { d.string(forKey: Key.viewState.rawValue) }
-        set { d.set(newValue, forKey: Key.viewState.rawValue) }
+    /// The editor's own memory of a DOCUMENT: where it was scrolled, which
+    /// sections were folded, where the caret was.
+    ///
+    /// Keyed by file, where it used to be one value for the whole app. One
+    /// value was indistinguishable from correct while there was one buffer,
+    /// and is a visible defect with several windows: every window writes this
+    /// on every view-state message, so a window would mount at whatever
+    /// position another one was left at, and a reload would restore one
+    /// window's scroll into another.
+    ///
+    /// By PATH rather than by window, which is the more correct answer to
+    /// begin with: a scroll position belongs to the document, so keying it
+    /// this way also survives closing a file and opening it again, which a
+    /// per-window slot would not.
+    static func viewStateJSON(for url: URL) -> String? {
+        viewStates[url.standardizedFileURL.path]
+    }
+
+    /// Bounded by the RECENTS list rather than by a counter of its own.
+    ///
+    /// This map grows with every file ever opened and nothing else would ever
+    /// remove an entry. A file that has fallen off the last `RecentFiles`
+    /// entries is one whose scroll position nobody is coming back for, and
+    /// reusing that order means there is no second piece of recency
+    /// bookkeeping to be kept in step with the first. The file being written
+    /// is always kept, because it may not have joined the list yet.
+    static func setViewStateJSON(_ json: String?, for url: URL) {
+        let key = url.standardizedFileURL.path
+        var states = viewStates
+        if let json { states[key] = json } else { states.removeValue(forKey: key) }
+        if states.count > RecentFiles.capacity {
+            let keep = Set(recentDocuments.map(\.standardizedFileURL.path)).union([key])
+            states = states.filter { keep.contains($0.key) }
+        }
+        d.set(states, forKey: Key.viewState.rawValue)
+    }
+
+    /// Nil for the single string this key used to hold, so an install
+    /// upgrading across this change forgets one scroll position rather than
+    /// failing to read its settings.
+    private static var viewStates: [String: String] {
+        (d.dictionary(forKey: Key.viewState.rawValue) as? [String: String]) ?? [:]
     }
 
     /// Where the last Save As went, so the next one opens there. A memory of
@@ -830,7 +869,10 @@ enum Prefs {
             })
     }
 
-    static func bootConfig() -> BootConfig {
+    /// - Parameter viewStateFor: the file the window being booted is on, so
+    ///   it is restored to its OWN remembered position. Every window asks with
+    ///   its own binding.
+    static func bootConfig(viewStateFor url: URL) -> BootConfig {
         BootConfig(
             toolbarJSON: toolbarLayout.json,
             fontPreset: fontPreset,
@@ -858,7 +900,7 @@ enum Prefs {
             // arms.
             hostCapabilities: ["spellAndGrammar", "imageUpload", "toc", "appPreferences", "agent"]
                 .filter { $0 != "agent" || agentAvailable },
-            viewStateJSON: viewStateJSON,
+            viewStateJSON: viewStateJSON(for: url),
             hostShortcuts: JotMenu.shortcuts
         )
     }

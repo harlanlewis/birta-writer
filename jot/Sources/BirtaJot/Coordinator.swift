@@ -257,7 +257,13 @@ final class Coordinator {
         if Prefs.openToBlankNote, Prefs.documentURL == nil {
             startBlank()
         }
-        host.bootConfig = { Prefs.bootConfig() }
+        // No fallback to the app's active file when this window is gone: that
+        // would be the global read this window exists not to do, and a window
+        // being torn down has no view state worth restoring. `WebHost`'s own
+        // default is the honest answer.
+        host.bootConfig = { [weak self] in
+            self.map { Prefs.bootConfig(viewStateFor: $0.boundURL) } ?? BootConfig()
+        }
         host.onMessage = { [weak self] m in self?.handle(m) }
         host.onProcessTerminated = { [weak self] in self?.contentProcessDied() }
 
@@ -801,7 +807,8 @@ final class Coordinator {
                 reloadFromDisk = false
                 hasLoaded = adopt(readActiveNote())
             }
-            host.send(.initDoc(content: latest, syncVersion: guardState.version, viewStateJSON: Prefs.viewStateJSON))
+            host.send(.initDoc(content: latest, syncVersion: guardState.version,
+                               viewStateJSON: Prefs.viewStateJSON(for: boundURL)))
             state = .warm
             // A fresh page starts with its chrome shown; tell it where the
             // pointer is, and say which file it is now bound to.
@@ -852,7 +859,7 @@ final class Coordinator {
                 resolve?(nil)
             }
         case let .viewState(json):
-            Prefs.viewStateJSON = json
+            Prefs.setViewStateJSON(json, for: boundURL)
         case let .openUrl(url):
             if let u = URL(string: url) { NSWorkspace.shared.open(u) }
         case .openHostPreferences:
