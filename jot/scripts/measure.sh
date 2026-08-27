@@ -434,6 +434,20 @@ rm -f "$SCRATCH_DIR/.debug-message.json"
 if [ -e "$SCRATCH_DIR/Scratch pad.md" ]; then
     echo "deleted note         FAILED: reloading recreated the deleted note" >&2; exit 1
 fi
+# ...and the band is STILL down to the gear on the other side of that remount.
+#
+# The page's whole memory of this state is a class on its body, so a remount
+# for any reason at all brings the row back in full while the card in the
+# middle of the window is still saying the note is gone. Nothing in the app
+# would look wrong: the reload is invisible, and a window that has been open a
+# while has been through several. Asserted after the wait above, so it is a
+# question about a page that really was rebuilt.
+R_PAGE_COUNT="$(grep "^jot-trace titlebarstrip " "$LOG" | tail -1 | sed -n 's/.*pageCount=\([0-9]*\).*/\1/p')"
+if [ "${R_PAGE_COUNT:-0}" != "1" ]; then
+    echo "missing screen       FAILED: a remount put ${R_PAGE_COUNT:-no} controls back in the band" >&2
+    grep "^jot-trace titlebarstrip " "$LOG" | tail -1 | sed 's/^/  /' >&2; exit 1
+fi
+echo "missing screen       ok: and the band is still the gear alone after a remount"
 
 # Put it back the way the panel's own button does, so the checks below have a
 # file to read. This is also the only exercise Save It Back gets, and after the

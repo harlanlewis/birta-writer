@@ -939,6 +939,13 @@ final class Coordinator {
             // A fresh page starts with its chrome shown; tell it where the
             // pointer is, and say which file it is now bound to.
             refreshTitle()
+            // ...and whether that file is there at all. A class on the body is
+            // the page's whole memory of this, so a remount for any reason
+            // brings the band back with every control in it while the card in
+            // the middle of the window is still saying the note is gone. It is
+            // set BEFORE the width query below, which measures the row this
+            // decides the contents of.
+            host.setNoteMissing(noteMissing)
             // Ask for the width the title's ceiling is computed against as
             // soon as there is a page to ask, rather than waiting for the
             // first summon. Until it answers, the width reads 0, which the
@@ -2429,7 +2436,6 @@ final class Coordinator {
         missingFileScreen.frame = NSRect(x: bounds.minX, y: bounds.minY,
                                          width: bounds.width,
                                          height: max(0, bounds.height - band))
-        missingFileScreen.layoutSubtreeIfNeeded()
         // What decides whether the band's controls are reachable AND readable,
         // for `jot/scripts/measure.sh`. Geometry rather than appearance, and
         // that is not a compromise: the page's controls are drawn by WebKit,
@@ -2443,6 +2449,10 @@ final class Coordinator {
         // it in AppKit's would give a difference that looks like clearance and
         // is an inversion.
         if measure.enabled {
+            // Only for the reading. AppKit lays the screen out in this same
+            // pass, so the app needs nothing here; forcing it in the ordinary
+            // path would be a layout run inside the one that asked for it.
+            missingFileScreen.layoutSubtreeIfNeeded()
             let card = missingFileScreen.cardRect
             let cardTop = band + (missingFileScreen.bounds.height - card.maxY)
             measure.trace("missingscreen webviewHidden=\(host.webView.isHidden)"
