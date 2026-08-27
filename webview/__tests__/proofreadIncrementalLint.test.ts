@@ -212,6 +212,43 @@ describe("the proofread rescan asks the host only about what changed", () => {
         expect(requests[0].blocks).toHaveLength(1);
     });
 
+    it("an answer overtaken by a newer request should still be remembered", async () => {
+        // The other half of the case above, and the likelier ordering on the
+        // documents this matters for: the host is slow enough that the next
+        // rescan goes out BEFORE its reply arrives, so the reply answers a
+        // request id the page has already moved past. On a large note the first
+        // pass is the slow one, which is exactly when someone starts typing.
+        await vi.advanceTimersByTimeAsync(2000);
+        const first = lintRequests(spy);
+        expect(first).toHaveLength(1);
+        spy.mockClear();
+
+        // Edit and let the rescan fire, all while the first reply is still out.
+        const v = view(editor);
+        v.dispatch(v.state.tr.insertText("x", 3));
+        await vi.advanceTimersByTimeAsync(2000);
+        const second = lintRequests(spy);
+        expect(second).toHaveLength(1);
+        // Nothing was known yet, so the second request had to ask broadly. That
+        // is the control: it is what makes the third request's size meaningful.
+        expect(second[0].blocks.length).toBeGreaterThanOrEqual(8);
+
+        // ONLY the overtaken reply lands. Answering the newer one as well would
+        // fill the cache by itself and this test would pass with the overtaken
+        // reply thrown away, which is the thing it exists to rule out.
+        answer(first[0]);
+        spy.mockClear();
+
+        v.dispatch(v.state.tr.insertText("y", 3));
+        await vi.advanceTimersByTimeAsync(2000);
+
+        // One block: the one both edits landed in. Every other block's text is
+        // what the overtaken reply answered about.
+        const third = lintRequests(spy);
+        expect(third).toHaveLength(1);
+        expect(third[0].blocks).toHaveLength(1);
+    });
+
     it("a run of keystrokes should ask about one block per settle, never the document", async () => {
         // The shape a person types in when the editor already feels slow: each
         // character followed by a pause longer than the debounce, so every one

@@ -736,7 +736,18 @@ export const proofreadPlugin = $prose(() => {
             // not the subset the host was asked about: the answer has to be
             // rebuilt for the whole document, or the blocks left out of the
             // request would lose their decorations for having been unchanged.
-            let lintRequestBlocks: LintBlock[] = [];
+            // Keyed by request id rather than held as one list, so a reply can
+            // be matched to the request it answers even after a newer one has
+            // gone out. A reply the page can no longer DRAW from still carries
+            // findings worth keeping, and dropping those is what makes the next
+            // scan ask the host the same whole-document question again.
+            //
+            // Bounded, because a host that never answers must not accumulate a
+            // copy of the document per request. Two is enough for the ordering
+            // this exists for (a reply overtaken by one newer request) and small
+            // enough that the bound is obviously safe.
+            const lintRequests = new Map<number, LintBlock[]>();
+            const MAX_OPEN_LINT_REQUESTS = 2;
             // The first proofread pass is deferred off the mount/paint path and
             // run on idle AFTER the editor is visible (see below): proofreading
             // is decoration only and must never block interactivity, nor appear
@@ -756,30 +767,34 @@ export const proofreadPlugin = $prose(() => {
 
             currentApplier = (id, results) => {
                 if (destroyed || view.isDestroyed) { return; }
-                if (id !== lintRequestId) { return; } // stale response
-                // The reply is folded into the cache BEFORE the staleness check
+                const asked = lintRequests.get(id);
+                if (!asked) { return; } // a reply to a request this view never made
+                lintRequests.delete(id);
+                // The findings are kept FIRST, before either staleness check
                 // below, and that order is the point rather than an accident.
                 // What the host sent back is an answer about TEXT, and text does
-                // not go stale when the document moves under it; only the
-                // POSITIONS the answer is keyed to do. Discarding the whole
-                // reply because the caret moved on is how a person who opens a
-                // long note and starts typing before the annotations settle pays
-                // for the same whole-document check twice.
-                const askedText = new Map(lintRequestBlocks.map((b) => [b.key, b.text]));
+                // not go stale: not when a newer request has gone out, and not
+                // when the document has moved under the positions the answer is
+                // keyed to. Only the POSITIONS go stale. Discarding a whole
+                // reply for either reason is how a person who opens a long note
+                // and types before the annotations settle pays for the same
+                // whole-document check twice.
+                const askedText = new Map(asked.map((b) => [b.key, b.text]));
                 for (const { key, lints } of results) {
                     const text = askedText.get(key);
                     if (text !== undefined) { rememberLints(text, lints); }
                 }
-                // Positions ARE stale, so no decorations are built from them;
-                // the pending rescan will rebuild, and will now find these
-                // answers already known.
+                // Positions ARE stale in both cases, so nothing is drawn from
+                // them; the pending rescan rebuilds, and now finds these answers
+                // already known.
+                if (id !== lintRequestId) { return; }
                 if (view.state.doc !== lintRequestDoc) { return; }
                 const cfg = proofreadPluginKey.getState(view.state)?.config;
                 const meta: ProofreadMeta = {
                     type: "lints",
                     decorations: cfg
                         ? buildLintDecorations(view.state.doc,
-                                               resolveLintResults(lintRequestBlocks), cfg)
+                                               resolveLintResults(asked), cfg)
                         : DecorationSet.empty,
                 };
                 view.dispatch(view.state.tr.setMeta(proofreadPluginKey, meta));
@@ -821,8 +836,16 @@ export const proofreadPlugin = $prose(() => {
                 if (state.config.proofreadingEnabled && (state.config.spellCheck || state.config.grammarCheck)) {
                     lintRequestId++;
                     lintRequestDoc = view.state.doc;
-                    lintRequestBlocks = collectLintBlocks(view.state.doc);
-                    const asking = lintBlocksToAsk(lintRequestBlocks);
+                    const requested = collectLintBlocks(view.state.doc);
+                    lintRequests.set(lintRequestId, requested);
+                    // Oldest first, so what is dropped is the request least
+                    // likely to still be answered.
+                    while (lintRequests.size > MAX_OPEN_LINT_REQUESTS) {
+                        const oldest = lintRequests.keys().next();
+                        if (oldest.done) { break; }
+                        lintRequests.delete(oldest.value);
+                    }
+                    const asking = lintBlocksToAsk(requested);
                     // Nothing new to ask about: the answer is already known, so
                     // it is applied here rather than after a round trip the host
                     // would spend a whole-document check answering. This is the
