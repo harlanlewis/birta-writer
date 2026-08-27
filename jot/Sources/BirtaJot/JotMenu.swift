@@ -432,12 +432,15 @@ enum JotMenu {
     /// row in it carries a checkmark: a switch whose position you cannot see is
     /// a switch you have to flip to read.
     ///
-    /// Check Spelling and Check Grammar are rows here, and were absent for a
-    /// stale reason. They are lints the page posts OUT for a host to answer,
-    /// and this shell answers them: `SpellService` runs `NSSpellChecker` and
-    /// the profile declares `spellAndGrammar`. What that left was a check
-    /// running on every document with no control over it anywhere in the menu
-    /// bar, which is what "Check Grammar has no effect" turned out to mean.
+    /// Check Spelling and Check Grammar belong here for as long as this shell
+    /// answers them: they are lints the page posts OUT for a host to run, and
+    /// this one runs them in `SpellService` and declares `spellAndGrammar`. Take
+    /// the capability away and the rows have to go with it, which
+    /// `menuChordParity.test.ts` enforces by asking `hostHasCommand` under Jot's
+    /// own profile. The cost of the other error is quieter and is what these
+    /// rows are being added against: a check running on every document with no
+    /// control over it anywhere in the menu bar reads, to the person using it,
+    /// as a check that does nothing.
     ///
     /// Folding is a submenu by the measure a submenu is worth: four rows is
     /// more than fits, they are two pairs rather than four peers, and only two
@@ -618,10 +621,12 @@ enum JotMenu {
 
     /// Append `menu`'s rows, with their chords and submenus, targeting `target`.
     ///
-    /// No menu ends with a rule. The View menu used to, to bracket the Enter
-    /// Full Screen row macOS appended to it and stop that row's image
-    /// indenting the titles above it; `BirtaJotCore.AppKitDefaults` takes the
-    /// row away, so the rule under the last group went with the reason for it.
+    /// No menu ends with a rule, and none may: the system appends nothing after
+    /// these rows, so a trailing separator draws a line under nothing.
+    /// `BirtaJotCore.AppKitDefaults` is what makes that true of the View menu,
+    /// the one menu macOS would otherwise add to, and a menu that starts taking
+    /// system rows again needs the separator back along with the reason.
+    /// `JotMenuTests` holds the rule.
     @MainActor
     static func add(_ menu: Menu, to nsMenu: NSMenu, target: AnyObject) {
         fill(nsMenu, with: rows.filter { $0.menu == menu && $0.submenu == nil },

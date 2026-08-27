@@ -285,11 +285,13 @@ export const EDITOR_COMMANDS = [
     // was not, so a host whose only route to a control is a command could
     // silence one check at a time and not all three.
     //
-    // `palette: false`, and it is the one gate row that is: the EXTENSION
-    // contributes `birta.toggleProofreading` for the palette already, and that
-    // one writes the `birta.*` setting rather than this session's config. Two
-    // palette rows reading "Toggle Proofreading" and persisting differently is
-    // worse than one.
+    // `palette: false`, and it is the only one of the four check toggles that
+    // is. The EXTENSION already contributes `birta.toggleProofreading` for the
+    // palette, and the two end in the same place: this one posts
+    // `setProofreadOption`, which `src/config.ts` writes to the same setting
+    // that command edits. So contributing it to the palette as well would put
+    // two rows reading "Toggle Proofreading" side by side, and the reader would
+    // have to pick between them with nothing to pick on.
     { id: "toggleProofreading", title: "Toggle Proofreading", palette: false, sections: [] },
     { id: "toggleSpellCheck", title: "Check Spelling", palette: true, sections: [], hostCapability: "spellAndGrammar" },
     { id: "toggleGrammarCheck", title: "Check Grammar", palette: true, sections: [], hostCapability: "spellAndGrammar" },

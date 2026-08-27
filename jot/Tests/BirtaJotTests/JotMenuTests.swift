@@ -164,13 +164,14 @@ final class JotMenuTests: XCTestCase {
 
     /// No menu ends with a rule.
     ///
-    /// The View menu used to, and the reason was AppKit's: Enter Full Screen
-    /// arrived after this table's last row carrying an IMAGE, and macOS aligns
-    /// the titles in a separator-delimited section against the widest image
-    /// column in it, so without the rule the last group was indented by the
-    /// width of a glyph none of its rows had. `AppKitDefaults` takes that row
-    /// away, so the rule under the last group went with the reason for it, and
-    /// what is left is a trailing separator drawing a line under nothing.
+    /// A trailing separator is only ever right under rows the system appends,
+    /// and it is right there because Enter Full Screen arrives carrying an
+    /// IMAGE: macOS aligns the titles in a separator-delimited section against
+    /// the widest image column in it, so without a rule between them the last
+    /// group is indented by the width of a glyph none of its rows has.
+    /// `AppKitDefaults` removes that row, so the separator that bracketed it
+    /// now draws a line under nothing. If a menu ever starts taking system rows
+    /// again, this is the check to change, along with `JotMenu.add`.
     ///
     /// Derived from the enum, so a seventh menu joins with no edit here, and it
     /// says what it reached: a sweep over no menus asserts nothing.
