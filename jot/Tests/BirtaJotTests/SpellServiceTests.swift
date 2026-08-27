@@ -141,4 +141,62 @@ final class SpellServiceTests: XCTestCase {
             XCTAssertLessThanOrEqual(lint.end, length)
         }
     }
+
+    // MARK: - How often the thread is handed back
+
+    /// Lint through a service the caller keeps, so its batch counter is readable.
+    private func batches(of blocks: [LintBlock], timeout: TimeInterval = 60) -> Int {
+        let service = SpellService()
+        let done = expectation(description: "lint")
+        service.lint(blocks: blocks) { _ in done.fulfill() }
+        wait(for: [done], timeout: timeout)
+        return service.batchCount
+    }
+
+    private func blocks(count: Int, chars: Int) -> [LintBlock] {
+        // Distinct words rather than one repeated character: the checker is
+        // given something sentence-shaped, and a block of "aaaa" is not a
+        // realistic thing to time or to count turns over.
+        (0..<count).map { i in
+            var text = "Paragraph \(i)"
+            while (text as NSString).length < chars { text += " and some more ordinary prose" }
+            return LintBlock(key: i * 100, text: text)
+        }
+    }
+
+    func testAShortNoteShouldBeCheckedWithoutHandingBackTheThread() {
+        // Ten one-line blocks are a few hundred characters between them, well
+        // inside one budget, and yielding for them would only make the
+        // underlines crawl down the page for no benefit to anyone.
+        XCTAssertEqual(batches(of: blocks(count: 10, chars: 30)), 1)
+    }
+
+    func testTheSameBlockCountShouldYieldMoreOftenWhenTheBlocksAreLonger() {
+        // THE assertion. A budget counted in BLOCKS cannot tell these two apart:
+        // forty blocks is forty blocks, and it would hand the thread back the
+        // same number of times for four hundred characters as for thirty-six
+        // thousand. The document that made the caret stutter was the second
+        // shape, unwrapped paragraphs, and this is the only check that
+        // distinguishes the two budgets.
+        let short = batches(of: blocks(count: 40, chars: 10))
+        let long = batches(of: blocks(count: 40, chars: 900))
+        XCTAssertGreaterThan(long, short * 4,
+                             "same block count, \(short) turns for short blocks and "
+                             + "\(long) for long ones: the budget is not counting characters")
+    }
+
+    func testABlockLongerThanTheWholeBudgetShouldStillBeChecked() {
+        // A budget that could refuse a batch's first block would hand the run
+        // loop back forever and never answer. One block, however long, is one
+        // turn and one result.
+        let huge = blocks(count: 1, chars: 20_000)
+        XCTAssertEqual(batches(of: huge), 1)
+        XCTAssertEqual(lint(huge, timeout: 60).count, 1)
+    }
+
+    func testAnEmptyRequestShouldStillAnswerInOneTurn() {
+        // The page holds its request open until it hears back, so the answer
+        // has to arrive for nothing as well as for something.
+        XCTAssertEqual(batches(of: []), 1)
+    }
 }

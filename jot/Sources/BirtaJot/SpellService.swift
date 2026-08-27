@@ -54,11 +54,27 @@ final class SpellService {
     // reaching AppKit from a nonisolated `deinit` to run it is a hazard bought
     // for nothing. The tag is released with the process.
 
-    /// How many blocks are checked before the run loop gets a turn. Sized for
-    /// a paragraph-shaped block: small enough that typing stays smooth behind a
-    /// whole-document rescan, large enough that an ordinary note finishes in
-    /// one or two batches and the underlines do not crawl down the page.
-    private static let batchSize = 20
+    /// How much TEXT is checked before the run loop gets a turn.
+    ///
+    /// A count of blocks is the wrong budget, because what this thread is being
+    /// held for is the checking, and that scales with characters rather than
+    /// with paragraphs. A working document of unwrapped 900-character
+    /// paragraphs put twenty of them, eighteen thousand characters, into one
+    /// uninterrupted turn; a note of one-line bullets put a few hundred into the
+    /// same turn. The first is the shape that made the caret stutter, and the
+    /// block count could not tell the two apart.
+    ///
+    /// Sized so an ordinary paragraph goes in one turn: below this and a batch
+    /// is one long paragraph, above it several short ones. A single block always
+    /// goes, whatever its length, because a block is the smallest thing this
+    /// checker can be asked about and a budget that could refuse one would never
+    /// finish. So a single very long paragraph still holds the thread for as
+    /// long as it takes; bounding THAT means splitting a block, which changes
+    /// what the checker sees across a sentence boundary and is not worth it.
+    ///
+    /// `jot-trace lint` prints `chars` and `ms` per round trip, which is where
+    /// to read what this currently costs rather than trusting a figure here.
+    private static let batchChars = 1000
 
     /// Lint every block, then answer once.
     ///
@@ -67,8 +83,27 @@ final class SpellService {
     /// and it correlates the answer by id, so an unanswered batch is a request
     /// that never settles.
     func lint(blocks: [LintBlock], completion: @escaping @MainActor ([LintBlockResult]) -> Void) {
+        longestHold = 0
+        batchCount = 0
         drain(blocks[...], done: [], completion: completion)
     }
+
+    /// The longest UNINTERRUPTED main-thread hold of the last `lint`, in
+    /// seconds, which is the number the batch budget exists to bound.
+    ///
+    /// Total time is the wrong reading for this: a check spread over many turns
+    /// costs the same total and costs the caret nothing, and the two are
+    /// indistinguishable in a figure that only says how long the answer took.
+    /// This says how long the thread was unavailable at a stretch.
+    private(set) var longestHold: TimeInterval = 0
+
+    /// How many turns of the run loop the last `lint` took.
+    ///
+    /// The testable half of `longestHold`, which is a duration and so is a
+    /// figure a loaded machine can move. This one is arithmetic: it says how
+    /// often the thread was handed back, and it is what a test can assert
+    /// without asserting a clock.
+    private(set) var batchCount = 0
 
     /// One batch, then either the answer or a turn of the run loop.
     ///
@@ -80,11 +115,19 @@ final class SpellService {
                        completion: @escaping @MainActor ([LintBlockResult]) -> Void) {
         var pending = pending
         var done = done
-        for _ in 0..<Self.batchSize {
+        var spent = 0
+        let batchStart = Date()
+        // `spent == 0` first, so the budget can never refuse the batch's first
+        // block: a block longer than the whole budget still has to be checked,
+        // and a loop that declined one would hand back the run loop forever.
+        while spent == 0 || spent < Self.batchChars {
             guard let block = pending.first else { break }
             pending = pending.dropFirst()
+            spent += block.text.count
             done.append(LintBlockResult(key: block.key, lints: check(block.text)))
         }
+        longestHold = max(longestHold, Date().timeIntervalSince(batchStart))
+        batchCount += 1
         guard !pending.isEmpty else { completion(done); return }
         // Back through the run loop, so a long document is checked in the gaps
         // rather than in front of the caret.

@@ -41,6 +41,7 @@ import {
     learnWord,
     setUserWords,
 } from "../proofread/engine";
+import { lookupLints, rememberLints } from "../proofread/lintCache";
 import { hideLintPopup, showFindingsPopup, type PopupButton, type PopupFinding } from "../proofread/popup";
 import { notifyLintBlocks } from "../messaging";
 import { requestIdle } from "../utils/idle";
@@ -455,6 +456,43 @@ function collectLintBlocks(doc: ProseNode): LintBlock[] {
     return blocks;
 }
 
+/**
+ * The blocks the host has not already answered for, each distinct text once.
+ *
+ * A rescan collects the whole document; an edit changes one block of it. Asking
+ * the host only about what it has not seen is the difference between a check
+ * that scales with the document and one that scales with the edit. Exported for
+ * unit testing, because it is where that whole claim lives.
+ *
+ * Deduplicated by text as well as filtered, so a document that repeats a line
+ * asks about it once. The caller pairs the answers back onto every block by
+ * text, so a block dropped here still gets its findings.
+ */
+export function lintBlocksToAsk(blocks: readonly LintBlock[]): LintBlock[] {
+    const asking = new Set<string>();
+    const fresh: LintBlock[] = [];
+    for (const block of blocks) {
+        if (lookupLints(block.text) !== undefined) { continue; }
+        if (asking.has(block.text)) { continue; }
+        asking.add(block.text);
+        fresh.push(block);
+    }
+    return fresh;
+}
+
+/**
+ * Every block's findings, from the cache, once the host's answers are in it.
+ *
+ * `key` is the block's position in the document the request was built against,
+ * which is what `buildLintDecorations` resolves nodes by, so the result carries
+ * the ORIGINAL blocks' keys rather than the asked-about subset's. A text with
+ * no entry resolves to no findings rather than being dropped, so a host that
+ * answers short cannot leave a block's stale decorations standing.
+ */
+export function resolveLintResults(blocks: readonly LintBlock[]): LintBlockResult[] {
+    return blocks.map(({ key, text }) => ({ key, lints: lookupLints(text) ?? [] }));
+}
+
 /** Build decorations from Harper results (block keys are request-time positions). */
 function buildLintDecorations(
     doc: ProseNode,
@@ -694,6 +732,11 @@ export const proofreadPlugin = $prose(() => {
             let destroyed = false;
             let lintRequestId = 0;
             let lintRequestDoc: ProseNode | null = null;
+            // Every block of the document the open request was built against,
+            // not the subset the host was asked about: the answer has to be
+            // rebuilt for the whole document, or the blocks left out of the
+            // request would lose their decorations for having been unchanged.
+            let lintRequestBlocks: LintBlock[] = [];
             // The first proofread pass is deferred off the mount/paint path and
             // run on idle AFTER the editor is visible (see below): proofreading
             // is decoration only and must never block interactivity, nor appear
@@ -717,11 +760,20 @@ export const proofreadPlugin = $prose(() => {
                 // If the doc changed since the request, positions are invalid;
                 // the pending rescan will re-request.
                 if (view.state.doc !== lintRequestDoc) { return; }
+                // The host answered only about the blocks it had not seen, so
+                // its reply is folded into the cache and the decoration set is
+                // then built from EVERY block of the request.
+                const askedText = new Map(lintRequestBlocks.map((b) => [b.key, b.text]));
+                for (const { key, lints } of results) {
+                    const text = askedText.get(key);
+                    if (text !== undefined) { rememberLints(text, lints); }
+                }
                 const cfg = proofreadPluginKey.getState(view.state)?.config;
                 const meta: ProofreadMeta = {
                     type: "lints",
                     decorations: cfg
-                        ? buildLintDecorations(view.state.doc, results, cfg)
+                        ? buildLintDecorations(view.state.doc,
+                                               resolveLintResults(lintRequestBlocks), cfg)
                         : DecorationSet.empty,
                 };
                 view.dispatch(view.state.tr.setMeta(proofreadPluginKey, meta));
@@ -763,7 +815,18 @@ export const proofreadPlugin = $prose(() => {
                 if (state.config.proofreadingEnabled && (state.config.spellCheck || state.config.grammarCheck)) {
                     lintRequestId++;
                     lintRequestDoc = view.state.doc;
-                    notifyLintBlocks(lintRequestId, collectLintBlocks(view.state.doc));
+                    lintRequestBlocks = collectLintBlocks(view.state.doc);
+                    const asking = lintBlocksToAsk(lintRequestBlocks);
+                    // Nothing new to ask about: the answer is already known, so
+                    // it is applied here rather than after a round trip the host
+                    // would spend a whole-document check answering. This is the
+                    // path a rescan takes when an edit only moved text, and the
+                    // path every block but one takes when it did not.
+                    if (asking.length === 0) {
+                        currentApplier?.(lintRequestId, []);
+                    } else {
+                        notifyLintBlocks(lintRequestId, asking);
+                    }
                 } else if (state.lintSet !== DecorationSet.empty) {
                     const meta: ProofreadMeta = { type: "lints", decorations: DecorationSet.empty };
                     view.dispatch(view.state.tr.setMeta(proofreadPluginKey, meta));

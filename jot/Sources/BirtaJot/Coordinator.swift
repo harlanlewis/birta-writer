@@ -1075,6 +1075,7 @@ final class Coordinator {
         // on every file it opens: without this the sidebar would shut itself
         // the moment you opened a second note.
         case let .lintBlocks(id, blocks):
+            let lintStart = Date()
             spell.lint(blocks: blocks) { [weak self] results in
                 guard let self else { return }
                 // Traced because this is the one chain no other instrument
@@ -1082,7 +1083,17 @@ final class Coordinator {
                 // the browser harness cannot run `NSSpellChecker` at all, so
                 // `measure.sh` reads this line to say the round trip works in
                 // the real app.
+                //
+                // `chars`, `ms` and `hold` are there because this checker runs
+                // on the main thread, which is also the thread key events
+                // arrive on: what the reader needs from this line is not only
+                // that the round trip works but what it cost the caret. `ms` is
+                // the whole answer and `hold` is the longest stretch the thread
+                // was unavailable inside it, which is the half a person feels.
                 self.measure.trace("lint blocks=\(blocks.count) "
+                    + "chars=\(blocks.reduce(0) { $0 + $1.text.count }) "
+                    + "ms=\(Int(Date().timeIntervalSince(lintStart) * 1000)) "
+                    + "hold=\(Int(self.spell.longestHold * 1000)) "
                     + "lints=\(results.reduce(0) { $0 + $1.lints.count })")
                 self.host.send(.lintResults(id: id, results: results))
             }
