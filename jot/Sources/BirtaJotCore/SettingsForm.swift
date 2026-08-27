@@ -118,7 +118,7 @@ public enum SettingsForm {
         SettingsGroup(rows: [.summon]),
         SettingsGroup(rows: [.storeInICloud, .location, .autosave]),
         SettingsGroup(rows: [.opens, .newNoteName]),
-        SettingsGroup(rows: [.showInMenuBar, .showInDock, .startAtLogin, .autoUpdate, .richLinks]),
+        SettingsGroup(rows: [.showInDock, .showInMenuBar, .startAtLogin, .autoUpdate, .richLinks]),
     ])
 
     /// The agent `/ai` hands a prompt to.

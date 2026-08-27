@@ -682,6 +682,28 @@ final class Coordinator {
             // What the band's trailing controls look like with the window at
             // rest, which a script cannot reach: resting is the pointer and the
             // key window, and a shell driving this app has neither.
+            // Close this window, exactly as Cmd+W and the close button do, so
+            // the recents rule that hangs off closing is reachable from a
+            // script. The file is named in the trace rather than worked out
+            // from window bookkeeping, so the check reads what was actually
+            // closed.
+            if obj["type"] as? String == "__jotCloseWindow" {
+                measure.mark("debug-close-window")
+                measure.trace("closewindow at=\(boundURL.path)")
+                onCloseRequest?()
+                return
+            }
+            // Whether the editor is locked, as the page has it rather than as
+            // this side last sent it.
+            if obj["type"] as? String == "__jotEditorLock" {
+                measure.mark("debug-editor-lock")
+                host.reportEditorLock { [weak self] line in
+                    MainActor.assumeIsolated {
+                        self?.measure.trace("editorlock \(line) missing=\(self?.noteMissing == true)")
+                    }
+                }
+                return
+            }
             if obj["type"] as? String == "__jotResting" {
                 measure.mark("debug-resting")
                 host.reportRestingChrome { [weak self] line in
@@ -961,13 +983,13 @@ final class Coordinator {
             // A fresh page starts with its chrome shown; tell it where the
             // pointer is, and say which file it is now bound to.
             refreshTitle()
-            // ...and whether that file is there at all. A class on the body is
-            // the page's whole memory of this, so a remount for any reason
-            // brings the band back with every control in it while the card in
-            // the middle of the window is still saying the note is gone. It is
-            // set BEFORE the width query below, which measures the row this
-            // decides the contents of.
-            host.setNoteMissing(noteMissing)
+            // ...and whether that file is there at all. The page remembers
+            // this only as what it has been sent, so a remount for any reason
+            // comes back editable, with every control in the band, while the
+            // card in the middle of the window is still saying the note is
+            // gone. Set BEFORE the width query below, which measures the row
+            // this decides the contents of.
+            applyNoteMissingToPage()
             // Ask for the width the title's ceiling is computed against as
             // soon as there is a page to ask, rather than waiting for the
             // first summon. Until it answers, the width reads 0, which the
@@ -1971,6 +1993,16 @@ final class Coordinator {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let target = Coordinator.unusedNoteURL(in: directory)
         try AtomicFile.writeString("", to: target)
+        // The folder may have just been made, here or by the write. Its mark
+        // is a file inside it, so a folder that was deleted and recreated has
+        // lost it, and this is one of the two places the app recreates one.
+        //
+        // The drawing itself is refused under a throwaway defaults domain, on
+        // purpose: the mark is a file in the user's real notes folder whatever
+        // domain a run is using, so a checking run would decorate it for them
+        // (`FolderMarker.mark`). That leaves the WIRING as the half a run can
+        // ask about, and it is the half that was missing, so it is traced.
+        FolderMarker.markNotesFolders()
         return target
     }
 
@@ -2415,20 +2447,40 @@ final class Coordinator {
     /// perverse; what actually protects the text is the offer to write it,
     /// which is on the screen doing the covering.
     private func showMissingFileScreen() {
-        missingFileScreen.show(noteMissing,
-                               name: boundURL.lastPathComponent,
-                               hasUnsavedText: !latest.isBlank)
+        missingFileScreen.show(noteMissing, hasUnsavedText: !latest.isBlank)
         layoutMissingFileScreen()
-        // The band's other half. With no file there is nothing for Find, the
-        // checks, the outline or the typography controls to act on, and the
-        // gear is the one control in this state that still has a job: on a
-        // panel with no Dock icon it is the way to preferences.
-        host.setNoteMissing(noteMissing)
+        applyNoteMissingToPage()
         // The cluster just changed WIDTH, which the drag strip is sized from.
         // Without this the strip keeps the width of a row that is no longer
         // there and lies over the gear, so the click that reaches preferences
         // drags the window instead.
         refreshTitlebarControlsWidth()
+    }
+
+    /// Everything the PAGE has to be told about the bound file being gone.
+    ///
+    /// Both facts in one call, and that is the point of the method rather than
+    /// a tidying: the page's memory of this state is entirely in what it has
+    /// been sent, so a remount for any reason at all comes back knowing
+    /// neither, and two things to remember at two call sites is one thing to
+    /// forget. Its callers are the state change itself and `.ready`.
+    ///
+    /// The editor is LOCKED rather than hidden. Typing into a file that is not
+    /// there produced text the panel then refused to write, silently, in the
+    /// one state where the buffer may be the only copy of something; and
+    /// hiding the document instead would take away the text the card is
+    /// promising is still on screen. Read-only is exactly the pair that is
+    /// wanted: nothing can be changed, and what is there can still be selected
+    /// and copied somewhere safe. `webview/readOnly.ts` holds the promise in
+    /// three layers, so this is one flag rather than an audit of the chrome.
+    ///
+    /// The band goes down to the Settings gear. With no file there is nothing
+    /// for Find, the checks, the outline or the typography controls to act on,
+    /// and the gear is the one control in this state that still has a job: on
+    /// a panel with no Dock icon it is the way to preferences.
+    private func applyNoteMissingToPage() {
+        host.send(.setReadOnly(readOnly: noteMissing))
+        host.setNoteMissing(noteMissing)
     }
 
     /// The area the card centres in: the DOCUMENT, and not the band above it.
@@ -2546,6 +2598,10 @@ final class Coordinator {
             return
         }
         watcher.watch(boundURL)
+        // The other one. Deleting the folder is how a note goes missing in the
+        // first place, so Save It Back is the gesture most likely to have just
+        // rebuilt it.
+        FolderMarker.markNotesFolders()
         statusOverlay.flash("Saved \(boundURL.lastPathComponent) back.")
     }
 

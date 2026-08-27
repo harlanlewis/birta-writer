@@ -29,8 +29,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// app menu of its own, and a Dock click that has to lead somewhere.
     /// `.accessory` is the default and what `LSUIElement` declares, so a launch
     /// never flashes an icon it is about to take away.
-    static func applyActivationPolicy() {
-        NSApp.setActivationPolicy(Prefs.showInDock ? .regular : .accessory)
+    /// The Dock setting, as an activation policy.
+    ///
+    /// WHAT to do is `BirtaJotCore.DockPresence`'s, where it is decidable and
+    /// checked; this is the AppKit half, which is not. `keepingFrontmost` is
+    /// true for a live toggle and false at launch and on the first-run screen,
+    /// and the type says why the two differ.
+    static func applyActivationPolicy(keepingFrontmost: Bool = false) {
+        let action = DockPresence.action(showInDock: Prefs.showInDock,
+                                         isRegular: NSApp.activationPolicy() == .regular,
+                                         keepingFrontmost: keepingFrontmost)
+        guard case let .change(regular, restoreFrontmost) = action else { return }
+        // Read BEFORE the policy changes: the deactivation that follows takes
+        // the key window with it, so asking afterwards asks a question whose
+        // answer the change has already destroyed.
+        let front = restoreFrontmost ? NSApp.keyWindow : nil
+        NSApp.setActivationPolicy(regular ? .regular : .accessory)
+        guard restoreFrontmost else { return }
+        // A runloop turn later. `setActivationPolicy` hands the change to the
+        // window server and the deactivation that follows is not synchronous
+        // with the call, so activating in the same turn is undone a moment
+        // afterwards by the very transition it was meant to survive.
+        DispatchQueue.main.async {
+            NSApp.activate(ignoringOtherApps: true)
+            front?.makeKeyAndOrderFront(nil)
+        }
     }
 
     /// The running delegate.
@@ -152,7 +175,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // once per folder, but launch is the one path where cost is felt and
         // nothing here is worth a millisecond of it.
         DispatchQueue.main.async {
-            Prefs.derivedNotesDirectories.forEach(FolderMarker.mark)
+            FolderMarker.markNotesFolders()
         }
         // Asked once a launch, in the background, and silent unless there is
         // something. `Updater` refuses for a development build, when the

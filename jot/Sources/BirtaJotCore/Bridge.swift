@@ -333,6 +333,18 @@ public enum HostMessage: Equatable {
     /// this side's to compute: the page is drawn under the titlebar and has no
     /// idea where an accessory view landed.
     case hostTooltip(text: String?, rect: CGRect?)
+    /// Lock or unlock the editor.
+    ///
+    /// The shell's, not a setting: this app has no read-only preference, and
+    /// the one state that raises it is the bound file having gone
+    /// (`Coordinator.applyNoteMissingToPage`). Typing into a file that is not
+    /// there produced text the panel then refused to write, silently, in the
+    /// state where the buffer may be the only copy of something. Locking is the
+    /// pair that is wanted rather than hiding the document: nothing can be
+    /// changed, and what is there can still be selected and copied out.
+    /// `webview/readOnly.ts` keeps the promise in three layers, so this is one
+    /// flag rather than an audit of the chrome.
+    case setReadOnly(readOnly: Bool)
     /// Measurement-only: an arbitrary message object, so `jot/scripts/measure.sh`
     /// can drive the test-only page commands (`__testInsertText`, `__getPerfMarks`).
     case raw(json: String)
@@ -393,6 +405,8 @@ public enum HostMessage: Equatable {
             return ["type": "toolbarConfig", "config": config]
         case let .requestEditorContext(id):
             return ["type": "requestEditorContext", "id": id]
+        case let .setReadOnly(readOnly):
+            return ["type": "setReadOnly", "readOnly": readOnly]
         case let .datePickerResult(id, date):
             return ["type": "datePickerResult", "id": id,
                     "date": date.map { ["year": $0.year, "month": $0.month, "day": $0.day] } ?? NSNull()]

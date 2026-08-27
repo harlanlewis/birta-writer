@@ -2,7 +2,7 @@ import AppKit
 
 /// The panel, given over to saying the file is gone and offering the ways out.
 ///
-///     Jot 2026-08-26.md doesn't exist
+///     This file can't be found
 ///     It may have been deleted or moved. What you were writing is
 ///     still on screen and is not saved anywhere else.
 ///
@@ -141,7 +141,6 @@ final class MissingFileScreen: NSView {
     private func build() {
         heading.font = .systemFont(ofSize: NSFont.systemFontSize + 6, weight: .semibold)
         heading.alignment = .center
-        heading.lineBreakMode = .byTruncatingMiddle
         body.font = .systemFont(ofSize: NSFont.systemFontSize)
         body.textColor = .secondaryLabelColor
         body.alignment = .center
@@ -247,18 +246,27 @@ final class MissingFileScreen: NSView {
 
     /// What the screen says, and which ways out it offers.
     ///
-    /// `hasUnsavedText` is the whole of the difference, and it is a fact about
-    /// the BUFFER rather than about the file: the file is gone either way, so
-    /// what decides the offer is whether anything on screen exists nowhere
-    /// else. With text to lose, saving it is the first thing offered and the
-    /// button that throws it away is named for what it costs. With nothing to
-    /// lose, neither belongs: an offer to save an empty buffer writes an empty
-    /// file, and a warning about discarding nothing is a warning people learn
-    /// to click through.
-    func show(_ shown: Bool, name: String = "", hasUnsavedText: Bool = false) {
+    /// The heading does NOT name the file, and that is the one thing about it
+    /// worth stating. A file name is arbitrary length: it went in the heading,
+    /// at the largest type on the window, where a long one set the width of the
+    /// whole card and a very long one truncated in the middle of the only
+    /// sentence saying what had happened. The window's own title bar is a few
+    /// inches above and names the file already, with a ceiling that was built
+    /// for exactly this (`TitlebarBand`), so the card says what is wrong and
+    /// lets the title say which file it is wrong about.
+    ///
+    /// `hasUnsavedText` is the whole of the rest, and it is a fact about the
+    /// BUFFER rather than about the file: the file is gone either way, so what
+    /// decides the offer is whether anything on screen exists nowhere else.
+    /// With text to lose, saving it is the first thing offered and the button
+    /// that throws it away is named for what it costs. With nothing to lose,
+    /// neither belongs: an offer to save an empty buffer writes an empty file,
+    /// and a warning about discarding nothing is a warning people learn to
+    /// click through.
+    func show(_ shown: Bool, hasUnsavedText: Bool = false) {
         isHidden = !shown
         guard shown else { return }
-        heading.stringValue = "\(name) doesn't exist"
+        heading.stringValue = "This file can't be found"
         body.stringValue = hasUnsavedText
             ? "It may have been deleted or moved. What you were writing is still on screen, and is not saved anywhere else."
             : "It may have been deleted or moved."

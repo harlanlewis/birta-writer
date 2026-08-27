@@ -292,12 +292,47 @@ final class WebHost: NSObject, WKScriptMessageHandler, WKNavigationDelegate, WKU
           var zone = document.querySelector('.editor-topbar .tb-zone--right');
           if (!zone) { return 'absent'; }
           var was = document.body.classList.contains('jot-resting');
+          // The RULE, not a frame of the fade. Both properties are
+          // transitioned here, so a computed read taken the instant the class
+          // lands returns the value the fade is starting FROM whatever the
+          // rule says, and the answer then depends on whether the window
+          // happened to be resting already. Suppressing the transition on the
+          // element makes the read the same every time it is taken.
+          var prev = zone.style.transition;
+          zone.style.transition = 'none';
           document.body.classList.add('jot-resting');
           var s = getComputedStyle(zone);
           var out = ['opacity=' + s.opacity, 'visibility=' + s.visibility,
                      'missing=' + document.body.classList.contains('jot-note-missing')].join(' ');
           if (!was) { document.body.classList.remove('jot-resting'); }
+          zone.style.transition = prev;
           return out;
+        })()
+        """
+        webView.evaluateJavaScript(js) { value, _ in
+            report(value as? String ?? "unavailable")
+        }
+    }
+
+    /// Whether the editor is actually locked, for `jot/scripts/measure.sh`.
+    ///
+    /// Read off the DOM rather than off what this side last sent, which is the
+    /// only version of the question worth asking: the flag travels as a message
+    /// and the page's memory of it is whatever it was last told, so "we sent
+    /// it" and "the editor is locked" are different claims and a remount breaks
+    /// the second while leaving the first true.
+    ///
+    /// Two independent answers, because `webview/readOnly.ts` keeps its promise
+    /// in layers and they can disagree: `contenteditable` is what ProseMirror's
+    /// `editable` predicate stamps, and `body.read-only` is what the chrome's
+    /// CSS reads. One without the other is a half-applied mode.
+    func reportEditorLock(_ report: @escaping (String) -> Void) {
+        let js = """
+        (function () {
+          var pm = document.querySelector('.ProseMirror');
+          if (!pm) { return 'absent'; }
+          return ['contenteditable=' + pm.getAttribute('contenteditable'),
+                  'bodyClass=' + document.body.classList.contains('read-only')].join(' ');
         })()
         """
         webView.evaluateJavaScript(js) { value, _ in

@@ -24,26 +24,30 @@ final class MissingFileScreenTests: XCTestCase {
     /// In a container, because `hitTest` takes its point in the SUPERVIEW's
     /// coordinates and a screen with no superview cannot tell a conversion
     /// that works from one that is a no-op standing in for it.
-    private func shown(name: String = "Note.md",
-                       unsaved: Bool,
+    private func shown(unsaved: Bool,
                        width: CGFloat = 640,
                        height: CGFloat = 400) -> MissingFileScreen {
         let screen = MissingFileScreen()
         let container = NSView(frame: NSRect(x: 0, y: 0, width: width, height: height))
         container.addSubview(screen)
         screen.frame = container.bounds
-        screen.show(true, name: name, hasUnsavedText: unsaved)
+        screen.show(true, hasUnsavedText: unsaved)
         screen.layoutSubtreeIfNeeded()
         return screen
     }
 
-    func testItShouldNameTheFileAndSayItIsGone() {
-        // The name is in the heading because somebody with several notes needs
-        // to know which one this is about, and the titlebar is still showing a
-        // file that is no longer there.
+    func testItShouldSayWhatIsWrongWithoutNamingTheFile() {
+        // A file name is arbitrary length and this is the largest type on the
+        // window, so a long one set the width of the whole card and a very long
+        // one truncated in the middle of the only sentence saying what had
+        // happened. The window's own title bar names the file a few inches
+        // above, with a ceiling built for exactly that.
         let state = shown(unsaved: false).stateForMeasurement
-        XCTAssertEqual(state.heading, "Note.md doesn't exist")
+        XCTAssertEqual(state.heading, "This file can't be found")
         XCTAssertTrue(state.body.contains("deleted or moved"), state.body)
+        // The arm that keeps this from being satisfied by a heading that names
+        // a file the test happens not to have given one.
+        XCTAssertFalse(state.heading.contains(".md"), state.heading)
     }
 
     func testWithTextInTheBufferItShouldOfferToSaveItAndSayWhatIsAtStake() {
@@ -96,7 +100,7 @@ final class MissingFileScreenTests: XCTestCase {
         screen.frame = container.bounds
         screen.show(false)
         XCTAssertNil(screen.hitTest(NSPoint(x: 320, y: 200)))
-        screen.show(true, name: "Note.md", hasUnsavedText: true)
+        screen.show(true, hasUnsavedText: true)
         screen.layoutSubtreeIfNeeded()
         XCTAssertNotNil(screen.hitTest(NSPoint(x: 320, y: 200)))
     }

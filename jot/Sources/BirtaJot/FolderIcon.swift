@@ -14,14 +14,42 @@ import BirtaJotCore
 /// header holds the mechanism. This is the half that needs a drawing context.
 @MainActor
 enum FolderMarker {
-    /// Mark `folder`, unless it is already marked or is not there.
-    ///
     /// Silent about failure, and that is a decision rather than an oversight.
     /// Every way this can fail is a way that costs the user nothing: a folder
     /// on a volume that will not take a custom icon, a sandbox that refuses the
     /// write, an iCloud folder that is not downloaded yet. A person who came to
     /// write a note is not helped by being told their folder is undecorated, so
     /// nothing is reported and the plain folder stands.
+    /// Mark every notes folder this app derives.
+    ///
+    /// The call to make wherever a folder may have JUST come into existence,
+    /// rather than only at launch. The mark is a file inside the folder, so
+    /// deleting the folder deletes it, and the app recreates that folder
+    /// itself the moment anything is written into it (`AtomicFile.write` makes
+    /// every directory above its target). Without a second caller the folder
+    /// comes back plain and stays plain until the next launch, which is the
+    /// shape of every folder-icon bug: nothing is broken, the picture is
+    /// simply not there and nothing says why.
+    ///
+    /// Cheap enough to call on a gesture: `FolderIcon.shouldMark` is two
+    /// `stat` calls per folder and there are at most two folders, and the
+    /// composition and the write only happen for a folder that is really
+    /// unmarked.
+    static func markNotesFolders() {
+        let folders = Prefs.derivedNotesDirectories
+        // The wiring, for `jot/scripts/measure.sh`, because the drawing is
+        // deliberately unreachable from a checking run: `mark` refuses under a
+        // throwaway defaults domain, since a folder icon is a file in the
+        // user's real notes folder whatever domain the run is using. What a run
+        // CAN ask is whether this was reached at the moment a folder may have
+        // just been rebuilt, which is the half that had no caller.
+        if !Prefs.isUserStore {
+            NSLog("jot-trace markfolders count=\(folders.count) drawn=no")
+        }
+        folders.forEach(mark)
+    }
+
+    /// Mark `folder`, unless it is already marked or is not there.
     static func mark(_ folder: URL) {
         // Never during a measurement run, on the same rule that stops one
         // remembering the panel's frame. `BIRTA_JOT_DEFAULTS_SUITE` isolates

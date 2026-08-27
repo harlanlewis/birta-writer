@@ -269,6 +269,15 @@ final class WindowSet {
         }
         coordinator.prepareToClose { [weak self] proceed in
             guard proceed, let self else { return }
+            // The file this window was on joins the recents list, and closing
+            // is the second of the only two ways a file stops being on screen.
+            // `Coordinator.boundURL`'s `didSet` records the other, a rebind,
+            // and it is the one slot every rebind passes through; a window that
+            // opens a file and closes never rebinds, so without this the file
+            // it was showing is one Open Recent has never heard of. With one
+            // window that could not happen, because the only way to stop
+            // looking at a file was to go to another one.
+            Prefs.rememberRecent(coordinator.boundFile)
             self.windows.removeAll { $0 === coordinator }
             coordinator.tearDown()
         }
