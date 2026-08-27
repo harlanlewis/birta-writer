@@ -16,6 +16,8 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 - More than one window. Cmd+N and Open now make a window rather than replacing what is on screen, so two notes can be open at once, and each window has its own title, its own buffer and its own saving. Opening a file that is already open brings that window forward instead of opening it twice, which matters beyond tidiness: two windows over one file would both write the whole file and the later write would win with nothing to say so. Cmd+W closes a window, except the last one, which hides as it always did so the next summon is still instant. The summon hotkey shows and hides every window together. Quitting asks about each unsaved note in turn, and Cancel on any of them keeps the app running.
 
+- The notes folders wear the app's mark in the Finder, the way the folders of other apps that keep one in iCloud Drive do, so the folder is found by looking rather than by reading. Both folders the app names get it, the one in iCloud Drive and the one in Documents, whichever is currently in use. A folder you have given your own picture to is left alone, and deleting the icon puts the plain folder back for good.
+
 - A Show in menu bar setting, on by default, under Settings > General. Turning it off leaves the app with no menu-bar icon, which suits anybody who summons it by hotkey or keeps it in the Dock. It is bound to Show in Dock by one rule: whichever of the two is the last one on cannot be switched off, so there is always a way to open the app without its hotkey. The row that is currently the last one says so rather than simply refusing.
 
 ### Fixed

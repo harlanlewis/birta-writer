@@ -146,6 +146,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // After the window, because the summon key and the measurement signals
         // both act on a window and there has to be one to act on.
         windows.start()
+        // The Finder's mark on the notes folders, after everything that has to
+        // happen for the app to be usable. It is two `stat` calls on every
+        // launch after the first, and the composition and write only ever run
+        // once per folder, but launch is the one path where cost is felt and
+        // nothing here is worth a millisecond of it.
+        DispatchQueue.main.async {
+            Prefs.derivedNotesDirectories.forEach(FolderMarker.mark)
+        }
         // Asked once a launch, in the background, and silent unless there is
         // something. `Updater` refuses for a development build, when the
         // setting is off, and under a throwaway defaults domain.

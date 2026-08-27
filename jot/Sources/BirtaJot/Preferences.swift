@@ -838,6 +838,29 @@ enum Prefs {
     /// chose and to `BIRTA_JOT_SCRATCHPAD`. This one is spelled from the
     /// product name by `ScratchpadLocation`, which makes it the one a rename
     /// can move, and the only one worth recording.
+    /// BOTH folders this app derives from its own name: the one in iCloud
+    /// Drive and the one in Documents.
+    ///
+    /// Both, rather than only the one in force, because the other is where a
+    /// person's notes were before they moved them or will be after: a folder
+    /// that carries the mark only while it is selected would gain and lose it
+    /// as the setting moved.
+    ///
+    /// A folder the USER chose is deliberately not here. It can be anything,
+    /// including a folder that holds far more than notes, and putting a mark
+    /// on somebody's Documents folder because they once pointed this app at it
+    /// is not a decoration, it is a claim.
+    static var derivedNotesDirectories: [URL] {
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        let suffix = AppFlavor.current.nameSuffix
+        var folders = [ScratchpadLocation.local
+            .url(root: home.appendingPathComponent("Documents", isDirectory: true), nameSuffix: suffix)]
+        if let root = ScratchpadLocation.iCloudDriveRoot() {
+            folders.append(ScratchpadLocation.iCloud.url(root: root, nameSuffix: suffix))
+        }
+        return folders.map { $0.deletingLastPathComponent() }
+    }
+
     static var derivedNotesDirectory: URL {
         defaultScratchpadURL.deletingLastPathComponent()
     }
