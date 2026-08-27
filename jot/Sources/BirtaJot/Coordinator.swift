@@ -1082,8 +1082,19 @@ final class Coordinator {
                 // the browser harness cannot run `NSSpellChecker` at all, so
                 // `measure.sh` reads this line to say the round trip works in
                 // the real app.
-                self.measure.trace("lint blocks=\(blocks.count) "
-                    + "lints=\(results.reduce(0) { $0 + $1.lints.count })")
+                //
+                // BY KIND, and one total is what that replaces. The page draws
+                // spelling and grammar from one pass and gates them on two
+                // different switches, so a run where the checker answers no
+                // grammar at all reads exactly like a working one in a single
+                // number, at every level: the service's own test skipped on an
+                // empty grammar list, and this line summed the two. "Check
+                // Grammar has no effect" was a claim nothing here could
+                // confirm or deny.
+                let lints = results.flatMap { $0.lints }
+                let spelling = lints.filter { $0.kind == "Spelling" }.count
+                self.measure.trace("lint blocks=\(blocks.count) lints=\(lints.count) "
+                    + "spelling=\(spelling) grammar=\(lints.count - spelling)")
                 self.host.send(.lintResults(id: id, results: results))
             }
         case let .spellAddWord(word):
