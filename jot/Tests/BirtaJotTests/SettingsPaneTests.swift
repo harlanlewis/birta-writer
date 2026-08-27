@@ -487,21 +487,41 @@ final class SettingsPaneTests: XCTestCase {
 
     /// The reason this file exists, stated as its own check: every row the
     /// first-run screen asks about is a row somebody can go back to in
-    /// Settings, worded the same, ON SCREEN rather than in an array.
-    func testEveryFirstRunRowShouldBeDrawnInTheGeneralPane() {
+    /// Settings, worded the same and in the same order, ON SCREEN rather than
+    /// in an array.
+    ///
+    /// Across the panes in tab order rather than General alone, which is the
+    /// order somebody walks Settings in and the one `SettingsForm.allRows`
+    /// names. A first-run question can belong to a pane that is not General:
+    /// Automatically update is about the program replacing itself, so it is on
+    /// Advanced, and the guarantee the first run owes is that the question is
+    /// findable rather than that it is findable on one particular tab.
+    /// `SettingsFormTests` makes the same claim about the declaration; this
+    /// one reads the labels off the live panes, so a renderer dropping a row
+    /// the declaration still names is caught here and nowhere else.
+    func testEveryFirstRunRowShouldBeDrawnSomewhereInSettings() {
         let controller = makeController()
         defer { controller.window?.close() }
-        let drawn = Set(labels(of: controller, tab: "general"))
+        let drawn = SettingsWindowController.tabNames.flatMap { labels(of: controller, tab: $0) }
         let welcome = SettingsForm.rows(of: SettingsForm.welcome).map(\.rawValue)
         XCTAssertFalse(welcome.isEmpty)
-        // General is meant to hold rows the first run does not ask about, so a
-        // pane that drew exactly the first-run set would be the two screens
-        // having become one. `SettingsFormTests` makes the same claim about
-        // the declaration; this one is about the pane.
+        // Settings is meant to hold rows the first run does not ask about, so
+        // panes that drew exactly the first-run set would be the two screens
+        // having become one.
         XCTAssertGreaterThan(drawn.count, welcome.count)
         for label in welcome {
             XCTAssertTrue(drawn.contains(label),
-                          "the first run asks about \(label) and the General pane draws no such row")
+                          "the first run asks about \(label) and no Settings pane draws such a row")
         }
+        // And in the same order, so nobody is sent backwards through the tabs
+        // to retrace a screen they saw once.
+        var cursor = 0
+        for label in drawn where cursor < welcome.count && label == welcome[cursor] {
+            cursor += 1
+        }
+        XCTAssertEqual(cursor, welcome.count,
+                       "the drawn first-run rows are out of order in Settings; stopped at "
+                       + welcome[min(cursor, welcome.count - 1)] + ", drawn: "
+                       + drawn.joined(separator: " | "))
     }
 }

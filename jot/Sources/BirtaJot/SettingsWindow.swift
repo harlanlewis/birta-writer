@@ -65,9 +65,16 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     /// application on this Mac: how you reach it, where it puts your bytes,
     /// which note a summon opens, and how it behaves at login and on the
     /// network. AI Agent is the command `/ai` hands a prompt to. Advanced is
-    /// the gestures that undo rather than set. Autosave is in General under
-    /// the argument that removed the middle pane the first time: it is about
-    /// when your bytes reach disk, not about what the editor does with them.
+    /// what the app does to itself: replace itself, and the gestures that undo
+    /// rather than set. Autosave is in General under the argument that removed
+    /// the middle pane the first time: it is about when your bytes reach disk,
+    /// not about what the editor does with them.
+    ///
+    /// Which pane a row is on decides nothing about whether the first run may
+    /// ask about it. Automatically update is on Advanced and is still a
+    /// first-run question, and what holds the two screens together is that
+    /// every question is findable somewhere in Settings in the same order
+    /// (`SettingsForm.allRows`), not that they share a tab.
     ///
     /// Which rows are on which pane is `SettingsForm`'s and not this enum's.
     private enum Tab: String, CaseIterable {
