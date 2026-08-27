@@ -233,7 +233,7 @@ final class NoteLocationChangeTests: XCTestCase {
         // bound THROUGH. It used to reach the same behaviour by falling
         // through the nil case, which was sound while one window meant "named
         // by no setting" and "on the default scratchpad" were the same state.
-        Prefs.rebind(from: before, to: moved, slot: .scratchpad)
+        Prefs.rebind(to: moved, slot: .scratchpad)
 
         XCTAssertEqual(Prefs.scratchpadURL.path, moved.path,
                        "the panel would open the derived note again next launch")
@@ -264,9 +264,9 @@ final class NoteLocationChangeTests: XCTestCase {
         Prefs.storeInICloud = true
         Prefs.documentURL = folder.appendingPathComponent("Claimed.md")
         let scratchpadBefore = Prefs.scratchpadURL!
-        let stranger = folder.appendingPathComponent("Stranger.md")
 
-        Prefs.rebind(from: stranger, to: folder.appendingPathComponent("Renamed.md"), slot: nil)
+        // Renaming a file in a window bound through no slot at all.
+        Prefs.rebind(to: folder.appendingPathComponent("Renamed.md"), slot: nil)
 
         XCTAssertEqual(Prefs.scratchpadURL.path, scratchpadBefore.path,
                        "renaming an unrelated file moved the scratchpad setting")

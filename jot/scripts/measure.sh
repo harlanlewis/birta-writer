@@ -336,6 +336,30 @@ if ! grep -q "^jot-trace noteMissing " "$LOG"; then
     grep -E "jot-trace (writeattempt|noteMissing)|jot-measure (visible|hide)" "$LOG" | tail -20 >&2; exit 1
 fi
 echo "deleted note         ok: the write was refused, and the note was not recreated"
+# ...and the screen it puts up leaves the page's own controls reachable.
+#
+# Find, the checks, the outline and the SETTINGS gear are drawn by the page, in
+# the titlebar band. Hiding the web view to wall off the document took all four
+# with it, so a window whose file had just gone missing had no way to Settings
+# except the menu bar, and somebody whose notes have just disappeared is exactly
+# the person who wants to look at where they are kept.
+#
+# Geometry rather than a screenshot, and not as a compromise: a WKWebView
+# contributes nothing to the PDF path `__jotSnapshot` uses, so a picture of this
+# state cannot show the page's controls whether they are there or not.
+MISSING="$(grep "^jot-trace missingscreen " "$LOG" | tail -1)"
+case "$MISSING" in
+    *"webviewHidden=false"*) ;;
+    "") echo "missing screen       FAILED: the screen never reported its geometry" >&2; exit 1 ;;
+    *) echo "missing screen       FAILED: the page is hidden, so Settings is unreachable: $MISSING" >&2; exit 1 ;;
+esac
+M_SCREEN="$(printf '%s' "$MISSING" | sed 's/.*screen=\([0-9]*\).*/\1/')"
+M_CONTENT="$(printf '%s' "$MISSING" | sed 's/.*content=\([0-9]*\).*/\1/')"
+if [ -z "$M_SCREEN" ] || [ -z "$M_CONTENT" ] || [ "$M_SCREEN" -ge "$M_CONTENT" ]; then
+    echo "missing screen       FAILED: the screen covers the whole window, including the band: $MISSING" >&2
+    exit 1
+fi
+echo "missing screen       ok: covers the document ($M_SCREEN of $M_CONTENT) and leaves the page's controls"
 # ...and a reload while the note is missing leaves the panel still writable.
 #
 # The read side refuses while the note is gone, because the buffer is the only

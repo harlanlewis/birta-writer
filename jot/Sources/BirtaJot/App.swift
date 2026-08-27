@@ -530,7 +530,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         front?.showWelcome()
     }
 
-    @objc func menuBackToNotes() { front?.backToNotes() }
+    @objc func menuBackToNotes() {
+        if let front { windows.backToNotes(front) }
+    }
 
     /// Say a newer release exists, and let the user take it or leave it.
     ///
@@ -686,9 +688,12 @@ extension AppDelegate: NSMenuDelegate, NSMenuItemValidation {
         case #selector(menuClearRecentDocuments):
             return !Prefs.recentDocuments.isEmpty
         case #selector(menuBackToNotes):
-            // Dead unless Jot is actually on a document, which today only an
-            // install carrying an older `documentPath` can be.
-            return Prefs.documentURL != nil
+            // Dead unless THIS window is actually on a document, which today
+            // only an install carrying an older `documentPath` can be. The
+            // window's own slot and not the global setting: with several
+            // windows only one holds it, so gating on the setting would offer
+            // the row on every window and refuse it on all but one.
+            return front?.bindingSlot == .document && Prefs.documentURL != nil
         default:
             return true
         }

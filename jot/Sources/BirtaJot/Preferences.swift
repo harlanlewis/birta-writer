@@ -340,8 +340,7 @@ enum Prefs {
     /// happened to rename in a second window. The default-scratchpad case is
     /// still handled, one level up: a window on it is bound through
     /// `.scratchpad` and says so.
-    static func rebind(from old: URL, to url: URL, slot: ActiveBinding.Slot?) {
-        _ = old
+    static func rebind(to url: URL, slot: ActiveBinding.Slot?) {
         switch slot {
         case .document: documentURL = url
         case .currentNote: currentNoteURL = url

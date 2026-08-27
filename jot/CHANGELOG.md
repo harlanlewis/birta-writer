@@ -22,6 +22,8 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ### Fixed
 
+- The panel keeps its own controls when the file it was on has gone missing. Find, the checks, the outline and the Settings gear are drawn by the page, and the screen that says a file is gone used to hide the page entirely to wall off the document, taking all four with it. Somebody whose notes have just disappeared is exactly the person who wants to look at where they are kept.
+
 - With Automatically save changes turned off, dismissing the panel no longer writes the note. It did so through a path that never consulted the setting, so the one promise that switch makes was being broken by the most ordinary gesture there is. The same path also wrote the file on the way out of a quit before the Save / Don't Save question appeared, which meant Don't Save had nothing left to decline. Anybody who keeps autosave off should stop assuming a dismissed panel left the file alone; it did not.
 
 - The titlebar's Open Recent list opens below the button rather than across the titlebar. It was positioned at the button's bottom-left corner in coordinates that grow the other way, so it came up over the name of the file it was offering to replace.

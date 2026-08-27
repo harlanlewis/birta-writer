@@ -1833,19 +1833,21 @@ final class Coordinator {
     /// is the only way out of it now that Settings has no switch for it. The
     /// buffer is flushed to the document first: leaving a file is not a reason
     /// to lose what was typed into it.
-    func backToNotes() {
-        // The slot as well as the setting: with several windows, only the one
-        // that actually holds `document` may clear it, or a window that never
-        // opened a document would take another window's out from under it.
-        guard bindingSlot == .document, Prefs.documentURL != nil else {
-            statusOverlay.flash("Birta Writer is already on your notes.")
-            return
-        }
+    /// The window half of Back to My Notes. `WindowSet.backToNotes` is the
+    /// whole gesture, and it has already decided that this window may take the
+    /// file it is about to land on.
+    ///
+    /// - Parameter took: called with the slot this window now holds, so the app
+    ///   can take that slot away from any other window. A window cannot do that
+    ///   itself, and a slot two windows both believe they own is a rename
+    ///   written to a setting the other one is also writing to.
+    func leaveDocument(_ took: @escaping (ActiveBinding.Slot?) -> Void) {
         flushThen { [weak self] in
             guard let self else { return }
             self.write(.explicitSave)
             Prefs.documentURL = nil
             self.rebindFromSettings()
+            took(self.bindingSlot)
             self.reloadFromDisk = true
             self.loadPage()
             self.refreshTitle()
@@ -2328,14 +2330,49 @@ final class Coordinator {
         missingFileScreen.show(noteMissing,
                                name: boundURL.lastPathComponent,
                                hasUnsavedText: !latest.isBlank)
-        host.webView.isHidden = noteMissing
         layoutMissingFileScreen()
     }
 
+    /// Over the DOCUMENT, and not over the band above it.
+    ///
+    /// The web view used to be hidden outright while this screen was up, which
+    /// walled off the document and took the page's own controls with it: Find,
+    /// the checks, the outline and the Settings gear are all drawn by the page,
+    /// in the titlebar band, so hiding the view left a window whose only way to
+    /// Settings was the menu bar. Somebody whose file has just gone missing is
+    /// exactly the person who might want to look at where their notes are kept.
+    ///
+    /// So the screen covers everything below the band instead. The document is
+    /// no more reachable by mouse than it was, since the screen is over it, and
+    /// the controls stay live because nothing is covering them.
+    ///
+    /// The keyboard is deliberately not walled off, which is unchanged: a
+    /// hidden view can still be first responder, so typing always reached the
+    /// buffer here. It is safe because `writeLatest` refuses while the note is
+    /// missing, and it is what makes "what you were writing is still on screen"
+    /// true rather than a description of something the user cannot touch.
     private func layoutMissingFileScreen() {
         guard !missingFileScreen.isHidden else { return }
         let bounds = contentView.bounds
-        missingFileScreen.frame = bounds
+        // Zero before the window has been laid out, which is the same "not
+        // known yet" the drag strip reads it for. Covering the whole view is
+        // the right answer then: it is never less than the document's area.
+        let band = max(0, titlebarBandHeight)
+        missingFileScreen.frame = NSRect(x: bounds.minX, y: bounds.minY,
+                                         width: bounds.width,
+                                         height: max(0, bounds.height - band))
+        // The two facts that decide whether Settings is still reachable, for
+        // `jot/scripts/measure.sh`. Geometry rather than appearance, and that
+        // is not a compromise: the page's controls are drawn by WebKit, which
+        // contributes nothing to the PDF path `writeSnapshot` uses, so a
+        // screenshot of this state cannot show them whether they are there or
+        // not. What can be checked is that nothing is covering them and that
+        // the view holding them was not hidden.
+        if measure.enabled {
+            measure.trace("missingscreen webviewHidden=\(host.webView.isHidden)"
+                            + " band=\(Int(band)) screen=\(Int(missingFileScreen.frame.height))"
+                            + " content=\(Int(bounds.height))")
+        }
     }
 
     /// Watch whatever the panel is bound to now.
@@ -2353,7 +2390,7 @@ final class Coordinator {
     /// whichever of the three settings supplied the old one.
     private func noteMovedOnDisk(to url: URL) {
         guard url.standardizedFileURL != boundURL.standardizedFileURL else { return }
-        Prefs.rebind(from: boundURL, to: url, slot: bindingSlot)
+        Prefs.rebind(to: url, slot: bindingSlot)
         // `boundURL`'s `didSet` re-titles and re-watches; a move is the one
         // case where those are already exactly right.
         boundURL = url
@@ -2461,7 +2498,7 @@ final class Coordinator {
                 self.statusOverlay.flash("Could not move the file to \(target.lastPathComponent).")
                 return
             }
-            Prefs.rebind(from: source, to: target, slot: bindingSlot)
+            Prefs.rebind(to: target, slot: bindingSlot)
             self.boundURL = target
             if self.lastSavedURL == source { self.lastSavedURL = target }
             let moved = target.deletingLastPathComponent().standardizedFileURL

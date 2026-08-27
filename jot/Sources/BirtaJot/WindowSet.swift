@@ -89,14 +89,26 @@ final class WindowSet {
     // MARK: making windows
 
     /// Adopt a window and give it the hooks that reach back to the app.
+    ///
+    /// The two hooks that need to say WHICH window take it weakly, and that is
+    /// not defensive: the coordinator owns these closures, so capturing it
+    /// strongly is a cycle, and nothing would ever deallocate. It cost nothing
+    /// while a window lived as long as the app and costs a whole WKWebView per
+    /// closed window now, which is the one resource this feature multiplies.
     @discardableResult
     func adopt(_ coordinator: Coordinator) -> Coordinator {
         coordinator.openPreferences = { [weak self] in self?.openPreferences?() }
         coordinator.onWillShow = { [weak self] in self?.capturePreviousApp() }
-        coordinator.onCloseRequest = { [weak self] in self?.close(coordinator) }
+        coordinator.onCloseRequest = { [weak self, weak coordinator] in
+            guard let coordinator else { return }
+            self?.close(coordinator)
+        }
         coordinator.onHotkeyChanged = { [weak self] in self?.registerHotkey() ?? -1 }
         coordinator.onNewWindowRequest = { [weak self] in self?.newNote() }
-        coordinator.onBecameKey = { [weak self] in self?.moveToFront(coordinator) }
+        coordinator.onBecameKey = { [weak self, weak coordinator] in
+            guard let coordinator else { return }
+            self?.moveToFront(coordinator)
+        }
         windows.append(coordinator)
         return coordinator
     }
@@ -241,6 +253,49 @@ final class WindowSet {
         coordinator.show()
     }
 
+    /// Leave the document this window was pointed at and go back to the notes.
+    ///
+    /// The app's rather than the window's, for the same reason `openDocument`
+    /// is: the file it lands on can already be open somewhere else. Clearing
+    /// the document slot resolves the binding to the current note or the
+    /// scratchpad, and either may be what another window is editing, so a
+    /// window doing this alone would make the second buffer over one path that
+    /// the rest of this file exists to prevent.
+    func backToNotes(_ coordinator: Coordinator) {
+        guard coordinator.bindingSlot == .document, Prefs.documentURL != nil else {
+            coordinator.flashStatus("Birta Writer is already on your notes.")
+            return
+        }
+        // Where the binding WILL land once the document slot is cleared, asked
+        // before clearing it so the answer can be refused.
+        let target = ActiveBinding.url(document: nil,
+                                       currentNote: Prefs.currentNoteURL,
+                                       scratchpad: Prefs.scratchpadURL)
+        if let open = windows.first(where: {
+            $0 !== coordinator && FileIdentity.sameFile($0.boundFile, target)
+        }) {
+            open.show()
+            coordinator.flashStatus("Your notes are already open in another window.")
+            return
+        }
+        coordinator.leaveDocument { [weak self, weak coordinator] slot in
+            guard let coordinator else { return }
+            self?.releaseSlot(slot, except: coordinator)
+        }
+    }
+
+    /// Take a slot away from every window but one.
+    ///
+    /// A slot is an app-wide setting and only one window may hold it, or two
+    /// windows would both believe a rename of their file should be written
+    /// there and the second would overwrite what the first had written.
+    private func releaseSlot(_ slot: ActiveBinding.Slot?, except owner: Coordinator) {
+        guard let slot else { return }
+        for window in windows where window !== owner && window.bindingSlot == slot {
+            window.bindingSlot = nil
+        }
+    }
+
     /// Build a window, hand it its hooks, and place it off the one in front.
     @discardableResult
     private func makeWindow(on url: URL, slot: ActiveBinding.Slot?) -> Coordinator {
@@ -248,15 +303,13 @@ final class WindowSet {
         // it. Otherwise two windows would both believe a rename of their file
         // should be written to the same setting, and the second would overwrite
         // what the first had written there.
-        if let slot {
-            windows.filter { $0.bindingSlot == slot }.forEach { $0.bindingSlot = nil }
-        }
         let spawn = key
         // The FIRST window is the one that remembers its frame between
         // launches, under the historic autosave name, so a panel somebody has
         // spent months positioning is where they left it.
         let made = Coordinator(boundTo: url, slot: slot, remembersFrame: windows.isEmpty)
         adopt(made)
+        releaseSlot(slot, except: made)
         if let spawn { cascadePoint = made.cascade(after: spawn, from: cascadePoint) }
         return made
     }
