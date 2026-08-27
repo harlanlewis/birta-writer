@@ -89,25 +89,33 @@ final class WelcomeScreenTests: XCTestCase {
     /// where it belongs and is not what this is. Both sides here came off a
     /// live view hierarchy, so a row that is declared in both and drawn in
     /// only one fails here and nowhere else.
+    ///
+    /// Every tab, not General alone: a first-run question can belong to a pane
+    /// that is not General, and what the first run owes somebody is that the
+    /// question is findable in Settings rather than findable on one particular
+    /// tab. Automatically update is the row that makes the distinction real.
     func testEveryRowTheFirstRunDrawsShouldBeDrawnInSettingsToo() {
         let welcome = WelcomeView(onHotkeyChange: { 0 })
         welcome.layoutSubtreeIfNeeded()
         let asked = rowLabels(in: welcome)
 
-        let settings = SettingsWindowController(onHotkeyChange: { 0 }, onChange: { _ in },
-                                                onShowWelcome: {}, onCheckForUpdates: {})
-        defer { settings.window?.close() }
-        settings.selectTabForTesting("general")
-        settings.window?.contentView?.layoutSubtreeIfNeeded()
-        let general = rowLabels(in: settings.window!.contentView!)
+        let controller = SettingsWindowController(onHotkeyChange: { 0 }, onChange: { _ in },
+                                                  onShowWelcome: {}, onCheckForUpdates: {})
+        defer { controller.window?.close() }
+        var settings: [String] = []
+        for tab in SettingsWindowController.tabNames {
+            controller.selectTabForTesting(tab)
+            controller.window?.contentView?.layoutSubtreeIfNeeded()
+            settings += rowLabels(in: controller.window!.contentView!)
+        }
 
         XCTAssertFalse(asked.isEmpty, "the first-run screen drew no rows at all")
-        XCTAssertGreaterThan(general.count, asked.count,
-                             "General is meant to draw rows the first run does not ask about")
+        XCTAssertGreaterThan(settings.count, asked.count,
+                             "Settings is meant to draw rows the first run does not ask about")
         for label in asked {
-            XCTAssertTrue(general.contains(label),
-                          "the first run asks about \(label) on screen, and the General pane "
-                          + "draws no row by that name to go back to")
+            XCTAssertTrue(settings.contains(label),
+                          "the first run asks about \(label) on screen, and no Settings pane "
+                          + "draws a row by that name to go back to")
         }
     }
 }

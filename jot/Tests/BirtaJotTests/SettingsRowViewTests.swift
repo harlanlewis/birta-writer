@@ -123,14 +123,27 @@ final class SettingsRowViewTests: XCTestCase {
 
     /// And the update row, whose answer depends on the build rather than on
     /// the system: whatever this build is, the row and the rule agree.
+    ///
+    /// General first and Advanced second, which is the order a person opening
+    /// Settings gets and the order this needs.
+    ///
+    /// Availability is written through `rowViews`, which `render` is what
+    /// fills, and the row is on Advanced while the pane built first is
+    /// General, so the write made during that first build reaches no
+    /// auto-update row at all. Every pane build must therefore make it again,
+    /// which is what `buildPane` calling `showRowAvailability` after `render`
+    /// is for. Availability written once, from whichever pane happened to be
+    /// built first, leaves this row with no sentence and no dimming, and this
+    /// is the check that says so.
     func testTheSettingsPaneShouldHandTheUpdateRowItsAvailability() {
         let controller = SettingsWindowController(onHotkeyChange: { 0 }, onChange: { _ in },
                                                   onShowWelcome: {}, onCheckForUpdates: {})
         defer { controller.window?.close() }
         controller.selectTabForTesting("general")
+        controller.selectTabForTesting("advanced")
 
         guard let row = controller.rowForTesting(.autoUpdate) else {
-            return XCTFail("the General pane draws no auto-update row")
+            return XCTFail("the Advanced pane draws no auto-update row")
         }
         let expected = RowAvailability.autoUpdate(updatesItself: AppFlavor.current.updatesItself)
         XCTAssertEqual(row.caption?.stringValue, expected.note)

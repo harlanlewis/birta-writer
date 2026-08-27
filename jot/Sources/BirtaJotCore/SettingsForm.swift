@@ -89,9 +89,15 @@ public struct SettingsPane: Sendable {
 /// WHICH rows each screen shows and in what order, as data both screens
 /// render rather than a layout each screen writes out.
 ///
-/// The rule this exists to hold: the first-run screen is a SUBSET of Settings'
-/// General pane, in the same order and the same words, so a question somebody
-/// answered on first run is found again by looking where they answered it.
+/// The rule this exists to hold: the first-run screen is a SUBSET of Settings,
+/// in the same order and the same words, so a question somebody answered on
+/// first run is found again by looking for it in Settings, reading the tabs
+/// left to right and each pane top to bottom. That reading order is `allRows`,
+/// and it is what the subset is taken of. It is deliberately not General
+/// alone: a first-run question can belong to a pane that is not General, and
+/// the invariant that matters is that the question is FINDABLE and that the
+/// two screens agree on the order, not that Settings keeps every answer on one
+/// tab. Automatically update is the row that makes the distinction real.
 /// Two arrays a test compares, never a rule each screen is trusted to keep;
 /// `SettingsFormTests` is what compares them, and `SettingsPaneTests` and
 /// `WelcomeScreenTests` compare each against what is actually drawn.
@@ -107,18 +113,31 @@ public enum SettingsForm {
     ]
 
     /// What Jot IS: how you reach it, where it puts your bytes, which note a
-    /// summon opens, and how it behaves as an application on this Mac. Every
-    /// first-run question is here, in the order it was asked.
+    /// summon opens, and how it behaves as an application on this Mac.
     ///
     /// Which note a summon opens is a General question and not an editor one,
     /// under the same argument that keeps Autosave here: both are about which
     /// file your typing ends up in, which is settled before the editor sees
     /// anything.
+    ///
+    /// A card is one question, or one question and its dependents. The two
+    /// presence rows are the one card holding two independent switches, and
+    /// they earn it: they are one question asked twice (where can this app be
+    /// reached from), and `RowAvailability.appPresence` makes each one's answer
+    /// depend on the other, so the card is where that dependence is visible.
+    /// Nothing else here groups, so nothing else shares.
+    ///
+    /// `.location` and `.newNoteName` are hidden dependents rather than cards
+    /// of their own, and each sits directly under the row that takes it away.
+    /// `SettingsWindowController.setRowHidden` reaches into a card by index,
+    /// so the pair has to stay in one card and in that order.
     public static let general = SettingsPane(groups: [
         SettingsGroup(rows: [.summon]),
         SettingsGroup(rows: [.storeInICloud, .location, .autosave]),
         SettingsGroup(rows: [.opens, .newNoteName]),
-        SettingsGroup(rows: [.showInDock, .showInMenuBar, .startAtLogin, .autoUpdate, .richLinks]),
+        SettingsGroup(rows: [.showInDock, .showInMenuBar]),
+        SettingsGroup(rows: [.startAtLogin]),
+        SettingsGroup(rows: [.richLinks]),
     ])
 
     /// The agent `/ai` hands a prompt to.
@@ -138,14 +157,26 @@ public enum SettingsForm {
         ],
         groups: [SettingsGroup(rows: [.agentEnabled, .agentCommand])])
 
-    /// The gestures that undo rather than set: put every setting back, and see
-    /// the first run again.
+    /// What the app does to ITSELF: how it replaces itself, and the gestures
+    /// that undo rather than set.
+    ///
+    /// Automatically update is here rather than on General because it is a
+    /// question about the program and not about the writing, and it is the one
+    /// row on either pane that some builds cannot answer at all: a development
+    /// build cannot replace itself, so the row is dead and says so
+    /// (`RowAvailability.autoUpdate`). Its own card, because the reset
+    /// gestures below are destructive and a card is the boundary that keeps a
+    /// switch from reading as one of them.
+    ///
+    /// Reset before Welcome screen: reset is the row every build shows, and
+    /// the one below it exists only on a build that shows the first run.
     ///
     /// Take the flavour rather than reading it, so both arms are checkable
     /// without a defaults domain or a second bundle.
     public static func advanced(showsWelcomeScreen: Bool) -> SettingsPane {
         SettingsPane(groups: [
-            SettingsGroup(rows: showsWelcomeScreen ? [.welcomeScreen, .resetSettings]
+            SettingsGroup(rows: [.autoUpdate]),
+            SettingsGroup(rows: showsWelcomeScreen ? [.resetSettings, .welcomeScreen]
                                                    : [.resetSettings]),
         ])
     }
@@ -174,6 +205,20 @@ public enum SettingsForm {
     public static func rows(of pane: SettingsPane) -> [SettingsRow] {
         pane.groups.flatMap(\.rows)
     }
+
+    /// Every Settings row in the order somebody looking for one walks: the
+    /// tabs left to right, each pane top to bottom.
+    ///
+    /// This is the sequence the first-run screen is an ordered subset of, and
+    /// naming it here rather than at each test is what keeps the invariant one
+    /// claim: `SettingsFormTests` takes the subset of this declaration, and
+    /// `SettingsPaneTests` takes it of the labels read back off the live panes
+    /// in the same tab order.
+    ///
+    /// In Advanced's WIDEST form, for the same reason `panes` is: what this is
+    /// read for is where a row can be found, and a row some build hides is
+    /// still a row that has to have somewhere to be.
+    public static var allRows: [SettingsRow] { panes.flatMap(rows(of:)) }
 
     /// The same for the first-run screen, as Settings rows, which is what makes
     /// the two comparable.
