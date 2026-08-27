@@ -25,7 +25,18 @@ final class Measure {
     }
 
     func trace(_ text: String) {
-        guard enabled else { return }
+        Measure.trace(text)
+    }
+
+    /// The same line, from something that has no `Measure` of its own.
+    ///
+    /// Static for the reason `isEnabled` is: a few facts worth tracing belong
+    /// to the app rather than to a window, and the alternative is a second way
+    /// to write a `jot-trace` line. There was one, briefly, on a different
+    /// stream and behind a different condition, which is how a trace ends up
+    /// appearing in runs nobody is measuring.
+    static func trace(_ text: String) {
+        guard isEnabled else { return }
         FileHandle.standardError.write(Data("jot-trace \(text)\n".utf8))
     }
 

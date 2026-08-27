@@ -189,27 +189,37 @@ final class MissingFileScreenTests: XCTestCase {
         }
     }
 
-    /// The body says all of what it says, at every width the panel can be.
+    /// Every line of the card says all of what it says, at every width the
+    /// panel can be.
     ///
-    /// A narrow window is where this breaks and it breaks silently: an
-    /// `NSTextField` reports its height for whatever measure it was given, so a
-    /// measure wider than the box it is drawn in reports the line count of a
-    /// wider line, the last line is drawn outside the field, and the card is
-    /// the right size for a sentence that is not the one on screen. Nothing
-    /// about the field's own frame says a line is missing.
+    /// A narrow window is where this breaks and it breaks silently. The body
+    /// wraps, so it runs out of HEIGHT: an `NSTextField` reports its height for
+    /// whatever measure it was given, and a measure wider than the box it is
+    /// drawn in reports the line count of a wider line, so the last line is
+    /// drawn outside the field and the card is the right size for a sentence
+    /// that is not the one on screen. The heading is one line, so it runs out
+    /// of WIDTH and truncates instead. Both, because a fix for either alone
+    /// leaves the card saying half of something.
     ///
     /// 360 is the panel's own minimum width (`JotPanel.minSize`), so this is
     /// the narrowest the card ever has to be rather than a width picked to
     /// fail. The wide case is here too, because a fix that simply let the text
     /// run edge to edge would pass the narrow one alone.
-    func testTheBodyShouldFitTheCardAtEveryWidthThePanelCanBe() {
+    func testEveryLineShouldFitTheCardAtEveryWidthThePanelCanBe() {
         for width in [360.0, 480.0, 640.0, 1200.0] as [CGFloat] {
             let screen = shown(unsaved: true, width: width)
-            let (box, needs) = screen.bodyFitForMeasurement
-            XCTAssertGreaterThanOrEqual(box.height, needs,
-                                        "at \(width)pt the body is drawn \(box.height)pt tall and needs \(needs)")
-            XCTAssertTrue(screen.cardRect.contains(box),
-                          "at \(width)pt the body runs outside the card: \(box) in \(screen.cardRect)")
+            let card = screen.cardRect
+            let lines = screen.labelFitsForMeasurement
+            // A sweep that reached no label passes every assertion inside it.
+            XCTAssertEqual(lines.count, 2, "at \(width)pt the card drew \(lines.count) lines")
+            for (name, box, needs) in lines {
+                XCTAssertGreaterThanOrEqual(box.height, needs.height,
+                                            "at \(width)pt the \(name) is \(box.height)pt tall and needs \(needs.height)")
+                XCTAssertGreaterThanOrEqual(box.width.rounded(), needs.width.rounded(),
+                                            "at \(width)pt the \(name) is \(box.width)pt wide and needs \(needs.width)")
+                XCTAssertTrue(card.contains(box),
+                              "at \(width)pt the \(name) runs outside the card: \(box) in \(card)")
+            }
         }
     }
 
@@ -249,4 +259,5 @@ final class MissingFileScreenTests: XCTestCase {
         }
     }
 }
+
 

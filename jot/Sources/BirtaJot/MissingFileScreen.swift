@@ -312,19 +312,38 @@ final class MissingFileScreen: NSView {
         [saveButton, newButton, recentButton].first { !$0.isHidden && $0.title == title }
     }
 
-    /// Whether the body text has room for every line it needs, for a check
+    /// Whether each line of the card has room for what it says, for a check
     /// that cannot look at the window.
     ///
-    /// The box it is DRAWN in against the height it NEEDS at that width, which
-    /// is the pair a clipped label breaks: the field goes on reporting the
-    /// height it was measured for, so nothing about its own frame says the last
-    /// line is missing.
-    var bodyFitForMeasurement: (box: NSRect, needs: CGFloat) {
-        let box = body.convert(body.bounds, to: self)
-        let needs = body.cell?.cellSize(
-            forBounds: NSRect(x: 0, y: 0, width: box.width, height: .greatestFiniteMagnitude)
-        ).height ?? 0
-        return (box, needs)
+    /// The box a label is DRAWN in against what it NEEDS at that width, which
+    /// is the pair a clipped label breaks: the field goes on reporting the size
+    /// it was measured for, so nothing about its own frame says a line is
+    /// missing. BOTH labels, because they are clipped in different directions
+    /// and only one of them wraps: the body runs out of height when its wrap
+    /// measure is wider than its box, and the heading is a single line that
+    /// runs out of width.
+    var labelFitsForMeasurement: [(name: String, box: NSRect, needs: NSSize)] {
+        [heading, body].enumerated().map { index, field in
+            let box = field.convert(field.bounds, to: self)
+            let wraps = field.lineBreakMode == .byWordWrapping
+            // Two different questions, and asking one of them twice is how this
+            // becomes decoration: `cellSize(forBounds:)` CLAMPS its answer to
+            // the width it is given, so measuring a single-line label at its
+            // own box width reports that it needs exactly the room it has,
+            // whatever it is actually drawing. A wrapping label is measured at
+            // its box width, where the height is the real answer; a single-line
+            // one is measured unbounded, where the width is.
+            let infinite = CGFloat.greatestFiniteMagnitude
+            let measured = field.cell?.cellSize(
+                forBounds: NSRect(x: 0, y: 0, width: wraps ? box.width : infinite, height: infinite)
+            ) ?? .zero
+            // Zero, not the measurement, for the dimension the field is allowed
+            // to be smaller than: a wrapping label is narrower than its text by
+            // construction, and saying it needs that width would fail every
+            // time. A requirement of zero reads as "no requirement".
+            let needs = wraps ? NSSize(width: 0, height: measured.height) : measured
+            return (index == 0 ? "heading" : "body", box, needs)
+        }
     }
 
     @objc private func saveItBack() { onSaveItBack?() }

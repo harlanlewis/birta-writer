@@ -43,9 +43,7 @@ enum FolderMarker {
         // user's real notes folder whatever domain the run is using. What a run
         // CAN ask is whether this was reached at the moment a folder may have
         // just been rebuilt, which is the half that had no caller.
-        if !Prefs.isUserStore {
-            NSLog("jot-trace markfolders count=\(folders.count) drawn=no")
-        }
+        Measure.trace("markfolders count=\(folders.count) userStore=\(Prefs.isUserStore)")
         folders.forEach(mark)
     }
 
