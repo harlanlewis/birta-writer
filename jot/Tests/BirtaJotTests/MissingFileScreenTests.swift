@@ -26,9 +26,10 @@ final class MissingFileScreenTests: XCTestCase {
     /// that works from one that is a no-op standing in for it.
     private func shown(name: String = "Note.md",
                        unsaved: Bool,
+                       width: CGFloat = 640,
                        height: CGFloat = 400) -> MissingFileScreen {
         let screen = MissingFileScreen()
-        let container = NSView(frame: NSRect(x: 0, y: 0, width: 640, height: height))
+        let container = NSView(frame: NSRect(x: 0, y: 0, width: width, height: height))
         container.addSubview(screen)
         screen.frame = container.bounds
         screen.show(true, name: name, hasUnsavedText: unsaved)
@@ -131,21 +132,29 @@ final class MissingFileScreenTests: XCTestCase {
         }
     }
 
-    /// Ranked rather than all required, and this is the arm that says which
-    /// one gives. A window too short for the card plus both lanes has to break
-    /// one of them, and the tooltip lane is the one that must survive: a
-    /// crowded corner is a nuisance, a card over the band's labels is a
-    /// control nobody can name.
-    func testInAWindowTooShortForBothLanesTheTooltipLaneShouldWin() {
-        let screen = shown(unsaved: true, height: 200)
+    /// At the panel's own minimum size, the card gives up both lanes rather
+    /// than any part of itself.
+    ///
+    /// The ranking's top entry, and the one the other two exist under: every
+    /// button on this card is a way out of the state, so one drawn past the
+    /// window's edge is one nobody can press and nobody knows to resize for.
+    /// A crowded titlebar or a crowded corner is recoverable by looking; a
+    /// button that is not there is not.
+    ///
+    /// 360 by 208 is the panel's minimum (`JotPanel.minSize`, less the
+    /// titlebar band), so this is the tightest the card is ever asked to be
+    /// rather than a size picked to fail.
+    func testAtThePanelsMinimumSizeTheCardShouldStayWhollyOnScreen() {
+        let screen = shown(unsaved: true, width: 360, height: 208)
         let card = screen.cardRect
         XCTAssertFalse(card.isEmpty)
-        XCTAssertLessThanOrEqual(card.maxY, screen.bounds.height - MissingFileScreen.topLane,
-                                 "the tooltip lane gave way first")
+        XCTAssertTrue(screen.bounds.contains(card),
+                      "the card is drawn outside the window: \(card) in \(screen.bounds)")
         // ...and the case really is the squeezed one, or the assertion above
-        // held for a window that had room to spare and proved nothing.
-        XCTAssertLessThan(card.minY, MissingFileScreen.bottomLane,
-                          "200pt was not short enough to make the two lanes disagree")
+        // held for a window with room to spare and proved nothing.
+        let roomy = card.maxY <= screen.bounds.height - MissingFileScreen.topLane
+            && card.minY >= MissingFileScreen.bottomLane
+        XCTAssertFalse(roomy, "the panel's minimum size had room for both lanes, so nothing was ranked here")
     }
 
     /// The card is the stack plus its air, rather than a size written down, so
@@ -173,6 +182,30 @@ final class MissingFileScreenTests: XCTestCase {
             XCTAssertGreaterThan(box.width, 0, "\(title) laid out to no width")
             XCTAssertGreaterThan(box.height, 0, "\(title) laid out to no height")
             XCTAssertTrue(card.contains(box), "\(title) is drawn outside the card at \(box)")
+        }
+    }
+
+    /// The body says all of what it says, at every width the panel can be.
+    ///
+    /// A narrow window is where this breaks and it breaks silently: an
+    /// `NSTextField` reports its height for whatever measure it was given, so a
+    /// measure wider than the box it is drawn in reports the line count of a
+    /// wider line, the last line is drawn outside the field, and the card is
+    /// the right size for a sentence that is not the one on screen. Nothing
+    /// about the field's own frame says a line is missing.
+    ///
+    /// 360 is the panel's own minimum width (`JotPanel.minSize`), so this is
+    /// the narrowest the card ever has to be rather than a width picked to
+    /// fail. The wide case is here too, because a fix that simply let the text
+    /// run edge to edge would pass the narrow one alone.
+    func testTheBodyShouldFitTheCardAtEveryWidthThePanelCanBe() {
+        for width in [360.0, 480.0, 640.0, 1200.0] as [CGFloat] {
+            let screen = shown(unsaved: true, width: width)
+            let (box, needs) = screen.bodyFitForMeasurement
+            XCTAssertGreaterThanOrEqual(box.height, needs,
+                                        "at \(width)pt the body is drawn \(box.height)pt tall and needs \(needs)")
+            XCTAssertTrue(screen.cardRect.contains(box),
+                          "at \(width)pt the body runs outside the card: \(box) in \(screen.cardRect)")
         }
     }
 
@@ -212,3 +245,4 @@ final class MissingFileScreenTests: XCTestCase {
         }
     }
 }
+

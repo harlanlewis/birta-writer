@@ -58,6 +58,13 @@ final class MissingFileScreen: NSView {
 
     /// Air between the card's edge and the words inside it.
     private static let padding: CGFloat = 28
+    /// Air between the card's edge and the window's, so a narrow window still
+    /// reads as a card ON something rather than as a band across it.
+    private static let margin: CGFloat = 48
+    /// The widest the body text is allowed to wrap at, whatever room there is.
+    /// A comfortable line rather than a fit: the sentence is two clauses, and
+    /// setting it across a wide window would make one long line of it.
+    private static let bodyMeasure: CGFloat = 380
     /// How round the card is. `--ui-radius-l` on the page's scale, which is
     /// what its own cards and popups use, so this reads as one of them rather
     /// than as a system alert that wandered in.
@@ -140,7 +147,6 @@ final class MissingFileScreen: NSView {
         body.alignment = .center
         body.usesSingleLineMode = false
         body.lineBreakMode = .byWordWrapping
-        body.preferredMaxLayoutWidth = 380
 
         for button in [saveButton, newButton, recentButton] {
             button.bezelStyle = .rounded
@@ -179,41 +185,62 @@ final class MissingFileScreen: NSView {
         stack.translatesAutoresizingMaskIntoConstraints = false
         addSubview(stack)
         column = stack
-        // Centred, but never into either reserved lane. The three are ranked
-        // rather than all required, because a window short enough to make them
-        // disagree has to break ONE of them and which one is a decision:
+        // Centred, clear of both reserved lanes, and never clipped. Those
+        // three cannot all hold in a short window, so they are RANKED and the
+        // order is the whole of this:
         //
-        //   top     required. The tooltip lane is what this shape exists to
-        //           keep clear, and a card in it takes the labels off the
-        //           whole titlebar strip, the Settings gear included.
-        //   bottom  999. A status message and the card overlapping is a
-        //           crowded corner; a card over the tooltips is a control
-        //           nobody can name.
-        //   centre  500, so it is the first to give.
+        //   inside   required. Every button on the card is a way out of this
+        //            state, and one drawn past the window's edge is one nobody
+        //            can press or resize their way back to without knowing it
+        //            is there. Nothing else here is worth that.
+        //   top      999. The tooltip lane under the band, which is what this
+        //            shape exists to keep clear: a card in it takes the labels
+        //            off the whole titlebar strip, the Settings gear included.
+        //   bottom   998. A status message and the card overlapping is a
+        //            crowded corner and nothing worse.
+        //   centre   low, so it is the first to give.
         //
-        // The insets carry the card's own padding as well as the lane, because
-        // the constraint is on the stack and the lane has to clear the CARD.
+        // At the panel's own minimum size the card is taller than the area
+        // minus both lanes, so both lanes give and it sits centred and whole.
+        // The insets carry the card's padding as well as the lane, because the
+        // constraints are on the stack and what has to clear is the CARD.
         let pad = Self.padding
         let centre = stack.centerYAnchor.constraint(equalTo: centerYAnchor)
         centre.priority = .defaultLow
-        let floor = stack.bottomAnchor.constraint(lessThanOrEqualTo: bottomAnchor,
-                                                  constant: -(Self.bottomLane + pad))
-        floor.priority = .init(999)
-        NSLayoutConstraint.activate([
+        let lanes = [
+            (stack.topAnchor.constraint(greaterThanOrEqualTo: topAnchor,
+                                        constant: Self.topLane + pad), NSLayoutConstraint.Priority(999)),
+            (stack.bottomAnchor.constraint(lessThanOrEqualTo: bottomAnchor,
+                                           constant: -(Self.bottomLane + pad)), NSLayoutConstraint.Priority(998)),
+        ]
+        for (constraint, priority) in lanes { constraint.priority = priority }
+        NSLayoutConstraint.activate(lanes.map(\.0) + [
             stack.centerXAnchor.constraint(equalTo: centerXAnchor),
             centre,
-            floor,
-            stack.topAnchor.constraint(greaterThanOrEqualTo: topAnchor,
-                                       constant: Self.topLane + pad),
+            stack.topAnchor.constraint(greaterThanOrEqualTo: topAnchor, constant: pad),
+            stack.bottomAnchor.constraint(lessThanOrEqualTo: bottomAnchor, constant: -pad),
             stack.widthAnchor.constraint(lessThanOrEqualTo: widthAnchor,
-                                         constant: -(48 + pad * 2)),
+                                         constant: -(Self.margin + pad * 2)),
         ])
         isHidden = true
     }
 
-    /// The card is drawn from the stack's frame, so a pass that moved the stack
-    /// has moved the card and the old one is still on screen.
+    /// Two things a pass has to do before the card is drawn.
+    ///
+    /// The body wraps at whichever is smaller, a comfortable line or the room
+    /// the card actually has. A fixed measure is what an `NSTextField` reports
+    /// its HEIGHT for, so one wider than the box it is drawn in reports the
+    /// line count of a wider line and the last line is drawn outside the field:
+    /// the sentence loses its tail, and the card is the right size for a
+    /// sentence that is not the one on screen. Set from `bounds` rather than
+    /// from the field's own frame, which is what makes this one pass instead of
+    /// a measure, a resize and a re-measure.
+    ///
+    /// And the card is drawn from the stack's frame, so a pass that moved the
+    /// stack has moved the card and left the old one on screen.
     override func layout() {
+        body.preferredMaxLayoutWidth =
+            min(Self.bodyMeasure, max(0, bounds.width - Self.margin - Self.padding * 2))
         super.layout()
         needsDisplay = true
     }
@@ -275,6 +302,21 @@ final class MissingFileScreen: NSView {
     /// press something that is not on screen.
     func buttonForMeasurement(titled title: String) -> NSButton? {
         [saveButton, newButton, recentButton].first { !$0.isHidden && $0.title == title }
+    }
+
+    /// Whether the body text has room for every line it needs, for a check
+    /// that cannot look at the window.
+    ///
+    /// The box it is DRAWN in against the height it NEEDS at that width, which
+    /// is the pair a clipped label breaks: the field goes on reporting the
+    /// height it was measured for, so nothing about its own frame says the last
+    /// line is missing.
+    var bodyFitForMeasurement: (box: NSRect, needs: CGFloat) {
+        let box = body.convert(body.bounds, to: self)
+        let needs = body.cell?.cellSize(
+            forBounds: NSRect(x: 0, y: 0, width: box.width, height: .greatestFiniteMagnitude)
+        ).height ?? 0
+        return (box, needs)
     }
 
     @objc private func saveItBack() { onSaveItBack?() }
