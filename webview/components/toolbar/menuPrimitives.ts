@@ -158,7 +158,7 @@ export interface FillItem {
  * every sibling menu puts an icon and a name, so the Format menu was the one
  * picker missing its label column, and its chord had nothing to be spaced away
  * from. `Body` and `Heading 1` to `Heading 6` are the same words the Mac app's
- * own Paragraph Style menu uses (`jot/Sources/BirtaJot/JotMenu.swift`), so the
+ * own Paragraph Style menu uses (`mac/Sources/BirtaWriter/AppMenu.swift`), so the
  * two surfaces name a style identically.
  */
 export function createFillItem(glyph: string, label: string, command?: EditorCommandId): FillItem {

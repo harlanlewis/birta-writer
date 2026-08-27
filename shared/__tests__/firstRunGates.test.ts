@@ -19,9 +19,9 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
 const REPO = join(__dirname, "..", "..");
-const SOURCES = join(REPO, "jot", "Sources");
+const SOURCES = join(REPO, "mac", "Sources");
 
-/** Every `.swift` file under `jot/Sources`, as repo-relative path and contents. */
+/** Every `.swift` file under `mac/Sources`, as repo-relative path and contents. */
 function swiftSources(): { path: string; source: string }[] {
     const found: { path: string; source: string }[] = [];
     const walk = (dir: string) => {
@@ -44,8 +44,8 @@ describe("the first-run gates", () => {
     it("a scan of the app's Swift should have found both call sites' files", () => {
         expect(sources.length).toBeGreaterThan(20);
         const paths = sources.map((s) => s.path);
-        expect(paths).toContain("jot/Sources/BirtaJot/App.swift");
-        expect(paths).toContain("jot/Sources/BirtaJot/Coordinator.swift");
+        expect(paths).toContain("mac/Sources/BirtaWriter/App.swift");
+        expect(paths).toContain("mac/Sources/BirtaWriter/Coordinator.swift");
     });
 
     /**
@@ -94,7 +94,7 @@ describe("the first-run gates", () => {
      * the tour on a note `shouldWrite` refuses.
      */
     it("the launch should ask FirstRunScreen whether a document is bound", () => {
-        const app = sources.find((s) => s.path === "jot/Sources/BirtaJot/App.swift")!.source;
+        const app = sources.find((s) => s.path === "mac/Sources/BirtaWriter/App.swift")!.source;
         const call = /FirstRunScreen\.shouldShow\(([\s\S]*?)\)\s*\{/.exec(app);
         expect(call, "App.swift no longer asks FirstRunScreen").not.toBeNull();
         const args = call![1]!;

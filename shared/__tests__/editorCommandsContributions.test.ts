@@ -19,7 +19,7 @@ import {
     TOOLBAR_MENU_COMMANDS,
     settingsMenuTitle,
 } from "../editorCommands";
-import { JOT_PRODUCT_NAME, PRODUCT_NAME } from "../product";
+import { MAC_APP_NAME, PRODUCT_NAME } from "../product";
 
 const root = path.resolve(__dirname, "../..");
 const pkg = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
@@ -99,21 +99,21 @@ describe("editor command contributions", () => {
         expect(nls["command.editor.openExtensionSettings.title"]).toBe(expected);
     });
 
-    it("the host-preferences entry title should be the template expansion of Jot's name", () => {
-        // Jot's row names a different program from the row above it, so it
-        // expands JOT_PRODUCT_NAME rather than PRODUCT_NAME. Before this had a
+    it("the host-preferences entry title should be the template expansion of the Mac app's name", () => {
+        // The Mac app's row names a different program from the row above it, so it
+        // expands MAC_APP_NAME rather than PRODUCT_NAME. Before this had a
         // constant it was a bare literal in every surface, and a rename in an
         // unrelated PR shipped a name no other surface used (f940d48e).
-        const expected = settingsMenuTitle(JOT_PRODUCT_NAME);
+        const expected = settingsMenuTitle(MAC_APP_NAME);
         const meta = EDITOR_COMMANDS.find((m) => m.id === "openHostPreferences");
         expect(meta?.title).toBe(expected);
         expect(nls["command.editor.openHostPreferences.title"]).toBe(expected);
     });
 
-    it("Jot's settings window should be titled the same as the row that opens it", () => {
+    it("the Mac app's settings window should be titled the same as the row that opens it", () => {
         // The window title is a Swift literal that no TypeScript imports, so
         // nothing but a read of the file relates it to the row. Same technique
-        // as the Jot-profile guard in hostProfile.test.ts, and the same reason:
+        // as the mac-profile guard in hostProfile.test.ts, and the same reason:
         // a copy that agrees by luck is not one declaration.
         //
         // EVERY assignment, asserted to be exactly one, rather than the first
@@ -125,7 +125,7 @@ describe("editor command contributions", () => {
         // Commented-out lines go first: a line the compiler never sees is not
         // an assignment, and counting one would fail a file that is correct.
         const swift = fs.readFileSync(
-            path.join(root, "jot/Sources/BirtaJot/SettingsWindow.swift"), "utf8");
+            path.join(root, "mac/Sources/BirtaWriter/SettingsWindow.swift"), "utf8");
         const code = swift
             .split("\n")
             .filter((line) => !line.trimStart().startsWith("//"))
@@ -155,12 +155,12 @@ describe("editor command contributions", () => {
         expect(interpolations[0],
                "the settings window title should be built from a display name, not a literal")
             .toMatch(/\.displayName$/);
-        const expanded = titles[0].replace(/\\\([^)]+\)/g, JOT_PRODUCT_NAME);
-        expect(expanded).toBe(settingsMenuTitle(JOT_PRODUCT_NAME));
+        const expanded = titles[0].replace(/\\\([^)]+\)/g, MAC_APP_NAME);
+        expect(expanded).toBe(settingsMenuTitle(MAC_APP_NAME));
     });
 
-    it("Jot's own name in Swift should be the shared constant's spelling", () => {
-        // Jot's name reaches the FILESYSTEM and not only a label: the note the
+    it("the Mac app's own name in Swift should be the shared constant's spelling", () => {
+        // The app's name reaches the FILESYSTEM and not only a label: the note the
         // window titles itself with, and the folder holding it in iCloud
         // Drive. Swift cannot import product.ts, and this is the read that
         // relates the two — the same technique as the window-title guard
@@ -177,14 +177,14 @@ describe("editor command contributions", () => {
         // read the right thing, which is exactly the drift a rename causes and
         // exactly what this is here to catch.
         const swift = fs.readFileSync(
-            path.join(root, "jot/Sources/BirtaJotCore/ScratchpadLocation.swift"), "utf8");
+            path.join(root, "mac/Sources/BirtaWriterCore/ScratchpadLocation.swift"), "utf8");
         const code = swift
             .split("\n")
             .filter((line) => !line.trimStart().startsWith("//") && !line.trimStart().startsWith("///"))
             .join("\n");
 
         for (const [constant, expected] of [
-            ["productName", JOT_PRODUCT_NAME],
+            ["productName", MAC_APP_NAME],
             ["suiteName", PRODUCT_NAME],
         ] as const) {
             const found = [...code.matchAll(

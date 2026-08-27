@@ -13,7 +13,7 @@
  * Three copies, related here because none of the three can import another.
  * `Info.plist`'s `CFBundleDocumentTypes` is what Launch Services reads, so it
  * decides which files offer this app in Open With at all;
- * `BirtaJotCore.DocumentTypes.opened` is what the app checks when a file
+ * `BirtaWriterCore.DocumentTypes.opened` is what the app checks when a file
  * arrives, since `open -a` consults no plist. Drift is silent in both
  * directions and neither side can see it: an extension in Swift alone never
  * reaches the app from the Finder, and one in the plist alone is a file macOS
@@ -34,9 +34,9 @@ import { DOCUMENT_EXTENSIONS } from "../documentExtensions";
 const REPO = join(__dirname, "..", "..");
 const read = (path: string) => readFileSync(join(REPO, path), "utf8");
 
-const plist = parsePlist(read("jot/Resources/Info.plist"));
-const documentTypes = read("jot/Sources/BirtaJotCore/DocumentTypes.swift");
-const noteTemplate = read("jot/Sources/BirtaJotCore/NoteNameTemplate.swift");
+const plist = parsePlist(read("mac/Resources/Info.plist"));
+const documentTypes = read("mac/Sources/BirtaWriterCore/DocumentTypes.swift");
+const noteTemplate = read("mac/Sources/BirtaWriterCore/NoteNameTemplate.swift");
 
 const sorted = (values: readonly string[]) => [...values].sort();
 const expected = sorted(DOCUMENT_EXTENSIONS);
@@ -140,10 +140,10 @@ describe("the Mac app's document types", () => {
         //
         // Comments are stripped first: a sentence explaining why a list is
         // narrow is prose about the decision, not a second copy of it.
-        const dir = join(REPO, "jot/Sources");
+        const dir = join(REPO, "mac/Sources");
         const files = [
-            ...readdirSync(join(dir, "BirtaJot")).map((f) => join(dir, "BirtaJot", f)),
-            ...readdirSync(join(dir, "BirtaJotCore")).map((f) => join(dir, "BirtaJotCore", f)),
+            ...readdirSync(join(dir, "BirtaWriter")).map((f) => join(dir, "BirtaWriter", f)),
+            ...readdirSync(join(dir, "BirtaWriterCore")).map((f) => join(dir, "BirtaWriterCore", f)),
         ].filter((f) => f.endsWith(".swift"));
         expect(files.length, "Swift files scanned").toBeGreaterThan(50);
 

@@ -4,7 +4,7 @@
  * URL check with an injected resolver. Pure logic, the real DNS is never hit.
  *
  * The classification cases come from `shared/__fixtures__/urlGuardCases.json`,
- * which `jot/Tests/BirtaJotCoreTests/UrlGuardTests.swift` reads as well. There
+ * which `mac/Tests/BirtaWriterCoreTests/UrlGuardTests.swift` reads as well. There
  * are two implementations of this guard, one per surface, and neither language
  * can import the other; sharing the cases is what makes a rule that only one
  * of them enforces show up as a failing test. Add a case to that file.

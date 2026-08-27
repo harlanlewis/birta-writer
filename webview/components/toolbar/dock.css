@@ -38,7 +38,7 @@
        this row and have nothing to do with it; a row indented to miss them
        starts three quarters of an inch in, lined up against nothing, with the
        window's own left edge empty. The host page therefore puts that inset on
-       `.toolbar` rather than on the bar (jot/Resources/index.html). */
+       `.toolbar` rather than on the bar (mac/Resources/index.html). */
     position: relative;
 }
 

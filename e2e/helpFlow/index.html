@@ -16,22 +16,22 @@
 </style>
 <script>
   document.addEventListener("DOMContentLoaded", () => document.body.classList.add("editor-width-auto", "vscode-light"));
-  // `?host=jot` mounts under the Mac app's declared profile instead of the
+  // `?host=mac` mounts under the Mac app's declared profile instead of the
   // VS Code one. `/help` is ungated on purpose, and "ungated" is a claim about
   // `hostHasCommand` that is worth driving rather than reading: the changelog
   // says the row is there on both surfaces, and a suite that only ever mounted
   // the default profile would say nothing about the other one.
   //
-  // The capability list is Jot's real one (`HOST_PROFILES.jot`), so a
+  // The capability list is the Mac app's real one (`HOST_PROFILES.mac`), so a
   // capability added to the command later fails here rather than shipping.
-  const JOT_HOST = { capabilities: ["imageUpload", "appPreferences", "agent"],
+  const MAC_HOST = { capabilities: ["imageUpload", "appPreferences", "agent"],
                      arrangements: ["typographyInGearMenu", "formattingInSecondRow",
                                     "fixedToolbarLayout", "barMenusOnClick",
                                     "nativeFindBar", "nativeDatePicker"],
                      shortcuts: [] };
-  const asJot = new URLSearchParams(location.search).get("host") === "jot";
+  const asMac = new URLSearchParams(location.search).get("host") === "mac";
   window.__i18n = { translations: {}, isMac: true, toolbar: { placements: {}, order: [] },
-                    ...(asJot && { host: JOT_HOST }) };
+                    ...(asMac && { host: MAC_HOST }) };
   window.__posted = [];
   // Overwritten per check. Each entry answers one step, in order.
   window.__promptScript = [];

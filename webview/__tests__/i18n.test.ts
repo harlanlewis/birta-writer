@@ -100,7 +100,7 @@ describe("kbd", () => {
 
     it("the mac order should be Apple's, which puts Command last", async () => {
         // ⌃⌥⇧⌘, the order AppKit draws a key equivalent in and the order
-        // BirtaJotCore/HotkeyCombo.swift emits for the summon hotkey. Asserted
+        // BirtaWriterCore/HotkeyCombo.swift emits for the summon hotkey. Asserted
         // against a chord using every modifier, so a partial ordering cannot
         // pass by accident.
         window.__i18n = { translations: {}, isMac: true };

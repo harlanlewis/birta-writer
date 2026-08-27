@@ -20,10 +20,9 @@ export const PRODUCT_NAME = "Birta Writer";
  * surface is called Birta Writer, so the two spellings have converged; what
  * has not converged is what they MEAN. This one names one program, and it
  * reaches the filesystem: `ScratchpadLocation` builds the note's own name out
- * of it. PRODUCT_NAME names the line. Collapsing them would make a future
- * divergence, which "Jot" is reserved for, a rename of paths rather than of a
- * label, and would leave the settings row that names the app reading the
- * constant for the suite.
+ * of it. PRODUCT_NAME names the line. Collapsing them would make any future
+ * divergence a rename of paths rather than of a label, and would leave the
+ * settings row that names the app reading the constant for the suite.
  *
  * Because the two values are now equal, the drift test in
  * `shared/__tests__/editorCommandsContributions.test.ts` can no longer tell
@@ -32,12 +31,12 @@ export const PRODUCT_NAME = "Birta Writer";
  *
  * Three surfaces carry the settings-title expansion as a literal (the command
  * table, package.nls.json and the NSWindow title in
- * `jot/Sources/BirtaJot/SettingsWindow.swift`), and that same drift test holds
- * all three to this constant. The fourth, `e2e/jotHost/checks.mjs`, is an
+ * `mac/Sources/BirtaWriter/SettingsWindow.swift`), and that same drift test holds
+ * all three to this constant. The fourth, `e2e/macHost/checks.mjs`, is an
  * assertion rather than a declaration, so it fails on its own when the label
  * moves.
  */
-export const JOT_PRODUCT_NAME = "Birta Writer";
+export const MAC_APP_NAME = "Birta Writer";
 
 /**
  * The published release history, opened by the gear menu's What's New row.

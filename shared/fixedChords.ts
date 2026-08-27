@@ -16,7 +16,7 @@
  *
  * Here rather than beside the resolver that reads it (`webview/commandChords.
  * ts`) because two consumers need it and one of them cannot load webview code:
- * `shared/__tests__/menuChordParity.test.ts` holds Jot's menu chords against
+ * `shared/__tests__/menuChordParity.test.ts` holds the Mac app's menu chords against
  * both this table and the extension's contributed keybindings, and a menu row
  * for Bold has to be measured against the keymap rather than against
  * package.json, which contributes nothing for it.

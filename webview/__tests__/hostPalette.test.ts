@@ -2,7 +2,7 @@
  * hostPalette.test.ts — the palette a non-VS-Code host injects must cover
  * every `--vscode-*` variable the webview reads, and nothing else.
  *
- * `webview/ui/hostPalette.css` is what the Jot shell links so the editor
+ * `webview/ui/hostPalette.css` is what the Mac shell links so the editor
  * renders outside VS Code, where none of the 90-odd `--vscode-*` variables
  * exist. Nothing else looks at that file: it is not in the eager bundle and no
  * VS Code path loads it, so a variable added to a component and missed here

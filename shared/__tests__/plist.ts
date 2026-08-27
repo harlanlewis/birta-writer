@@ -1,5 +1,5 @@
 /**
- * A minimal XML property-list reader, for guards that read `jot/Resources/Info.plist`.
+ * A minimal XML property-list reader, for guards that read `mac/Resources/Info.plist`.
  *
  * The existing plist guards match one flat `<key>` and the `<string>` after it
  * with a regex, which is right for a scalar at the top level and cannot reach

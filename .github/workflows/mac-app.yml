@@ -1,0 +1,109 @@
+name: Mac App
+
+# Builds the Birta Writer shell (mac/, SwiftPM) and runs its Swift tests on
+# a macOS runner: the core target's, and the app target's, which build real
+# AppKit windows headlessly. A separate workflow with a paths filter for the
+# same reason as typing-perf: macOS minutes are the expensive ones, and most
+# PRs cannot touch the shell. Advisory, not required: a required check a paths
+# filter skips leaves a PR waiting forever.
+#
+# The webview bundle the app embeds is covered by ci.yml; this job builds the
+# assets only to prove build-app.sh assembles a bundle from them.
+#
+# It also runs the e2e suites that speak for the panel, in WebKit. That is
+# a carve-out from ci.yml's "e2e is a local pre-push gate" policy, and it earns
+# one on the policy's own terms: those suites assert which block holds which
+# text, never layout geometry or an absolute time, and each guards its own
+# reach so a keystroke race reports as the probe missing rather than as the
+# editor failing. This job is advisory, so a flake costs a re-read and not a
+# blocked PR. It exists because a WebKit-only editing defect shipped with every
+# other check green (Return left the caret in the previous block):
+# nothing in CI ran the engine the Mac app renders in.
+#
+# The paths filter covers what can BREAK the panel, which is more than mac/:
+# the app embeds dist/webview.js, so a webview/ or shared/ change reaches it
+# without touching a Swift file.
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'mac/**'
+      - 'webview/**'
+      - 'shared/**'
+      - 'packages/**'
+      - 'e2e/enterCaret/**'
+      - 'e2e/macHost/**'
+      - 'e2e/pasteIntoEmpty/**'
+      - 'e2e/taskToggle/**'
+      - '.github/workflows/mac-app.yml'
+
+concurrency:
+  group: mac-app-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  mac-test:
+    runs-on: macos-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: swift --version
+      - name: swift test (BirtaWriterCore and the app)
+        run: swift test --package-path mac
+      - name: build the webview bundle and assemble the app
+        run: |
+          node esbuild.mjs --production
+          bash mac/scripts/build-app.sh
+          test -x "mac/build/Birta Writer.app/Contents/MacOS/BirtaWriter"
+          test -f "mac/build/Birta Writer.app/Contents/Resources/web/dist/webview.js"
+          test -f "mac/build/Birta Writer.app/Contents/Resources/web/dist/hostPalette.css"
+          # The icons are committed, not generated here, so what this proves is
+          # that build-app.sh still copies them in: an app with no AppIcon.icns
+          # gets the blank document icon, and one with no MenuBarTemplate.pdf
+          # falls back to a stock symbol, both silently.
+          test -f "mac/build/Birta Writer.app/Contents/Resources/AppIcon.icns"
+          test -f "mac/build/Birta Writer.app/Contents/Resources/MenuBarTemplate.pdf"
+
+      # What the published app can actually run on. mac/README.md tells people
+      # the download is Apple Silicon only, and that is a consequence of the
+      # build rather than a request: `swift build` with no --arch produces the
+      # runner's own architecture, and the runner is arm64. Asserted here so
+      # the sentence in the README is checked rather than believed, and so
+      # that making the build universal (--arch arm64 --arch x86_64) fails
+      # here and sends whoever does it to the README.
+      #
+      # The floor is asserted for the same reason from the other side: an
+      # Info.plist that lost LSMinimumSystemVersion would ship an app macOS
+      # launches on anything, and the crash would land on the oldest Mac.
+      - name: what the built app runs on
+        run: |
+          APP="mac/build/Birta Writer.app"
+          ARCHS="$(lipo -archs "$APP/Contents/MacOS/BirtaWriter")"
+          echo "built for: $ARCHS"
+          test "$ARCHS" = "arm64"
+          FLOOR="$(/usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' "$APP/Contents/Info.plist")"
+          echo "minimum macOS: $FLOOR"
+          test -n "$FLOOR"
+
+      - name: install the WebKit browser
+        run: npx playwright install webkit
+
+      # The engine the panel renders in. Each suite mounts the real production
+      # bundle: enterCaret drives the keyboard, macHost drives the capability
+      # gating, pasteIntoEmpty drives an image paste into an empty document,
+      # which is the Mac app's opening gesture, and taskToggle edits the document
+      # from a command the Mac app reaches by a keystroke on its Edit menu. Run
+      # separately
+      # because e2e/run.mjs takes one suite name.
+      - name: e2e in WebKit
+        run: |
+          BIRTA_E2E_BROWSER=webkit node e2e/run.mjs enterCaret
+          BIRTA_E2E_BROWSER=webkit node e2e/run.mjs macHost
+          BIRTA_E2E_BROWSER=webkit node e2e/run.mjs pasteIntoEmpty
+          BIRTA_E2E_BROWSER=webkit node e2e/run.mjs taskToggle

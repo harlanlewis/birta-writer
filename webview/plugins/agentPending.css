@@ -143,7 +143,7 @@
     /* Above the window's own bottom edge rather than against it. A host that
        has no notification surface for the page's failures can still draw a
        status line of its OWN over the page down there, which is exactly what
-       Jot does ("Saved." in the same trailing corner, floating over the web
+       the Mac app does ("Saved." in the same trailing corner, floating over the web
        view). The page cannot see it, so the clearance is the only thing that
        keeps the two off each other. */
     bottom: 40px;

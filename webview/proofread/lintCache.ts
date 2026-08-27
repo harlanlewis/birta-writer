@@ -8,7 +8,7 @@
  * theoretical and not always the page's own time: in Birta Writer for Mac the
  * checker is `NSSpellChecker`, which is AppKit and runs on the main thread, the
  * same thread key events arrive on, so a whole-document recheck is paid in caret
- * latency. `jot-trace lint` prints `blocks`, `chars` and `ms` for every round
+ * latency. `birta-trace lint` prints `blocks`, `chars` and `ms` for every round
  * trip and is how to read the cost back rather than trusting a number here.
  *
  * The cache key is the block's plain text and nothing else. Block POSITION

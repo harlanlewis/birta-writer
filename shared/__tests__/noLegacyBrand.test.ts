@@ -19,12 +19,12 @@
  * (both unscanned) from tripping a guard aimed at ourselves.
  *
  * The SECOND rebrand has a rule of its own and a scope of its own, in the last
- * describe below. `Jot` is retired as a display name and kept as the internal
- * codename, so the patterns above cannot be reused: a rule banning the word
- * outright would fail on the module names, the defaults domain and every
- * comment that says what the codename is for. What is banned is the word
- * reaching a string a person reads, and that lives under `jot/`, which nothing
- * above scans.
+ * describe below. The Mac app's former name was first retired from display
+ * strings and kept as an internal codename; the codename itself was then
+ * retired too, everywhere: module names, bundle ids, env vars, CSS hooks,
+ * filenames and prose all spell Birta Writer (or `mac`, for the surface). The
+ * word is therefore banned as a SUBSTRING, case-insensitively, across the
+ * whole tree, with shipped history (the changelogs) as the one exemption.
  */
 import { describe, it, expect } from "vitest";
 import * as path from "path";
@@ -126,151 +126,124 @@ describe("rebrand guard", () => {
 });
 
 /**
- * The retired display name, in the shell that used to carry it.
+ * The retired codename, banned everywhere but history.
  *
- * `Jot` names a program and a directory and nothing a user reads. The rule is
- * therefore about STRING LITERALS rather than about the word: `BirtaJotCore`,
- * `com.birtalabs.jot`, `BIRTA_JOT_MEASURE`, `JotPanel` and every comment
- * explaining the codename are all legal, and a scan that judged whole lines
- * would fail on all of them and be deleted within a week.
+ * The Mac app's former name went in two steps: first out of display strings
+ * (leaving module names, the bundle id, env vars and a directory spelling it),
+ * then out of the identifiers too, because a codename that is also a retired
+ * product name misleads everything that touches it — tickets, docs, release
+ * assets, the defaults domain a user can list. Since nothing may spell it at
+ * all any more, the rule is the simple one the display-string era could not
+ * afford: the three letters, case-insensitive, as a substring, anywhere.
  *
- * The word `Jot` standing ALONE inside a literal is the shape that reaches a
- * person: it is how the name is written in a sentence, and no identifier
- * spells it that way. That is what this bans, case sensitively, so the
- * lowercase stem in a path or a bridge message never enters the question.
+ * That strictness is deliberate. A word-boundary rule would miss the glued
+ * identifiers (the old module prefix, the old dev bundle id), and an
+ * identifier rule would miss prose. The one cost is that no scanned file may
+ * use the verb ("jot something down"); rephrase, or carve a considered
+ * exemption here if that day comes.
  *
- * `jot/Sources` is the scope because that is where the app's own sentences
- * are, and it is the scope the rebrand actually moved: every describe above
- * reads `src/`, `webview/`, `shared/`, `docs/` and the contribution JSON, so
- * the whole Swift shell sat outside the one guard whose job this is. The miss
- * that earned it: `NotesMoveOffer`'s move sheet went on saying "Jot writes to
- * the new location either way" through a rename that touched eighty-odd
- * files, because the sentence is inside a `"""` block and a single-line
- * literal scan cannot see into one.
+ * Exempt, each with its reason:
+ *   - the changelogs and `docs/CHANGELOG-PRE-MARKETPLACE.md`: point-in-time
+ *     history naming things as they shipped; policing them would falsify the
+ *     record.
+ *   - `licenses/`, NOTICE, LICENSE-MIT, THIRD_PARTY_NOTICES.md: generated or
+ *     upstream attribution, not our prose.
+ *   - `samples/` and `webview/__tests__/fixtures/`: content under test.
+ *   - `changelogSplit.test.ts`: it parses shipped history, so its misfile
+ *     matcher and fixtures must recognize the spelling history used.
+ *   - this file, which needs fixtures for its own matcher.
  */
-describe("retired display name", () => {
-    const SWIFT_ROOT = path.join(REPO_ROOT, "jot", "Sources");
+describe("retired codename", () => {
+    const BANNED = /jot/i;
 
-    /** The word as a sentence writes it, which is the only spelling banned. */
-    const RETIRED = /\bJot\b/;
+    /** Directory NAMES never descended into, wherever they appear. */
+    const SKIP_DIRS = [
+        "node_modules", ".git", ".build", "build", "dist", "dist-base",
+        "dist-head", "out", "coverage", "releases", ".vscode-test", "fixtures",
+        "worktrees",
+    ];
 
-    /**
-     * Literals that keep the word, each with the reason it is not a display
-     * name. Checked in both directions below: an entry that no longer appears
-     * fails, because an exemption nobody removed is a hole nobody can see.
-     */
-    const ALLOWED: Record<string, string> = {
-        "Jot %Y-%m-%d.md":
-            "the dated note's filename template. A filename is not branding: the " +
-            "word is a short stem in front of a date rather than the app signing " +
-            "its work, and AGENTS.md records it as kept on purpose.",
-        "Jot":
-            "the same stem, used when a typed name sanitizes away to nothing and " +
-            "the date has to be hung on something.",
-        "Jot \\(f.string(from: Date())).md":
-            "the same stem again, in the fixed-locale fallback name a Save a Copy " +
-            "As sheet opens on. Interpolated rather than templated, so it reads " +
-            "as its own literal here.",
-    };
+    /** Text extensions worth reading; binaries and images are not prose. */
+    const EXTS = [
+        ".ts", ".mts", ".mjs", ".js", ".css", ".swift", ".sh", ".md", ".json",
+        ".yml", ".yaml", ".html", ".plist", ".nls.json",
+    ];
 
-    /**
-     * Every string literal in `src`, with its line, comments excluded.
-     *
-     * Multi-line `"""` blocks are read line by line, because that is where the
-     * miss was: a sentence long enough to wrap is exactly the kind that names
-     * the product, and a `"[^"]*"` scan finds nothing inside one.
-     */
-    function literals(src: string): { line: number; text: string }[] {
-        const out: { line: number; text: string }[] = [];
-        let inBlock = false;
-        src.split("\n").forEach((raw, i) => {
-            if (inBlock) {
-                if (/"""/.test(raw)) { inBlock = false; return; }
-                out.push({ line: i + 1, text: raw });
-                return;
-            }
-            if (/"""\s*$/.test(raw) && !/""".*"""/.test(raw)) { inBlock = true; return; }
-            if (/^\s*\/\//.test(raw)) { return; }
-            for (const m of raw.matchAll(/"((?:[^"\\]|\\.)*)"/g)) {
-                out.push({ line: i + 1, text: m[1]! });
-            }
-        });
-        return out;
-    }
+    const SCAN_ROOTS = [
+        "src", "webview", "shared", "mac", "e2e", "scripts", "docs",
+        "packages", ".github", ".claude",
+    ];
 
-    const scanned = walkFiles(SWIFT_ROOT, [".swift"], []).map((file) => ({
-        rel: path.relative(REPO_ROOT, file),
-        found: literals(fs.readFileSync(file, "utf8")),
-    }));
+    const ROOT_FILES = [
+        "package.json", "package.nls.json", "AGENTS.md", "CLAUDE.md",
+        "README.md", ".vscodeignore", "esbuild.mjs", "vitest.config.ts",
+    ];
 
-    it("the scan should have reached the shell's own strings", () => {
-        // An extractor that stopped matching reports a clean shell with total
-        // confidence, and every assertion below would pass over nothing.
-        expect(scanned.length, "no Swift sources found under jot/Sources").toBeGreaterThan(20);
-        const total = scanned.reduce((n, f) => n + f.found.length, 0);
-        expect(total, "the literal extractor read almost nothing").toBeGreaterThan(500);
-        // And it must reach INTO a multi-line block, which is the case the
-        // single-line form cannot see and the one this guard exists for.
-        const sheet = scanned.find((f) => f.rel.endsWith("NotesMoveOffer.swift"));
-        expect(sheet, "NotesMoveOffer.swift should still be scanned").toBeDefined();
-        expect(
-            sheet!.found.some((l) => l.text.includes("writes to the new location")),
-            'the extractor no longer reads inside a """ block',
-        ).toBe(true);
-    });
+    const EXEMPT_SUFFIXES = [
+        "CHANGELOG.md", // both changelogs
+        "CHANGELOG-PRE-MARKETPLACE.md",
+        path.join("shared", "__tests__", "noLegacyBrand.test.ts"),
+        path.join("shared", "__tests__", "changelogSplit.test.ts"),
+    ];
 
-    it("the rule should discriminate, rather than accept or refuse everything", () => {
-        // A predicate that says no to everything passes the sweep below on any
-        // shell at all; one that says yes to everything could not ship beside
-        // the codename. Both halves, on the shapes that actually occur.
-        for (const legal of ["BirtaJotCore", "com.birtalabs.jot", "BIRTA_JOT_WEB_DIR",
-                             "NSWindow Frame JotPanel", "BirtaJot-", "jot-trace ready",
-                             "__jotSaveNow", "BJOT"]) {
-            expect(RETIRED.test(legal), `${legal} is an identifier, not a display name`).toBe(false);
-        }
-        for (const leak of ["Jot writes to the new location either way.",
-                            "Birta Writer Jot Settings", "Show Jot", "Quit Jot"]) {
-            expect(RETIRED.test(leak), `${leak} should be caught`).toBe(true);
+    const files = [
+        ...SCAN_ROOTS.flatMap((d) => {
+            const root = path.join(REPO_ROOT, d);
+            return fs.existsSync(root) ? walkFiles(root, EXTS, SKIP_DIRS) : [];
+        }),
+        ...ROOT_FILES.map((f) => path.join(REPO_ROOT, f)).filter((f) => fs.existsSync(f)),
+    ].filter((f) => !EXEMPT_SUFFIXES.some((suffix) => f.endsWith(suffix)));
+
+    it("the scan should reach the whole tree, not a corner of it", () => {
+        // A walker that stopped matching reports a clean tree with total
+        // confidence. The floor is far below the real count and far above
+        // what a broken walk returns.
+        expect(files.length, "the walk found almost nothing").toBeGreaterThan(400);
+        for (const mustReach of [
+            path.join("mac", "Resources", "Info.plist"),
+            path.join("mac", "Sources", "BirtaWriterCore", "AppFlavor.swift"),
+            path.join(".github", "workflows", "release.yml"),
+            "AGENTS.md",
+        ]) {
+            expect(
+                files.some((f) => f.endsWith(mustReach)),
+                `${mustReach} should be scanned`,
+            ).toBe(true);
         }
     });
 
-    it("no string the shell shows should carry the retired name", () => {
+    it("the matcher should catch every spelling the tree ever used", () => {
+        for (const leak of [
+            "Birta" + "Jot" + "Core", "com.birtalabs." + "jot" + "dev",
+            "BIRTA_" + "JOT" + "_MEASURE", "__" + "jot" + "SaveNow",
+            "Quit " + "Jot", "the " + "Jot" + " shell",
+        ]) {
+            expect(BANNED.test(leak), `${leak} should be caught`).toBe(true);
+        }
+        for (const legal of [
+            "BirtaWriterCore", "com.birtalabs.birta-writer-dev",
+            "BIRTA_MAC_MEASURE", "__birtaSaveNow", "Birta Writer for Mac",
+            "mac/Sources", "e2e/macHost",
+        ]) {
+            expect(BANNED.test(legal), `${legal} is the current vocabulary`).toBe(false);
+        }
+    });
+
+    it("nothing in the tree should spell the codename", () => {
         const offenders: string[] = [];
-        for (const { rel, found } of scanned) {
-            for (const { line, text } of found) {
-                if (!RETIRED.test(text)) { continue; }
-                if (text.trim() in ALLOWED) { continue; }
-                offenders.push(`${rel}:${line} ${JSON.stringify(text.trim())}`);
-            }
+        for (const file of files) {
+            const lines = fs.readFileSync(file, "utf8").split("\n");
+            lines.forEach((line, idx) => {
+                if (BANNED.test(line)) {
+                    offenders.push(`${path.relative(REPO_ROOT, file)}:${idx + 1} ${line.trim().slice(0, 120)}`);
+                }
+            });
         }
         expect(
             offenders,
-            "The retired display name reached a string. Rename it, or — if it is " +
-                "a filename stem rather than the app naming itself — record it in " +
-                `ALLOWED with the reason:\n${offenders.join("\n")}`,
+            `The retired codename is back. Rename it — Birta Writer for the ` +
+                `product, mac for the surface — or, for shipped history, keep it ` +
+                `in a changelog, which is not scanned:\n${offenders.join("\n")}`,
         ).toEqual([]);
-    });
-
-    it("every recorded exemption should still be one", () => {
-        const all = scanned.flatMap((f) => f.found.map((l) => l.text.trim()));
-        for (const [literal, reason] of Object.entries(ALLOWED)) {
-            expect(all, `${literal} is exempt and no longer appears`).toContain(literal);
-            expect(reason.length, `${literal} has no reason`).toBeGreaterThan(40);
-        }
-    });
-
-    it("the bundle should not name itself with the retired name either", () => {
-        // Info.plist is the other place the app says what it is called, and it
-        // is not source, so the sweep above cannot reach it. `CFBundleExecutable`
-        // and `CFBundleIdentifier` are identifiers and spell the codename glued
-        // or lowercase, so the same rule reads them correctly.
-        const plist = fs.readFileSync(
-            path.join(REPO_ROOT, "jot", "Resources", "Info.plist"), "utf8");
-        expect(plist, "the plist should still be readable here").toContain("CFBundleName");
-        const offenders = plist.split("\n")
-            .map((line, i) => ({ line: i + 1, text: line }))
-            .filter(({ text }) => RETIRED.test(text))
-            .map((o) => `Info.plist:${o.line} ${o.text.trim()}`);
-        expect(offenders).toEqual([]);
     });
 });

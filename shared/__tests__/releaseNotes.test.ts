@@ -667,7 +667,7 @@ describe("the repository's own changelogs", () => {
     // one of two files it is written for is a guard with half a subject.
     const changelog = [
         readFileSync(path.join(repoRoot, "CHANGELOG.md"), "utf8"),
-        readFileSync(path.join(repoRoot, "jot/CHANGELOG.md"), "utf8"),
+        readFileSync(path.join(repoRoot, "mac/CHANGELOG.md"), "utf8"),
     ].join("\n");
 
     it("every section heading should be one the release notes can route", () => {

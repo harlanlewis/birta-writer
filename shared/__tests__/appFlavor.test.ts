@@ -25,20 +25,20 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 const REPO = join(__dirname, "..", "..");
-const swift = readFileSync(join(REPO, "jot/Sources/BirtaJotCore/AppFlavor.swift"), "utf8");
-const buildScript = readFileSync(join(REPO, "jot/scripts/build-app.sh"), "utf8");
-const installScript = readFileSync(join(REPO, "jot/scripts/install-app.sh"), "utf8");
-const updateScript = readFileSync(join(REPO, "jot/scripts/update-jot.sh"), "utf8");
+const swift = readFileSync(join(REPO, "mac/Sources/BirtaWriterCore/AppFlavor.swift"), "utf8");
+const buildScript = readFileSync(join(REPO, "mac/scripts/build-app.sh"), "utf8");
+const installScript = readFileSync(join(REPO, "mac/scripts/install-app.sh"), "utf8");
+const updateScript = readFileSync(join(REPO, "mac/scripts/update.sh"), "utf8");
 const handoff = readFileSync(join(REPO, "scripts/install-local.mjs"), "utf8");
 const releaseWorkflow = readFileSync(join(REPO, ".github/workflows/release.yml"), "utf8");
-const feed = readFileSync(join(REPO, "jot/Sources/BirtaJotCore/ReleaseFeed.swift"), "utf8");
+const feed = readFileSync(join(REPO, "mac/Sources/BirtaWriterCore/ReleaseFeed.swift"), "utf8");
 const product = readFileSync(join(REPO, "shared/product.ts"), "utf8")
-    .match(/JOT_PRODUCT_NAME\s*=\s*"([^"]+)"/)?.[1];
+    .match(/MAC_APP_NAME\s*=\s*"([^"]+)"/)?.[1];
 if (!product) {
     // Thrown with a message rather than left as a non-null assertion: every
     // test here reads it, so an unreadable constant takes the whole file down
     // and the reason has to survive that.
-    throw new Error("shared/product.ts no longer declares JOT_PRODUCT_NAME as a string literal");
+    throw new Error("shared/product.ts no longer declares MAC_APP_NAME as a string literal");
 }
 
 /** Every `NAME="value"` assignment in a shell script, by name. */
@@ -110,7 +110,7 @@ describe("app flavours", () => {
 
     it("the development id should sit outside the namespace the reaper clears", () => {
         // `reap.sh` clears every defaults domain strictly under
-        // `com.birtalabs.jot.`, so a development build parked there would have
+        // `com.birtalabs.birta-writer.`, so a development build parked there would have
         // its settings deleted at the end of every session. Asserted here as
         // well as in Swift, because this file is the one that reads the SHELL
         // side, and the id could drift there alone.
@@ -133,7 +133,7 @@ describe("app flavours", () => {
         // user-facing messages naming an app that does not exist, with every
         // gate green.
         const suffix = swift.match(/case \.dev: return "([^"]+)"/)?.[1];
-        const printed = handoff.match(/JOT_APP_NAME\s*=\s*"([^"]+)"/)?.[1];
+        const printed = handoff.match(/DEV_APP_NAME\s*=\s*"([^"]+)"/)?.[1];
         expect(printed, "install-local.mjs should name the app in one constant").toBeDefined();
         expect(printed).toBe(product + suffix!);
         // And the constant should be the only place that file spells the name,
@@ -150,11 +150,11 @@ describe("app flavours", () => {
             .replace(/(^|[^:])\/\/[^\n]*/g, "$1");
         const spellings = [...code.matchAll(new RegExp(product!, "g"))];
         expect(spellings.length, `${product} is spelled ${spellings.length} times in code`).toBe(1);
-        expect(code).toContain(`JOT_APP_NAME = "${printed}"`);
+        expect(code).toContain(`DEV_APP_NAME = "${printed}"`);
     });
 
     it("the by-hand updater should only ever name the release app", () => {
-        // `update-jot.sh` installs the RELEASE and has no flavour branch, so
+        // `update.sh` installs the RELEASE and has no flavour branch, so
         // every bundle it names is the plain product name. A flavour suffix
         // reaching this file would point the by-hand update path at the wrong
         // bundle, and `byFlavour` above cannot see a file with no branch.
@@ -199,8 +199,8 @@ describe("app flavours", () => {
         // site that still reads the static, and a reader of that call site has
         // nothing telling them the arm they just wrote is unreachable.
         for (const path of [
-            "jot/Sources/BirtaJot/SettingsWindow.swift",
-            "jot/Sources/BirtaJot/WelcomeView.swift",
+            "mac/Sources/BirtaWriter/SettingsWindow.swift",
+            "mac/Sources/BirtaWriter/WelcomeView.swift",
         ]) {
             const source = readFileSync(join(REPO, path), "utf8");
             const code = source

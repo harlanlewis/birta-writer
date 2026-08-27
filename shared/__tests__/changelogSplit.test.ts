@@ -2,13 +2,17 @@
  * The two changelogs are split by PRODUCT, and stay that way.
  *
  * `CHANGELOG.md` ships inside the VSIX and is what the VS Code Marketplace and
- * Open VSX render on their Changelog tabs. Jot is installable from neither: it
- * is an app attached to a GitHub Release. So a Jot entry in the extension's
- * changelog reaches an audience that cannot act on it, which is the bar
- * AGENTS.md sets for an entry earning its place. Before the split, 34 of the 40
- * entries in one release were about Jot.
+ * Open VSX render on their Changelog tabs. The Mac app is installable from
+ * neither: it is an app attached to a GitHub Release. So an app entry in the
+ * extension's changelog reaches an audience that cannot act on it, which is
+ * the bar AGENTS.md sets for an entry earning its place. Before the split, 34
+ * of the 40 entries in one release were about the app.
  *
- * `jot/CHANGELOG.md` is kept out of the VSIX by `.vscodeignore`'s `jot/**`, so
+ * This file is exempt from the retired-codename guard in
+ * `noLegacyBrand.test.ts`, because it parses shipped history and must
+ * recognize the spelling history used.
+ *
+ * `mac/CHANGELOG.md` is kept out of the VSIX by `.vscodeignore`'s `mac/**`, so
  * the split costs no new packaging rule.
  */
 import { describe, it, expect } from "vitest";
@@ -19,7 +23,7 @@ const root = path.resolve(__dirname, "../..");
 const read = (rel: string): string => readFileSync(path.join(root, rel), "utf8");
 
 const extension = read("CHANGELOG.md");
-const jot = read("jot/CHANGELOG.md");
+const app = read("mac/CHANGELOG.md");
 
 const versions = (text: string): string[] =>
     [...text.matchAll(/^## \[([^\]]+)\]/gm)].map((m) => m[1]!);
@@ -39,7 +43,7 @@ const entries = (text: string): string[] => {
  * most one of the prefixes the convention allows.
  *
  * Two spellings, because the app's name changed under this guard and both have
- * to stay matched. `Jot` is what every entry already in `jot/CHANGELOG.md`
+ * to stay matched. `Jot` is what every entry already in `mac/CHANGELOG.md`
  * opens with and is the shape a misfile would still take from an older draft;
  * `for Mac` is the shape the convention now asks for, and it exists BECAUSE of
  * the rename. Both surfaces are called Birta Writer, so a bare "Birta Writer"
@@ -57,22 +61,22 @@ const entries = (text: string): string[] => {
 const MISFILE = /^(Breaking, in |Breaking: |In )?Birta (Writer )?(Jot|for Mac)\b/;
 
 describe("the changelog split", () => {
-    it("every version in Jot's changelog should exist in the extension's", () => {
-        // One release stamps both, so Jot can never carry a version the
+    it("every version in the app's changelog should exist in the extension's", () => {
+        // One release stamps both, so the app can never carry a version the
         // extension has never heard of. The reverse is expected and fine: most
         // releases change nothing about the app.
         const all = new Set(versions(extension));
-        const orphans = versions(jot).filter((v) => !all.has(v));
-        expect(orphans, `versions only in jot/CHANGELOG.md: ${orphans.join(", ")}`).toEqual([]);
-        expect(versions(jot).length).toBeGreaterThan(0);
-        expect(versions(extension).length).toBeGreaterThan(versions(jot).length);
+        const orphans = versions(app).filter((v) => !all.has(v));
+        expect(orphans, `versions only in mac/CHANGELOG.md: ${orphans.join(", ")}`).toEqual([]);
+        expect(versions(app).length).toBeGreaterThan(0);
+        expect(versions(extension).length).toBeGreaterThan(versions(app).length);
     });
 
     it("both changelogs should carry the Unreleased heading the stamp looks for", () => {
         // stamp-changelog.mjs finds the section BY NAME in each file. A file
         // that lost the heading would stamp nothing and fail silently.
         expect(versions(extension)).toContain("Unreleased");
-        expect(versions(jot)).toContain("Unreleased");
+        expect(versions(app)).toContain("Unreleased");
     });
 
     it("no entry in the extension's changelog should be written as an app entry", () => {
@@ -81,14 +85,14 @@ describe("the changelog split", () => {
             .toEqual([]);
         // The sweep has to have read something, or an empty parse reports clean.
         expect(entries(extension).length).toBeGreaterThan(100);
-        expect(entries(jot).length).toBeGreaterThan(10);
+        expect(entries(app).length).toBeGreaterThan(10);
     });
 
     it("the misfile pattern should fire on each opening it knows, and on nothing else", () => {
         // The half the check above cannot supply. `toEqual([])` over a filter is
         // satisfied by a pattern that matches nothing at all, so a prefix
         // silently falling out of the alternation reads exactly like a clean
-        // changelog. `Breaking: ` was such a prefix: `jot/CHANGELOG.md` moved
+        // changelog. `Breaking: ` was such a prefix: `mac/CHANGELOG.md` moved
         // from `Breaking, in <subject>:` to a bare `Breaking: ` and this was
         // never widened, so the one shape a new breaking misfile would take was
         // the one shape it could not see.
@@ -124,7 +128,7 @@ describe("the changelog split", () => {
         // `####` as continuations of the entry above. Neither the suite nor the
         // content check caught it: that check filtered lines starting with `-`,
         // which silently excluded `---` as well.
-        for (const [name, text] of [["CHANGELOG.md", extension], ["jot/CHANGELOG.md", jot]] as const) {
+        for (const [name, text] of [["CHANGELOG.md", extension], ["mac/CHANGELOG.md", app]] as const) {
             const lines = text.split("\n");
             let fenced = false;
             const glued = lines.flatMap((line, i) => {
@@ -139,10 +143,10 @@ describe("the changelog split", () => {
         }
     });
 
-    it("Jot's changelog should be excluded from the VSIX", () => {
-        // Via `jot/**` rather than a rule of its own; if that line ever goes,
+    it("the app's changelog should be excluded from the VSIX", () => {
+        // Via `mac/**` rather than a rule of its own; if that line ever goes,
         // this file starts shipping to the Marketplace again.
-        expect(read(".vscodeignore")).toMatch(/^jot\/\*\*$/m);
+        expect(read(".vscodeignore")).toMatch(/^mac\/\*\*$/m);
     });
 
     // A version heading must hold each section AT MOST ONCE, and nothing was
@@ -161,7 +165,7 @@ describe("the changelog split", () => {
     // here, so a section this repo has never used yet is covered the day it
     // first appears.
     it("no version heading should carry the same section twice", () => {
-        for (const [name, text] of [["CHANGELOG.md", extension], ["jot/CHANGELOG.md", jot]] as const) {
+        for (const [name, text] of [["CHANGELOG.md", extension], ["mac/CHANGELOG.md", app]] as const) {
             const lines = text.split("\n");
             let version: string | null = null;
             let seen = new Set<string>();

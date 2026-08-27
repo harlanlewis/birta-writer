@@ -2,7 +2,7 @@
  * Ticking the task the caret is in, and what the tick says to a screen reader.
  *
  * Driven through the `editorCommand` message, which is the path BOTH surfaces
- * use: a VS Code keybinding routes through it, and Jot's Edit-menu item routes
+ * use: a VS Code keybinding routes through it, and the Mac app's Edit-menu item routes
  * through it. Asserting the serialized markdown rather than the DOM, because
  * the markdown is what reaches the file and a checkbox rendered as ticked over
  * an unticked document would be the bug this guards.

@@ -4,7 +4,7 @@
  * It is the first document a new user opens and the only one this repo ships
  * that no corpus walks: `loadCorpusFixtures` reads `__tests__/fixtures` and
  * `samples`, and the tour is a Swift string literal in
- * `jot/Sources/BirtaJotCore/FirstRunNote.swift`. So every check on it was a
+ * `mac/Sources/BirtaWriterCore/FirstRunNote.swift`. So every check on it was a
  * string check written beside it in Swift, asking whether it contains a `*` or
  * ends in an `=`. Those are hand-derived proxies for what the serializer
  * actually does, and the thing they proxy for is right here and answerable.
@@ -50,7 +50,7 @@ const root = path.resolve(__dirname, "../..");
 /** The tour's markdown, read out of the Swift that ships it. */
 const tour = ((): string => {
     const swift = readFileSync(
-        path.join(root, "jot/Sources/BirtaJotCore/FirstRunNote.swift"), "utf8");
+        path.join(root, "mac/Sources/BirtaWriterCore/FirstRunNote.swift"), "utf8");
     const body = swift.match(/public static let markdown = """\n([\s\S]*?)\n {4}"""/)?.[1];
     if (body === undefined) {
         throw new Error("the tour's markdown literal could not be read out of FirstRunNote.swift");

@@ -5,7 +5,7 @@
  * is never loaded: it is NOT imported by webview/index.ts and must not be,
  * because a stylesheet palette would fight the injected one. It is emitted as
  * its own asset (dist/hostPalette.css, an esbuild CSS entry) for a host page
- * to link: the Jot shell (jot/) and the e2e harness pages.
+ * to link: the Mac shell (mac/) and the e2e harness pages.
  *
  * Contract, guarded by webview/__tests__/hostPalette.test.ts:
  *   - Every --vscode-* variable that shipping webview code mentions is defined

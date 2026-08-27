@@ -90,7 +90,7 @@ jobs:
       # It runs on every pull request rather than behind a `paths` filter,
       # because the archive is built from a deny-list and the mistake this
       # catches is a top-level directory that did not exist before. No filter
-      # can name that path in advance, which is exactly how Jot's source tree
+      # can name that path in advance, which is exactly how the Mac app's source tree
       # shipped. The cost is a zip and an `unzip -l` on a build this job was
       # already doing: `vsce package` runs `vscode:prepublish` itself, so this
       # REPLACES the explicit build step rather than adding a second build.
@@ -321,7 +321,7 @@ jobs:
 
 # The e2e suite (real bundle in headless Chromium) is a LOCAL pre-push gate,
 # run with `pnpm test:e2e`, not a CI job. Two suites are the exception, and
-# they run in .github/workflows/jot.yml under WebKit rather than here: see that
+# they run in .github/workflows/mac-app.yml under WebKit rather than here: see that
 # file's header for why those two qualify and this policy still holds. Its layout-geometry and input-timing
 # assertions are calibrated to a real desktop browser and are flaky in GitHub's
 # headless Chromium (sub-pixel font metrics, keystroke/selection races) — they

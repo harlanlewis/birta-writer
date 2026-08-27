@@ -1,7 +1,7 @@
 /**
  * Policy guard: the same gesture means the same thing on both surfaces.
  *
- * Jot's menu IS its keyboard. The extension's keyboard is `package.json`'s
+ * The Mac app's menu IS its keyboard. The extension's keyboard is `package.json`'s
  * contributed keybindings plus the editor's own fixed keymaps. Nothing but
  * this file connects them, and without it the two drift silently in the
  * direction that is hardest to notice: a chord that works in one surface and
@@ -17,7 +17,7 @@
  *  3. Does the chord match the one the extension contributes for the same
  *     command — or, for a command the extension does not contribute because
  *     the editor binds it outright, the fixed keymap's?
- *  4. Which contributed chords does Jot NOT bind? That set is written down
+ *  4. Which contributed chords does the Mac app NOT bind? That set is written down
  *     with a reason each, so a new keybinding in package.json fails here until
  *     someone has answered "does the app want this too?". A guard that only
  *     checks what IS bound cannot ask that question, and the answer it needs
@@ -30,7 +30,7 @@ import { EDITOR_COMMANDS, EDITOR_COMMAND_PREFIX } from "../editorCommands";
 import { HOST_PROFILES, hostHasCommand, type HostArrangement } from "../hostProfile";
 import { FIXED_COMMAND_CHORDS } from "../fixedChords";
 import { KEYMAP_CHORDS } from "./keymapChords";
-import { parseJotMenu, keyedRows, type JotMenuRow } from "./jotMenuTable";
+import { parseAppMenu, keyedRows, type AppMenuRow } from "./appMenuTable";
 import {
     ITEM_COMMANDS,
     computeDockPartition,
@@ -39,7 +39,7 @@ import {
 
 const REPO_ROOT = path.resolve(__dirname, "..", "..");
 
-const ROWS: JotMenuRow[] = parseJotMenu(REPO_ROOT);
+const ROWS: AppMenuRow[] = parseAppMenu(REPO_ROOT);
 
 interface Keybinding {
     command?: string;
@@ -113,7 +113,7 @@ const COMMAND_ROWS = keyedRows(ROWS).filter((r) => r.command !== null);
 const COMMAND_IDS_ON_MENUS = ROWS.filter((r) => r.command !== null).map((r) => r.command!);
 
 /**
- * Chords Jot binds that the extension does not contribute for the same
+ * Chords the Mac app binds that the extension does not contribute for the same
  * command, each with the reason the two deliberately differ.
  *
  * An exemption is a decision, so it carries the decision's argument. It is
@@ -131,20 +131,20 @@ const INTENTIONAL_DIVERGENCE: Record<string, string> = {
 };
 
 /**
- * Contributed chords Jot does NOT bind, with the reason each is absent.
+ * Contributed chords the Mac app does NOT bind, with the reason each is absent.
  *
  * The half a guard forgets. Everything above measures rows that exist; this
  * measures the ones that do not, which is where a keyboard silently stops
  * being the same keyboard.
  */
-const NOT_BOUND_IN_JOT: Record<string, string> = {
+const NOT_BOUND_IN_MAC: Record<string, string> = {
     openBlockMenu:
         "⌘. is the platform's Cancel. A main-menu key equivalent for it would " +
         "sit in front of every sheet this app puts up, and the block menu has " +
         "the gutter and the slash menu as its other ways in.",
     pasteAsPlainText:
         "The command takes the clipboard text as an ARGUMENT, supplied by the " +
-        "host (the webview never reads the clipboard). Jot's menu rows carry a " +
+        "host (the webview never reads the clipboard). The Mac app's menu rows carry a " +
         "command id and nothing else, so the row would be a no-op; in WebKit " +
         "the page's own Shift+paste path already covers the gesture.",
 };
@@ -168,7 +168,7 @@ describe("the comparable form both notations reduce to", () => {
     });
 });
 
-describe("Jot's menu rows", () => {
+describe("the Mac app's menu rows", () => {
     it("the table should have been read whole", () => {
         // An enumeration that reached nothing passes every check written over
         // it, so the size is asserted before anything is concluded from it.
@@ -187,7 +187,7 @@ describe("Jot's menu rows", () => {
     });
 
     it("every command row should name one this host can honour", () => {
-        // The same predicate every surface reads, asked with Jot's own
+        // The same predicate every surface reads, asked with the Mac app's own
         // profile: a capability it does not declare, or an arrangement that
         // withdraws the command, means `runEditorCommand` ignores it and the
         // menu row would be dead. Full Width and Edit Raw Markdown are the
@@ -195,8 +195,8 @@ describe("Jot's menu rows", () => {
         const declared = (globalThis as { __i18n?: unknown }).__i18n;
         (globalThis as { __i18n?: unknown }).__i18n = {
             host: {
-                capabilities: HOST_PROFILES.jot,
-                arrangements: jotArrangements(),
+                capabilities: HOST_PROFILES.mac,
+                arrangements: macArrangements(),
                 shortcuts: [],
             },
         };
@@ -234,20 +234,20 @@ describe("chord parity with the extension", () => {
         for (const row of COMMAND_ROWS) {
             const id = row.command!;
             if (id in INTENTIONAL_DIVERGENCE) { continue; }
-            const jot = normalizeChord(row.chord!);
+            const mac = normalizeChord(row.chord!);
             const contributed = CONTRIBUTED.get(id);
             const fixed = FIXED_COMMAND_CHORDS[id as keyof typeof FIXED_COMMAND_CHORDS];
             const allowed = new Set<string>(contributed ?? []);
             if (fixed !== undefined) { allowed.add(normalizeChord(fixed)); }
             if (allowed.size === 0) {
                 mismatched.push(
-                    `${row.title} (${id}) binds ${jot}, and the extension binds nothing ` +
+                    `${row.title} (${id}) binds ${mac}, and the extension binds nothing ` +
                         "for it — either contribute the chord there or record the " +
                         "divergence in INTENTIONAL_DIVERGENCE with its reason",
                 );
-            } else if (!allowed.has(jot)) {
+            } else if (!allowed.has(mac)) {
                 mismatched.push(
-                    `${row.title} (${id}) binds ${jot}; the extension binds ` +
+                    `${row.title} (${id}) binds ${mac}; the extension binds ` +
                         `${[...allowed].sort().join(", ")}`,
                 );
             }
@@ -259,7 +259,7 @@ describe("chord parity with the extension", () => {
         // The third table, and the one the two above cannot see. AppKit takes
         // a menu key equivalent before the page sees the keydown, so a row
         // binding a chord some ProseMirror keymap owns REPLACES that binding in
-        // Jot. Harmless where the row runs what the keymap runs, and silent
+        // the Mac app. Harmless where the row runs what the keymap runs, and silent
         // breakage otherwise: the keymap's binding stops happening, in one
         // surface, with nothing failing anywhere. `KEYMAP_CHORDS` records the
         // chords without their commands, so `FIXED_COMMAND_CHORDS` is the
@@ -272,17 +272,17 @@ describe("chord parity with the extension", () => {
         const stolen: string[] = [];
         let overlapping = 0;
         for (const row of keyedRows(ROWS)) {
-            const jot = normalizeChord(row.chord!);
-            if (!owned.has(jot)) { continue; }
+            const mac = normalizeChord(row.chord!);
+            if (!owned.has(mac)) { continue; }
             overlapping += 1;
             const fixed = row.command === null
                 ? undefined
                 : FIXED_COMMAND_CHORDS[row.command as keyof typeof FIXED_COMMAND_CHORDS];
-            if (fixed === undefined || normalizeChord(fixed) !== jot) {
+            if (fixed === undefined || normalizeChord(fixed) !== mac) {
                 stolen.push(
-                    `${row.title} binds ${jot}, which a webview keymap already binds for ` +
+                    `${row.title} binds ${mac}, which a webview keymap already binds for ` +
                         "something else, so the menu takes that key and the editor's own " +
-                        "binding stops firing in Jot",
+                        "binding stops firing in the Mac app",
                 );
             }
         }
@@ -309,7 +309,7 @@ describe("chord parity with the extension", () => {
             expect(COMMAND_IDS.has(id), `${id} is not a command`).toBe(true);
             expect(reason.length, `${id} has no reason`).toBeGreaterThan(40);
             const row = COMMAND_ROWS.find((r) => r.command === id);
-            expect(row, `${id} is exempt from parity but binds nothing in Jot`)
+            expect(row, `${id} is exempt from parity but binds nothing in the Mac app`)
                 .not.toBeUndefined();
             const contributed = CONTRIBUTED.get(id);
             const agrees = contributed?.has(normalizeChord(row!.chord!)) ?? false;
@@ -317,15 +317,15 @@ describe("chord parity with the extension", () => {
         }
     });
 
-    it("the contributed chords Jot does not bind should be exactly the recorded ones", () => {
+    it("the contributed chords the Mac app does not bind should be exactly the recorded ones", () => {
         const boundIds = new Set(COMMAND_ROWS.map((r) => r.command!));
         const missing = [...CONTRIBUTED.keys()].filter((id) => !boundIds.has(id)).sort();
         expect(
             missing,
-            "A contributed keybinding is not on any Jot menu. Add the row, or " +
-                "record it in NOT_BOUND_IN_JOT with the reason it stays absent.",
-        ).toEqual(Object.keys(NOT_BOUND_IN_JOT).sort());
-        for (const [id, reason] of Object.entries(NOT_BOUND_IN_JOT)) {
+            "A contributed keybinding is not on any of the Mac app's menus. Add the row, or " +
+                "record it in NOT_BOUND_IN_MAC with the reason it stays absent.",
+        ).toEqual(Object.keys(NOT_BOUND_IN_MAC).sort());
+        for (const [id, reason] of Object.entries(NOT_BOUND_IN_MAC)) {
             expect(COMMAND_IDS.has(id), `${id} is not a command`).toBe(true);
             expect(reason.length, `${id} has no reason`).toBeGreaterThan(40);
         }
@@ -335,7 +335,7 @@ describe("chord parity with the extension", () => {
 /**
  * The menus against the panel's own controls.
  *
- * The parity checks above ask whether Jot's chords agree with the extension's.
+ * The parity checks above ask whether the Mac app's chords agree with the extension's.
  * This asks the other question, and nothing was asking it: whether the menu
  * REACHES what the panel already offers. A control the user can click and
  * cannot find in a menu is not a broken keyboard, it is a menu bar that is
@@ -367,13 +367,13 @@ describe("the menus against the panel's formatting row", () => {
             "is the whole of the gesture a menu can offer.",
     };
 
-    /** The dock as the panel builds it, under Jot's own profile. */
-    function jotDock(): string[] {
+    /** The dock as the panel builds it, under the Mac app's own profile. */
+    function macDock(): string[] {
         const declared = (globalThis as { __i18n?: unknown }).__i18n;
         (globalThis as { __i18n?: unknown }).__i18n = {
             host: {
-                capabilities: HOST_PROFILES.jot,
-                arrangements: jotArrangements(),
+                capabilities: HOST_PROFILES.mac,
+                arrangements: macArrangements(),
                 shortcuts: [],
             },
         };
@@ -384,7 +384,7 @@ describe("the menus against the panel's formatting row", () => {
         }
     }
 
-    const DOCK = jotDock();
+    const DOCK = macDock();
     const ON_A_MENU = new Set(COMMAND_IDS_ON_MENUS);
 
     it("every command the formatting row runs should be reachable from a menu", () => {
@@ -434,11 +434,11 @@ describe("the menus against the panel's formatting row", () => {
     });
 });
 
-/** Jot's declared arrangements, read from the shell rather than restated. */
-function jotArrangements(): HostArrangement[] {
+/** The Mac app's declared arrangements, read from the shell rather than restated. */
+function macArrangements(): HostArrangement[] {
     const bridge = fs.readFileSync(
-        path.join(REPO_ROOT, "jot/Sources/BirtaJotCore/Bridge.swift"), "utf8");
+        path.join(REPO_ROOT, "mac/Sources/BirtaWriterCore/Bridge.swift"), "utf8");
     const match = bridge.match(/"arrangements":\s*\[([^\]]*)\]/);
-    expect(match, "Jot's arrangements are no longer where this expects them").not.toBeNull();
+    expect(match, "the Mac app's arrangements are no longer where this expects them").not.toBeNull();
     return [...match![1]!.matchAll(/"([^"]+)"/g)].map((m) => m[1] as HostArrangement);
 }

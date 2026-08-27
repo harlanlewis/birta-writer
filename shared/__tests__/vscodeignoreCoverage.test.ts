@@ -5,7 +5,7 @@
  * that did not exist when the list was written is shipped to every extension
  * user by default, silently: `vsce package` succeeds, the extension works, and
  * the only symptom is an archive carrying source nobody can reach. That is how
- * Jot's SwiftPM tree and the pre-commit hook shipped (MAR-383).
+ * the Mac app's SwiftPM tree and the pre-commit hook shipped (MAR-383).
  *
  * `scripts/check-vsix.mjs` catches the same class only once the archive crosses
  * a count ceiling, needs a production build to run, and reports "entry count
@@ -73,7 +73,7 @@ function wholesaleTarget(line: string): string | null {
  * alone. Harmless: the set is only ever asked about directory names.
  *
  * `!` re-includes, and it has to be subtracted rather than ignored. Reading
- * `!jot/**` as a directory named `!jot` would leave the `jot/**` above it still
+ * `!mac/**` as a directory named `!mac` would leave the `mac/**` above it still
  * counted as denied, so this guard would pass while the directory shipped,
  * which is the exact failure it exists to catch.
  */
@@ -106,7 +106,7 @@ describe("vscodeignore coverage", () => {
     // both instruments have to prove they read something real first.
     it("the instrument should reach the repository's real directories", () => {
         expect(tracked).toEqual(
-            expect.arrayContaining(["src", "webview", "shared", "jot", "scripts"]),
+            expect.arrayContaining(["src", "webview", "shared", "mac", "scripts"]),
         );
         expect(tracked.length).toBeGreaterThan(10);
         expect(denied.size).toBeGreaterThan(10);
@@ -131,15 +131,15 @@ describe("vscodeignore coverage", () => {
     });
 
     it("a re-include should stop its directory counting as denied", () => {
-        // The failure this rules out: reading `!jot/**` as a directory named
-        // `!jot` leaves the `jot/**` above it counted, so the guard passes
+        // The failure this rules out: reading `!mac/**` as a directory named
+        // `!mac` leaves the `mac/**` above it counted, so the guard passes
         // while the directory ships. Each case below is a different way that
         // could go wrong, and the last two must NOT be treated as re-includes.
-        expect(deniedDirectories("jot/**").has("jot")).toBe(true);
-        expect(deniedDirectories("jot/**\n!jot/**").has("jot")).toBe(false);
-        expect(deniedDirectories("jot/**\n!jot/Resources/**").has("jot")).toBe(false);
-        expect(deniedDirectories("jot/**\n# !jot/**").has("jot")).toBe(true);
-        expect(deniedDirectories("jot/**\nmedia/*.svg").has("media")).toBe(false);
+        expect(deniedDirectories("mac/**").has("mac")).toBe(true);
+        expect(deniedDirectories("mac/**\n!mac/**").has("mac")).toBe(false);
+        expect(deniedDirectories("mac/**\n!mac/Resources/**").has("mac")).toBe(false);
+        expect(deniedDirectories("mac/**\n# !mac/**").has("mac")).toBe(true);
+        expect(deniedDirectories("mac/**\nmedia/*.svg").has("media")).toBe(false);
     });
 
     it("a directory justified as shipped should still exist", () => {

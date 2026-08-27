@@ -678,7 +678,7 @@ const topbarTb = topbar
         async (file: File, altText: string) => handleImageFile(file, altText),
         // A host with no project to enumerate gets no Project tab: the panel's
         // `if (!onGetProjectImages)` branch hides it and opens on URL. Passing
-        // this unconditionally made Jot ask a question nothing answered, and
+        // this unconditionally made the Mac app ask a question nothing answered, and
         // the tab sat on "Loading..." until the ten-second timeout (MAR-401).
         hostHas("projectImages") ? async (id: string) => handleGetProjectImages(id) : undefined,
         { open: () => findBar.open(), toggle: () => findBar.toggle() },

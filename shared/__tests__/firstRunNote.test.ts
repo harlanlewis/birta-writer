@@ -20,11 +20,11 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { recognizeEmbed, type EmbedKind } from "../embedProviders";
 import { providerCardGateOpen } from "../../webview/utils/embedProviders";
-import { JOT_PRODUCT_NAME } from "../product";
+import { MAC_APP_NAME } from "../product";
 
 const root = path.resolve(__dirname, "../..");
 const swift = readFileSync(
-    path.join(root, "jot/Sources/BirtaJotCore/FirstRunNote.swift"), "utf8");
+    path.join(root, "mac/Sources/BirtaWriterCore/FirstRunNote.swift"), "utf8");
 const sample = readFileSync(path.join(root, "samples/content-inventory.md"), "utf8");
 
 /** The tour's markdown: the one multi-line literal in that file. */
@@ -125,7 +125,7 @@ describe("the first-run tour", () => {
         const links = bareLinks(markdown());
         expect(links.length).toBeGreaterThanOrEqual(2);
 
-        // Exactly the defaults: `network` absent reads false, and Jot ties
+        // Exactly the defaults: `network` absent reads false, and the Mac app ties
         // `embedsEnabled` to it, so this is the more generous of the two
         // surfaces and still refuses.
         let asked = 0;
@@ -194,6 +194,6 @@ describe("the first-run tour", () => {
         // Not pinned to the heading: the tour opens on what the reader just
         // DID rather than on a masthead, so the name lands in the prose. What
         // matters is that it appears and is the shared spelling.
-        expect(markdown()).toContain(JOT_PRODUCT_NAME);
+        expect(markdown()).toContain(MAC_APP_NAME);
     });
 });

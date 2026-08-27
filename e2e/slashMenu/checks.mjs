@@ -334,7 +334,7 @@ export async function run({ page, check, baseUrl }) {
     // The gutter is for a run that can still be stopped, so a failure leaves
     // it. WHERE the reason appears depends on the host: this page is the VS
     // Code profile, which raises its own notification, so nothing is drawn in
-    // the corner. e2e/jotHost holds the arm where the corner is the only place
+    // the corner. e2e/macHost holds the arm where the corner is the only place
     // it can appear.
     const afterFailure = await page.evaluate(() => ({
         markers: document.querySelectorAll(".ProseMirror .agent-pending").length,

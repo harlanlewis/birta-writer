@@ -2,7 +2,7 @@
  * Pasting an image into an EMPTY document must put its reference in the
  * document, not only save the file.
  *
- * This is Birta Jot's opening gesture: summon the scratchpad, paste a
+ * This is Birta Writer for Mac's opening gesture: summon the scratchpad, paste a
  * screenshot. Found by driving the real panel, where the bytes reached disk and
  * the document stayed empty, so the user saw nothing happen and the file was
  * there all along.

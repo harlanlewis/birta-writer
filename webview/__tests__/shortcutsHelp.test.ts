@@ -114,7 +114,7 @@ describe("shortcutsHelp — lazy build and toggling", () => {
  * Every other test in this file loads a harness with no `host` key at all, so
  * `hostShortcuts()` answers `[]` and the whole of this loop was dead in jsdom:
  * the section-change detection, the fallback heading, and whether a declared
- * key prints at all. The one thing exercising it was `e2e/jotHost`, which is
+ * key prints at all. The one thing exercising it was `e2e/macHost`, which is
  * advisory, paths filtered, and cannot block a pull request.
  *
  * The contract these hold, as the panel states it: one heading per section, in

@@ -400,7 +400,7 @@ export function createMessageHandlers(
                         // out, and each says something the page cannot: VS
                         // Code that the file on disk holds the agent's full
                         // version and Compare on the drift badge shows both
-                        // (`reportAgentMerge`), Jot which file its copy was
+                        // (`reportAgentMerge`), the Mac app which file its copy was
                         // kept in (`Coordinator.settleAgentRescue`). A second
                         // account from here would be the same event twice, in
                         // the vaguer of the two voices.

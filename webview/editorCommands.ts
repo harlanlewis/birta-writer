@@ -894,7 +894,7 @@ export const editorCommands: Record<EditorCommandId, EditorCommandFn> = {
     insertFootnote: (getEditor) => insertFootnote(getEditor),
     // The clock is read HERE, once per invocation, and never cached. A panel
     // that stays open across midnight is the ordinary case for Birta Writer
-    // Jot, and a date computed when the module loaded would be yesterday's.
+    // for Mac, and a date computed when the module loaded would be yesterday's.
     insertDate: (getEditor) =>
         runProse(getEditor, (view) => openDateChooser(view, toCalendarDate(new Date()))),
     insertToday: (getEditor) => insertRelativeDate(getEditor, "today"),

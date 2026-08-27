@@ -17,12 +17,12 @@ const VSIX = "releases/birta-writer-0.0.0.vsix";
 // resolves extension ids case-insensitively, so this is about staying honest to
 // the registry, not about the CLI caring.
 const CURRENT_ID = "BirtaLabs.birta-writer";
-// The app this handoff installs, spelled once. `jot/scripts/build-app.sh`
+// The app this handoff installs, spelled once. `mac/scripts/build-app.sh`
 // composes the same name from the flavour suffix in `AppFlavor.swift`, and
 // nothing relates a printed string to a bundle on disk, so a rename left six
 // messages here naming an app that no longer existed. `appFlavor.test.ts`
 // holds this literal to the composed name.
-const JOT_APP_NAME = "Birta Writer [DEV]";
+const DEV_APP_NAME = "Birta Writer [DEV]";
 // The VS Code `code` CLI is often not on PATH on macOS even when VS Code is
 // installed — fall back to the app-bundle binary before giving up.
 const CODE_FALLBACK =
@@ -60,46 +60,46 @@ function resolveCodeCli() {
 
 /**
  * Build and install the Mac app too, so the handoff leaves BOTH surfaces running
- * the tree the session just finished. Jot embeds dist/webview.js, which
+ * the tree the session just finished. The Mac app embeds dist/webview.js, which
  * packaging above has already produced in production form, so this only builds
  * the Swift shell and swaps the app.
  *
  * Unconditional on macOS by design. Almost every change that reaches the editor
- * reaches Jot, since it is the same bundle; a rule for deciding when to skip
- * would be one more thing to get wrong, and a stale Jot is invisible until you
- * summon it and find yesterday's build.
+ * reaches the Mac app, since it is the same bundle; a rule for deciding when to
+ * skip would be one more thing to get wrong, and a stale app is invisible until
+ * you summon it and find yesterday's build.
  *
- * Skipped rather than failed when the machine cannot do it: Jot is macOS-only,
+ * Skipped rather than failed when the machine cannot do it: the app is macOS-only,
  * and Swift is not everywhere. The extension install is the part that must not
  * be held up by a missing toolchain.
  */
-function installJot() {
+function installMacApp() {
     if (process.platform !== "darwin") {
-        console.log(`\ninstall-local: not macOS, so ${JOT_APP_NAME} was skipped (it is a macOS app).`);
+        console.log(`\ninstall-local: not macOS, so ${DEV_APP_NAME} was skipped (it is a macOS app).`);
         return;
     }
     if (tryCapture("swift", ["--version"]) === null) {
         console.log(
-            `\ninstall-local: no \`swift\` on PATH, so ${JOT_APP_NAME} was skipped. ` +
-                "Install the Xcode Command Line Tools, then: pnpm jot:install",
+            `\ninstall-local: no \`swift\` on PATH, so ${DEV_APP_NAME} was skipped. ` +
+                "Install the Xcode Command Line Tools, then: pnpm mac:install",
         );
         return;
     }
-    step(`building and installing ${JOT_APP_NAME}`);
+    step(`building and installing ${DEV_APP_NAME}`);
     try {
         // The DEVELOPMENT flavour, and it must stay that way: the handoff
         // never touches the release copy, which is the one holding somebody's
         // notes. The two coexist through a separate bundle id, defaults
         // domain, note, and hotkey, and the development one never updates
-        // itself. `BirtaJotCore.AppFlavor` holds that list.
-        run("bash", ["jot/scripts/install-app.sh", "--build", "--dev"]);
+        // itself. `BirtaWriterCore.AppFlavor` holds that list.
+        run("bash", ["mac/scripts/install-app.sh", "--build", "--dev"]);
     } catch {
         // A refusal here is usually a running copy that would not quit, which
         // the script explains on its own. The extension is already installed by
         // this point and that must not be reported as a failure.
         console.log(
-            `install-local: ${JOT_APP_NAME} was not replaced (see the message above). ` +
-                "The extension install above is unaffected; re-run `pnpm jot:install` when ready.",
+            `install-local: ${DEV_APP_NAME} was not replaced (see the message above). ` +
+                "The extension install above is unaffected; re-run `pnpm mac:install` when ready.",
         );
     }
 }
@@ -124,7 +124,7 @@ if (code === null) {
             `built and packaged ${VSIX}, but skipped install. Install VS Code, or ` +
             `run: code --install-extension ${VSIX} --force`,
     );
-    installJot();
+    installMacApp();
     process.exit(0);
 }
 
@@ -153,12 +153,12 @@ if (copies.length === 1 && copies[0].toLowerCase() === CURRENT_ID.toLowerCase())
     process.exit(1);
 }
 
-// 5. Install the development flavour of Jot, the macOS shell, from the same build.
-installJot();
+// 5. Install the development flavour of the Mac app, from the same build.
+installMacApp();
 
 console.log(
     "\n✓ Installed. Reload to run the new build: " +
         'Cmd+Shift+P → "Developer: Reload Window".' +
-        `\n  ${JOT_APP_NAME} needs no reload: it was replaced and relaunched if it was running.\n` +
+        `\n  ${DEV_APP_NAME} needs no reload: it was replaced and relaunched if it was running.\n` +
         "  It sits beside the release copy and keeps its own note, hotkey and settings.",
 );
