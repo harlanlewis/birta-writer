@@ -325,7 +325,7 @@ async function sampleTyping(browser, url, content, keys, fixture = "?", side = "
     }
     await page.waitForTimeout(150);
 
-    const { durations, longtasks, caret, rescans } = await page.evaluate(() => ({
+    const { durations, longtasks, caret, rescans, work } = await page.evaluate(() => ({
         durations: performance.getEntriesByName("mdw:tx-apply").map((e) => e.duration),
         // Delivered entries plus a takeRecords() flush — observer dispatch
         // is queued, not guaranteed ordered before this task, so drain the
@@ -335,6 +335,20 @@ async function sampleTyping(browser, url, content, keys, fixture = "?", side = "
             : null,
         caret: performance.getEntriesByName("mdw:tx-select").map((e) => e.duration),
         rescans: performance.getEntriesByName("mdw:proofread-rescan").map((e) => e.duration),
+        // Work COUNTS, not durations: every `countWork` mark the burst stamped
+        // (webview/perf.ts). Reported so an investigator can see how much a
+        // keystroke handed across a boundary, which is the quantity a
+        // complexity defect moves and a duration only hints at. The gate for
+        // this lives in `webview/__tests__/perKeystrokeWork.test.ts`, where it
+        // costs nothing and cannot flake; here it is context.
+        work: performance.getEntriesByType("mark")
+            .filter((e) => e.detail && typeof e.detail === "object")
+            .reduce((acc, e) => {
+                for (const [k, v] of Object.entries(e.detail)) {
+                    if (typeof v === "number") { acc[`${e.name}.${k}`] = (acc[`${e.name}.${k}`] ?? 0) + v; }
+                }
+                return acc;
+            }, {}),
     }));
     await page.close();
     const where = side ? `${side} bundle, fixture "${fixture}"` : `fixture "${fixture}"`;
@@ -352,6 +366,7 @@ async function sampleTyping(browser, url, content, keys, fixture = "?", side = "
         durations,
         caret,
         rescans,
+        work,
         blockMs: longtasks ? round(longtasks.reduce((s, d) => s + d, 0)) : null,
         blockTasks: longtasks ? longtasks.length : null,
     };
@@ -382,6 +397,9 @@ async function measureFixture(chromium, baseUrl, content, keys, fixture) {
         // (proofreading off, or a bundle predating the measure).
         rescanMs: s.rescans && s.rescans.length ? stats(s.rescans).median : null,
         rescanCount: s.rescans ? s.rescans.length : 0,
+        // Zero-variance, so it is printed as the raw total rather than a
+        // median: the same burst produces the same number on any machine.
+        work: s.work ?? {},
     };
 }
 
@@ -420,6 +438,24 @@ async function measureMode(only, keys, jsonOut, flags = null) {
     console.log(widths.map((w) => "─".repeat(w)).join("  "));
     for (const r of rows) console.log(fmt(r));
     console.log("");
+
+    // Work counts, printed under the table rather than as a column: there is
+    // one line per counter per fixture and the set grows as more boundaries are
+    // instrumented, so a column would have to be chosen for and would go stale.
+    //
+    // Read these ACROSS fixtures, not down them. A count that climbs with the
+    // fixture size is per-keystroke work scaling with the document, which is a
+    // complexity defect and the thing no timing column here can tell you
+    // apart from a slow machine.
+    const counted = Object.entries(report.fixtures).filter(([, f]) => Object.keys(f.work ?? {}).length);
+    if (counted.length) {
+        console.log("work handed across an instrumented boundary during the burst (counts, not ms):\n");
+        for (const [name, f] of counted) {
+            const parts = Object.entries(f.work).map(([k, v]) => `${k}=${v}`).join("  ");
+            console.log(`  ${name.padEnd(12)} ${parts}`);
+        }
+        console.log("");
+    }
 
     if (jsonOut) {
         await writeFile(jsonOut, JSON.stringify(report, null, 2));

@@ -77,6 +77,27 @@
           syncVersion: 0,
         }, "*");
       }
+      // Answer the proofread lint request, because a host that never answers
+      // is not a host state any user is in, and the page behaves differently
+      // in it: findings are remembered by block text, so a request that is
+      // never answered teaches the page nothing and every later rescan asks
+      // about the whole document again. Measured against a silent stub, the
+      // per-keystroke cost of proofreading is therefore the cost of a path the
+      // shipped product does not take.
+      //
+      // Answered with no findings, which is a real host answer (a clean
+      // paragraph) and keeps the harness deterministic. What that still does
+      // NOT measure is the decoration-building half, which scales with how
+      // much a document actually trips: `buildLintDecorations` runs here but
+      // builds nothing. Seeding findings would mean inventing the host's
+      // opinion, so that half stays uncovered rather than covered wrongly.
+      if (msg.type === "lintBlocks") {
+        window.postMessage({
+          type: "lintResults",
+          id: msg.id,
+          results: (msg.blocks || []).map((b) => ({ key: b.key, lints: [] })),
+        }, "*");
+      }
     },
     getState: () => undefined,
     setState: () => {},

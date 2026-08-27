@@ -45,7 +45,7 @@ import { lookupLints, rememberLints } from "../proofread/lintCache";
 import { hideLintPopup, showFindingsPopup, type PopupButton, type PopupFinding } from "../proofread/popup";
 import { notifyLintBlocks } from "../messaging";
 import { requestIdle } from "../utils/idle";
-import { clearMeasures, mark, measure, measureSpan } from "../perf";
+import { clearMeasures, countWork, mark, measure, measureSpan } from "../perf";
 import { t } from "../i18n";
 
 const SCAN_DEBOUNCE_MS = 350;
@@ -846,6 +846,15 @@ export const proofreadPlugin = $prose(() => {
                         lintRequests.delete(oldest.value);
                     }
                     const asking = lintBlocksToAsk(requested);
+                    // How much this rescan is about to hand across the host
+                    // boundary, as a count. The host's checker is not free and
+                    // is not always on a spare thread, so this number IS the
+                    // cost, and it must not grow with the document when the edit
+                    // did not (`webview/__tests__/perKeystrokeWork.test.ts`).
+                    countWork("lint-request", {
+                        blocks: asking.length,
+                        chars: asking.reduce((n, b) => n + b.text.length, 0),
+                    });
                     // Nothing new to ask about: the answer is already known, so
                     // it is applied here rather than after a round trip the host
                     // would spend a whole-document check answering. This is the

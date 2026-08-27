@@ -347,4 +347,12 @@ const xlarge = (() => {
 // tiny isolates the fixed per-keystroke floor; medium/large/xlarge give the
 // document-size scaling curve; link-heavy isolates the embed recognizer's
 // per-keystroke cost (the plugin re-walks bare links on every doc change).
-export const TYPING_FIXTURES = { tiny, medium, large, xlarge, "link-heavy": linkHeavy };
+//
+// `realistic` is here because SHAPE is a variable of its own and the four sizes
+// above hold it constant: every one of them is built from `richSection`, whose
+// paragraphs are short and wrapped. A per-keystroke cost budgeted in BLOCKS
+// cannot tell twenty one-line bullets from twenty 900-character paragraphs, and
+// nothing in this list could tell the gate which of the two it was measuring.
+// The launch gate has carried this fixture all along; the typing one was blind
+// to it.
+export const TYPING_FIXTURES = { tiny, medium, large, xlarge, "link-heavy": linkHeavy, realistic };
