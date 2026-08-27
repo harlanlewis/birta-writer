@@ -574,6 +574,11 @@
                 "category": "Birta Writer"
             },
             {
+                "command": "birta.editor.toggleProofreading",
+                "title": "%command.editor.toggleProofreading.title%",
+                "category": "Birta Writer"
+            },
+            {
                 "command": "birta.editor.toggleSpellCheck",
                 "title": "%command.editor.toggleSpellCheck.title%",
                 "category": "Birta Writer"
@@ -586,6 +591,11 @@
             {
                 "command": "birta.editor.toggleStyleCheck",
                 "title": "%command.editor.toggleStyleCheck.title%",
+                "category": "Birta Writer"
+            },
+            {
+                "command": "birta.editor.toggleStyleOption",
+                "title": "%command.editor.toggleStyleOption.title%",
                 "category": "Birta Writer"
             },
             {
@@ -1317,6 +1327,10 @@
                     "when": "activeCustomEditorId == 'birta.editor'"
                 },
                 {
+                    "command": "birta.editor.toggleProofreading",
+                    "when": "false"
+                },
+                {
                     "command": "birta.editor.toggleSpellCheck",
                     "when": "activeCustomEditorId == 'birta.editor'"
                 },
@@ -1327,6 +1341,10 @@
                 {
                     "command": "birta.editor.toggleStyleCheck",
                     "when": "activeCustomEditorId == 'birta.editor'"
+                },
+                {
+                    "command": "birta.editor.toggleStyleOption",
+                    "when": "false"
                 },
                 {
                     "command": "birta.editor.toggleNoteHighlights",

@@ -8,6 +8,11 @@ import BirtaJotCore
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem?
     private var statusMenu: NSMenu!
+    /// The View menu, kept so `menuNeedsUpdate` can tell it from the other two
+    /// menus that share this delegate. Without the identity check the status
+    /// item's Show/Hide retitle would run on every File and View opening, and
+    /// the View menu's own repaint on every status-menu one.
+    private var viewMenu: NSMenu?
     /// The app's windows, and the process-wide things that used to live in
     /// the one window there was. `WindowSet` holds why.
     private let windows = WindowSet()
@@ -294,10 +299,44 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: menus
 
+    /// The menu bar, built. The two menus AppKit has to be TOLD about travel
+    /// beside it rather than being found again by title.
+    ///
+    /// Building and installing are separate because installing is what has
+    /// side effects: assigning `NSApp.windowsMenu` is what makes the system
+    /// insert its tiling rows and append the window list, and `NSApp.helpMenu`
+    /// brings the search field. A check that wants to read the bar back should
+    /// not have to change the running app to do it, and the alternative to
+    /// this seam was widening `buildMainMenu` so a test could poke it.
+    struct MainMenu {
+        let menu: NSMenu
+        let windows: NSMenu
+        let help: NSMenu
+    }
+
     /// The main menu is invisible for an accessory app but load-bearing: key
     /// equivalents route through it, and Cmd+C/V/X/Z inside the WKWebView
     /// only work when an Edit menu with the standard selectors exists.
     private func buildMainMenu() {
+        let built = mainMenu()
+        // The assignment is what makes AppKit insert its own rows and append
+        // the window list; see `JotMenu.windowMenu`.
+        NSApp.windowsMenu = built.windows
+        // The system's search field arrives with the assignment, and it
+        // searches menu items, which is how a reader finds a row buried in a
+        // submenu of Format.
+        NSApp.helpMenu = built.help
+        // Once over the whole tree, submenus included. The file, view and
+        // status menus also clear theirs on every opening through
+        // `menuNeedsUpdate`, which is where a menu whose ITEMS change needs
+        // it; these are built once and do not change, so once is where it
+        // belongs.
+        AppDelegate.suppressAutomaticIcons(in: built.menu)
+        NSApp.mainMenu = built.menu
+    }
+
+    /// Build the bar, install nothing.
+    func mainMenu() -> MainMenu {
         let main = NSMenu()
 
         let appMenu = NSMenu(title: AppFlavor.current.displayName)
@@ -352,38 +391,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         JotMenu.add(.edit, to: editMenu, target: self)
         let editItem = NSMenuItem(); editItem.submenu = editMenu; main.addItem(editItem)
 
-        // File, Edit, Format, View, Window, Help: the standard order, whose
-        // rule is that the menus naming the more universal object sit to the
-        // left. Any menu of Jot's own would land between View and Window,
-        // where the app-specific ones go; there is none today.
+        // File, Edit, View, Format, Window, Help. The rule is that the menus
+        // naming the more universal object sit to the left, and View is about
+        // the window rather than about the document, so it goes above the menu
+        // that writes in the file. Mail is the system app with this exact
+        // shape: File, Edit, View, then its own menus, then Format, Window,
+        // Help. Any further menu of Jot's own would land beside Format,
+        // between View and Window, where the app-specific ones go.
+        let viewMenu = NSMenu(title: "View")
+        JotMenu.add(.view, to: viewMenu, target: self)
+        // The rows that draw live state (the proofreading checkmarks, and the
+        // outline row's Show/Hide title) are repainted on every opening, which
+        // is what a menu whose ITEMS change needs; `menuNeedsUpdate` tells this
+        // menu from the others by identity.
+        self.viewMenu = viewMenu
+        viewMenu.delegate = self
+        let viewItem = NSMenuItem(); viewItem.submenu = viewMenu; main.addItem(viewItem)
+
         let formatMenu = NSMenu(title: "Format")
         JotMenu.add(.format, to: formatMenu, target: self)
         let formatItem = NSMenuItem(); formatItem.submenu = formatMenu; main.addItem(formatItem)
 
-        let viewMenu = NSMenu(title: "View")
-        JotMenu.add(.view, to: viewMenu, target: self)
-        let viewItem = NSMenuItem(); viewItem.submenu = viewMenu; main.addItem(viewItem)
-
         let windowMenu = JotMenu.windowMenu()
         let windowItem = NSMenuItem(); windowItem.submenu = windowMenu; main.addItem(windowItem)
-        // The assignment is what makes AppKit insert its own rows and append
-        // the window list; see `JotMenu.windowMenu`.
-        NSApp.windowsMenu = windowMenu
 
-        // The system's search field arrives with the assignment, and it
-        // searches menu items, which is how a reader finds a row buried in a
-        // submenu of Format.
         let helpMenu = NSMenu(title: "Help")
         JotMenu.add(.help, to: helpMenu, target: self)
         let helpItem = NSMenuItem(); helpItem.submenu = helpMenu; main.addItem(helpItem)
-        NSApp.helpMenu = helpMenu
 
-        // Once over the whole tree, submenus included. The file and status
-        // menus also clear theirs on every opening through `menuNeedsUpdate`,
-        // which is where a menu whose ITEMS change needs it; these are built
-        // once and do not change, so once is where it belongs.
-        AppDelegate.suppressAutomaticIcons(in: main)
-        NSApp.mainMenu = main
+        return MainMenu(menu: main, windows: windowMenu, help: helpMenu)
     }
 
     /// The menu-bar item's menu, on Control-click and right-click, where a
@@ -534,8 +570,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// command is the shape this replaces, and it does not survive a table
     /// this size.
     @objc func menuRunEditorCommand(_ sender: NSMenuItem) {
-        guard let command = sender.representedObject as? String else { return }
-        front?.runEditorCommand(command)
+        guard let command = sender.representedObject as? JotMenu.Command else { return }
+        front?.runEditorCommand(command.id, arg: command.arg)
     }
 
     /// Open the destination a Help row carries, in the browser.
@@ -678,17 +714,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
 extension AppDelegate: NSMenuDelegate, NSMenuItemValidation {
     func menuNeedsUpdate(_ menu: NSMenu) {
-        // The hotkey as a real key equivalent, not as text appended to the
-        // title: AppKit then draws it where every other menu draws one, right
-        // aligned and dimmed. It binds nothing new, because a status item's
-        // menu is not searched for key equivalents; the global hotkey is
-        // registered with Carbon and works whatever has focus.
-        let combo = windows.hotkey.combo ?? Prefs.hotkey
-        showItem.title = windows.isAnyVisible ? "Hide \(AppFlavor.current.displayName)" : "Show \(AppFlavor.current.displayName)"
-        showItem.keyEquivalent = combo.menuKeyEquivalent
-        showItem.keyEquivalentModifierMask = combo.menuModifierMask
+        // Three menus share this delegate and each wants a different thing, so
+        // the first question is which one arrived. It used to be nobody's
+        // question, and the status item's retitle ran on every File opening.
+        if menu === statusMenu {
+            // The hotkey as a real key equivalent, not as text appended to the
+            // title: AppKit then draws it where every other menu draws one,
+            // right aligned and dimmed. It binds nothing new, because a status
+            // item's menu is not searched for key equivalents; the global
+            // hotkey is registered with Carbon and works whatever has focus.
+            let combo = windows.hotkey.combo ?? Prefs.hotkey
+            showItem.title = windows.isAnyVisible ? "Hide \(AppFlavor.current.displayName)" : "Show \(AppFlavor.current.displayName)"
+            showItem.keyEquivalent = combo.menuKeyEquivalent
+            showItem.keyEquivalentModifierMask = combo.menuModifierMask
+        } else if menu === viewMenu {
+            JotMenu.applyState(AppDelegate.menuState(), to: menu)
+        }
 
         AppDelegate.suppressAutomaticIcons(in: menu)
+    }
+
+    /// What the View menu's stateful rows draw, read at the moment it opens.
+    ///
+    /// From the host's own stored answers rather than from the page, because
+    /// there is no page-to-host push for the proofread config and a menu that
+    /// asked for one would have to draw something while it waited. The page
+    /// posts every one of these as the reader flips it (`setProofreadOption`,
+    /// `setNoteHighlight`, `tocVisibility`) and the shell stores it, so what is
+    /// stored IS what the page is showing.
+    static func menuState() -> MenuState {
+        MenuState(proofreadOptions: Prefs.proofreadOptions,
+                  noteHighlight: Prefs.noteHighlight,
+                  tocShown: Prefs.tocVisibility == "shown")
     }
 
     /// Enablement for the main menu and the status menu, which keep their items

@@ -66,23 +66,26 @@ enum JotMenu {
             }
         }
 
-        /// Whether AppKit appends rows of its own after this table's, so the
-        /// menu needs a trailing separator to keep them in a section of their
-        /// own.
-        ///
-        /// One menu does: a menu titled View gets Enter Full Screen appended,
-        /// and it arrives carrying an IMAGE. macOS aligns the titles in a
-        /// separator-delimited section against the widest image column in it,
-        /// so without a rule between them every row in this table's last group
-        /// is indented by the width of a glyph none of them has, lined up
-        /// against blank space. Four rows read that way before Folding became a
-        /// submenu, and moving them would only have handed the indent to
-        /// whichever group ended up last.
-        ///
-        /// The Window menu is not one of these. It is built by `windowMenu()`
-        /// with its own separators, and the rows AppKit inserts there go into
-        /// the middle rather than after the end.
-        var systemAppendsRows: Bool { self == .view }
+    }
+
+    /// What a command row hands its router.
+    ///
+    /// The id alone was enough while no menu row ran a command that takes an
+    /// argument. `toggleStyleOption` does: one command for all fourteen style
+    /// categories, each row naming its own, which is what keeps the submenu
+    /// derived from `StyleCategory` instead of costing a command apiece in
+    /// `shared/editorCommands.ts` and in the four hand-written tables that
+    /// have to grow with it.
+    struct Command: Hashable {
+        let id: String
+        /// The command's argument, for the commands that take one. Carried to
+        /// the page as the `args` the editor-command message already has.
+        let arg: String?
+
+        init(_ id: String, arg: String? = nil) {
+            self.id = id
+            self.arg = arg
+        }
     }
 
     /// What a row does when it is picked.
@@ -90,7 +93,7 @@ enum JotMenu {
         /// One of the delegate's own methods (New Note, Save, Settings).
         case app(Selector)
         /// An editor command id (`shared/editorCommands.ts`), run in the page.
-        case command(String)
+        case command(String, arg: String? = nil)
         /// A URL the About window already names, opened in the browser.
         case link(AboutLink)
         /// A row that opens a submenu holding the rows that name it.
@@ -122,17 +125,24 @@ enum JotMenu {
         /// selector reads exactly one kind, so one field serves both.
         var payload: Any? {
             switch self {
-            case let .command(id): return id
+            case .command: return command
             case let .link(link): return link.url
             case .app, .submenu, .recents: return nil
             }
         }
 
-        /// The editor command this row runs, for the page's declaration.
-        var commandId: String? {
-            if case let .command(id) = self { return id }
+        /// The command this row runs, argument included.
+        ///
+        /// The whole of it, because the argument is what tells two rows of the
+        /// same command apart, and fourteen of them share `toggleStyleOption`.
+        var command: Command? {
+            if case let .command(id, arg) = self { return Command(id, arg: arg) }
             return nil
         }
+
+        /// The editor command this row runs, for the page's declaration, which
+        /// resolves a chord by command id and has no use for the argument.
+        var commandId: String? { command?.id }
 
         /// Whether this row opens a submenu, so the count of them can be
         /// derived from the table rather than written down beside it. True of
@@ -142,6 +152,31 @@ enum JotMenu {
             switch self {
             case .submenu, .recents: return true
             case .app, .command, .link: return false
+            }
+        }
+    }
+
+    /// How a row draws the live state of the thing it toggles.
+    ///
+    /// The table had no way to say this, so the outline row was one row rather
+    /// than a Show/Hide pair and every check row was a switch with no visible
+    /// position. Both wanted the same fact (`MenuToggle`) and differ only in
+    /// how they show it, which is why this is one mechanism and not two:
+    /// `AppDelegate.menuNeedsUpdate` repaints the whole menu from one
+    /// `MenuState` on every opening.
+    enum RowState {
+        /// A checkmark saying whether the thing is on.
+        case checkmark(MenuToggle)
+        /// A title naming what picking the row will DO, which is the opposite
+        /// of what is on screen. `Row.title` is what it says while the thing is
+        /// off; this is what it says while it is on.
+        case title(MenuToggle, whenOn: String)
+
+        /// The fact this row draws, whichever way it draws it.
+        var toggle: MenuToggle {
+            switch self {
+            case let .checkmark(toggle): return toggle
+            case let .title(toggle, _): return toggle
             }
         }
     }
@@ -161,9 +196,13 @@ enum JotMenu {
         /// between consecutive rows OF THE SAME CONTAINER. Counted per
         /// container, so a submenu's groups are its own.
         let group: Int
+        /// What this row draws of the state it toggles, or nil for a row whose
+        /// title and appearance never change.
+        let state: RowState?
 
         init(title: String, key: String = "", modifiers: NSEvent.ModifierFlags = [],
-             action: Action, menu: Menu, submenu: String? = nil, group: Int = 0) {
+             action: Action, menu: Menu, submenu: String? = nil, group: Int = 0,
+             state: RowState? = nil) {
             self.title = title
             self.key = key
             self.modifiers = modifiers
@@ -171,6 +210,7 @@ enum JotMenu {
             self.menu = menu
             self.submenu = submenu
             self.group = group
+            self.state = state
         }
 
         /// The chord in the page's notation, which is what the cheatsheet
@@ -383,27 +423,34 @@ enum JotMenu {
     /// says: the zoom trio macOS puts at the top of every View menu, the
     /// content font, folding, and the advisory marks drawn over the text.
     ///
-    /// The two check rows are the ones the page answers by itself, and they sit
-    /// on the menu rather than in a submenu of their own: a submenu is a
-    /// promise of more than fits, and two rows behind a disclosure cost a
-    /// gesture to reach and a second to read. Check Spelling and Check Grammar
-    /// are absent because they are lints posted to a host engine this shell
-    /// does not have, and `hostHasCommand` withdraws them from the toolbar's
-    /// own menu for the same reason.
+    /// Proofreading is a submenu holding every check and its own master gate,
+    /// which is the shape the toolbar's Checks menu already has, and the reason
+    /// is that the rows would otherwise be a third of this menu. It is titled
+    /// Proofreading rather than Checks because the control names its domain
+    /// (docs/DESIGN_PRINCIPLES.md), and the master sits at the top of its own
+    /// submenu so the thing that silences the rest is read before them. Every
+    /// row in it carries a checkmark: a switch whose position you cannot see is
+    /// a switch you have to flip to read.
     ///
-    /// Folding is a submenu by that same measure read the other way: four rows
-    /// is more than fits, they are two pairs rather than four peers, and only
-    /// two of them carry a chord, so on the menu they spent four lines saying
-    /// what one disclosure says. It sits beside Font because the two are the
-    /// same kind of row, a pocket of view options, and a section holding both
-    /// reads as one. That placement is also what keeps the fold rows out of the
-    /// menu's last group, though it is not what fixes the indent that group
-    /// used to take: `Menu.systemAppendsRows` is.
+    /// Check Spelling and Check Grammar are rows here, and were absent for a
+    /// stale reason. They are lints the page posts OUT for a host to answer,
+    /// and this shell answers them: `SpellService` runs `NSSpellChecker` and
+    /// the profile declares `spellAndGrammar`. What that left was a check
+    /// running on every document with no control over it anywhere in the menu
+    /// bar, which is what "Check Grammar has no effect" turned out to mean.
     ///
-    /// Table of Contents is one row rather than a Show/Hide pair, because this
-    /// table has no way to retitle a row from what the page currently shows;
-    /// the toolbar's own button carries the state, by the classes the panel
-    /// sets on itself.
+    /// Folding is a submenu by the measure a submenu is worth: four rows is
+    /// more than fits, they are two pairs rather than four peers, and only two
+    /// of them carry a chord, so on the menu they spent four lines saying what
+    /// one disclosure says. It sits beside Font because the two are the same
+    /// kind of row, a pocket of view options, and a section holding both reads
+    /// as one.
+    ///
+    /// Table of Contents is a Show/Hide pair spelled as one row that retitles
+    /// itself, which is what `RowState.title` exists for. A row saying Show
+    /// while the panel is out is worse than one that says neither, so the
+    /// title is only allowed to change because `Prefs.tocVisibility` is a live
+    /// mirror: the page posts every explicit show and hide as it happens.
     ///
     /// Focus Mode is absent, and the withdrawal is declared on the command
     /// rather than by leaving the row out here: `absentUnder` takes it from
@@ -445,14 +492,55 @@ enum JotMenu {
         .init(title: "Unfold All",
               action: .command("unfoldAll"), menu: .view, submenu: "Folding", group: 1),
 
-        .init(title: "Table of Contents",
-              action: .command("toggleToc"), menu: .view, group: 2),
+        .init(title: "Show Table of Contents",
+              action: .command("toggleToc"), menu: .view, group: 2,
+              state: .title(.tocShown, whenOn: "Hide Table of Contents")),
 
+        .init(title: "Proofreading", action: .submenu, menu: .view, group: 3),
+        // The gate, first and alone in its group, as it leads the toolbar's
+        // Checks menu. It never rewrites the rows under it, so turning it back
+        // on restores exactly what was on before; the rows stay visible while
+        // it is off, because a menu that hid them would look like a menu that
+        // had lost them.
+        .init(title: "Proofreading",
+              action: .command("toggleProofreading"), menu: .view, submenu: "Proofreading", group: 0,
+              state: .checkmark(.proofread("proofreading"))),
+        .init(title: "Check Spelling",
+              action: .command("toggleSpellCheck"), menu: .view, submenu: "Proofreading", group: 1,
+              state: .checkmark(.proofread("spellCheck"))),
+        .init(title: "Check Grammar",
+              action: .command("toggleGrammarCheck"), menu: .view, submenu: "Proofreading", group: 1,
+              state: .checkmark(.proofread("grammarCheck"))),
         .init(title: "Check Style",
-              action: .command("toggleStyleCheck"), menu: .view, group: 3),
+              action: .command("toggleStyleCheck"), menu: .view, submenu: "Proofreading", group: 1,
+              state: .checkmark(.proofread("styleCheck"))),
+        .init(title: "Style Options", action: .submenu, menu: .view, submenu: "Proofreading", group: 1),
+        // The note-marker highlight, below the rule, governed by nothing. Same
+        // rank as the gate and separated from it rather than headed, which is
+        // the layout the toolbar's menu uses and for the argument
+        // docs/DESIGN_PRINCIPLES.md makes: the gate silences the editor's
+        // opinions about your prose, and a marker you typed is your own
+        // content, so one must not take away the other.
         .init(title: "Highlight Note Markers",
-              action: .command("toggleNoteHighlights"), menu: .view, group: 3),
-    ]
+              action: .command("toggleNoteHighlights"), menu: .view, submenu: "Proofreading", group: 2,
+              state: .checkmark(.noteHighlight)),
+    ] + styleOptionRows
+
+    /// One row per style-check category, derived from `StyleCategory` rather
+    /// than written out, and grouped by its section so the reader gets the
+    /// toolbar's three clusters with rules where that menu has headings.
+    ///
+    /// All fourteen run ONE command with the category as its argument. A
+    /// command apiece would be fourteen entries in `shared/editorCommands.ts`
+    /// and in each of the hand-written tables that must grow with it, none of
+    /// which a fifteenth category would join on its own.
+    private static let styleOptionRows: [Row] = StyleCategory.allCases.map { category in
+        Row(title: category.label,
+            action: .command("toggleStyleOption", arg: category.rawValue),
+            menu: .view, submenu: "Style Options",
+            group: StyleCategory.Section.allCases.firstIndex(of: category.section) ?? 0,
+            state: .checkmark(.proofread(category.rawValue)))
+    }
 
     // MARK: help
 
@@ -502,10 +590,15 @@ enum JotMenu {
     /// arrive after and nothing to be bracketed by, and read as arbitrary.
     ///
     /// Zoom is what a double click on the titlebar already does
-    /// (`TitlebarDrag`). Enter Full Screen is deliberately absent: the panel is
-    /// `fullScreenAuxiliary`, so it accompanies another window's full screen
-    /// rather than taking one of its own, and a row that does nothing is worse
-    /// than a row that is not there.
+    /// (`TitlebarDrag`). Enter Full Screen is deliberately absent, and it is
+    /// absent from the View menu too, which is where macOS puts it and where it
+    /// sat permanently dimmed until `BirtaJotCore.AppKitDefaults` took it away.
+    /// Moving it here rather than removing it was the other option and it is
+    /// the wrong one: every window this app shows is a `JotPanel`, which is
+    /// `.fullScreenAuxiliary` and accompanies another window's full screen
+    /// rather than taking one of its own, so the row would be as dead in this
+    /// menu as it was in that one. A row that does nothing is worse than a row
+    /// that is not there.
     ///
     /// Targets stay nil so each row travels the responder chain to whichever
     /// window is in front, which is what makes them work for the Settings and
@@ -524,14 +617,46 @@ enum JotMenu {
     }
 
     /// Append `menu`'s rows, with their chords and submenus, targeting `target`.
+    ///
+    /// No menu ends with a rule. The View menu used to, to bracket the Enter
+    /// Full Screen row macOS appended to it and stop that row's image
+    /// indenting the titles above it; `BirtaJotCore.AppKitDefaults` takes the
+    /// row away, so the rule under the last group went with the reason for it.
     @MainActor
     static func add(_ menu: Menu, to nsMenu: NSMenu, target: AnyObject) {
         fill(nsMenu, with: rows.filter { $0.menu == menu && $0.submenu == nil },
              menu: menu, target: target)
-        // The boundary the system's own rows arrive after. `systemAppendsRows`
-        // says why a menu wants one; it is written here rather than at the call
-        // site so the fact stays in the table with the rows it is about.
-        if menu.systemAppendsRows { nsMenu.addItem(.separator()) }
+    }
+
+    /// Repaint the rows of `nsMenu`, and of its submenus, that draw live state.
+    ///
+    /// Matched by the command each row already carries in `representedObject`,
+    /// which is unique across the table (`JotMenuTests` pins that): matching on
+    /// titles would go wrong the first time two menus shared a word, and a
+    /// side table of items would be a second thing to keep in step with the
+    /// menu it describes.
+    ///
+    /// Called from `menuNeedsUpdate` rather than kept up to date as things
+    /// change, because there is nothing to be up to date WITH: the page reports
+    /// each of these once, when the reader flips it, and the menu is only ever
+    /// read at the moment it opens.
+    @MainActor
+    static func applyState(_ state: MenuState, to nsMenu: NSMenu) {
+        for item in nsMenu.items {
+            // Not into the recents menu: its rows are files rather than table
+            // rows, and it fills itself.
+            if let sub = item.submenu, sub.identifier != recentsMenuIdentifier {
+                applyState(state, to: sub)
+            }
+            guard let command = item.representedObject as? Command,
+                  let row = rows.first(where: { $0.action.command == command }),
+                  let rowState = row.state else { continue }
+            let on = state.isOn(rowState.toggle)
+            switch rowState {
+            case .checkmark: item.state = on ? .on : .off
+            case let .title(_, whenOn): item.title = on ? whenOn : row.title
+            }
+        }
     }
 
     @MainActor

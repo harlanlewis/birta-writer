@@ -85,6 +85,10 @@ public enum WebviewMessage: Equatable {
     case spellAddWord(String)
     /// One row of the Checks menu, by the page's own option key.
     case setProofreadOption(key: String, value: Bool)
+    /// The in-text note-marker highlight. Not a proofreading option: it marks
+    /// up text the writer typed on purpose, so the proofreading gate does not
+    /// govern it and it is stored on its own.
+    case setNoteHighlight(Bool)
     /// "Keep this phrase" on a style hit: the flagged text is the writer's own
     /// and no check may flag it again.
     case styleAddException(String)
@@ -209,6 +213,7 @@ public enum WebviewMessage: Equatable {
         case "setProofreadOption":
             guard let key = str("key"), let value = bool("value") else { return .other(type: type) }
             return .setProofreadOption(key: key, value: value)
+        case "setNoteHighlight": return bool("enabled").map { .setNoteHighlight($0) } ?? .other(type: type)
         case "styleAddException": return str("phrase").map { .styleAddException($0) } ?? .other(type: type)
         // The page's own spellings, which are three rather than one because
         // these grew in the extension at different times: the panel reports
@@ -315,7 +320,12 @@ public enum HostMessage: Equatable {
     case hostDiagnosticsResult(id: String, diagnostics: HostDiagnostics)
     /// Run one editor command by id (shared/editorCommands.ts), the way a
     /// contributed keybinding reaches the page.
-    case editorCommand(String)
+    ///
+    /// `arg` is the command's argument for the commands that take one, sent as
+    /// the `args` field the page's message already carries and omitted where
+    /// there is none. `toggleStyleOption` is why: fourteen Style Options rows
+    /// run it, each naming its own category.
+    case editorCommand(String, arg: String? = nil)
     /// One report about an `/ai` run. `status` drives the gutter marker the
     /// page already draws for the extension.
     case agentRun(requestId: String, status: String, harness: String?, text: String?, message: String?)
@@ -422,8 +432,14 @@ public enum HostMessage: Equatable {
                     "diagnostics": diagnostics.jsonObject]
         case let .getPerfMarks(id):
             return ["type": "__getPerfMarks", "id": id]
-        case let .editorCommand(command):
-            return ["type": "editorCommand", "command": command]
+        case let .editorCommand(command, arg):
+            var row: [String: Any] = ["type": "editorCommand", "command": command]
+            // Omitted rather than sent as null, the way every other optional
+            // half of this protocol is: an absent `args` is what the page's own
+            // optional field means, and `runEditorCommand` passes it straight
+            // to a command that is not expecting one.
+            if let arg { row["args"] = arg }
+            return row
         }
     }
 
@@ -526,6 +542,10 @@ public struct BootConfig: Equatable {
     /// travels in `proofread` beside nothing else: it is stored user DATA, not
     /// a decision about which checks a host can run, which is the page's.
     public var styleExceptions: [String]
+    /// Whether the in-text note markers are tinted. Its own field rather than
+    /// an option key, because it is not a proofreading option: see
+    /// `WebviewMessage.setNoteHighlight`.
+    public var noteHighlight: Bool
     public var tocVisibility: String
     public var tocWidth: Int?
     public var networkEnabled: Bool
@@ -544,6 +564,7 @@ public struct BootConfig: Equatable {
                 contentWidth: String = "full",
                 proofreadOptions: [String: Bool] = [:],
                 styleExceptions: [String] = [],
+                noteHighlight: Bool = true,
                 tocVisibility: String = "hidden",
                 tocWidth: Int? = nil,
                 networkEnabled: Bool = false,
@@ -557,6 +578,7 @@ public struct BootConfig: Equatable {
         self.contentWidth = contentWidth
         self.proofreadOptions = proofreadOptions
         self.styleExceptions = styleExceptions
+        self.noteHighlight = noteHighlight
         self.tocVisibility = tocVisibility
         self.tocWidth = tocWidth
         self.networkEnabled = networkEnabled
@@ -665,6 +687,13 @@ public struct BootConfig: Equatable {
             // this is a list the reader built, where `proofreadingEnabled` and
             // its siblings are decisions about what a surface can run.
             "proofread": ["styleExceptions": styleExceptions],
+            // The note-marker highlight, which the page reads from its own key
+            // rather than from the proofread config, because the proofreading
+            // gate does not govern it. Sent unconditionally now that the View
+            // menu draws a checkmark for it: while nothing here remembered the
+            // answer the page silently went back to on at every load, so the
+            // menu would have had a mark it could not honour.
+            "notesHighlightMarkers": noteHighlight,
             // The panel as the reader last left it. A first launch gets
             // "hidden" rather than "auto": the page's heuristic opens the
             // sidebar once a document has a few headings, which is right for an

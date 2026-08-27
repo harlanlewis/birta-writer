@@ -1094,6 +1094,8 @@ final class Coordinator {
             spell.learn(word)
         case let .setProofreadOption(key, value):
             Prefs.rememberProofreadOption(key: key, value: value)
+        case let .setNoteHighlight(enabled):
+            Prefs.noteHighlight = enabled
         case let .styleAddException(phrase):
             // One-way, like `spellAddWord`: the page has already stopped
             // drawing the hit from its own set, and this is what makes it
@@ -3257,10 +3259,10 @@ final class Coordinator {
     /// Summoning first is what makes the key equivalents work at all from the
     /// Settings or About window, whose responder chain reaches this menu and
     /// not the panel's editor.
-    func runEditorCommand(_ command: String) {
+    func runEditorCommand(_ command: String, arg: String? = nil) {
         guard state == .warm else { return }
         show()
-        host.send(.editorCommand(command))
+        host.send(.editorCommand(command, arg: arg))
     }
 
     /// Put `content` in the editor and the file, keeping the mounted editor

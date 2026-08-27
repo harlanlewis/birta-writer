@@ -63,6 +63,7 @@ enum Prefs {
         case recentDocuments
         case proofreadOptions
         case styleExceptions
+        case noteHighlight
     }
 
     /// The keys a reset must NOT clear, each for a reason of its own.
@@ -428,6 +429,22 @@ enum Prefs {
         guard !kept.contains(phrase) else { return }
         kept.append(phrase)
         styleExceptions = kept
+    }
+
+    /// Whether the in-text note markers are tinted where they sit.
+    ///
+    /// Stored on its own rather than among the proofread options, because it is
+    /// not one: the proofreading gate silences the editor's opinions about your
+    /// prose, and a `[TK]` is text you typed on purpose, so neither governs the
+    /// other (docs/DESIGN_PRINCIPLES.md). Defaults on, as the page does.
+    ///
+    /// It is stored at all because the View menu draws a checkmark for it, and
+    /// a switch whose answer is thrown away at the next page load is one that
+    /// half works: the same argument that moved `setProofreadOption` and
+    /// `styleAddException` across this line.
+    static var noteHighlight: Bool {
+        get { (d.object(forKey: Key.noteHighlight.rawValue) as? Bool) ?? true }
+        set { d.set(newValue, forKey: Key.noteHighlight.rawValue) }
     }
 
     /// Record one row of the Checks menu.
@@ -932,6 +949,7 @@ enum Prefs {
             contentWidth: contentWidth,
             proofreadOptions: proofreadOptions,
             styleExceptions: styleExceptions,
+            noteHighlight: noteHighlight,
             tocVisibility: tocVisibility,
             tocWidth: tocWidth,
             networkEnabled: networkEnabled,

@@ -122,7 +122,7 @@ const DELIBERATELY_UNPARSED: Record<string, string> = {
     // Editor state the extension persists into workspace/global storage, and
     // Jot does not.
     //
-    // The line Jot draws, now that three of these have crossed it: it remembers
+    // The line Jot draws, now that four of these have crossed it: it remembers
     // how the WINDOW is arranged and how the text is drawn, and forgets the
     // editing and annotation preferences. Toolbar layout and visibility,
     // typography, the `viewState` bag and the outline panel's visibility, side
@@ -133,14 +133,17 @@ const DELIBERATELY_UNPARSED: Record<string, string> = {
     //
     // `reviewGroupByType` is the closest call and sits here on purpose: it is
     // a sort order inside one of the sidebar's tabs rather than a fact about
-    // where the window's furniture is. `setProofreadOption` and
-    // `styleAddException` used to sit here too and have crossed: proofreading
-    // runs on this surface now, so both are live controls, and a control whose
-    // result is thrown away on the next file opened is one that half works.
+    // where the window's furniture is. `setProofreadOption`,
+    // `styleAddException` and `setNoteHighlight` used to sit here too and have
+    // crossed: proofreading runs on this surface now, so all three are live
+    // controls, and a control whose result is thrown away on the next file
+    // opened is one that half works. The last of them crossed when the View
+    // menu gained a checkmark for it, which is the sharper form of the same
+    // argument: a menu drawing a mark for a state nothing remembers draws a
+    // mark that is wrong at every launch.
     setBlockHandles: "editor state Jot does not persist; the default stands each launch",
     setCalcAutoInsert: "editor state Jot does not persist",
     setChecklistSink: "editor state Jot does not persist",
-    setNoteHighlight: "editor state Jot does not persist",
     setPasteUnfurlAutoApply: "editor state Jot does not persist",
     setNetworkEnabled: "Jot owns the network switch in its own Settings, not from the page",
     reviewGroupByType: "editor state Jot does not persist",
