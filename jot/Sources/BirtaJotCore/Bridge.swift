@@ -689,10 +689,10 @@ public struct BootConfig: Equatable {
             "proofread": ["styleExceptions": styleExceptions],
             // The note-marker highlight, which the page reads from its own key
             // rather than from the proofread config, because the proofreading
-            // gate does not govern it. Sent unconditionally now that the View
-            // menu draws a checkmark for it: while nothing here remembered the
-            // answer the page silently went back to on at every load, so the
-            // menu would have had a mark it could not honour.
+            // gate does not govern it. It has to be sent, not left to the
+            // page's default: the View menu draws a checkmark for this, and a
+            // page that comes up with the highlight on regardless is a page the
+            // mark is wrong about at every load.
             "notesHighlightMarkers": noteHighlight,
             // The panel as the reader last left it. A first launch gets
             // "hidden" rather than "auto": the page's heuristic opens the

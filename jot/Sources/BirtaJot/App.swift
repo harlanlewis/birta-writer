@@ -715,8 +715,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 extension AppDelegate: NSMenuDelegate, NSMenuItemValidation {
     func menuNeedsUpdate(_ menu: NSMenu) {
         // Three menus share this delegate and each wants a different thing, so
-        // the first question is which one arrived. It used to be nobody's
-        // question, and the status item's retitle ran on every File opening.
+        // which one arrived has to be the first question. Answer it by identity
+        // rather than by what a menu contains: the status item's retitle and
+        // the View menu's repaint are both writes, and a write made on the
+        // wrong opening is invisible until somebody reads the menu it landed
+        // in.
         if menu === statusMenu {
             // The hotkey as a real key equivalent, not as text appended to the
             // title: AppKit then draws it where every other menu draws one,

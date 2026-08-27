@@ -957,10 +957,13 @@ export const editorCommands: Record<EditorCommandId, EditorCommandFn> = {
     toggleStyleCheck: () => host.toggleProofread?.("styleCheck"),
     // One command for every style-check category, the category in `args`. A
     // command apiece would put fourteen near-identical rows in the palette and
-    // fourteen entries in each of the tables an id has to join. An args value
-    // that is not a category key reaches `toggleProofread`, which indexes the
-    // config by it and finds nothing, so an unknown one is a no-op rather than
-    // a write.
+    // fourteen entries in each of the tables an id has to join.
+    //
+    // The argument is checked against the canonical list rather than cast: this
+    // is the one command whose payload comes from outside the page, so a host
+    // sending a name that is not a category, or the master-folded `repeated`,
+    // must reach nothing. `toggleProofread` takes a `ProofreadOptionKey` and
+    // would write a config field of that name.
     toggleStyleOption: (_getEditor, args) => {
         if (typeof args !== "string") { return; }
         if (!STYLE_CATEGORIES.some((d) => d.category === args && d.section !== null)) { return; }

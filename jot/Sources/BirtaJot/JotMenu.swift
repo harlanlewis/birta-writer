@@ -65,17 +65,16 @@ enum JotMenu {
             case .help: return "Help"
             }
         }
-
     }
 
-    /// What a command row hands its router.
+    /// What a command row hands its router: the command, and the argument for
+    /// the commands that take one.
     ///
-    /// The id alone was enough while no menu row ran a command that takes an
-    /// argument. `toggleStyleOption` does: one command for all fourteen style
-    /// categories, each row naming its own, which is what keeps the submenu
-    /// derived from `StyleCategory` instead of costing a command apiece in
-    /// `shared/editorCommands.ts` and in the four hand-written tables that
-    /// have to grow with it.
+    /// `toggleStyleOption` is the one that does, and it is what makes the
+    /// Style Options submenu derivable: fourteen rows share one command and
+    /// each names its own category, rather than costing a command apiece in
+    /// `shared/editorCommands.ts` and in each of the hand-written tables that
+    /// have to grow with an id.
     struct Command: Hashable {
         let id: String
         /// The command's argument, for the commands that take one. Carried to
@@ -158,12 +157,12 @@ enum JotMenu {
 
     /// How a row draws the live state of the thing it toggles.
     ///
-    /// The table had no way to say this, so the outline row was one row rather
-    /// than a Show/Hide pair and every check row was a switch with no visible
-    /// position. Both wanted the same fact (`MenuToggle`) and differ only in
-    /// how they show it, which is why this is one mechanism and not two:
-    /// `AppDelegate.menuNeedsUpdate` repaints the whole menu from one
-    /// `MenuState` on every opening.
+    /// One mechanism rather than two, because a checkmark and a Show/Hide title
+    /// are the same question answered in different ink: both ask a `MenuToggle`
+    /// whether the thing is on. Split them and the second row that wants the
+    /// other treatment needs a second repaint path, and the two go out of step
+    /// where nobody looks. `AppDelegate.menuNeedsUpdate` repaints every one of
+    /// them from one `MenuState`, on every opening.
     enum RowState {
         /// A checkmark saying whether the thing is on.
         case checkmark(MenuToggle)
