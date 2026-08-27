@@ -1723,6 +1723,76 @@ case "$OFF_TITLE" in
        echo "  so the probe never reached the page: \"$OFF_TITLE\"" >&2; exit 1 ;;
 esac
 
+# A SECOND WINDOW, and the only claim that matters about it: the two buffers
+# are independent. Typing into the new one must reach its own file and must not
+# reach the file the first window is on.
+#
+# Last, deliberately. Everything above is written against one window, and this
+# leaves a second one key: `__jotKeys` types into whichever window is in front,
+# and the summon toggles now show and hide the whole set.
+#
+# Autosave is off by the time this runs, so the write is asked for explicitly.
+# That is the honest way round anyway: it checks that a save reaches the right
+# file, rather than that a timer eventually does.
+PAD_BEFORE="$(cat "$BIRTA_JOT_SCRATCHPAD" 2>/dev/null || true)"
+printf '{"type":"__jotNewWindow"}' > "$SCRATCH_DIR/.debug-message.json"
+kill -URG $PID; sleep 1.2
+rm -f "$SCRATCH_DIR/.debug-message.json"
+TWO_STAMP="twowin-$(date +%s)"
+printf '{"type":"__testInsertText","text":"%s\\n"}' "$TWO_STAMP" > "$SCRATCH_DIR/.debug-message.json"
+kill -URG $PID; sleep 0.6
+rm -f "$SCRATCH_DIR/.debug-message.json"
+printf '{"type":"__jotSaveNow"}' > "$SCRATCH_DIR/.debug-message.json"
+kill -URG $PID; sleep 1.0
+rm -f "$SCRATCH_DIR/.debug-message.json"
+
+# The new note is a file in the same folder that is not the scratchpad.
+# Named by the app's own template, so it is found by content rather than by a
+# name this script would have to keep in step with NoteNameTemplate.
+TWO_FILE=""
+for f in "$SCRATCH_DIR"/*.md; do
+    [ "$f" = "$BIRTA_JOT_SCRATCHPAD" ] && continue
+    if grep -q "$TWO_STAMP" "$f" 2>/dev/null; then TWO_FILE="$f"; break; fi
+done
+if [ -z "$TWO_FILE" ]; then
+    echo "two windows          FAILED: '$TWO_STAMP' reached no file of its own" >&2
+    echo "  files beside the scratchpad:" >&2
+    ls -1 "$SCRATCH_DIR"/*.md 2>/dev/null | sed 's/^/    /' >&2
+    grep "^jot-trace writeattempt " "$LOG" | tail -3 | sed 's/^/  /' >&2
+    exit 1
+fi
+if grep -q "$TWO_STAMP" "$BIRTA_JOT_SCRATCHPAD" 2>/dev/null; then
+    echo "two windows          FAILED: typing in the new window also reached the first window's file" >&2
+    exit 1
+fi
+# ...and the first window's file was not disturbed at all, which is the half a
+# check that only looked at the new file would miss: a window that had rebound
+# both buffers onto one path would still put the stamp somewhere new.
+if [ "$(cat "$BIRTA_JOT_SCRATCHPAD" 2>/dev/null || true)" != "$PAD_BEFORE" ]; then
+    echo "two windows          FAILED: the first window's file changed while the second was typed into" >&2
+    exit 1
+fi
+echo "two windows          ok: '$TWO_STAMP' went to $(basename "$TWO_FILE") and the first note is untouched"
+
+# What a second window COSTS, measured rather than estimated: MAR-396 asks for
+# this figure and nobody had one.
+#
+# The helper set is re-diffed against the pre-launch snapshot rather than reused
+# from the idle measurement above, and that is the whole difference between a
+# figure and a wrong figure: `WK_OURS` was captured when there was one window,
+# so a helper the second window started would not be in it and the delta would
+# read as almost nothing. Whether a second WKWebView on the same origin gets a
+# WebContent process of its own is WebKit's business and not something to
+# assume in either direction, which is exactly why this counts rather than
+# reasons.
+sleep 3
+WK_TWO="$(comm -13 <(printf '%s\n' "$WC_BEFORE") <(pgrep -f com.apple.WebKit | sort || true) | tr '\n' ' ')"
+RSS_TWO=$(ps -o rss= -p $PID | tr -d ' ')
+for h in $WK_TWO; do
+    RSS_TWO=$((RSS_TWO + $(ps -o rss= -p "$h" 2>/dev/null || echo 0)))
+done
+echo "RSS with two windows $((RSS_TWO / 1024)) MB   (app + $(printf '%s' "$WK_TWO" | wc -w | tr -d ' ') WebKit helpers)"
+
 echo "idle RSS app         $((RSS_APP / 1024)) MB"
 echo "idle RSS helpers     $((RSS_HELPERS / 1024)) MB   (WebKit helpers that appeared since launch: ${WK_OURS:-none})"
 

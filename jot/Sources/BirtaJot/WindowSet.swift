@@ -68,11 +68,20 @@ final class WindowSet {
 
     /// The window a command should act on.
     ///
-    /// The key window, and the first one otherwise, which is what an accessory
-    /// app needs: it can be asked to do something from its menu-bar item while
-    /// none of its windows is key, or while it is not even frontmost.
+    /// The key window when there is one, and the most recently fronted
+    /// otherwise. The fallback is not a detail: an accessory app is regularly
+    /// asked to do something while none of its windows holds the keyboard, from
+    /// its menu-bar item, from a Dock click, or while it is not frontmost at
+    /// all. `windows` is kept in that order, oldest first, so the answer is the
+    /// last one.
+    ///
+    /// It used to be `windows.first`, which is the OLDEST window and was
+    /// indistinguishable from correct while there was one. `measure.sh` found
+    /// it immediately: it opened a second window and typed, and the keystrokes
+    /// went to the first, because a shell-driven accessory app frequently
+    /// cannot take activation and so nothing was key at all.
     var key: Coordinator? {
-        windows.first(where: \.isKey) ?? windows.first
+        windows.first(where: \.isKey) ?? windows.last
     }
 
     var isAnyVisible: Bool { windows.contains(where: \.isVisible) }
@@ -86,6 +95,8 @@ final class WindowSet {
         coordinator.onWillShow = { [weak self] in self?.capturePreviousApp() }
         coordinator.onCloseRequest = { [weak self] in self?.close(coordinator) }
         coordinator.onHotkeyChanged = { [weak self] in self?.registerHotkey() ?? -1 }
+        coordinator.onNewWindowRequest = { [weak self] in self?.newNote() }
+        coordinator.onBecameKey = { [weak self] in self?.moveToFront(coordinator) }
         windows.append(coordinator)
         return coordinator
     }
@@ -248,6 +259,14 @@ final class WindowSet {
         adopt(made)
         if let spawn { cascadePoint = made.cascade(after: spawn, from: cascadePoint) }
         return made
+    }
+
+    /// Keep `windows` in most-recently-fronted order, which is what `key`
+    /// falls back to when nothing holds the keyboard.
+    private func moveToFront(_ coordinator: Coordinator) {
+        guard windows.last !== coordinator else { return }
+        windows.removeAll { $0 === coordinator }
+        windows.append(coordinator)
     }
 
     // MARK: quitting

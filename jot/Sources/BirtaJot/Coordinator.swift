@@ -103,6 +103,14 @@ final class Coordinator {
     /// is still instant, and any other really closes.
     var onCloseRequest: (() -> Void)?
 
+    /// This window took the keyboard, so the app can keep its idea of which
+    /// window is in front true even when none of them is key later.
+    var onBecameKey: (() -> Void)?
+
+    /// Ask the app for another window, under BIRTA_JOT_MEASURE only. Making
+    /// one is the app's, so a window can only ask.
+    var onNewWindowRequest: (() -> Void)?
+
     /// Re-register the summon key after the recorder on the first-run screen
     /// has changed it. The key is one registration for the process, so this
     /// window can only ask.
@@ -439,6 +447,7 @@ final class Coordinator {
                 MainActor.assumeIsolated {
                     guard let self else { return }
                     self.titleBar.titleView.setWindowKey(key)
+                    if key { self.onBecameKey?() }
                     self.applyChromeVisibility()
                 }
             })
@@ -596,6 +605,14 @@ final class Coordinator {
             if obj["type"] as? String == "__jotSaveMissingBack" {
                 measure.mark("debug-save-missing-back")
                 saveMissingNoteBack()
+                return
+            }
+            // A second window, which a shell has no other way to ask for: the
+            // gestures that open one are a menu chord an accessory app cannot
+            // always take, and a file chooser nothing can click.
+            if obj["type"] as? String == "__jotNewWindow" {
+                measure.mark("debug-new-window")
+                onNewWindowRequest?()
                 return
             }
             if obj["type"] as? String == "__jotRename", let name = obj["name"] as? String {
