@@ -185,9 +185,11 @@ export const COMMAND_BLOCK_REACH: Record<EditorCommandId, BlockReach> = {
     decreaseFontSize: NONE,
 
     // ── Proofreading toggles ────────────────────────────────────────────────
+    toggleProofreading: NONE,
     toggleSpellCheck: NONE,
     toggleGrammarCheck: NONE,
     toggleStyleCheck: NONE,
+    toggleStyleOption: NONE,
     toggleNoteHighlights: NONE,
 
     // ── Block moves and edits: they carry an existing block, never make one ─

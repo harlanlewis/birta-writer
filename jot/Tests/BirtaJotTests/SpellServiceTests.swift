@@ -109,6 +109,50 @@ final class SpellServiceTests: XCTestCase {
         }
     }
 
+    /// Sentences whose grammar the system checker is expected to object to.
+    ///
+    /// A corpus rather than one sentence, and a FLOOR rather than every one of
+    /// them: which of these `NSSpellChecker` catches is the operating system's
+    /// business and moves between releases, so requiring all of them would be
+    /// asserting this macOS. Requiring none of them is what this replaces.
+    private static let ungrammatical = [
+        "This are a test of grammar.",
+        "The books is on the table.",
+        "She don't like it.",
+        "I has a apple.",
+        "Me and him goes to the park.",
+    ]
+
+    /// Grammar findings exist at all.
+    ///
+    /// This used to skip when the list came back empty, which is precisely the
+    /// state a broken chain produces: ask for `.spelling` alone, unpack the
+    /// details wrongly, or let the tech filter veto them, and the result is no
+    /// grammar findings and a green suite. A skip there is a check that stands
+    /// down exactly when it has something to say.
+    ///
+    /// The arm that keeps a red honest is the spelling one. If this machine's
+    /// checker answers a misspelling and objects to none of five sentences that
+    /// disagree with themselves, the checker is working and grammar is not,
+    /// which is a fact about the product and worth failing over: Check Grammar
+    /// is a row in the menu bar promising something.
+    func testTheSystemCheckerShouldObjectToUngrammaticalSentences() throws {
+        let spelling = try XCTUnwrap(
+            lint([LintBlock(key: 0, text: "This sentance has a misspelling.")]).first).lints
+        XCTAssertTrue(spelling.contains { $0.kind == "Spelling" },
+                      "the checker answered no spelling either, so this machine's checker is off")
+
+        var flagged = 0
+        for text in Self.ungrammatical {
+            let lints = try XCTUnwrap(lint([LintBlock(key: 0, text: text)]).first).lints
+            if lints.contains(where: { $0.kind == "Grammar" }) { flagged += 1 }
+        }
+        XCTAssertGreaterThan(flagged, 0,
+                             "the checker answered a misspelling and objected to none of "
+                                 + "\(Self.ungrammatical.count) ungrammatical sentences, so nothing "
+                                 + "the Check Grammar row offers reaches the reader")
+    }
+
     func testAGrammarFindingShouldUnderlineTheWordRatherThanTheSentence() throws {
         // The one piece of arithmetic in this service, and it is invisible when
         // wrong in the only way that matters: the checker returns a grammar
@@ -116,16 +160,22 @@ final class SpellServiceTests: XCTestCase {
         // detail whose range is RELATIVE to it. Take the result's range and the
         // reader gets the entire sentence underlined; take the detail's range
         // as absolute and the underline lands somewhere else entirely.
-        let text = "This are a test of grammar."
-        let lints = try XCTUnwrap(lint([LintBlock(key: 0, text: text)]).first).lints
-        let grammar = lints.filter { $0.kind == "Grammar" }
-        try XCTSkipIf(grammar.isEmpty,
-                      "this machine's checker offered no grammar finding; nothing to narrow")
-        let sentence = (text as NSString).length
-        for hit in grammar {
-            XCTAssertLessThan(hit.end - hit.start, sentence / 2,
-                              "the whole sentence was underlined instead of the word")
+        //
+        // Every sentence the corpus offers, so the narrowing is checked on
+        // whichever ones this macOS objects to rather than on one that may not
+        // be among them; the count is asserted, because a sweep that narrowed
+        // nothing is what the case above exists to catch.
+        var narrowed = 0
+        for text in Self.ungrammatical {
+            let lints = try XCTUnwrap(lint([LintBlock(key: 0, text: text)]).first).lints
+            let sentence = (text as NSString).length
+            for hit in lints where hit.kind == "Grammar" {
+                XCTAssertLessThan(hit.end - hit.start, sentence / 2,
+                                  "the whole of \"\(text)\" was underlined instead of the word")
+                narrowed += 1
+            }
         }
+        XCTAssertGreaterThan(narrowed, 0, "no grammar finding was narrowed, so this asserted nothing")
     }
 
     func testEveryOfferedSpanShouldBeInsideItsBlock() throws {

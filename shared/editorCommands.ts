@@ -279,6 +279,20 @@ export const EDITOR_COMMANDS = [
     // way back. Named for what the reader sees rather than for the number it
     // writes, which is the vocabulary every macOS View menu uses.
     { id: "resetFontSize", title: "Actual Size", palette: true, sections: [] },
+    // The master gate over spelling, grammar and style at once. The Checks
+    // menu's own top row and Jot's Proofreading row are what run it; the three
+    // domain switches below it were already commands and the gate above them
+    // was not, so a host whose only route to a control is a command could
+    // silence one check at a time and not all three.
+    //
+    // `palette: false`, and it is the only one of the four check toggles that
+    // is. The EXTENSION already contributes `birta.toggleProofreading` for the
+    // palette, and the two end in the same place: this one posts
+    // `setProofreadOption`, which `src/config.ts` writes to the same setting
+    // that command edits. So contributing it to the palette as well would put
+    // two rows reading "Toggle Proofreading" side by side, and the reader would
+    // have to pick between them with nothing to pick on.
+    { id: "toggleProofreading", title: "Toggle Proofreading", palette: false, sections: [] },
     { id: "toggleSpellCheck", title: "Check Spelling", palette: true, sections: [], hostCapability: "spellAndGrammar" },
     { id: "toggleGrammarCheck", title: "Check Grammar", palette: true, sections: [], hostCapability: "spellAndGrammar" },
     // Not gated, and its two neighbours are: style check is computed in the
@@ -286,6 +300,13 @@ export const EDITOR_COMMANDS = [
     // does. It was gated with them until a host with no lint engine turned out
     // to be losing a check it could have run.
     { id: "toggleStyleCheck", title: "Check Style", palette: true, sections: [] },
+    // One command for all fourteen style-check categories, the category key in
+    // `args` — the shape `toggleCallout` uses, and `palette: false` for the
+    // same reason: a palette row for a command that needs an argument it has no
+    // way to supply is a row that does nothing. The surfaces that name a
+    // category are the toolbar's Checks menu and Jot's Style Options submenu,
+    // and both read `webview/utils/styleCategories.ts` for the list.
+    { id: "toggleStyleOption", title: "Toggle Style Check Option", palette: false, sections: [] },
     // The in-text editor-note highlight (birta.notes.highlightMarkers). It sits
     // beside the three check toggles because it is the same kind of thing — an
     // advisory in-text annotation the user turns on and off — even though the

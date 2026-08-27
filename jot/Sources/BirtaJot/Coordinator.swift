@@ -1084,17 +1084,30 @@ final class Coordinator {
                 // `measure.sh` reads this line to say the round trip works in
                 // the real app.
                 //
-                // `chars`, `ms` and `hold` are there because this checker runs
-                // on the main thread, which is also the thread key events
-                // arrive on: what the reader needs from this line is not only
-                // that the round trip works but what it cost the caret. `ms` is
-                // the whole answer and `hold` is the longest stretch the thread
-                // was unavailable inside it, which is the half a person feels.
+                // The counts are split BY KIND, and the timings are here because
+                // this checker runs on the main thread, which is also the thread
+                // key events arrive on. Two different questions, and the line
+                // answers both.
+                //
+                // One combined total made a dead grammar chain read exactly like
+                // a working one at every level: the service's own test skipped on
+                // an empty grammar list, and this line summed the two, so "Check
+                // Grammar has no effect" was a claim nothing here could confirm
+                // or deny.
+                //
+                // `ms` is what the whole answer took and `hold` is the longest
+                // stretch the thread was unavailable inside it. `hold` is the
+                // half a person feels, and the two separate because work spread
+                // over many run-loop turns costs the same `ms` and costs the
+                // caret nothing.
+                let lints = results.flatMap { $0.lints }
+                let spelling = lints.filter { $0.kind == "Spelling" }.count
                 self.measure.trace("lint blocks=\(blocks.count) "
                     + "chars=\(blocks.reduce(0) { $0 + $1.text.count }) "
                     + "ms=\(Int(Date().timeIntervalSince(lintStart) * 1000)) "
                     + "hold=\(Int(self.spell.longestHold * 1000)) "
-                    + "lints=\(results.reduce(0) { $0 + $1.lints.count })")
+                    + "lints=\(lints.count) "
+                    + "spelling=\(spelling) grammar=\(lints.count - spelling)")
                 self.host.send(.lintResults(id: id, results: results))
             }
         case let .spellAddWord(word):
@@ -1105,6 +1118,8 @@ final class Coordinator {
             spell.learn(word)
         case let .setProofreadOption(key, value):
             Prefs.rememberProofreadOption(key: key, value: value)
+        case let .setNoteHighlight(enabled):
+            Prefs.noteHighlight = enabled
         case let .styleAddException(phrase):
             // One-way, like `spellAddWord`: the page has already stopped
             // drawing the hit from its own set, and this is what makes it
@@ -3269,10 +3284,10 @@ final class Coordinator {
     /// Summoning first is what makes the key equivalents work at all from the
     /// Settings or About window, whose responder chain reaches this menu and
     /// not the panel's editor.
-    func runEditorCommand(_ command: String) {
+    func runEditorCommand(_ command: String, arg: String? = nil) {
         guard state == .warm else { return }
         show()
-        host.send(.editorCommand(command))
+        host.send(.editorCommand(command, arg: arg))
     }
 
     /// Put `content` in the editor and the file, keeping the mounted editor

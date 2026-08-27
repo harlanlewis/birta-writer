@@ -102,17 +102,25 @@ describe("Jot's About window", () => {
     });
 
     it("should be reachable from the app menu and from the menu-bar item's menu", () => {
-        // Nothing in the Swift suite constructs an `AppDelegate`, so both
-        // rows could be deleted with every XCTest still green, and an
-        // accessory app's app menu is invisible: lose the status-menu row and
-        // most installs have no route to the window at all.
+        // An accessory app's app menu is invisible, so the status-menu row is
+        // the route most installs actually have: lose it and there is no way to
+        // the window at all.
         //
-        // `buildStatusMenu` and not `buildStatusItem`: the menu-bar ITEM is now
-        // built and destroyed by `applyMenuBarPresence`, since it comes and
-        // goes with a setting, while the menu it shows is built once and
-        // outlives any particular item. What this holds is unchanged, so follow
-        // the name rather than weakening the check.
-        for (const builder of ["buildMainMenu", "buildStatusMenu"]) {
+        // The status menu is built by nothing any XCTest constructs, which is
+        // why this reads the source. The APP menu is different now, and
+        // `JotMenuTests` reads the built one for the same row, so this is the
+        // half of that pair that survives being reformatted and the Swift one
+        // is the half that survives being renamed. Keeping both is the point:
+        // either alone leaves one of the two rows checked in one way only.
+        //
+        // FOLLOW THE NAME. `buildStatusMenu` and not `buildStatusItem`: the
+        // menu-bar ITEM comes and goes with a setting while the menu it shows
+        // is built once. `mainMenu` and not `buildMainMenu`: the bar's
+        // construction moved out of the installer so a test could read it back
+        // without assigning `NSApp.windowsMenu`, and this check followed it
+        // rather than being weakened. A guard that names a function is a guard
+        // a rename empties, with nothing to say it is reading no rows.
+        for (const builder of ["mainMenu", "buildStatusMenu"]) {
             const body = swiftFunctionBody(app, builder);
             expect(body, builder).toContain("#selector(menuOpenAbout)");
             expect(body, builder).toContain('addItem(withTitle: "About ');

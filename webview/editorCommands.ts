@@ -87,6 +87,7 @@ import { notifyAskAgent, notifyClipboardWrite, notifyOpenUrl, notifyOpenHostPref
 import { commandMutates, isReadOnly, setReadOnly } from "@/readOnly";
 import { canRetypeSelectionInPlace } from "@/blockPlacement";
 import { RELEASES_URL } from "../shared/product";
+import { STYLE_CATEGORIES } from "@/utils/styleCategories";
 import { hostHasCommand } from "../shared/hostProfile";
 import { exportHtmlLazy } from "@/export/loader";
 import { insertDateAtCaret, openDateChooser } from "@/dateInsert";
@@ -946,9 +947,28 @@ export const editorCommands: Record<EditorCommandId, EditorCommandFn> = {
     increaseFontSize: () => host.stepFontSize?.(1),
     decreaseFontSize: () => host.stepFontSize?.(-1),
     resetFontSize: () => host.resetFontSize?.(),
+    // The master gate over spelling, grammar and style at once. It never
+    // rewrites the three switches under it, so turning it back on restores
+    // exactly what was enabled before; `checksMenu.ts` owns that contract and
+    // this is the same hook its own gate row calls.
+    toggleProofreading: () => host.toggleProofread?.("proofreading"),
     toggleSpellCheck: () => host.toggleProofread?.("spellCheck"),
     toggleGrammarCheck: () => host.toggleProofread?.("grammarCheck"),
     toggleStyleCheck: () => host.toggleProofread?.("styleCheck"),
+    // One command for every style-check category, the category in `args`. A
+    // command apiece would put fourteen near-identical rows in the palette and
+    // fourteen entries in each of the tables an id has to join.
+    //
+    // The argument is checked against the canonical list rather than cast: this
+    // is the one command whose payload comes from outside the page, so a host
+    // sending a name that is not a category, or the master-folded `repeated`,
+    // must reach nothing. `toggleProofread` takes a `ProofreadOptionKey` and
+    // would write a config field of that name.
+    toggleStyleOption: (_getEditor, args) => {
+        if (typeof args !== "string") { return; }
+        if (!STYLE_CATEGORIES.some((d) => d.category === args && d.section !== null)) { return; }
+        host.toggleProofread?.(args as ProofreadOptionKey);
+    },
     toggleNoteHighlights: () => host.toggleNoteHighlights?.(),
     toggleToolbar: () => host.toggleToolbar?.(),
     // Straight to the mode's owner, which announces to the toolbar button, the

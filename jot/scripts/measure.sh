@@ -209,7 +209,7 @@ kill -URG $PID; sleep 3
 hide_panel
 rm -f "$SCRATCH_DIR/.debug-message.json"
 LINT="$(grep "^jot-trace lint " "$LOG" | tail -1 || true)"
-LINT_COUNT="$(echo "$LINT" | sed -n 's/.*lints=\([0-9]*\).*/\1/p')"
+LINT_COUNT="$(echo "$LINT" | sed -n 's/.*spelling=\([0-9]*\).*/\1/p')"
 if [ -z "$LINT" ]; then
     echo "spelling             FAILED: the page asked for no lints at all" >&2
     echo "  (the capability may not be declared, or the rescan never ran)" >&2; exit 1
@@ -218,6 +218,33 @@ elif [ "${LINT_COUNT:-0}" -lt 1 ]; then
     echo "  $LINT" >&2; exit 1
 else
     echo "spelling             ok: the system checker answered the page ($LINT)"
+fi
+
+# Grammar, the other half of the same round trip, and the half nothing was
+# asking about. The page draws spelling and grammar from one pass and gates
+# them on two different switches, so a build where `NSSpellChecker` answers no
+# grammar at all is indistinguishable from a working one in the combined count
+# this arm used to read. The trace splits them for that reason.
+#
+# A sentence that disagrees with itself, typed the same way the misspelling
+# above is: the page's own rescan is what posts the blocks.
+show_panel
+printf '{"type":"__jotKeys","keys":["End","Enter","T","h","i","s"," ","a","r","e"," ","a"," ","t","e","s","t","."]}' \
+    > "$SCRATCH_DIR/.debug-message.json"
+kill -URG $PID; sleep 3
+hide_panel
+rm -f "$SCRATCH_DIR/.debug-message.json"
+LINT="$(grep "^jot-trace lint " "$LOG" | tail -1 || true)"
+GRAMMAR_COUNT="$(echo "$LINT" | sed -n 's/.*grammar=\([0-9]*\).*/\1/p')"
+if [ -z "$GRAMMAR_COUNT" ]; then
+    echo "grammar              FAILED: the lint trace carries no grammar count" >&2
+    echo "  $LINT" >&2; exit 1
+elif [ "$GRAMMAR_COUNT" -lt 1 ]; then
+    echo "grammar              FAILED: the checker objected to nothing in 'This are a test.'," >&2
+    echo "  so the Check Grammar row promises something no reader receives" >&2
+    echo "  $LINT" >&2; exit 1
+else
+    echo "grammar              ok: the system checker objected to the sentence ($LINT)"
 fi
 
 # A menu key equivalent, from the chord to the bytes.
