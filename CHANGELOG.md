@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+---
+
+## [2026.827.0] - 2026, August 27
+
 ### Added
 
 - `birta.editor.toggleStyleOption`, which turns one style check on or off, taking the check's key as its argument (`fillers`, `passive`, `emDash`, and the rest of the rows in the Checks menu). It is deliberately not in the command palette, because a palette row cannot supply the argument; bind it in `keybindings.json` with `"args": "passive"`. It is the first way to put a single style check on a key, where the master gate and the three domain switches already had commands.

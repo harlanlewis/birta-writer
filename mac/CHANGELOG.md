@@ -12,6 +12,10 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ## [Unreleased]
 
+---
+
+## [2026.827.0] - 2026, August 27
+
 ### Added
 
 - Check Spelling and Check Grammar, in the menu bar. Both have been running on every note this app opens, answered by macOS's own checker, and neither had a control anywhere in the menus: the View menu did not list them at all. They sit under View > Proofreading now, with the master switch above them and a checkmark on each. Check Grammar does have an effect, and always did; macOS objects to a sentence that disagrees with itself and draws it in a different colour from a misspelling.
