@@ -331,8 +331,17 @@ final class WebHost: NSObject, WKScriptMessageHandler, WKNavigationDelegate, WKU
         (function () {
           var pm = document.querySelector('.ProseMirror');
           if (!pm) { return 'absent'; }
+          // ...and whether the document is still offering the slash menu. The
+          // hint is a widget decoration gated on the editor having focus, and
+          // "a locked editor cannot take focus" is a claim about WebKit rather
+          // than about this code, so it is read rather than assumed: a
+          // document nobody can type into that still says press / to show
+          // commands is offering a gesture that does nothing.
+          var hint = document.querySelector('.md-empty-hint-text');
+          var shown = hint ? getComputedStyle(hint).display !== 'none' : null;
           return ['contenteditable=' + pm.getAttribute('contenteditable'),
-                  'bodyClass=' + document.body.classList.contains('read-only')].join(' ');
+                  'bodyClass=' + document.body.classList.contains('read-only'),
+                  'hint=' + (hint === null ? 'absent' : (shown ? 'shown' : 'hidden'))].join(' ');
         })()
         """
         webView.evaluateJavaScript(js) { value, _ in

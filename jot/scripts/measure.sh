@@ -426,7 +426,15 @@ kill -URG $PID; sleep 1.2
 rm -f "$SCRATCH_DIR/.debug-message.json"
 LOCK="$(grep "^jot-trace editorlock " "$LOG" | tail -1 | sed 's/^jot-trace editorlock //')"
 case "$LOCK" in
-    "contenteditable=false bodyClass=true missing=true") ;;
+    # Refuses a bad state rather than proving a good one, and the difference is
+    # worth saying: this run's document is not empty, so the slash-menu hint is
+    # never in the DOM here and `hint=absent` is the only answer it can give.
+    # What the arm is for is a build where a locked document goes on offering a
+    # gesture that does nothing, which would report `shown`.
+    *"hint=shown"*)
+        echo "editor lock          FAILED: the locked document still offers the slash menu: $LOCK" >&2
+        exit 1 ;;
+    "contenteditable=false bodyClass=true hint="*" missing=true") ;;
     *"missing=false"*)
         echo "editor lock          FAILED: asked outside the missing state, so this proved nothing: $LOCK" >&2
         exit 1 ;;
@@ -530,7 +538,7 @@ kill -URG $PID; sleep 1.2
 rm -f "$SCRATCH_DIR/.debug-message.json"
 LOCK_BACK="$(grep "^jot-trace editorlock " "$LOG" | tail -1 | sed 's/^jot-trace editorlock //')"
 case "$LOCK_BACK" in
-    "contenteditable=true bodyClass=false missing=false")
+    "contenteditable=true bodyClass=false hint="*" missing=false")
         echo "editor lock          ok: and editable again once the file is back" ;;
     *"missing=true"*)
         echo "editor lock          FAILED: the note is still missing, so this asked the same question twice: $LOCK_BACK" >&2
