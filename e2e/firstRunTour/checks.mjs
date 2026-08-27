@@ -28,7 +28,7 @@ const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 /** The tour's markdown, read out of the Swift that ships it. */
 function tourMarkdown() {
     const swift = readFileSync(
-        join(REPO_ROOT, "jot/Sources/BirtaJotCore/FirstRunNote.swift"), "utf8");
+        join(REPO_ROOT, "mac/Sources/BirtaWriterCore/FirstRunNote.swift"), "utf8");
     const body = /public static let markdown = """\n([\s\S]*?)\n {4}"""/.exec(swift)?.[1];
     if (body === undefined) {
         throw new Error("the tour's markdown literal could not be read out of FirstRunNote.swift");

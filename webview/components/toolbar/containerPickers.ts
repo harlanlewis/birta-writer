@@ -66,7 +66,7 @@ export function createFormatMenu(getEditor: GetEditor): FormatPicker {
     // filled one demotes the block back to a paragraph. Nothing here implements
     // that — the rows run `setHeading1..6` through `runEditorCommand`, and the
     // toggle lives in that one registry entry, which is what keeps this menu,
-    // the chords, the slash menu and Jot's Paragraph Style submenu agreeing.
+    // the chords, the slash menu and the Mac app's Paragraph Style submenu agreeing.
     // Body stays unconditional: `setParagraph` means paragraph at any level.
     const fmtWrap = document.createElement("div");
     fmtWrap.className = "tb-fmt-wrap";

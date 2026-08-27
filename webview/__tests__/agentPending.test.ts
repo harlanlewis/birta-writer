@@ -189,14 +189,14 @@ describe("agent run marker", () => {
      *
      * A jsdom page declares nothing, which means the VS Code profile, and VS
      * Code raises its own error notification for a failed run. So the arms
-     * below declare Jot's profile explicitly, and the last one puts the VS
+     * below declare the Mac app's profile explicitly, and the last one puts the VS
      * Code profile back and checks the corner stays empty. That pair is what
      * makes any of this discriminate: without it a version that always spoke
      * and a version that never spoke would both pass one of them.
      */
-    const asJot = (): void => {
+    const asMac = (): void => {
         (globalThis as { __i18n?: unknown }).__i18n = {
-            host: { capabilities: HOST_PROFILES.jot },
+            host: { capabilities: HOST_PROFILES.mac },
         };
     };
 
@@ -216,7 +216,7 @@ describe("agent run marker", () => {
     });
 
     it("a failed run should leave no marker and say why in a toast", () => {
-        asJot();
+        asMac();
         placeCaret(v, endOfBlock(v, 1));
         const id = beginAgentRun(v);
         markAgentRunning(v, id, "claude");
@@ -241,7 +241,7 @@ describe("agent run marker", () => {
     /// A command that is not installed fails before anything reports what is
     /// running it, which is exactly the failure people meet first.
     it("a failure reported before the run was confirmed should still name the tool", () => {
-        asJot();
+        asMac();
         placeCaret(v, endOfBlock(v, 1));
         const id = beginAgentRun(v);
         // No markAgentRunning: the run is still `armed`, so nothing in state
@@ -255,7 +255,7 @@ describe("agent run marker", () => {
     });
 
     it("a failed run with no reason should still name the tool in the toast", () => {
-        asJot();
+        asMac();
         placeCaret(v, endOfBlock(v, 1));
         const id = beginAgentRun(v);
         markAgentRunning(v, id, "codex");

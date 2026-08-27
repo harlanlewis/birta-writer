@@ -76,7 +76,7 @@ export function emptyLineHintDecorations(state: EditorState): DecorationSet {
         // block-handle gutter, which sits at this same position and already
         // uses `side: -1`, and watching a positive side still break it).
         // Chromium tolerates the arrangement, which is why this only ever
-        // showed up in Jot. Pinned by e2e/enterCaret, under both engines.
+        // showed up in the Mac app. Pinned by e2e/enterCaret, under both engines.
         // `ignoreSelection` keeps a DOM selection landing in the widget from
         // being read back as a document position.
         Decoration.widget(from + 1, emptyLineHintDom, {

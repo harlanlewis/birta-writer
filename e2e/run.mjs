@@ -11,7 +11,7 @@
  *   npx playwright install chromium
  *
  * BIRTA_E2E_BROWSER=webkit runs the same suites in Playwright's WebKit build
- * (npx playwright install webkit), the engine the Jot shell (jot/) renders in;
+ * (npx playwright install webkit), the engine the Mac shell (mac/) renders in;
  * VS Code is Chromium, so this is the only check a WebKit-only gap can fail.
  */
 import { createServer } from "node:http";

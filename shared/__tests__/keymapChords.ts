@@ -181,7 +181,7 @@ export const LABEL_CHORDS: Readonly<Record<string, readonly string[]>> = {
     // that names an editor command spells no chord at all. It asks
     // `webview/commandChords.ts` for a printable one, and the table that
     // resolver reads is `shared/fixedChords.ts`, outside this scan's reach on
-    // purpose, held against the keymap inventory above and against Jot's menu
+    // purpose, held against the keymap inventory above and against the Mac app's menu
     // by `menuChordParity.test.ts`. So a `kbd("Mod-…")` appearing under
     // `webview/` outside the entries listed here fails this scan, which is what
     // keeps the printing decision ONE decision rather than one per button.

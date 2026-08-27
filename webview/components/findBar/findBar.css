@@ -236,7 +236,7 @@
 
        Written as a width that yields rather than as a floor, and that is the
        load-bearing half: this bar is fixed to a window whose own minimum is
-       360pt (`JotPanel.minSize`), and a `min-width` past that is a bar that
+       360pt (`AppPanel.minSize`), and a `min-width` past that is a bar that
        hangs off the leading edge with its field unreachable. The old 320
        floor happened to fit that window and this one does not, so the wanted
        width is a ceiling and the window is the other. `min-width: 0` clears

@@ -85,7 +85,7 @@ export function createTypographyControl(): TypographyControl {
     const EDITOR_FONT = "var(--vscode-editor-font-family, monospace)";
     /**
      * Put the family on the document. Applied here rather than only on the
-     * host's echo: a host that does not answer `setFontPreset` (Jot, which
+     * host's echo: a host that does not answer `setFontPreset` (the Mac app, which
      * persists the choice in its own defaults) would otherwise move the
      * checkmark and change nothing. The echo re-applies the same value, which
      * is the size stepper's arrangement exactly.

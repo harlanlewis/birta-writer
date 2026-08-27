@@ -169,7 +169,7 @@ describe("stamp", () => {
 // `## [Unreleased]` heading makes stamp-changelog.mjs throw, at 04:00, in the
 // job that cuts the release; proving that of one of the two files it is run
 // against is half a guard.
-describe.each([["CHANGELOG.md"], ["jot/CHANGELOG.md"]])("the repository's own %s", (file) => {
+describe.each([["CHANGELOG.md"], ["mac/CHANGELOG.md"]])("the repository's own %s", (file) => {
     const changelog = readFileSync(path.join(repoRoot, file), "utf8");
 
     it("every version heading should be CalVer", () => {

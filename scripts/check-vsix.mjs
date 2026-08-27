@@ -52,7 +52,7 @@ const offenders = entries.filter((name) => banned.test(name));
 // 200", which says nothing about WHICH directory leaked. They are in `banned`
 // above so the next occurrence reports itself.
 //
-// This number caught `jot/**` in 2026-08, which had shipped since the
+// This number caught `mac/**` in 2026-08, which had shipped since the
 // directory arrived because `.vscodeignore` never gained a line for it. The
 // first instinct was to raise the ceiling to fit the growth; the count was
 // right and the growth was not. Raise this only once the entries above it

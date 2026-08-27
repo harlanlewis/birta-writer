@@ -252,11 +252,11 @@ export const EDITOR_COMMANDS = [
     // reaches OUR release notes.
     { id: "openWhatsNew", title: "What's New", palette: true, sections: ["toolbar"], menuGroup: "settings", hostCapability: "hostSettings" },
     // The host application's own preferences, for a surface that IS an app
-    // (Jot). Shares the `settings` group with the rows above because it names
-    // the same thing they do: the program, rather than this document. The
-    // title is the SETTINGS_TITLE_TEMPLATE expansion of JOT_PRODUCT_NAME, the
+    // (the Mac app). Shares the `settings` group with the rows above because it
+    // names the same thing they do: the program, rather than this document. The
+    // title is the SETTINGS_TITLE_TEMPLATE expansion of MAC_APP_NAME, the
     // way the row above expands PRODUCT_NAME, and is drift-guarded against the
-    // nls string and Jot's own NSWindow title.
+    // nls string and the app's own NSWindow title.
     { id: "openHostPreferences", title: "Birta Writer Settings", palette: false, sections: ["toolbar"], menuGroup: "settings", hostCapability: "appPreferences" },
     { id: "showToolbar", title: "Show Toolbar", palette: false, sections: ["toolbarTab"], absentUnder: "fixedToolbarLayout" },
     // View controls — the font picker, size stepper, proofread toggles, and TOC
@@ -280,7 +280,7 @@ export const EDITOR_COMMANDS = [
     // writes, which is the vocabulary every macOS View menu uses.
     { id: "resetFontSize", title: "Actual Size", palette: true, sections: [] },
     // The master gate over spelling, grammar and style at once. The Checks
-    // menu's own top row and Jot's Proofreading row are what run it; the three
+    // menu's own top row and the Mac app's Proofreading row are what run it; the three
     // domain switches below it were already commands and the gate above them
     // was not, so a host whose only route to a control is a command could
     // silence one check at a time and not all three.
@@ -304,7 +304,7 @@ export const EDITOR_COMMANDS = [
     // `args` — the shape `toggleCallout` uses, and `palette: false` for the
     // same reason: a palette row for a command that needs an argument it has no
     // way to supply is a row that does nothing. The surfaces that name a
-    // category are the toolbar's Checks menu and Jot's Style Options submenu,
+    // category are the toolbar's Checks menu and the Mac app's Style Options submenu,
     // and both read `webview/utils/styleCategories.ts` for the list.
     { id: "toggleStyleOption", title: "Toggle Style Check Option", palette: false, sections: [] },
     // The in-text editor-note highlight (birta.notes.highlightMarkers). It sits

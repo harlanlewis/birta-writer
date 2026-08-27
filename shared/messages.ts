@@ -258,7 +258,7 @@ export type ToExtensionMessage =
      * and answers it on a cancel too: a request with no reply would leave the
      * page believing a prompt is open forever. A host that cannot draw the
      * step's `kind` answers `unsupported` rather than staying silent, because
-     * Jot files an unrecognised message under `.other` and drops it, which
+     * the Mac app files an unrecognised message under `.other` and drops it, which
      * would make an unimplemented kind indistinguishable from one correctly
      * ignored (MAR-390).
      */

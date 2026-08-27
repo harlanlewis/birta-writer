@@ -208,16 +208,16 @@ jobs:
           VERSION: ${{ steps.plan.outputs.version }}
         run: node scripts/stamp-changelog.mjs
 
-      # Jot's changelog is stamped with the SAME version, so the two files never
+      # The Mac app's changelog is stamped with the SAME version, so the two files never
       # disagree about what a release contained. It is a separate file because
       # the two products have separate readers: this one is not in the VSIX
-      # (`.vscodeignore` excludes `jot/**`), so the Marketplace Changelog tab
+      # (`.vscodeignore` excludes `mac/**`), so the Marketplace Changelog tab
       # carries only what a Marketplace reader can act on.
-      - name: Stamp jot/CHANGELOG.md to the release version
+      - name: Stamp mac/CHANGELOG.md to the release version
         if: steps.plan.outputs.release == 'true'
         env:
           VERSION: ${{ steps.plan.outputs.version }}
-        run: node scripts/stamp-changelog.mjs jot/CHANGELOG.md
+        run: node scripts/stamp-changelog.mjs mac/CHANGELOG.md
 
       - name: Generate release notes
         if: steps.plan.outputs.release == 'true'
@@ -335,7 +335,7 @@ jobs:
           # tree clean enough for the rebase below.
           git checkout -- package.json
 
-          git add CHANGELOG.md jot/CHANGELOG.md
+          git add CHANGELOG.md mac/CHANGELOG.md
           if git diff --cached --quiet; then
             echo "Changelogs unchanged — nothing to commit." >> "$GITHUB_STEP_SUMMARY"
             exit 0
@@ -505,11 +505,11 @@ jobs:
   #
   # The app is AD-HOC SIGNED, not Developer ID signed and not notarized, so
   # Gatekeeper will refuse it on a machine that did not build it until the
-  # download quarantine is cleared. jot/scripts/update-jot.sh does that
+  # download quarantine is cleared. mac/scripts/update.sh does that
   # deliberately and says so; a stranger should not run either. This is the
   # personal-machines rung of the ladder, and the honest name for it is "not
   # distributed to other people yet".
-  jot-app:
+  mac-app:
     name: Attach Birta Writer to the release
     needs: release
     timeout-minutes: 20
@@ -535,7 +535,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Build the app
-        run: pnpm jot:build
+        run: pnpm mac:build
 
       # The version the release is stamped with, so a downloaded copy can say
       # what it is. package.json stays 0.0.0 in the tree for the same reason it
@@ -544,11 +544,11 @@ jobs:
         env:
           VERSION: ${{ needs.release.outputs.version }}
         run: |
-          PLIST="jot/build/Birta Writer.app/Contents/Info.plist"
+          PLIST="mac/build/Birta Writer.app/Contents/Info.plist"
           /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" "$PLIST"
           /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $VERSION" "$PLIST"
           # Editing the plist invalidates the signature the build applied.
-          codesign --force --deep --sign - "jot/build/Birta Writer.app"
+          codesign --force --deep --sign - "mac/build/Birta Writer.app"
 
       # ditto, not zip: it preserves the bundle's symlinks and extended
       # attributes, and a zip(1) archive of an .app can arrive unopenable.
@@ -556,9 +556,9 @@ jobs:
         env:
           VERSION: ${{ needs.release.outputs.version }}
         run: |
-          cd jot/build
-          ditto -c -k --keepParent "Birta Writer.app" "BirtaJot-$VERSION.zip"
-          shasum -a 256 "BirtaJot-$VERSION.zip" > "BirtaJot-$VERSION.zip.sha256"
+          cd mac/build
+          ditto -c -k --keepParent "Birta Writer.app" "BirtaWriter-$VERSION.zip"
+          shasum -a 256 "BirtaWriter-$VERSION.zip" > "BirtaWriter-$VERSION.zip.sha256"
 
       # `gh release upload` rather than the action the release job uses: this
       # job ATTACHES to a release that already exists and already carries its
@@ -572,6 +572,6 @@ jobs:
           VERSION: ${{ needs.release.outputs.version }}
         run: |
           gh release upload "v$VERSION" \
-            "jot/build/BirtaJot-$VERSION.zip" \
-            "jot/build/BirtaJot-$VERSION.zip.sha256" \
+            "mac/build/BirtaWriter-$VERSION.zip" \
+            "mac/build/BirtaWriter-$VERSION.zip.sha256" \
             --clobber

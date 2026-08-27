@@ -8,7 +8,7 @@
  * block, so the next character typed landed on the previous line. One such
  * widget is enough; the gutter is beside it but not part of the cause.
  * Chromium tolerated the arrangement, so the whole class of defect was
- * invisible to a Chromium-only sweep and shipped in Jot, which renders in
+ * invisible to a Chromium-only sweep and shipped in the Mac app, which renders in
  * WebKit.
  *
  * Run under BOTH engines. The typing arms only go red in WebKit, but the

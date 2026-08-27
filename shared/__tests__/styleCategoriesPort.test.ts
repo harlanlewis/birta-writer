@@ -2,12 +2,12 @@
  * The style-check vocabulary, held across the two languages that declare it.
  *
  * `webview/utils/styleCategories.ts` is the source: the toolbar's Checks menu,
- * the review sidebar's grouping and the in-text chips all read it. Jot's Style
+ * the review sidebar's grouping and the in-text chips all read it. The Mac app's Style
  * Options submenu is the fourth surface and cannot, because Swift cannot import
- * TypeScript, so `jot/Sources/BirtaJotCore/StyleCategories.swift` is a port and
+ * TypeScript, so `mac/Sources/BirtaWriterCore/StyleCategories.swift` is a port and
  * this is what stops the two drifting.
  *
- * The alternative was hand-listing fourteen rows in `JotMenu.swift`, which is
+ * The alternative was hand-listing fourteen rows in `AppMenu.swift`, which is
  * the shape AGENTS.md warns about: a hand-written list is a list a new case
  * never joins. Both sides are enumerations now (`STYLE_CATEGORIES` and a
  * `CaseIterable` enum), so the menu is derived on each side and this compares
@@ -25,8 +25,8 @@ import { STYLE_CATEGORIES, STYLE_SECTIONS } from "../../webview/utils/styleCateg
 import { EDITOR_COMMANDS } from "../editorCommands";
 
 const REPO_ROOT = path.resolve(__dirname, "..", "..");
-const SWIFT_PATH = "jot/Sources/BirtaJotCore/StyleCategories.swift";
-const MENU_PATH = "jot/Sources/BirtaJot/JotMenu.swift";
+const SWIFT_PATH = "mac/Sources/BirtaWriterCore/StyleCategories.swift";
+const MENU_PATH = "mac/Sources/BirtaWriter/AppMenu.swift";
 
 const swift = fs.readFileSync(path.join(REPO_ROOT, SWIFT_PATH), "utf8");
 
@@ -67,7 +67,7 @@ function swiftSections(): string[] {
 /** The categories the page lets a reader toggle one at a time, in order. */
 const TOGGLEABLE = STYLE_CATEGORIES.filter((d) => d.section !== null);
 
-describe("Jot's style-category port against the page's list", () => {
+describe("the Mac app's style-category port against the page's list", () => {
     it("both readers should have reached a plausible number of categories", () => {
         // The floor before anything is concluded. A regex that stopped
         // matching returns an empty list, and every comparison below passes

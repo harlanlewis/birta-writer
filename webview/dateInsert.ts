@@ -47,13 +47,13 @@ let nextRequestId = 0;
  * How long a native picker may go unanswered before the editor takes its caret
  * back.
  *
- * The host is supposed to answer every request, a dismissal included, and Jot
- * does. It can still fail to: a malformed request is dropped rather than
- * answered, by design and by test, and a host that is not Jot may not
- * implement the message at all. Without this the caret is never returned and
- * the user is left in a document that will not take a keystroke, with nothing
- * on screen explaining why. `requestEditorContext` on the Jot side is bounded
- * for the same reason.
+ * The host is supposed to answer every request, a dismissal included, and the
+ * Mac app does. It can still fail to: a malformed request is dropped rather
+ * than answered, by design and by test, and a host that is not the Mac app may
+ * not implement the message at all. Without this the caret is never returned
+ * and the user is left in a document that will not take a keystroke, with
+ * nothing on screen explaining why. `requestEditorContext` on the Mac side is
+ * bounded for the same reason.
  */
 const NATIVE_PICKER_TIMEOUT_MS = 60_000;
 

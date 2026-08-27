@@ -31,7 +31,7 @@
  * and never read the declaration, so the absent-means-VS-Code rule below has
  * exactly one home and no call site re-derives it.
  *
- * The contract: Jot ships zero behavior Birta lacks. Every surface runs the
+ * The contract: the Mac app ships zero behavior Birta lacks. Every surface runs the
  * same editor from the same bundle, and what differs between them is only the
  * chrome that names something the HOST provides. A capability is therefore
  * always a host-side thing (a text editor to switch to, a settings UI, a
@@ -49,8 +49,8 @@
  * profile is a host with nothing, which is a different claim from silence.
  *
  * TWO declarers restate this by hand, because neither Swift nor an HTML
- * bootstrap can import TypeScript: Jot's Swift, split across `Prefs.bootConfig`
- * and `Bridge.i18nObject`, and the e2e Jot page. They are not free to drift;
+ * bootstrap can import TypeScript: the Mac app's Swift, split across `Prefs.bootConfig`
+ * and `Bridge.i18nObject`, and the e2e mac page. They are not free to drift;
  * `hostProfile.test.ts` reads both and fails when they disagree. One key is
  * what makes that guard possible to write once instead of once per field.
  *
@@ -102,7 +102,7 @@ export type HostCapability =
     | "toc"
     /**
      * An image store the Insert Image panel can upload to. Uploading only:
-     * somewhere to PUT an image is not somewhere to look for one, and Jot is
+     * somewhere to PUT an image is not somewhere to look for one, and the Mac app is
      * exactly that host (`AttachmentStore` writes beside the note). Browsing
      * is `projectImages`.
      */
@@ -113,7 +113,7 @@ export type HostCapability =
      *
      * Split from `imageUpload` because they are two host facts, and
      * conflating them made the panel ASK a question its host could not
-     * answer: on Jot the Project tab was the default, opened, posted
+     * answer: on the Mac app the Project tab was the default, opened, posted
      * `getProjectImages`, and drew an empty grid ten seconds later when the
      * unanswered promise timed out to null (MAR-401). A host that declines
      * this gets no Project tab, which is the panel's existing branch.
@@ -127,7 +127,7 @@ export type HostCapability =
      *
      * VS Code raises a real notification for a failed `/ai` run, carrying a
      * Show Output action the page cannot offer; a message in the editor's
-     * corner beside it would be the same event reported twice. Jot's shell has
+     * corner beside it would be the same event reported twice. The Mac shell has
      * no such surface for the page's own failures, so there the corner IS the
      * notification.
      *
@@ -139,7 +139,7 @@ export type HostCapability =
     /**
      * An editor font of the host's own for the content to inherit, which is
      * what the "Editor font" preset names. A host with no editor behind the
-     * page (Jot is a window with a document in it) has no such font, so the
+     * page (the Mac app is a window with a document in it) has no such font, so the
      * preset would resolve to nothing and the row would be a dead choice.
      */
     | "editorFont"
@@ -176,9 +176,9 @@ export const ALL_HOST_CAPABILITIES: readonly HostCapability[] = [
 ];
 
 /**
- * The named profiles, one per surface. VS Code declares everything; Jot
- * declares what its own shell provides, and grows an entry here the day it
- * provides another.
+ * The named profiles, one per surface. VS Code declares everything; the Mac
+ * app declares what its own shell provides, and grows an entry here the day
+ * it provides another.
  */
 /**
  * Capabilities NO VS Code host has, because they name something only a
@@ -186,7 +186,7 @@ export const ALL_HOST_CAPABILITIES: readonly HostCapability[] = [
  *
  * Almost every capability runs the other way: VS Code has the thing and a
  * lesser host does not, so `vscode` declares it and the gap is the other
- * surface's. This list is the exception the rule needed once Jot grew a
+ * surface's. This list is the exception the rule needed once the Mac app grew a
  * window of its own, and keeping it explicit is what stops "vscode declares
  * everything" from quietly meaning "every new capability is a VS Code
  * feature". A member here MUST be declared by some other profile, or it
@@ -198,11 +198,11 @@ export const HOST_PROFILES = {
     vscode: ALL_HOST_CAPABILITIES.filter(
         (c) => !APP_ONLY_CAPABILITIES.includes(c),
     ) as readonly HostCapability[],
-    // The Jot shell (`Prefs.bootConfig` in jot/Sources/BirtaJot/Preferences.swift)
-    // and the e2e Jot page restate this list as a literal, because neither
+    // The Mac shell (`Prefs.bootConfig` in mac/Sources/BirtaWriter/Preferences.swift)
+    // and the e2e mac page restate this list as a literal, because neither
     // Swift nor an HTML bootstrap can import it. They are not free to drift:
     // shared/__tests__/hostProfile.test.ts parses both and fails.
-    jot: ["spellAndGrammar", "imageUpload", "toc", "appPreferences", "agent"] as readonly HostCapability[],
+    mac: ["spellAndGrammar", "imageUpload", "toc", "appPreferences", "agent"] as readonly HostCapability[],
 } as const satisfies Record<string, readonly HostCapability[]>;
 
 /**
@@ -218,7 +218,7 @@ export type HostArrangement =
     /**
      * The typography rows (width, size, font) live inside the gear menu rather
      * than in a toolbar item of their own. For a surface whose toolbar is
-     * short, which is Jot's.
+     * short, which is the Mac app's.
      */
     | "typographyInGearMenu"
     /**

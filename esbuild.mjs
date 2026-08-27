@@ -128,7 +128,7 @@ const webviewBuild = {
     // of being hoisted into the render-blocking entry webview.css. It is injected
     // lazily at runtime the first time math loads (see webview/utils/katexLoader.ts).
     // hostPalette.css is a THIRD entry for the same reason, with the opposite
-    // consumer: the --vscode-* palette a non-VS-Code host (jot/, the e2e
+    // consumer: the --vscode-* palette a non-VS-Code host (mac/, the e2e
     // harness) links in place of the workbench's. It must never be hoisted
     // into webview.css, where it would fight the injected palette inside VS
     // Code; webview/__tests__/hostPalette.test.ts pins that no module imports it.

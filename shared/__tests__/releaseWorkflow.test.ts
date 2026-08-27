@@ -117,15 +117,15 @@ describe("release.yml", () => {
         );
     });
 
-    it("Jot's changelog should be stamped too, and before the notes are generated", () => {
+    it("the Mac app's changelog should be stamped too, and before the notes are generated", () => {
         // The changelogs are split by product and the release job stamps both.
-        // Drop this step and Jot's file is never rolled: its entries pile up
+        // Drop this step and the Mac app's file is never rolled: its entries pile up
         // under [Unreleased] and gen-release-notes falls back to that section,
-        // re-announcing every Jot entry ever written on every release. That is
+        // re-announcing every Mac app entry ever written on every release. That is
         // MAR-282 exactly, reintroduced for one product, and nothing else here
         // was watching for it.
-        expect(workflow).toContain("node scripts/stamp-changelog.mjs jot/CHANGELOG.md");
-        expect(stepLine("Stamp jot/CHANGELOG.md to the release version")).toBeLessThan(
+        expect(workflow).toContain("node scripts/stamp-changelog.mjs mac/CHANGELOG.md");
+        expect(stepLine("Stamp mac/CHANGELOG.md to the release version")).toBeLessThan(
             stepLine("Generate release notes"),
         );
     });

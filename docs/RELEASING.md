@@ -56,7 +56,7 @@ Neither job packages anything. Both download the release job's artifact, so all 
 
 ## The changelog
 
-There are two, split by product. `CHANGELOG.md` is the editor and the extension and ships inside the VSIX, so it is what both registries render. `jot/CHANGELOG.md` is the Jot app, and `.vscodeignore`'s `jot/**` keeps it out of the VSIX: Jot is installable from neither registry, so its entries would reach a reader who cannot act on them. The release job stamps BOTH with the same version, commits both back, and `scripts/gen-release-notes.mjs` reads both, because a GitHub Release carries the VSIX and the Jot app together. Which file an entry belongs in is decided in AGENTS.md.
+There are two, split by product. `CHANGELOG.md` is the editor and the extension and ships inside the VSIX, so it is what both registries render. `mac/CHANGELOG.md` is Birta Writer for Mac, and `.vscodeignore`'s `mac/**` keeps it out of the VSIX: the Mac app is installable from neither registry, so its entries would reach a reader who cannot act on them. The release job stamps BOTH with the same version, commits both back, and `scripts/gen-release-notes.mjs` reads both, because a GitHub Release carries the VSIX and the Mac app together. Which file an entry belongs in is decided in AGENTS.md.
 
 Entries are written under `## [Unreleased]` as work lands. The release job runs `scripts/stamp-changelog.mjs`, which renames that heading to the version being cut and opens a fresh empty one, then commits the result to `main`. A stamped heading reads `## [2026.805.0] - 2026, August 5`. No version heading is ever written by hand, and `[Unreleased]` holds only what has not shipped yet.
 

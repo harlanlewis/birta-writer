@@ -43,7 +43,7 @@ const ROOT = resolve(__dirname, "../..");
 // UI copy exactly as before. Scope has to follow the content it was written for.
 const CHANGELOG = [
     readFileSync(join(ROOT, "CHANGELOG.md"), "utf8"),
-    readFileSync(join(ROOT, "jot/CHANGELOG.md"), "utf8"),
+    readFileSync(join(ROOT, "mac/CHANGELOG.md"), "utf8"),
 ].join("\n");
 
 /**
@@ -112,7 +112,7 @@ describe("CHANGELOG setting-key citations", () => {
 
 /** Source files a user-visible string could plausibly live in. */
 function sourceText(): string {
-    const roots = ["webview", "src", "shared", "jot/Sources"];
+    const roots = ["webview", "src", "shared", "mac/Sources"];
     const parts: string[] = [];
     const walk = (dir: string) => {
         for (const name of readdirSync(dir)) {

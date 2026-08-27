@@ -47,19 +47,19 @@ dist-head/**
 # Birta Writer's shell: Swift sources, Package.swift, Tests, Resources and its
 # scripts. Every other source directory is above; this one arrived later and
 # was simply never added, so it shipped to every Marketplace reader, none of
-# whom can build it — a VSIX is not a checkout, and building Jot needs the
+# whom can build it — a VSIX is not a checkout, and building the Mac app needs the
 # repo, pnpm, esbuild and dist/webview.js, none of which are in there.
 #
 # The second reason is the one .vscode-test documents below, not the
-# dist-base/dist-head one above: `jot/.build/` and `jot/build/` are gitignored
+# dist-base/dist-head one above: `mac/.build/` and `mac/build/` are gitignored
 # SwiftPM output, .vscodeignore does not honor .gitignore, and SwiftPM leaves
 # a symlink (`.build/release` -> `arm64-apple-macosx/release`). vsce's secret
 # scanner read()s it as a file, so without this line packaging does not ship
 # extra bytes, it DIES with EISDIR, on any machine that has run
-# `pnpm jot:build`. Reproduce by removing this line, creating that symlink,
+# `pnpm mac:build`. Reproduce by removing this line, creating that symlink,
 # and running `pnpm run package`.
-jot/**
-# The --vscode-* palette for hosts that are not VS Code (jot/, the e2e
+mac/**
+# The --vscode-* palette for hosts that are not VS Code (mac/, the e2e
 # harness). Inside the extension the workbench injects the real palette, so
 # this asset has no reader there.
 dist/hostPalette.css

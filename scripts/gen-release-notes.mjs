@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Generate end-user release notes for a Birta Writer release.
 //
-// Reads this version's section of BOTH changelogs (the extension's and Jot's,
+// Reads this version's section of BOTH changelogs (the extension's and the Mac app's,
 // which are split by product) and condenses them into
 // cursor.com/changelog-style notes: a few tentpole items described for the
 // benefit they deliver, followed by smaller improvements and fixes.
@@ -78,7 +78,7 @@ function commits() {
  */
 function releaseChangelog() {
   const sections = [];
-  for (const file of ["CHANGELOG.md", "jot/CHANGELOG.md"]) {
+  for (const file of ["CHANGELOG.md", "mac/CHANGELOG.md"]) {
     let text;
     try {
       text = readFileSync(file, "utf8");
@@ -96,7 +96,7 @@ function releaseChangelog() {
  * every entry under it.
  *
  * The two files are split by PRODUCT, because the Marketplace renders only the
- * extension's. A GitHub Release carries both the VSIX and the Jot app, so its
+ * extension's. A GitHub Release carries both the VSIX and the Mac app, so its
  * notes cover both, and concatenating the files whole would hand the notes two
  * `### Added` headings and let the section table sort the same heading twice.
  * Order follows the first file that used a heading, so the extension's sections

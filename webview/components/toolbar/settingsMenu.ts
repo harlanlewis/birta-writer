@@ -100,7 +100,7 @@ export function createSettingsMenu({ startCustomize, setToolbarVisible, typograp
             // browser. Same one-liner as the registry entry in
             // webview/editorCommands.ts, because both are the whole action.
             openWhatsNew: () => notifyOpenUrl(RELEASES_URL),
-            // The host application's own Settings window (Jot). Gated by
+            // The host application's own Settings window (the Mac app). Gated by
             // `appPreferences`, so the row is absent where there is no such
             // window, which is every host but that one.
             openHostPreferences: () => notifyOpenHostPreferences(),

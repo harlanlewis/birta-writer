@@ -103,7 +103,7 @@ export async function run({ page, check, baseUrl }) {
     // Nothing is left in the gutter. This page declares nothing, which means
     // the VS Code profile, and VS Code raises its own error notification for a
     // failed run, so the corner stays empty here: the message in the corner is
-    // for a host that has no way to say it. e2e/jotHost drives the other arm.
+    // for a host that has no way to say it. e2e/macHost drives the other arm.
     let id = await runOn("plain paragraph.");
     check("a run was started before failing it", id !== null, String(id));
     const markerBefore = await page.evaluate(

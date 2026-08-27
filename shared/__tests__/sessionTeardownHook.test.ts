@@ -24,7 +24,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync, statSync, existsSync } from "node:fs";
 import { join } from "node:path";
-import { JOT_PRODUCT_NAME } from "../product";
+import { MAC_APP_NAME } from "../product";
 
 const REPO = join(__dirname, "..", "..");
 const SETTINGS = join(REPO, ".claude", "settings.json");
@@ -61,15 +61,15 @@ describe("session teardown hook", () => {
         // `[ -x .../reap.sh ] || exit 0`, so clearing that bit makes every
         // session end quietly do nothing, which is precisely the failure this
         // file exists to catch.
-        expect(statSync(join(REPO, "jot", "scripts", "reap.sh")).mode & 0o100).toBe(0o100);
+        expect(statSync(join(REPO, "mac", "scripts", "reap.sh")).mode & 0o100).toBe(0o100);
     });
 
     it("the reaper it calls should refuse to touch the app's own settings domain", () => {
         // The one line of that script that must never change meaning: every
         // throwaway domain is a suffix of the real one, so a glob over the
         // prefix takes a person's hotkey, note location and agent command.
-        const reap = readFileSync(join(REPO, "jot", "scripts", "reap.sh"), "utf8");
-        expect(reap).toContain('if [ "$name" = "com.birtalabs.jot" ]; then continue; fi');
+        const reap = readFileSync(join(REPO, "mac", "scripts", "reap.sh"), "utf8");
+        expect(reap).toContain('if [ "$name" = "com.birtalabs.birta-writer" ]; then continue; fi');
         // Judged on the CODE, not on the prose. The header explains at length
         // that the installed copy is never touched, and a check over the whole
         // file would fail on the sentence saying so.
@@ -83,14 +83,14 @@ describe("session teardown hook", () => {
         // `codesign` and `ditto` carry that bundle path in argv while running
         // from inside the checkout, so a looser pattern reaches them.
         //
-        // Built from `JOT_PRODUCT_NAME` rather than spelled here, because a
+        // Built from `MAC_APP_NAME` rather than spelled here, because a
         // literal on both sides is a check that compares the script to a copy
         // of itself. `build-app.sh` and `install-app.sh` both derive their
         // bundle name from that constant and `appFlavor.test.ts` holds them to
         // it; this script was the one producer of the same name whose spelling
         // nothing related to it, so a rename that missed it would leave the
         // reaper matching nothing, forever, reporting a clean machine.
-        expect(code).toContain(`jot/build/${JOT_PRODUCT_NAME}[^/]*\\.app/Contents/MacOS/`);
+        expect(code).toContain(`mac/build/${MAC_APP_NAME}[^/]*\\.app/Contents/MacOS/`);
         // Only one branch may delete, and it is the one the caller asked for.
         // `rm -f`, which is the form the script actually uses: an assertion
         // written against `rm -rf` passes here whatever the script does, and

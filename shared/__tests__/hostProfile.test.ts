@@ -5,7 +5,7 @@
  */
 import { describe, it, expect, afterEach } from "vitest";
 import { readFileSync, readdirSync, statSync } from "node:fs";
-import { parseJotMenu, keyedRows, menuSections } from "./jotMenuTable";
+import { parseAppMenu, keyedRows, menuSections } from "./appMenuTable";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -99,13 +99,13 @@ describe("hostHas", () => {
 });
 
 describe("HOST_PROFILES", () => {
-    it("vscode should declare everything, and jot only what its shell provides", () => {
+    it("vscode should declare everything, and mac only what its shell provides", () => {
         // Everything EXCEPT the app-only ones: those name a window a
         // standalone application has and an editor pane does not, so a VS Code
         // host declaring one would offer a row that opens nothing.
         expect([...HOST_PROFILES.vscode].sort()).toEqual(
             ALL_HOST_CAPABILITIES.filter((c) => !APP_ONLY_CAPABILITIES.includes(c)).sort());
-        // Jot's shell answers spelling and grammar with the system's own
+        // The Mac shell answers spelling and grammar with the system's own
         // checker (`SpellService`); it saves a pasted image beside the document
         // and serves it back over its own scheme, so it owns an image store;
         // its window has a sidebar to dock the outline in; it has a Settings
@@ -114,7 +114,7 @@ describe("HOST_PROFILES", () => {
         // VS Code settings or keybindings UI, no read-only owner, no editor
         // font of its own, and no pane wide enough for a reading measure to be
         // a choice.
-        expect(HOST_PROFILES.jot).toEqual(
+        expect(HOST_PROFILES.mac).toEqual(
             ["spellAndGrammar", "imageUpload", "toc", "appPreferences", "agent"]);
     });
 
@@ -213,7 +213,7 @@ describe("hostHasCommand", () => {
 
     it("the gear menu should keep its layout rows and the cheatsheet on the empty host", () => {
         // The documented `settings` exception: the item stays because these
-        // survive; a change here changes what a Jot user sees in the gear.
+        // survive; a change here changes what a Mac app user sees in the gear.
         declare([]);
         const kept = TOOLBAR_MENU_COMMANDS.filter((m) => hostHasCommand(m.id)).map((m) => m.id);
         expect(kept).toEqual(["customizeToolbar", "hideToolbar", "openShortcutsHelp"]);
@@ -326,7 +326,7 @@ describe("hostHasCommand", () => {
     });
 
     it("the gear should lose its layout rows under a fixed toolbar layout", () => {
-        // The observable half of the withdrawal, at the surface a Jot user
+        // The observable half of the withdrawal, at the surface a Mac app user
         // actually reads. Asserted against the same host WITHOUT the
         // arrangement, so the case discriminates rather than describing a
         // menu that was short anyway.
@@ -345,12 +345,12 @@ describe("hostHasCommand", () => {
 });
 
 /**
- * `HOST_PROFILES.jot` is the source, and nothing imports it: the shell is Swift
+ * `HOST_PROFILES.mac` is the source, and nothing imports it: the shell is Swift
  * and the harness pages are HTML, so both restate the list as a literal. This
  * is what makes it one declaration rather than three that agree by luck. Each
  * check parses its file rather than trusting a comment to be obeyed.
  */
-describe("the Jot profile's copies", () => {
+describe("the mac profile's copies", () => {
     const repoRoot = ROOT;
     const read = (rel: string): string => readFileSync(join(repoRoot, rel), "utf8");
 
@@ -388,7 +388,7 @@ describe("the Jot profile's copies", () => {
     const BOOT_CONFIG = "func bootConfig(";
 
     it("the Swift shell should declare exactly the profile", () => {
-        const swift = read("jot/Sources/BirtaJot/Preferences.swift");
+        const swift = read("mac/Sources/BirtaWriter/Preferences.swift");
         // Fail loudly if the call moved, rather than matching some other array.
         //
         // Anchored on the NAME and not on the full signature, which has already
@@ -398,14 +398,14 @@ describe("the Jot profile's copies", () => {
         // until you have checked otherwise, and follow it rather than loosening
         // the equality below, which is the part doing the work.
         expect(swift).toContain(BOOT_CONFIG);
-        expect(declaredIn(swift.slice(swift.indexOf(BOOT_CONFIG)))).toEqual([...HOST_PROFILES.jot]);
+        expect(declaredIn(swift.slice(swift.indexOf(BOOT_CONFIG)))).toEqual([...HOST_PROFILES.mac]);
     });
 
     /**
      * Every capability name the Swift spells, not only the ones in the list.
      *
      * The list itself is already compared above, so a rename that landed in
-     * `HOST_PROFILES.jot` and not in the shell fails there. What had NO guard is
+     * `HOST_PROFILES.mac` and not in the shell fails there. What had NO guard is
      * a capability name spelled anywhere ELSE in Swift: the `agent` in the
      * filter beside the list is one, and `Bridge.swift` used to carry another,
      * a `hostCapabilities.contains("proofreading")` written when that WAS a
@@ -421,7 +421,7 @@ describe("the Jot profile's copies", () => {
      * that found only the list it was already checking.
      */
     it("every capability name the Swift spells should be a real capability", () => {
-        const swift = read("jot/Sources/BirtaJot/Preferences.swift");
+        const swift = read("mac/Sources/BirtaWriter/Preferences.swift");
         const body = swift.slice(swift.indexOf(BOOT_CONFIG));
         const expr = /hostCapabilities:([\s\S]*?)viewStateJSON:/.exec(body);
         expect(expr, "no hostCapabilities argument found; fix the parser").not.toBeNull();
@@ -433,7 +433,7 @@ describe("the Jot profile's copies", () => {
         // the filter's own literal is the one with no other reader.
         expect(names.length,
             "the scrape found only the declared list, so the filter's name went unchecked")
-            .toBeGreaterThan(HOST_PROFILES.jot.length);
+            .toBeGreaterThan(HOST_PROFILES.mac.length);
     });
 
     /**
@@ -445,14 +445,14 @@ describe("the Jot profile's copies", () => {
      * coming back, and both want reading before they land.
      */
     it("the bridge should test no capability name of its own", () => {
-        const bridge = read("jot/Sources/BirtaJotCore/Bridge.swift");
+        const bridge = read("mac/Sources/BirtaWriterCore/Bridge.swift");
         const tested = [...bridge.matchAll(/hostCapabilities\.contains\(\s*"([^"]+)"/g)]
             .map((m) => m[1]!);
         expect(tested).toEqual([]);
     });
 
-    it("the e2e Jot page should declare exactly the profile", () => {
-        expect(declaredIn(bootstrapLine(read("e2e/jotHost/index.html")))).toEqual([...HOST_PROFILES.jot]);
+    it("the e2e mac page should declare exactly the profile", () => {
+        expect(declaredIn(bootstrapLine(read("e2e/macHost/index.html")))).toEqual([...HOST_PROFILES.mac]);
     });
 
     it("the VS Code page should import its capabilities, declare no arrangement, and resolve its shortcuts", () => {
@@ -473,7 +473,7 @@ describe("the Jot profile's copies", () => {
     });
 
     it("the e2e control page should declare nothing at all, which is what absent-means-the-vscode-profile needs", () => {
-        expect(bootstrapLine(read("e2e/jotHost/control.html"))).not.toContain("host:");
+        expect(bootstrapLine(read("e2e/macHost/control.html"))).not.toContain("host:");
     });
 
     /**
@@ -483,9 +483,9 @@ describe("the Jot profile's copies", () => {
      * would still have passed: the e2e page carries its own copy and nothing
      * compared them. One key is what makes one guard possible.
      */
-    it("both Jot declarers should carry the same arrangements", () => {
-        const swift = read("jot/Sources/BirtaJotCore/Bridge.swift");
-        const page = bootstrapLine(read("e2e/jotHost/index.html"));
+    it("both mac declarers should carry the same arrangements", () => {
+        const swift = read("mac/Sources/BirtaWriterCore/Bridge.swift");
+        const page = bootstrapLine(read("e2e/macHost/index.html"));
         const fromSwift = listedUnder("arrangements", swift);
         const fromPage = listedUnder("arrangements", page);
         expect(fromSwift.length).toBeGreaterThan(0);
@@ -493,14 +493,14 @@ describe("the Jot profile's copies", () => {
         for (const a of fromSwift) { expect(ALL_HOST_ARRANGEMENTS).toContain(a); }
     });
 
-    it("the Jot shell should declare shortcuts, and from its own menu table", () => {
+    it("the Mac shell should declare shortcuts, and from its own menu table", () => {
         // Not a list comparison against a literal: the shell builds these from
-        // JotMenu, so the guard is that it declares SOME and that the table is
+        // AppMenu, so the guard is that it declares SOME and that the table is
         // what feeds them. A literal list here would be a fourth copy.
-        const bridge = read("jot/Sources/BirtaJotCore/Bridge.swift");
+        const bridge = read("mac/Sources/BirtaWriterCore/Bridge.swift");
         expect(bridge).toContain('"shortcuts"');
-        const prefs = read("jot/Sources/BirtaJot/Preferences.swift");
-        expect(prefs).toContain("JotMenu.shortcuts");
+        const prefs = read("mac/Sources/BirtaWriter/Preferences.swift");
+        expect(prefs).toContain("AppMenu.shortcuts");
     });
 
     it("the e2e page should declare the shortcuts the app actually binds", () => {
@@ -520,7 +520,7 @@ describe("the Jot profile's copies", () => {
         // heading renamed in the shell left the app printing one word and this
         // check demanding the other of the page, with both green.
         const sections = menuSections(repoRoot);
-        const bound = keyedRows(parseJotMenu(repoRoot)).map((row) => ({
+        const bound = keyedRows(parseAppMenu(repoRoot)).map((row) => ({
             keys: row.chord!,
             label: row.title,
             ...(row.command !== null ? { command: row.command } : {}),
@@ -528,7 +528,7 @@ describe("the Jot profile's copies", () => {
         }));
         expect(bound.length).toBeGreaterThan(20);
 
-        const page = bootstrapLine(read("e2e/jotHost/index.html"));
+        const page = bootstrapLine(read("e2e/macHost/index.html"));
         const shortcuts = /shortcuts:\s*(\[[\s\S]*?\])\s*\}\s*\}/.exec(page);
         expect(shortcuts, "no shortcuts literal in the e2e page's bootstrap").not.toBeNull();
         // eslint-disable-next-line @typescript-eslint/no-implied-eval

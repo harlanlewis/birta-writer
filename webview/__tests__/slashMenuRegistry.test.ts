@@ -277,8 +277,8 @@ describe("dynamicDetail", () => {
     });
 
     it("a date row should be read fresh, not baked at module load", () => {
-        // The midnight case, which is the whole reason the field exists: a Jot
-        // panel is left open for days. Two reads either side of a clock change
+        // The midnight case, which is the whole reason the field exists: a Mac
+        // app panel is left open for days. Two reads either side of a clock change
         // must differ, so a value captured once cannot pass.
         //
         // `vi.setSystemTime` rather than a stubbed `Date.now`: the `Date`

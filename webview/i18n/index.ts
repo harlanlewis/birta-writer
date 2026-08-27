@@ -160,7 +160,7 @@ const MODIFIER_ORDER_OTHER = ["Mod", "Ctrl", "Alt", "Shift"];
  * are one chord and the declaration cannot be the authority on how it reads.
  * Every other place this product prints a chord already uses the platform's
  * order: AppKit draws a menu item's key equivalent that way whatever order the
- * mask was built in, and `BirtaJotCore/HotkeyCombo.swift` emits ⌃⌥⇧⌘ for the
+ * mask was built in, and `BirtaWriterCore/HotkeyCombo.swift` emits ⌃⌥⇧⌘ for the
  * summon hotkey. Left to the declaration, the Mac app's Format menu drew its
  * Heading 1 row as ⌥⌘1 while the tooltip on the same command read ⌘⌥1
  * (MAR-412).
