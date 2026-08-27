@@ -31,3 +31,8 @@ mac/build/
 # No trailing slash: the integration harness can leave a SYMLINK named
 # `.vscode-test`, and a directory-only pattern does not match one.
 .vscode-test
+# The end-of-session cleanup hook's report (harlanlewis plugin, opt-in via
+# `.claude/session-cleanup`). Tracked, it would leave this checkout dirty
+# forever, and the hook's fast-forward step refuses to run on a dirty tree,
+# so committing this file silently switches half the hook off.
+.claude/session-cleanup.log
