@@ -26,8 +26,11 @@ final class SettingsPaneTests: XCTestCase {
         _ = NSApplication.shared
     }
 
-    private func makeController() -> SettingsWindowController {
-        SettingsWindowController(onHotkeyChange: { 0 }, onChange: { _ in },
+    /// The RELEASE window unless a test says otherwise, which is what every
+    /// arm here measured before the flavour was injectable and what most of
+    /// them still want. The ones that care say which.
+    private func makeController(_ flavour: AppFlavor = .release) -> SettingsWindowController {
+        SettingsWindowController(flavour: flavour, onHotkeyChange: { 0 }, onChange: { _ in },
                                  onShowWelcome: {}, onCheckForUpdates: {})
     }
 
@@ -88,7 +91,7 @@ final class SettingsPaneTests: XCTestCase {
         let controller = makeController()
         defer { controller.window?.close() }
         let drawn = labels(of: controller, tab: "advanced")
-        let declared = SettingsForm.rows(of: SettingsForm.advanced).map(\.rawValue)
+        let declared = SettingsForm.rows(of: controller.advancedPane).map(\.rawValue)
         XCTAssertEqual(drawn, declared,
                        "the Advanced pane and its declaration disagree; drawn: "
                        + drawn.joined(separator: " | "))
@@ -103,21 +106,60 @@ final class SettingsPaneTests: XCTestCase {
     /// no declared pane draws an empty window, and a declared pane no tab
     /// reaches is rows nobody can get to.
     func testEveryTabShouldDrawExactlyTheRowsItsPaneDeclares() {
-        let controller = makeController()
-        defer { controller.window?.close() }
-        let names = SettingsWindowController.tabNames
-        XCTAssertEqual(names.count, SettingsForm.panes.count,
-                       "a pane has no tab, or a tab has no pane: tabs "
-                       + names.joined(separator: ", "))
-        for name in names {
-            guard let declared = SettingsWindowController.declaredRows(forTab: name) else {
-                XCTFail("tab \(name) declares no pane")
-                continue
+        // Every flavour, from the type rather than from a pair written here,
+        // so a third build is walked the day it is added rather than the day
+        // somebody remembers this file. Which rows Advanced holds is one of
+        // the things a flavour decides, so a loop over one build is a loop
+        // that has never seen the other pane.
+        for flavour in AppFlavor.allCases {
+            let controller = makeController(flavour)
+            defer { controller.window?.close() }
+            let names = SettingsWindowController.tabNames
+            XCTAssertEqual(names.count, SettingsForm.panes.count,
+                           "a pane has no tab, or a tab has no pane: tabs "
+                           + names.joined(separator: ", "))
+            for name in names {
+                guard let declared = controller.declaredRows(forTab: name) else {
+                    XCTFail("tab \(name) declares no pane on a \(flavour) build")
+                    continue
+                }
+                XCTAssertFalse(declared.isEmpty,
+                               "tab \(name) declares an empty pane on a \(flavour) build")
+                XCTAssertEqual(labels(of: controller, tab: name), declared.map(\.rawValue),
+                               "the \(name) pane and its declaration disagree on a "
+                               + "\(flavour) build")
             }
-            XCTAssertFalse(declared.isEmpty, "tab \(name) declares an empty pane")
-            XCTAssertEqual(labels(of: controller, tab: name), declared.map(\.rawValue),
-                           "the \(name) pane and its declaration disagree")
         }
+    }
+
+    /// The loop above walks both builds and would walk them just as happily if
+    /// the flavour reached nothing: two identical panes agree with two
+    /// identical declarations. This is the arm that says the two builds draw
+    /// something different, and names WHICH row, so the pair cannot collapse
+    /// without a red.
+    ///
+    /// The Welcome screen row is Advanced's, and it is the only row in the
+    /// whole form that some build does not have. `SettingsForm.advanced` is
+    /// where that is decided; this reads it back off a real pane.
+    func testOnlyADevelopmentBuildShouldDrawTheWelcomeScreenRow() {
+        let dev = makeController(.dev)
+        defer { dev.window?.close() }
+        let release = makeController(.release)
+        defer { release.window?.close() }
+
+        let onDev = labels(of: dev, tab: "advanced")
+        let onRelease = labels(of: release, tab: "advanced")
+
+        XCTAssertTrue(onDev.contains(SettingsRow.welcomeScreen.rawValue),
+                      "a development build draws no Welcome screen row; drawn: "
+                      + onDev.joined(separator: " | "))
+        XCTAssertFalse(onRelease.contains(SettingsRow.welcomeScreen.rawValue),
+                       "the release draws a row only a development build has; drawn: "
+                       + onRelease.joined(separator: " | "))
+        // Every other row is shared, so the ONE row is the whole difference:
+        // a pane that gained a second dev-only row would be reported here
+        // rather than passing under the two assertions above.
+        XCTAssertEqual(onDev.filter { $0 != SettingsRow.welcomeScreen.rawValue }, onRelease)
     }
 
     /// Switching panes must not lose the answer a row is showing.
@@ -430,7 +472,7 @@ final class SettingsPaneTests: XCTestCase {
         Prefs.agentEnabled = true
         Prefs.agentCommand = AgentPreset.codex.template
         var reloads = 0
-        let controller = SettingsWindowController(onHotkeyChange: { 0 },
+        let controller = SettingsWindowController(flavour: .release, onHotkeyChange: { 0 },
                                                   onChange: { _ in reloads += 1 },
                                                   onShowWelcome: {}, onCheckForUpdates: {})
         defer { controller.window?.close() }
@@ -463,7 +505,7 @@ final class SettingsPaneTests: XCTestCase {
         Prefs.agentEnabled = true
         Prefs.agentCommand = AgentPreset.codex.template
         var reloads = 0
-        let controller = SettingsWindowController(onHotkeyChange: { 0 },
+        let controller = SettingsWindowController(flavour: .release, onHotkeyChange: { 0 },
                                                   onChange: { _ in reloads += 1 },
                                                   onShowWelcome: {}, onCheckForUpdates: {})
         defer { controller.window?.close() }
@@ -487,21 +529,41 @@ final class SettingsPaneTests: XCTestCase {
 
     /// The reason this file exists, stated as its own check: every row the
     /// first-run screen asks about is a row somebody can go back to in
-    /// Settings, worded the same, ON SCREEN rather than in an array.
-    func testEveryFirstRunRowShouldBeDrawnInTheGeneralPane() {
+    /// Settings, worded the same and in the same order, ON SCREEN rather than
+    /// in an array.
+    ///
+    /// Across the panes in tab order rather than General alone, which is the
+    /// order somebody walks Settings in and the one `SettingsForm.allRows`
+    /// names. A first-run question can belong to a pane that is not General:
+    /// Automatically update is about the program replacing itself, so it is on
+    /// Advanced, and the guarantee the first run owes is that the question is
+    /// findable rather than that it is findable on one particular tab.
+    /// `SettingsFormTests` makes the same claim about the declaration; this
+    /// one reads the labels off the live panes, so a renderer dropping a row
+    /// the declaration still names is caught here and nowhere else.
+    func testEveryFirstRunRowShouldBeDrawnSomewhereInSettings() {
         let controller = makeController()
         defer { controller.window?.close() }
-        let drawn = Set(labels(of: controller, tab: "general"))
+        let drawn = SettingsWindowController.tabNames.flatMap { labels(of: controller, tab: $0) }
         let welcome = SettingsForm.rows(of: SettingsForm.welcome).map(\.rawValue)
         XCTAssertFalse(welcome.isEmpty)
-        // General is meant to hold rows the first run does not ask about, so a
-        // pane that drew exactly the first-run set would be the two screens
-        // having become one. `SettingsFormTests` makes the same claim about
-        // the declaration; this one is about the pane.
+        // Settings is meant to hold rows the first run does not ask about, so
+        // panes that drew exactly the first-run set would be the two screens
+        // having become one.
         XCTAssertGreaterThan(drawn.count, welcome.count)
         for label in welcome {
             XCTAssertTrue(drawn.contains(label),
-                          "the first run asks about \(label) and the General pane draws no such row")
+                          "the first run asks about \(label) and no Settings pane draws such a row")
         }
+        // And in the same order, so nobody is sent backwards through the tabs
+        // to retrace a screen they saw once.
+        var cursor = 0
+        for label in drawn where cursor < welcome.count && label == welcome[cursor] {
+            cursor += 1
+        }
+        XCTAssertEqual(cursor, welcome.count,
+                       "the drawn first-run rows are out of order in Settings; stopped at "
+                       + welcome[min(cursor, welcome.count - 1)] + ", drawn: "
+                       + drawn.joined(separator: " | "))
     }
 }

@@ -1,0 +1,66 @@
+<!doctype html>
+<!-- e2e harness: content-table gridline and header-wash rendering.
+
+     This page links the REAL host palette (dist/hostPalette.css) rather than
+     hardcoding a --vscode-* block of its own, and that is the whole reason the
+     suite can see anything. Every other table fixture in e2e/ writes an OPAQUE
+     --vscode-panel-border (#454545), and an opaque ink cannot produce the
+     compositing artefact these checks exist to catch, so the defect was
+     invisible to the harness while being plainly visible in the product.
+
+     ?theme=dark swaps the palette's dark block on, via the same body class the
+     Jot shell and nativeThemeBridge.ts use. Both themes are checked: a gridline
+     weight is a ratio against its own paper, and a value that reads correctly
+     on one ground can be wrong on the other.
+
+     The blockquote table is here for the header wash: its ground is not the
+     editor's paper, so a wash that composites against whatever is behind it
+     lands at a different colour there than in the table above. -->
+<meta charset="utf-8">
+<link rel="stylesheet" href="dist/hostPalette.css">
+<link rel="stylesheet" href="dist/webview.css">
+<style>
+  html, body { margin: 0; padding: 0; }
+  body { background: var(--vscode-editor-background); color: var(--vscode-editor-foreground); }
+  .editor-topbar { height: 0; }
+</style>
+<script>
+  const theme = new URL(location.href).searchParams.get("theme") === "dark" ? "dark" : "light";
+  document.addEventListener("DOMContentLoaded", () => {
+    document.body.classList.add(theme === "dark" ? "vscode-dark" : "vscode-light");
+  });
+  window.__i18n = { translations: {}, isMac: true, toolbar: { placements: {}, order: [] } };
+  window.__posted = [];
+  const DOC = [
+    "# Tables",
+    "",
+    // A body paragraph, for the alignment check: it is the measure a reader
+    // sees, and a full-width table has to agree with it. Without one here the
+    // check has nothing to compare against and says so rather than skipping.
+    "A paragraph of ordinary prose, which sets the measure the table is checked against.",
+    "",
+    "| Alpha | Beta | Gamma |",
+    "|---|---|---|",
+    "| one | two | three |",
+    "| four | five | six |",
+    "| seven | eight | nine |",
+    "",
+    "> A table whose ground is not the editor's paper:",
+    ">",
+    "> | Alpha | Beta |",
+    "> |---|---|",
+    "> | one | two |",
+    "",
+  ].join("\n");
+  window.acquireVsCodeApi = () => ({
+    postMessage: (msg) => {
+      window.__posted.push(msg);
+      if (msg.type === "ready")
+        window.postMessage({ type: "init", content: DOC + "\n", syncVersion: 1 }, "*");
+    },
+    getState: () => undefined, setState: () => {},
+  });
+</script>
+<div class="editor-topbar"></div>
+<div id="editor"></div>
+<script type="module" src="dist/webview.js"></script>

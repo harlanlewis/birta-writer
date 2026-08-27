@@ -6,6 +6,7 @@
  * settings round trip completes.
  */
 import { notifyStyleAddException, notifySpellAddWord } from "../messaging";
+import { clearLintCache } from "./lintCache";
 
 /** Words in the user's dictionary (from settings, plus "Add to dictionary"). */
 const userWords = new Set<string>();
@@ -14,10 +15,28 @@ const sessionIgnores = new Set<string>();
 /** `category:text` style-check keys ignored for this editor session only. */
 const styleIgnores = new Set<string>();
 
-/** Replace the user-dictionary set (from configuration). */
+/**
+ * Replace the user-dictionary set (from configuration).
+ *
+ * A change here invalidates remembered findings, and in one direction it cannot
+ * be repaired downstream. The HOST filters by this dictionary too, fresh on
+ * every request, so a word added to it stops arriving as a finding at all.
+ * Adding is harmless: the cached finding is still suppressed locally by
+ * `isLintSuppressed`. REMOVING a word is not, because the cached answer for a
+ * block already has no finding in it and nothing downstream can put one back;
+ * the word would stay unflagged until that block's text changed or the tab
+ * reloaded. Reachable by editing `birta.spellCheck.userWords` by hand, and on the
+ * Mac by unlearning a word in the system dictionary.
+ *
+ * So the cache is dropped on any change, rather than only on a shrink: telling
+ * the two apart buys nothing on a path that runs when settings change.
+ */
 export function setUserWords(words: readonly string[]): void {
+    const next = new Set(words.map((w) => w.toLowerCase()));
+    const changed = next.size !== userWords.size || [...next].some((w) => !userWords.has(w));
     userWords.clear();
-    for (const w of words) { userWords.add(w.toLowerCase()); }
+    for (const w of next) { userWords.add(w); }
+    if (changed) { clearLintCache(); }
 }
 
 /** Add a word to the user's dictionary and persist it to settings. */

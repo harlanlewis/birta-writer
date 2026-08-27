@@ -4,7 +4,15 @@
 
 ## [Unreleased]
 
+### Added
+
+- `birta.editor.toggleStyleOption`, which turns one style check on or off, taking the check's key as its argument (`fillers`, `passive`, `emDash`, and the rest of the rows in the Checks menu). It is deliberately not in the command palette, because a palette row cannot supply the argument; bind it in `keybindings.json` with `"args": "passive"`. It is the first way to put a single style check on a key, where the master gate and the three domain switches already had commands.
+
 ### Fixed
+
+- Typing in a long document was slowed by spelling and grammar checking. The editor walked the whole document and sent every block to the checker after each pause in typing, rather than only the blocks an edit had changed, so the cost scaled with the document while the edit did not. Worse, the check runs on that pause: once a document was big enough for a whole-document check to outlast it, every single keystroke bought another one, and it got worse the slower it got. Findings are now remembered per block. This was at its most severe in Birta Writer for Mac, where the checker is macOS's own and runs on the thread your keystrokes arrive on.
+
+- Table gridlines no longer draw a darker dot at every intersection. A partly transparent line colour composited with itself where two gridlines crossed, so a document full of tables read as speckled. The gridline ink is opaque now. Separately, and only in Birta Writer for Mac, the same compositing doubled every interior line so the grid's outer edges read lighter than its interior, and the table's own horizontal scrolling clipped away the outer half of the left edge; the grid is one weight all the way round on both surfaces now. Header rows also take a consistent wash, instead of a fainter one wherever the table sits on something other than the page background, such as inside a quote. A multi-cell selection's outline is even too, rather than brighter along the edges between selected cells.
 
 - The Codex CLI route offered by `Birta: Ask AI About This` runs. It was `codex exec --full-auto {prompt}`, and current Codex has no `--full-auto`, so choosing that route got a usage error instead of an answer. It is now `codex exec --sandbox workspace-write --skip-git-repo-check {prompt}`, which is the same two things the old flag stood for, spelled the way Codex spells them and with the check that otherwise refuses to run outside a git repository. If you already chose that route, `birta.agent.command` holds the old line and this does not rewrite it; run the command again and pick Codex to take the new one, or edit the setting.
 

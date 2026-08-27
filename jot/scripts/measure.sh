@@ -209,7 +209,7 @@ kill -URG $PID; sleep 3
 hide_panel
 rm -f "$SCRATCH_DIR/.debug-message.json"
 LINT="$(grep "^jot-trace lint " "$LOG" | tail -1 || true)"
-LINT_COUNT="$(echo "$LINT" | sed -n 's/.*lints=\([0-9]*\).*/\1/p')"
+LINT_COUNT="$(echo "$LINT" | sed -n 's/.*spelling=\([0-9]*\).*/\1/p')"
 if [ -z "$LINT" ]; then
     echo "spelling             FAILED: the page asked for no lints at all" >&2
     echo "  (the capability may not be declared, or the rescan never ran)" >&2; exit 1
@@ -218,6 +218,47 @@ elif [ "${LINT_COUNT:-0}" -lt 1 ]; then
     echo "  $LINT" >&2; exit 1
 else
     echo "spelling             ok: the system checker answered the page ($LINT)"
+fi
+
+# Grammar, the other half of the same round trip, and the half nothing was
+# asking about. The page draws spelling and grammar from one pass and gates
+# them on two different switches, so a build where `NSSpellChecker` answers no
+# grammar at all is indistinguishable from a working one in the combined count
+# this arm used to read. The trace splits them for that reason.
+#
+# A sentence that disagrees with itself, typed the same way the misspelling
+# above is: the page's own rescan is what posts the blocks.
+#
+# WHICH sentence is load-bearing, and the obvious one does not work. macOS
+# declines "This are a test." outright: asked directly, `NSSpellChecker.check`
+# returns zero results for it, grammar or otherwise, while objecting to every
+# other ungrammatical sentence tried beside it. So this arm is one sentence away
+# from asserting that a working feature is broken, and it was, until it was run.
+#
+# `SpellServiceTests.testTheCheckerShouldObjectToAtLeastOneUngrammaticalSentence`
+# is the check to read first when this fails: it sweeps a corpus and asks only
+# for a floor, so it tells a chain that is broken from a sentence this machine's
+# checker happens not to mind. This arm covers what that one cannot, which is
+# the round trip through the page, the bridge and back.
+show_panel
+printf '{"type":"__jotKeys","keys":["End","Enter","I"," ","h","a","s"," ","a"," ","a","p","p","l","e","."]}' \
+    > "$SCRATCH_DIR/.debug-message.json"
+kill -URG $PID; sleep 3
+hide_panel
+rm -f "$SCRATCH_DIR/.debug-message.json"
+LINT="$(grep "^jot-trace lint " "$LOG" | tail -1 || true)"
+GRAMMAR_COUNT="$(echo "$LINT" | sed -n 's/.*grammar=\([0-9]*\).*/\1/p')"
+if [ -z "$GRAMMAR_COUNT" ]; then
+    echo "grammar              FAILED: the lint trace carries no grammar count" >&2
+    echo "  $LINT" >&2; exit 1
+elif [ "$GRAMMAR_COUNT" -lt 1 ]; then
+    echo "grammar              FAILED: the checker objected to nothing in 'I has a apple.'," >&2
+    echo "  so the Check Grammar row may promise something no reader receives." >&2
+    echo "  Run SpellServiceTests first: it sweeps a corpus for a floor, so it" >&2
+    echo "  separates a broken chain from a sentence this checker does not mind." >&2
+    echo "  $LINT" >&2; exit 1
+else
+    echo "grammar              ok: the system checker objected to the sentence ($LINT)"
 fi
 
 # A menu key equivalent, from the chord to the bytes.

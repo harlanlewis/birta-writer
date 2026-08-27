@@ -142,6 +142,30 @@ final class Coordinator {
     /// for the app's lifetime so its spell-document tag, and with it anything
     /// ignored in this session, survives a page reload.
     private let spell = SpellService()
+
+    /// What THIS window's page currently shows, for the menus that draw it.
+    ///
+    /// A mirror of what the page has reported, updated as each flip arrives and
+    /// re-seeded from `Prefs` at EVERY page boot, in the `bootConfig` closure
+    /// where the page itself is seeded. Both matter: a reload re-reads `Prefs`,
+    /// which another window may have written since, so a mirror seeded only at
+    /// construction would drift back out of step the first time this window
+    /// reloaded. This initializer is the default that closure supersedes.
+    ///
+    /// `Prefs` remains the store, because these settings persist across launches
+    /// and a new window should open the way the last one was left; what `Prefs`
+    /// cannot be is the source a MENU reads.
+    ///
+    /// The menu bar belongs to the application and its commands go to the front
+    /// window, while `Prefs` holds one value for the whole process. With two
+    /// windows open those disagree: turn Check Spelling off in one, focus the
+    /// other, and its View menu would draw the row unchecked while that window is
+    /// still checking spelling. Picking it would then turn the thing OFF from a
+    /// row that said it was already off, which is worse than a menu that simply
+    /// omitted the state.
+    private(set) var menuState = MenuState(proofreadOptions: Prefs.proofreadOptions,
+                                           noteHighlight: Prefs.noteHighlight,
+                                           tocShown: Prefs.tocVisibility == "shown")
     /// Per run, the file holding the agent's own version while the page's
     /// merge decides whether the document ended up with all of it.
     private var agentRescues: [String: URL] = [:]
@@ -367,7 +391,17 @@ final class Coordinator {
         // being torn down has no view state worth restoring. `WebHost`'s own
         // default is the honest answer.
         host.bootConfig = { [weak self] in
-            self.map { Prefs.bootConfig(viewStateFor: $0.boundURL) } ?? BootConfig()
+            guard let self else { return BootConfig() }
+            // The menu mirror is re-seeded HERE, at the one instant the page is
+            // seeded, so the two cannot disagree about what this window shows.
+            // A page boot is not only a launch: `preferencesChanged` reloads,
+            // and a reload re-reads `Prefs`, which another window may have
+            // written since. Seeded only at construction, this window's menus
+            // would go on drawing the state its page had before the reload.
+            self.menuState = MenuState(proofreadOptions: Prefs.proofreadOptions,
+                                       noteHighlight: Prefs.noteHighlight,
+                                       tocShown: Prefs.tocVisibility == "shown")
+            return Prefs.bootConfig(viewStateFor: self.boundURL)
         }
         host.onMessage = { [weak self] m in self?.handle(m) }
         host.onProcessTerminated = { [weak self] in self?.contentProcessDied() }
@@ -1075,6 +1109,7 @@ final class Coordinator {
         // on every file it opens: without this the sidebar would shut itself
         // the moment you opened a second note.
         case let .lintBlocks(id, blocks):
+            let lintStart = Date()
             spell.lint(blocks: blocks) { [weak self] results in
                 guard let self else { return }
                 // Traced because this is the one chain no other instrument
@@ -1082,8 +1117,31 @@ final class Coordinator {
                 // the browser harness cannot run `NSSpellChecker` at all, so
                 // `measure.sh` reads this line to say the round trip works in
                 // the real app.
+                //
+                // The counts are split BY KIND, and the timings are here because
+                // this checker runs on the main thread, which is also the thread
+                // key events arrive on. Two different questions, and the line
+                // answers both.
+                //
+                // One combined total made a dead grammar chain read exactly like
+                // a working one at every level: the service's own test skipped on
+                // an empty grammar list, and this line summed the two, so "Check
+                // Grammar has no effect" was a claim nothing here could confirm
+                // or deny.
+                //
+                // `ms` is what the whole answer took and `hold` is the longest
+                // stretch the thread was unavailable inside it. `hold` is the
+                // half a person feels, and the two separate because work spread
+                // over many run-loop turns costs the same `ms` and costs the
+                // caret nothing.
+                let lints = results.flatMap { $0.lints }
+                let spelling = lints.filter { $0.kind == "Spelling" }.count
                 self.measure.trace("lint blocks=\(blocks.count) "
-                    + "lints=\(results.reduce(0) { $0 + $1.lints.count })")
+                    + "chars=\(blocks.reduce(0) { $0 + $1.text.count }) "
+                    + "ms=\(Int(Date().timeIntervalSince(lintStart) * 1000)) "
+                    + "hold=\(Int(self.spell.lastCost.longestHold * 1000)) "
+                    + "lints=\(lints.count) "
+                    + "spelling=\(spelling) grammar=\(lints.count - spelling)")
                 self.host.send(.lintResults(id: id, results: results))
             }
         case let .spellAddWord(word):
@@ -1093,13 +1151,23 @@ final class Coordinator {
             // in the extension, where this write is also one-way.
             spell.learn(word)
         case let .setProofreadOption(key, value):
+            // Both, and they answer different questions: `Prefs` is what the
+            // NEXT window opens with, `menuState` is what THIS window's menus
+            // draw. See `menuState`'s own comment for why one store cannot be
+            // both.
             Prefs.rememberProofreadOption(key: key, value: value)
+            menuState.record(.proofread(key), on: value)
+        case let .setNoteHighlight(enabled):
+            Prefs.noteHighlight = enabled
+            menuState.record(.noteHighlight, on: enabled)
         case let .styleAddException(phrase):
             // One-way, like `spellAddWord`: the page has already stopped
             // drawing the hit from its own set, and this is what makes it
             // stick past the next page load.
             Prefs.rememberStyleException(phrase)
-        case let .setTocVisibility(v): Prefs.tocVisibility = v
+        case let .setTocVisibility(v):
+            Prefs.tocVisibility = v
+            menuState.record(.tocShown, on: v == "shown")
         case .setTocPosition:
             // Nothing to remember: the side is this app's rather than the
             // reader's (`fixedTocSide`, and `BirtaSchemeHandler.renderPage`
@@ -2276,7 +2344,8 @@ final class Coordinator {
     }
 
     private func makeWelcome() -> WelcomeView {
-        let view = WelcomeView(onHotkeyChange: { [weak self] in self?.onHotkeyChanged?() ?? -1 })
+        let view = WelcomeView(flavour: .current,
+                               onHotkeyChange: { [weak self] in self?.onHotkeyChanged?() ?? -1 })
         view.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(view)
         NSLayoutConstraint.activate([
@@ -3257,10 +3326,10 @@ final class Coordinator {
     /// Summoning first is what makes the key equivalents work at all from the
     /// Settings or About window, whose responder chain reaches this menu and
     /// not the panel's editor.
-    func runEditorCommand(_ command: String) {
+    func runEditorCommand(_ command: String, arg: String? = nil) {
         guard state == .warm else { return }
         show()
-        host.send(.editorCommand(command))
+        host.send(.editorCommand(command, arg: arg))
     }
 
     /// Put `content` in the editor and the file, keeping the mounted editor

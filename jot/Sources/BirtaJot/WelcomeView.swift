@@ -54,7 +54,15 @@ final class WelcomeView: NSView {
     private var column: NSStackView?
     private let hero = NSImageView()
 
-    init(onHotkeyChange: @escaping () -> OSStatus) {
+    /// Which build this screen is drawing for. Taken rather than read, for
+    /// the reason `SettingsWindowController.flavour` states: the only arm an
+    /// xctest process can reach through `AppFlavor.current` is the release
+    /// one, so the update row's dead state was unreachable here too. Passed
+    /// explicitly by the one production caller.
+    let flavour: AppFlavor
+
+    init(flavour: AppFlavor, onHotkeyChange: @escaping () -> OSStatus) {
+        self.flavour = flavour
         self.onHotkeyChange = onHotkeyChange
         super.init(frame: .zero)
         build()
@@ -323,7 +331,7 @@ final class WelcomeView: NSView {
         // documenting the answers: a row that works needs no sentence here,
         // and one that cannot needs the same sentence Settings gives it.
         let availability = RowAvailability
-            .autoUpdate(updatesItself: AppFlavor.current.updatesItself).problemsOnly
+            .autoUpdate(updatesItself: flavour.updatesItself).problemsOnly
         updateSwitch.isEnabled = availability.isEnabled
         updateSwitch.state = Prefs.autoUpdate && availability.isEnabled ? .on : .off
         rowViews[.autoUpdate]?.apply(availability)

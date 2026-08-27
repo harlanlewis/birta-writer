@@ -426,6 +426,28 @@ body {
        rules so all three columns agree at every content font scale. */
     --gutter-column: -10px;
     --gutter-container-inset: calc(3px + var(--content-em));
+
+    /* ── Table gridlines ────────────────────────────────────────────────────
+       OPAQUE, and that is the whole point. Under border-collapse the two cells
+       either side of a gridline both paint it, so a translucent ink composites
+       with itself: a crossing is two layers in Chromium and a whole interior
+       gridline is two layers in WebKit, where a crossing reaches eight. That is
+       what draws a darker dot at every intersection, and no amount of tuning an
+       alpha removes it, because the artifact is the alpha. An opaque ink is the
+       same colour however many times it is painted, so the grid is one weight
+       everywhere and both engines agree. Verify with `node e2e/run.mjs
+       tableGridlines`, in chromium and in BIRTA_E2E_BROWSER=webkit.
+
+       Derived from the editor's own paper and ink rather than from
+       --vscode-panel-border, which is translucent in every host we ship and
+       cannot be flattened in CSS (color-mix against a background keeps a
+       fraction of the source alpha). 14% is the weight the single-layer
+       intention already had in both palettes. */
+    --content-table-line: color-mix(
+        in srgb,
+        var(--vscode-editor-foreground) 14%,
+        var(--vscode-editor-background)
+    );
 }
 
 @media (max-width: 720px) {
@@ -1694,14 +1716,40 @@ body.editor-width-auto :is(.code-width-toggle-btn, .mw-bc-width) {
         /* Tables */
         table {
             border-collapse: collapse;
-            width: 100%;
             margin: 0 0 var(--content-flow-gap);
             overflow-x: auto;
             display: block;
+            /* `display: block` makes this element the horizontal scroll
+               container, and a scroll container clips to its PADDING box. Under
+               border-collapse the resolved gridline straddles the cell edge, so
+               the outer half of the outermost cells' borders sits at a negative
+               x and is clipped away. WebKit loses it; Chromium offsets the grid
+               by that half instead and keeps it. The padding gives the half
+               somewhere legal to land, and the equal negative margin puts the
+               grid back where it was.
+
+               THREE declarations, not two, and the third is why: `box-sizing`
+               is `border-box` globally, so with a plain `width: 100%` the
+               negative margin would carry the RIGHT edge 1px inboard, and a
+               full-measure table would stop lining up with the paragraph above
+               it. The widened width gives that pixel back. Keep all three in
+               step; changing one alone moves the grid.
+
+               `node e2e/run.mjs tableGridlines` holds all three, by two separate
+               checks, because one cannot see the other's declaration. The
+               padding and margin are held by comparing each outer edge against
+               an interior gridline, at BOTH device scale factors, since half a
+               CSS pixel rounds back to a whole device pixel at 1x and the loss
+               is invisible there. The width is held by comparing the table's own
+               box against a paragraph's, because reverting it leaves every ink
+               ratio perfect and moves the right edge alone. */
+            width: calc(100% + 1px);
+            padding-left: 1px;
+            margin-left: -1px;
 
             th,
             td {
-                border: 1px solid var(--vscode-panel-border);
+                border: 1px solid var(--content-table-line);
                 padding: 6px 12px;
                 text-align: left;
                 position: relative; /* anchor for .selectedCell::after absolute positioning */
@@ -1720,8 +1768,18 @@ body.editor-width-auto :is(.code-width-toggle-btn, .mw-bc-width) {
                 }
             }
 
+            /* The header wash pulls the row a fixed fraction toward the ink,
+               whatever is behind it. A fixed mid-gray cannot: its effect is
+               proportional to how far the ground is FROM mid-gray, so the same
+               declaration lands at a different strength on the editor's paper
+               than inside a quote or a callout, and on a ground already near
+               mid-gray it does nothing at all. Worse, it moves the wrong way on
+               a ground lighter than mid-gray in a dark theme, darkening a header
+               that every other table lightens. Mixing the theme's own foreground
+               into whatever is underneath is always the same fraction and always
+               toward the ink, which is what makes one header look like the next. */
             th {
-                background: rgba(128, 128, 128, 0.08); /* color-literal-ok: theme-neutral mid-gray wash, legible over any theme's table background */
+                background: color-mix(in srgb, var(--vscode-editor-foreground) 5%, transparent);
                 font-weight: 600;
             }
         }
@@ -1736,11 +1794,21 @@ body.editor-width-auto :is(.code-width-toggle-btn, .mw-bc-width) {
             position: relative;
             background: color-mix(in srgb, var(--vscode-focusBorder) 15%, transparent) !important;
 
+            /* Every selected cell draws its own ring at `inset: -1px`, so along
+               an edge shared by two selected cells both rings occupy that same
+               band, and at a corner shared by four cells all four do. A
+               translucent accent therefore stacks with itself exactly as the
+               gridlines above did, drawing the INSIDE of a selection more
+               strongly than its own boundary, which is backwards. Opaque is one
+               weight however many rings land on it. The cell WASH stays
+               translucent: cell backgrounds do not overlap, so it never stacks,
+               and it has to sit over whatever ground the table is on. */
             &::after {
                 content: "";
                 position: absolute;
                 inset: -1px;
-                border: 2px solid color-mix(in srgb, var(--vscode-focusBorder) 60%, transparent);
+                border: 2px solid
+                    color-mix(in srgb, var(--vscode-focusBorder) 60%, var(--vscode-editor-background));
                 pointer-events: none;
                 z-index: 1;
             }

@@ -159,9 +159,13 @@ jot/                                          Birta Writer for Mac, the menu-bar
 jot/Tests/BirtaJotTests/                      The APP target under test: real windows, laid out and read back, before anything is shown
 jot/scripts/reap.sh                           Clears what a run leaves outside every repo: development-build processes and throwaway defaults domains; fired by a SessionEnd hook
 jot/scripts/install-app.sh                    Installs the built app to /Applications, replacing a running copy through its own flush-then-quit
+jot/scripts/menu-bar.sh                       The app's REAL menu bar, read by pid through the accessibility API; what macOS adds to a menu the app built exists nowhere else, and why System Events cannot be asked
 jot/scripts/make-icons.sh                     Regenerates AppIcon.icns and MenuBarTemplate.pdf from the SVGs in jot/Resources; outputs are committed
 jot/Sources/BirtaJotCore/WindowTitle.swift    What a macOS window title says, with no window: whether Edited is drawn at all, and the path popup's walk
 jot/Sources/BirtaJot/JotMenu.swift            THE menu table: every menu built from it, the page's hostShortcuts declared from it, and why the chords are the extension's
+jot/Sources/BirtaJotCore/MenuState.swift      What a menu row draws of the state it toggles, and why an option nobody touched reads as on
+jot/Sources/BirtaJotCore/StyleCategories.swift  The style-check vocabulary ported for the Style Options submenu; guarded against the page's own list
+jot/Sources/BirtaJotCore/AppKitDefaults.swift  The AppKit behaviours turned off before NSApplication exists, and why a menu bar cannot be edited after the fact
 jot/Sources/BirtaJot/TitlebarActions.swift    New Note, Open and Open Recent as titlebar buttons; which SF Symbol each takes, and why the near alternatives are wrong
 jot/Sources/BirtaJot/RecentsMenu.swift        The Open Recent menu, filled by itself rather than by whichever of its two surfaces raised it
 jot/Sources/BirtaJot/SpellService.swift       Spelling and grammar from NSSpellChecker: why it is sliced across run-loop turns, and why requestChecking is not usable

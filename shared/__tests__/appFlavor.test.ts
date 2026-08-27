@@ -183,4 +183,38 @@ describe("app flavours", () => {
         expect(releaseWorkflow).toContain(`"${prefix}$VERSION.zip.sha256"`);
         expect(updateScript).toContain(prefix!);
     });
+
+    it("a surface drawing flavour-dependent UI should take the flavour, not read it", () => {
+        // `AppFlavor.current` is a `static let` off `Bundle.main`, so it is
+        // FIXED by the process. Under `swift test` the main bundle is Xcode's
+        // xctest tool, whose id is neither of ours, and `forBundle` answers
+        // `.release` for anything it does not recognise. A surface reading it
+        // at the point of use therefore has a development arm that no
+        // `swift test` can reach: a greyed row, a red sentence and a row that
+        // exists only on that build, all drawn by nobody and asserted by
+        // nothing, with the suite green either way.
+        //
+        // Stated as an ABSENCE, which is the only shape that catches it. A
+        // test of the injected path passes just as well beside a second call
+        // site that still reads the static, and a reader of that call site has
+        // nothing telling them the arm they just wrote is unreachable.
+        for (const path of [
+            "jot/Sources/BirtaJot/SettingsWindow.swift",
+            "jot/Sources/BirtaJot/WelcomeView.swift",
+        ]) {
+            const source = readFileSync(join(REPO, path), "utf8");
+            const code = source
+                .split("\n")
+                .filter((line) => !line.trimStart().startsWith("//"))
+                .join("\n");
+            // The instrument reached the file: an empty read, or one whose
+            // seam was renamed out from under this, would pass the absence
+            // below having looked at nothing.
+            expect(code.length, `${path} read as empty`).toBeGreaterThan(1000);
+            expect(code, `${path} no longer takes a flavour, so the absence below proves nothing`)
+                .toMatch(/\blet flavour: AppFlavor\b/);
+            expect(code, `${path} reads AppFlavor.current instead of the flavour it was given`)
+                .not.toContain("AppFlavor.current");
+        }
+    });
 });

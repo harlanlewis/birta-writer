@@ -125,6 +125,39 @@ export function syncEditorAssociation(mode: string): void {
     }
 }
 
+/**
+ * What an editor command forwards to the webview, from what VS Code handed it.
+ *
+ * Three callers hand this three different shapes. A webview or native context
+ * menu passes its `data-vscode-context` OBJECT, from which only the click
+ * targets travel on (`documentUri` is read separately, as a routing hint, and
+ * must not reach the webview as a payload). The palette passes nothing. A
+ * KEYBINDING passes whatever `"args"` says, and for a command whose whole
+ * payload is one word that is a bare string.
+ *
+ * The string case is the one that was missing, and it failed quietly and
+ * asymmetrically: `toggleStyleOption` names the check to flip, so bound in
+ * `keybindings.json` it did nothing in VS Code, while working in the Mac app,
+ * whose bridge hands `args` through untouched. The surface with the settings UI
+ * was the surface where the command was dead.
+ *
+ * Exported to be testable: inside `activate` this could only be reached by
+ * standing up the whole extension host.
+ */
+export function editorCommandArgs(arg?: unknown): unknown {
+    if (typeof arg === "string" || typeof arg === "number" || typeof arg === "boolean") {
+        return arg;
+    }
+    const ctxObj = arg && typeof arg === "object" ? (arg as Record<string, unknown>) : undefined;
+    const tableTarget = ctxObj?.["tableTarget"];
+    const blockTarget = ctxObj?.["blockTarget"];
+    if (!tableTarget && !blockTarget) { return undefined; }
+    return {
+        ...(typeof tableTarget === "object" ? tableTarget : {}),
+        ...(typeof blockTarget === "object" ? blockTarget : {}),
+    };
+}
+
 export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(
         MarkdownEditorProvider.register(context),
@@ -766,6 +799,11 @@ export function activate(context: vscode.ExtensionContext) {
     // `data-vscode-context` object as the first argument; we read `documentUri`
     // from it as a belt-and-braces routing hint (falling back to the active
     // panel). Palette visibility is gated in package.json.
+    //
+    // The argument shaping is `editorCommandArgs`, above, and is a named
+    // function rather than three lines here because it is the one piece of this
+    // closure that is worth a test of its own and could not have one inside
+    // `activate`.
     for (const meta of EDITOR_COMMANDS) {
         context.subscriptions.push(
             vscode.commands.registerCommand(editorCommandName(meta.id), (arg?: unknown) => {
@@ -775,23 +813,21 @@ export function activate(context: vscode.ExtensionContext) {
                 // the clicked cell/block, not the live selection (which the
                 // native-menu round-trip does not reliably preserve). The two
                 // stamps merge into one args object: { cellPos?, blockPos? }.
-                const tableTarget = ctxObj?.["tableTarget"];
-                const blockTarget = ctxObj?.["blockTarget"];
-                const args = tableTarget || blockTarget
-                    ? {
-                        ...(typeof tableTarget === "object" ? tableTarget : {}),
-                        ...(typeof blockTarget === "object" ? blockTarget : {}),
-                    }
-                    : undefined;
+                const args = editorCommandArgs(arg);
                 // Paste as Plain Text is the one command whose payload the
                 // webview cannot fetch for itself: a webview is not granted the
                 // permission `navigator.clipboard.readText()` needs, so the
                 // clipboard is read HERE and the text travels with the command.
                 // (The read is async; every other command dispatches inline.)
                 if (meta.id === "pasteAsPlainText") {
+                    // Only an OBJECT `args` is spread here. Spreading a string
+                    // yields its characters under numeric keys, so a primitive
+                    // that reached this branch would arrive as a payload nobody
+                    // wrote and the `text` beside it would look fine.
+                    const base = args && typeof args === "object" ? args : {};
                     void vscode.env.clipboard.readText().then((text) => {
                         MarkdownEditorProvider.current?.postEditorCommand(
-                            meta.id, documentUri, { ...(args ?? {}), text },
+                            meta.id, documentUri, { ...base, text },
                         );
                     });
                     return;

@@ -2,31 +2,63 @@ import XCTest
 @testable import BirtaJotCore
 
 /// The invariant that makes these types rather than two layouts: the first-run
-/// screen is a subset of Settings' General pane, in order, worded the same, so
-/// a question somebody answered on first run is found again by looking where
-/// they answered it.
+/// screen is a subset of Settings, in order, worded the same, so a question
+/// somebody answered on first run is found again by looking for it in
+/// Settings.
 ///
 /// The subject is the declaration rather than the drawing.
 /// `SettingsWindowController` and `WelcomeView` render these arrays, so a row
 /// that moves here moves on screen, and a label has one spelling because there
 /// is one place to spell it.
 final class SettingsFormTests: XCTestCase {
-    func testWelcomeShouldBeAnOrderedSubsetOfGeneral() {
-        let general = SettingsForm.rows(of: SettingsForm.general)
+    /// Over `SettingsForm.allRows` rather than over General alone, and the
+    /// difference is a decision rather than a loosening.
+    ///
+    /// What the first run owes somebody is that a question it asked can be
+    /// FOUND again, worded the same, in the order the two screens agree on.
+    /// Which tab it is found on is a separate question, settled by what the
+    /// row is about: Automatically update is about the program replacing
+    /// itself rather than about the writing, so it lives on Advanced while the
+    /// first run still asks it. Taking the subset of General alone would make
+    /// the layout decision and the findability guarantee one claim, and would
+    /// answer a move between tabs by going red at the row that moved rather
+    /// than at anything a user could notice.
+    ///
+    /// The order is still pinned, and that is the half worth keeping: reading
+    /// the tabs left to right and each pane top to bottom must meet the
+    /// first-run questions in the order the first run asked them, so nobody is
+    /// sent backwards through Settings to retrace a screen they saw once.
+    func testWelcomeShouldBeAnOrderedSubsetOfSettings() {
+        let settings = SettingsForm.allRows
         let welcome = SettingsForm.rows(of: SettingsForm.welcome)
         XCTAssertFalse(welcome.isEmpty)
-        XCTAssertGreaterThan(general.count, welcome.count,
-                             "General is meant to hold rows the first run does not ask about")
+        XCTAssertGreaterThan(settings.count, welcome.count,
+                             "Settings is meant to hold rows the first run does not ask about")
 
-        // Walk General once, striking off welcome rows as they appear. A row
+        // Walk Settings once, striking off welcome rows as they appear. A row
         // out of order, or absent, leaves the cursor short.
         var cursor = 0
-        for row in general where cursor < welcome.count && row == welcome[cursor] {
+        for row in settings where cursor < welcome.count && row == welcome[cursor] {
             cursor += 1
         }
         XCTAssertEqual(cursor, welcome.count,
-                       "the first-run rows are not all in General in the same order: "
+                       "the first-run rows are not all in Settings in the same order: "
                        + "stopped at \(welcome[min(cursor, welcome.count - 1)].rawValue)")
+    }
+
+    /// The reading order the check above takes its subset of is the panes in
+    /// tab order, with nothing dropped and nothing added.
+    ///
+    /// Its own arm because `allRows` is where the invariant could be weakened
+    /// without any test going red: a definition that quietly returned only
+    /// General, or sorted its result, would leave the subset walk passing on a
+    /// sequence that is not the one a person reads.
+    func testTheReadingOrderShouldBeThePanesInTabOrder() {
+        XCTAssertEqual(SettingsForm.allRows,
+                       SettingsForm.rows(of: SettingsForm.general)
+                           + SettingsForm.rows(of: SettingsForm.aiAgent)
+                           + SettingsForm.rows(of: SettingsForm.advanced(showsWelcomeScreen: true)))
+        XCTAssertEqual(SettingsForm.allRows.count, SettingsRow.allCases.count)
     }
 
     func testEveryFirstRunRowShouldBeOnTheFirstRunScreen() {

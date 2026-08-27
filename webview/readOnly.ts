@@ -209,9 +209,11 @@ export const COMMAND_EFFECTS: Record<EditorCommandId, CommandEffect> = {
     increaseFontSize: "reads",
     resetFontSize: "reads",
     decreaseFontSize: "reads",
+    toggleProofreading: "reads",
     toggleSpellCheck: "reads",
     toggleGrammarCheck: "reads",
     toggleStyleCheck: "reads",
+    toggleStyleOption: "reads",
     toggleNoteHighlights: "reads",
     // Export reads the rendered document and writes a file elsewhere; the
     // document itself is untouched, and a locked document is still exportable.

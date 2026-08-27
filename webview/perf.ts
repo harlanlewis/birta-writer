@@ -79,6 +79,39 @@ export function clearMeasures(name: string): void {
 }
 
 /**
+ * Record HOW MUCH work a piece of per-keystroke machinery just did, as a count
+ * rather than as a duration.
+ *
+ * The case for counting alongside timing. A per-keystroke cost that scales with
+ * the document is a COMPLEXITY defect, and complexity is far better measured by
+ * counting than by clocking it. A duration needs an idle machine, a noise floor,
+ * a merge-base interleave and a double-confirm, and `typing-perf` is advisory
+ * rather than required precisely because all of that is too expensive to run on
+ * every PR. A count has none of those needs: it is identical on a loaded runner
+ * and an idle laptop, so it can be gated hard, and blocking.
+ *
+ * The strongest question a counter answers is not "is this number big" but
+ * "does this number grow with the document", which is a differential across
+ * fixtures and needs no baseline at all.
+ * `webview/__tests__/perKeystrokeWork.test.ts` is the gate that asks it.
+ *
+ * What to instrument: the BOUNDARIES (anything crossing to the host) and any
+ * whole-document walk, at the moment you write one. A counter finds only what it
+ * is put on, so this is a discipline rather than a safety net.
+ *
+ * Rides User Timing's `detail` so it needs no transport of its own: a harness
+ * already reading marks can read these, and devtools shows them inline.
+ */
+export function countWork(name: string, amounts: Record<string, number>): void {
+    try {
+        performance.mark?.(PREFIX + name, { detail: amounts });
+    } catch {
+        // A runtime without the options form of mark must not break the editor.
+    }
+}
+
+
+/**
  * Wrap the view's transaction dispatch so every doc-changing transaction stamps
  * an `mdw:tx-apply` measure: the synchronous main-thread block of applying the
  * transaction and reconciling the view (DOM update + every plugin view's

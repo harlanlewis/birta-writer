@@ -41,10 +41,11 @@ import {
     learnWord,
     setUserWords,
 } from "../proofread/engine";
+import { lookupLints, rememberLints } from "../proofread/lintCache";
 import { hideLintPopup, showFindingsPopup, type PopupButton, type PopupFinding } from "../proofread/popup";
 import { notifyLintBlocks } from "../messaging";
 import { requestIdle } from "../utils/idle";
-import { clearMeasures, mark, measure, measureSpan } from "../perf";
+import { clearMeasures, countWork, mark, measure, measureSpan } from "../perf";
 import { t } from "../i18n";
 
 const SCAN_DEBOUNCE_MS = 350;
@@ -455,6 +456,43 @@ function collectLintBlocks(doc: ProseNode): LintBlock[] {
     return blocks;
 }
 
+/**
+ * The blocks the host has not already answered for, each distinct text once.
+ *
+ * A rescan collects the whole document; an edit changes one block of it. Asking
+ * the host only about what it has not seen is the difference between a check
+ * that scales with the document and one that scales with the edit. Exported for
+ * unit testing, because it is where that whole claim lives.
+ *
+ * Deduplicated by text as well as filtered, so a document that repeats a line
+ * asks about it once. The caller pairs the answers back onto every block by
+ * text, so a block dropped here still gets its findings.
+ */
+export function lintBlocksToAsk(blocks: readonly LintBlock[]): LintBlock[] {
+    const asking = new Set<string>();
+    const fresh: LintBlock[] = [];
+    for (const block of blocks) {
+        if (lookupLints(block.text) !== undefined) { continue; }
+        if (asking.has(block.text)) { continue; }
+        asking.add(block.text);
+        fresh.push(block);
+    }
+    return fresh;
+}
+
+/**
+ * Every block's findings, from the cache, once the host's answers are in it.
+ *
+ * `key` is the block's position in the document the request was built against,
+ * which is what `buildLintDecorations` resolves nodes by, so the result carries
+ * the ORIGINAL blocks' keys rather than the asked-about subset's. A text with
+ * no entry resolves to no findings rather than being dropped, so a host that
+ * answers short cannot leave a block's stale decorations standing.
+ */
+export function resolveLintResults(blocks: readonly LintBlock[]): LintBlockResult[] {
+    return blocks.map(({ key, text }) => ({ key, lints: lookupLints(text) ?? [] }));
+}
+
 /** Build decorations from Harper results (block keys are request-time positions). */
 function buildLintDecorations(
     doc: ProseNode,
@@ -694,6 +732,30 @@ export const proofreadPlugin = $prose(() => {
             let destroyed = false;
             let lintRequestId = 0;
             let lintRequestDoc: ProseNode | null = null;
+            // Every block of the document the open request was built against,
+            // not the subset the host was asked about: the answer has to be
+            // rebuilt for the whole document, or the blocks left out of the
+            // request would lose their decorations for having been unchanged.
+            // Keyed by request id rather than held as one list, so a reply can
+            // be matched to the request it answers even after a newer one has
+            // gone out. A reply the page can no longer DRAW from still carries
+            // findings worth keeping, and dropping those is what makes the next
+            // scan ask the host the same whole-document question again.
+            //
+            // Bounded, because a host that never answers must not accumulate a
+            // copy of the document per request.
+            //
+            // What the bound gives up, stated because two is not "enough" in
+            // general: with three requests open, the oldest is evicted and its
+            // reply's findings are discarded and asked for again. Nothing is
+            // drawn wrongly by that, and the reason is worth keeping: every
+            // request asks about everything not already cached, so a later
+            // request's blocks are a superset of an evicted one's, and the id
+            // being DRAWN from is always the newest, which is never the one
+            // evicted. So the cost of the bound is a repeated question, never a
+            // wrong or missing decoration.
+            const lintRequests = new Map<number, LintBlock[]>();
+            const MAX_OPEN_LINT_REQUESTS = 2;
             // The first proofread pass is deferred off the mount/paint path and
             // run on idle AFTER the editor is visible (see below): proofreading
             // is decoration only and must never block interactivity, nor appear
@@ -713,15 +775,37 @@ export const proofreadPlugin = $prose(() => {
 
             currentApplier = (id, results) => {
                 if (destroyed || view.isDestroyed) { return; }
-                if (id !== lintRequestId) { return; } // stale response
-                // If the doc changed since the request, positions are invalid;
-                // the pending rescan will re-request.
+                const asked = lintRequests.get(id);
+                // No open request under this id: one this view never made, one
+                // already answered (the entry is deleted below, so a duplicate
+                // reply lands here), or one the bound above dropped.
+                if (!asked) { return; }
+                lintRequests.delete(id);
+                // The findings are kept FIRST, before either staleness check
+                // below, and that order is the point rather than an accident.
+                // What the host sent back is an answer about TEXT, and text does
+                // not go stale: not when a newer request has gone out, and not
+                // when the document has moved under the positions the answer is
+                // keyed to. Only the POSITIONS go stale. Discarding a whole
+                // reply for either reason is how a person who opens a long note
+                // and types before the annotations settle pays for the same
+                // whole-document check twice.
+                const askedText = new Map(asked.map((b) => [b.key, b.text]));
+                for (const { key, lints } of results) {
+                    const text = askedText.get(key);
+                    if (text !== undefined) { rememberLints(text, lints); }
+                }
+                // Positions ARE stale in both cases, so nothing is drawn from
+                // them; the pending rescan rebuilds, and now finds these answers
+                // already known.
+                if (id !== lintRequestId) { return; }
                 if (view.state.doc !== lintRequestDoc) { return; }
                 const cfg = proofreadPluginKey.getState(view.state)?.config;
                 const meta: ProofreadMeta = {
                     type: "lints",
                     decorations: cfg
-                        ? buildLintDecorations(view.state.doc, results, cfg)
+                        ? buildLintDecorations(view.state.doc,
+                                               resolveLintResults(asked), cfg)
                         : DecorationSet.empty,
                 };
                 view.dispatch(view.state.tr.setMeta(proofreadPluginKey, meta));
@@ -763,7 +847,35 @@ export const proofreadPlugin = $prose(() => {
                 if (state.config.proofreadingEnabled && (state.config.spellCheck || state.config.grammarCheck)) {
                     lintRequestId++;
                     lintRequestDoc = view.state.doc;
-                    notifyLintBlocks(lintRequestId, collectLintBlocks(view.state.doc));
+                    const requested = collectLintBlocks(view.state.doc);
+                    lintRequests.set(lintRequestId, requested);
+                    // Oldest first, so what is dropped is the request least
+                    // likely to still be answered.
+                    while (lintRequests.size > MAX_OPEN_LINT_REQUESTS) {
+                        const oldest = lintRequests.keys().next();
+                        if (oldest.done) { break; }
+                        lintRequests.delete(oldest.value);
+                    }
+                    const asking = lintBlocksToAsk(requested);
+                    // How much this rescan is about to hand across the host
+                    // boundary, as a count. The host's checker is not free and
+                    // is not always on a spare thread, so this number IS the
+                    // cost, and it must not grow with the document when the edit
+                    // did not (`webview/__tests__/perKeystrokeWork.test.ts`).
+                    countWork("lint-request", {
+                        blocks: asking.length,
+                        chars: asking.reduce((n, b) => n + b.text.length, 0),
+                    });
+                    // Nothing new to ask about: the answer is already known, so
+                    // it is applied here rather than after a round trip the host
+                    // would spend a whole-document check answering. This is the
+                    // path a rescan takes when an edit only moved text, and the
+                    // path every block but one takes when it did not.
+                    if (asking.length === 0) {
+                        currentApplier?.(lintRequestId, []);
+                    } else {
+                        notifyLintBlocks(lintRequestId, asking);
+                    }
                 } else if (state.lintSet !== DecorationSet.empty) {
                     const meta: ProofreadMeta = { type: "lints", decorations: DecorationSet.empty };
                     view.dispatch(view.state.tr.setMeta(proofreadPluginKey, meta));

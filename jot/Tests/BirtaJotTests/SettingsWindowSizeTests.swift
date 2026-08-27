@@ -29,6 +29,13 @@ final class SettingsWindowSizeTests: XCTestCase {
         _ = NSApplication.shared
     }
 
+    /// The RELEASE window unless a test says otherwise, which is what every
+    /// arm here measured before the flavour was injectable.
+    private func makeController(_ flavour: AppFlavor = .release) -> SettingsWindowController {
+        SettingsWindowController(flavour: flavour, onHotkeyChange: { 0 }, onChange: { _ in },
+                                 onShowWelcome: {}, onCheckForUpdates: {})
+    }
+
     /// What a pane asked for and what the window gave it.
     private struct Fit {
         let pane: CGFloat
@@ -73,8 +80,7 @@ final class SettingsWindowSizeTests: XCTestCase {
     /// that does fail when the drawing stops: with `render` no longer
     /// appending the intro, this is red and nothing else in the suite is.
     func testADeclaredGroupIntroShouldBeDrawnOnItsPane() {
-        let controller = SettingsWindowController(onHotkeyChange: { 0 }, onChange: { _ in },
-                                                  onShowWelcome: {}, onCheckForUpdates: {})
+        let controller = makeController()
         defer { controller.window?.close() }
         controller.selectTabForTesting("aiAgent")
         guard let content = controller.window?.contentView else {
@@ -120,25 +126,78 @@ final class SettingsWindowSizeTests: XCTestCase {
     /// caption explaining it, about sixty points that a Mac with iCloud on
     /// never shows. A height check that measures only the machine it is on
     /// is a check whose answer depends on who runs it.
+    ///
+    /// The BUILD is the second thing it depended on, for the same reason and
+    /// with the same shape. A development build draws the Welcome screen row
+    /// that no release has, so its Advanced pane is the tallest the app can
+    /// ever put on screen, and until the flavour was injectable this walked
+    /// the release panes only: `AppFlavor.current` is fixed by the process,
+    /// and under `swift test` that process is Xcode's xctest tool, which is
+    /// neither of our bundle ids and therefore reads as the release. So the
+    /// ceiling had never been asked about the widest pane there is.
     func testEveryPaneShouldFitTheCeilingWithEveryConditionalRowShown() {
-        let controller = SettingsWindowController(onHotkeyChange: { 0 }, onChange: { _ in },
-                                                  onShowWelcome: {}, onCheckForUpdates: {})
-        defer { controller.window?.close() }
         let cap = SettingsWindowController.Metrics.maxPaneHeight
-        for name in SettingsWindowController.tabNames {
-            controller.selectTabForTesting(name)
-            controller.showEveryConditionalRowForTesting()
-            let tallest = fit(of: controller, tab: name)
-            XCTAssertLessThanOrEqual(tallest.pane, cap,
-                                     "the \(name) pane wants \(tallest.pane)pt with every "
-                                     + "conditional row shown, over a \(cap)pt ceiling, so it "
-                                     + "scrolls on a machine that draws them all")
+        // From the type, so a build added later is measured without this file
+        // being touched.
+        for flavour in AppFlavor.allCases {
+            let controller = makeController(flavour)
+            defer { controller.window?.close() }
+            for name in SettingsWindowController.tabNames {
+                controller.selectTabForTesting(name)
+                controller.showEveryConditionalRowForTesting()
+                let tallest = fit(of: controller, tab: name)
+                XCTAssertLessThanOrEqual(tallest.pane, cap,
+                                         "the \(name) pane of a \(flavour) build wants "
+                                         + "\(tallest.pane)pt with every conditional row shown, "
+                                         + "over a \(cap)pt ceiling, so it scrolls on a machine "
+                                         + "that draws them all")
+            }
         }
     }
 
+    /// The loop above measures both builds and would measure two identical
+    /// sets of panes just as happily, reporting nothing. This is the arm that
+    /// says the build reaches the layout at all: a development build's
+    /// Advanced pane carries a row no release has, so it is taller, and the
+    /// pair is what is asserted rather than either height on its own.
+    ///
+    /// It is the taller ADVANCED and not the tallest pane in the app, which is
+    /// worth being exact about: General carries far more, and the loop above
+    /// is where the ceiling is actually under pressure. What this pins is that
+    /// the flavour changes the drawing, which a number could not say.
+    ///
+    /// A row's height is the machine's to decide, so what is asserted is the
+    /// ordering and a floor under the gap rather than a measurement. Half a
+    /// point is the accuracy every other comparison in this file uses; a row
+    /// and its sentence are far more than that, so a gap under it would mean
+    /// the row was declared and not drawn.
+    func testADevelopmentBuildsAdvancedPaneShouldBeTallerThanTheReleases() {
+        let dev = makeController(.dev)
+        defer { dev.window?.close() }
+        let release = makeController(.release)
+        defer { release.window?.close() }
+        dev.selectTabForTesting("advanced")
+        dev.showEveryConditionalRowForTesting()
+        release.selectTabForTesting("advanced")
+        release.showEveryConditionalRowForTesting()
+
+        let taller = fit(of: dev, tab: "advanced")
+        let shorter = fit(of: release, tab: "advanced")
+
+        XCTAssertGreaterThan(taller.pane, shorter.pane + 0.5,
+                             "a development build's Advanced pane is no taller than the "
+                             + "release's, so the Welcome screen row is declared and not drawn: "
+                             + "dev \(taller.pane), release \(shorter.pane)")
+        // And the window followed it. A pane that grew under a window that did
+        // not is the failure this whole file exists for, and the dev Advanced
+        // is the one pane no other arm here has ever put on screen.
+        XCTAssertEqual(taller.content, taller.pane, accuracy: 0.5,
+                       "the window is \(taller.content)pt for a \(taller.pane)pt pane that fits "
+                       + "under the \(SettingsWindowController.Metrics.maxPaneHeight)pt ceiling")
+    }
+
     func testTheWindowShouldFollowThePaneItShows() {
-        let controller = SettingsWindowController(onHotkeyChange: { 0 }, onChange: { _ in },
-                                                  onShowWelcome: {}, onCheckForUpdates: {})
+        let controller = makeController()
         defer { controller.window?.close() }
         let cap = SettingsWindowController.Metrics.maxPaneHeight
 

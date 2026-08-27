@@ -54,11 +54,27 @@ final class SpellService {
     // reaching AppKit from a nonisolated `deinit` to run it is a hazard bought
     // for nothing. The tag is released with the process.
 
-    /// How many blocks are checked before the run loop gets a turn. Sized for
-    /// a paragraph-shaped block: small enough that typing stays smooth behind a
-    /// whole-document rescan, large enough that an ordinary note finishes in
-    /// one or two batches and the underlines do not crawl down the page.
-    private static let batchSize = 20
+    /// How much TEXT is checked before the run loop gets a turn.
+    ///
+    /// A count of blocks is the wrong budget, because what this thread is being
+    /// held for is the checking, and that scales with characters rather than
+    /// with paragraphs. A working document of unwrapped 900-character
+    /// paragraphs put twenty of them, eighteen thousand characters, into one
+    /// uninterrupted turn; a note of one-line bullets put a few hundred into the
+    /// same turn. The first is the shape that made the caret stutter, and the
+    /// block count could not tell the two apart.
+    ///
+    /// Sized so an ordinary paragraph goes in one turn: below this and a batch
+    /// is one long paragraph, above it several short ones. A single block always
+    /// goes, whatever its length, because a block is the smallest thing this
+    /// checker can be asked about and a budget that could refuse one would never
+    /// finish. So a single very long paragraph still holds the thread for as
+    /// long as it takes; bounding THAT means splitting a block, which changes
+    /// what the checker sees across a sentence boundary and is not worth it.
+    ///
+    /// `jot-trace lint` prints `chars` and `ms` per round trip, which is where
+    /// to read what this currently costs rather than trusting a figure here.
+    private static let batchChars = 1000
 
     /// Lint every block, then answer once.
     ///
@@ -67,8 +83,47 @@ final class SpellService {
     /// and it correlates the answer by id, so an unanswered batch is a request
     /// that never settles.
     func lint(blocks: [LintBlock], completion: @escaping @MainActor ([LintBlockResult]) -> Void) {
-        drain(blocks[...], done: [], completion: completion)
+        drain(blocks[...], done: [], cost: Cost(), completion: completion)
     }
+
+    /// What one `lint` cost the thread it ran on.
+    ///
+    /// Carried through the recursion beside `done` and `pending` rather than
+    /// stored on the service, because nothing serializes two lint requests: a
+    /// second one arriving mid-drain would reset counters held here and the
+    /// first request's trace line would report the second's numbers. The
+    /// coordinator holds ONE service per window and the page can have a request
+    /// open when the next rescan fires, so that overlap is reachable.
+    struct Cost {
+        /// The longest UNINTERRUPTED main-thread hold, in seconds, which is the
+        /// number the batch budget exists to bound.
+        ///
+        /// Total time is the wrong reading for it: a check spread over many
+        /// turns costs the same total and costs the caret nothing, and a figure
+        /// that only says how long the answer took cannot tell the two apart.
+        /// This says how long the thread was unavailable at a stretch.
+        var longestHold: TimeInterval = 0
+        /// How many turns of the run loop it took.
+        ///
+        /// The testable half of `longestHold`, which is a duration and so is a
+        /// figure a loaded machine can move. This one is arithmetic, and is
+        /// what a test can assert without asserting a clock.
+        var batches = 0
+    }
+
+    /// The cost of the most recently COMPLETED `lint`, for the trace line.
+    ///
+    /// Written once, when a drain finishes, so an overlapping request cannot
+    /// blank it midway the way a counter stored per service did.
+    ///
+    /// What makes it right for the request being traced, and it is a constraint
+    /// rather than an observation: the write sits IMMEDIATELY before
+    /// `completion(done)`, with no suspension point between them, and both are
+    /// on the main actor. A completion reads this and gets its own drain's cost,
+    /// because nothing can interleave between those two lines. Put an `await`
+    /// between them and a second request finishing in the gap becomes the figure
+    /// this reports.
+    private(set) var lastCost = Cost()
 
     /// One batch, then either the answer or a turn of the run loop.
     ///
@@ -77,21 +132,36 @@ final class SpellService {
     /// and that is a shared mutable box the compiler is right to warn about.
     private func drain(_ pending: ArraySlice<LintBlock>,
                        done: [LintBlockResult],
+                       cost: Cost,
                        completion: @escaping @MainActor ([LintBlockResult]) -> Void) {
         var pending = pending
         var done = done
-        for _ in 0..<Self.batchSize {
+        var cost = cost
+        var spent = 0
+        let batchStart = Date()
+        // `spent == 0` first, so the budget can never refuse the batch's first
+        // block: a block longer than the whole budget still has to be checked,
+        // and a loop that declined one would hand back the run loop forever.
+        while spent == 0 || spent < Self.batchChars {
             guard let block = pending.first else { break }
             pending = pending.dropFirst()
+            spent += block.text.count
             done.append(LintBlockResult(key: block.key, lints: check(block.text)))
         }
-        guard !pending.isEmpty else { completion(done); return }
+        cost.longestHold = max(cost.longestHold, Date().timeIntervalSince(batchStart))
+        cost.batches += 1
+        guard !pending.isEmpty else {
+            lastCost = cost
+            completion(done)
+            return
+        }
         // Back through the run loop, so a long document is checked in the gaps
         // rather than in front of the caret.
         let rest = pending
         let far = done
+        let carried = cost
         Task { @MainActor [weak self] in
-            self?.drain(rest, done: far, completion: completion)
+            self?.drain(rest, done: far, cost: carried, completion: completion)
         }
     }
 
