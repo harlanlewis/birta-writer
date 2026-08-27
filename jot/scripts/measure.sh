@@ -405,6 +405,29 @@ if [ "${M_PAGE_COUNT:-0}" != "1" ]; then
     grep "^jot-trace titlebarstrip " "$LOG" | tail -1 | sed 's/^/  /' >&2; exit 1
 fi
 echo "missing screen       ok: the band is down to the Settings gear"
+# ...and it does not fade when the window is left alone.
+#
+# The rest of that row fades when the pointer and the keyboard both go
+# elsewhere, which is right for controls you reach for while working and wrong
+# for the one control that is a way OUT of this state. A gear somebody has to
+# know to hover for is not a route to preferences, and the window most likely
+# to be in this state is a summoned panel that has just lost the pointer.
+#
+# Two selectors over one property, so what is asked is the COMPUTED value: a
+# rule that lost the specificity tie would leave no trace anywhere else.
+printf '{"type":"__jotResting"}' > "$SCRATCH_DIR/.debug-message.json"
+kill -URG $PID; sleep 1.2
+rm -f "$SCRATCH_DIR/.debug-message.json"
+REST="$(grep "^jot-trace restingchrome " "$LOG" | tail -1 | sed 's/^jot-trace restingchrome //')"
+case "$REST" in
+    "opacity=1 visibility=visible missing=true") ;;
+    *"missing=false"*)
+        echo "missing screen       FAILED: the page was asked about resting outside the missing state: $REST" >&2
+        exit 1 ;;
+    *) echo "missing screen       FAILED: the gear fades with the rest of the row at rest: ${REST:-<nothing>}" >&2
+       exit 1 ;;
+esac
+echo "missing screen       ok: and the gear stays put when the window is left alone"
 # ...and a reload while the note is missing leaves the panel still writable.
 #
 # The read side refuses while the note is gone, because the buffer is the only
@@ -467,6 +490,27 @@ else
     echo "deleted note         FAILED: Save It Back wrote a file without the buffer in it" >&2
     cat "$SCRATCH_DIR/Scratch pad.md" >&2; exit 1
 fi
+
+# The other half of the resting question, asked now that there is a file again.
+#
+# The arm above says the gear survives the fade; on its own it cannot tell that
+# from a fade that never happens, because a row nothing hides also reads as
+# fully opaque. This is the same query in the state the override does not
+# apply to, so the pair discriminates: one answer has to be 0 and the other 1,
+# and a page where either rule went missing gives the same answer twice.
+printf '{"type":"__jotResting"}' > "$SCRATCH_DIR/.debug-message.json"
+kill -URG $PID; sleep 1.2
+rm -f "$SCRATCH_DIR/.debug-message.json"
+REST_BACK="$(grep "^jot-trace restingchrome " "$LOG" | tail -1 | sed 's/^jot-trace restingchrome //')"
+case "$REST_BACK" in
+    "opacity=0 visibility=hidden missing=false")
+        echo "resting chrome       ok: the row fades with a file open and the gear stays without one" ;;
+    *"missing=true"*)
+        echo "resting chrome       FAILED: the note is still missing, so this asked the same question twice: $REST_BACK" >&2
+        exit 1 ;;
+    *) echo "resting chrome       FAILED: the band's controls no longer settle down at rest: ${REST_BACK:-<nothing>}" >&2
+       exit 1 ;;
+esac
 
 # The system date picker opens AT THE CARET.
 #

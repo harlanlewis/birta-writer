@@ -310,7 +310,12 @@ final class Coordinator {
     /// buffer to lose, so another file may take it over.
     ///
     /// BOTH halves, and the second is the safety one: a missing note whose
-    /// buffer still holds text is holding the only copy of that text, and
+    /// buffer still holds text is holding the only copy of that text, and it
+    /// is the buffer AS THE PANEL LAST HEARD IT, which is the same value the
+    /// card is drawn from (`showMissingFileScreen`), so the two always agree
+    /// about whether anything is at stake. The page reports its first edit
+    /// within an IPC hop (`webview/syncScheduler.ts`), which is what keeps
+    /// that value from trailing the writing it describes.
     /// rebinding away from it is what `rescueMissingNote` exists to catch at
     /// quit. A window in that state keeps its file and Open makes a new window,
     /// which is also the honest answer to the question the screen is asking:
@@ -672,6 +677,23 @@ final class Coordinator {
                 let count = onOpenRequest?(URL(fileURLWithPath: path)) ?? -1
                 measure.trace("open windows=\(count) at=\(boundURL.lastPathComponent)"
                                 + " missing=\(noteMissing)")
+                return
+            }
+            // What the band's trailing controls look like with the window at
+            // rest, which a script cannot reach: resting is the pointer and the
+            // key window, and a shell driving this app has neither.
+            if obj["type"] as? String == "__jotResting" {
+                measure.mark("debug-resting")
+                host.reportRestingChrome { [weak self] line in
+                    MainActor.assumeIsolated {
+                        guard let self else { return }
+                        self.measure.trace("restingchrome \(line)")
+                        // The app's own writer, asked again, so the read leaves
+                        // the page in the state the window actually implies
+                        // rather than in whatever the query last set.
+                        self.applyChromeVisibility()
+                    }
+                }
                 return
             }
             if obj["type"] as? String == "__jotRename", let name = obj["name"] as? String {

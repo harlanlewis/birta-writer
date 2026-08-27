@@ -272,6 +272,39 @@ final class WebHost: NSObject, WKScriptMessageHandler, WKNavigationDelegate, WKU
         webView.evaluateJavaScript(js) { _, _ in }
     }
 
+    /// What the band's trailing controls look like AT REST, for
+    /// `jot/scripts/measure.sh`.
+    ///
+    /// Resting is set from the pointer and the key window
+    /// (`Coordinator.applyChromeVisibility`), and a script has neither, so the
+    /// class is put on and taken off around one read rather than waited for.
+    /// Nothing is left behind: the state is restored before this answers, and
+    /// the app's own writer is asked again afterwards.
+    ///
+    /// A COMPUTED style rather than the presence of a rule, because what can go
+    /// wrong is specificity: the missing-note override and the resting rule are
+    /// two selectors over one property, and a rule that lost the tie would leave
+    /// the reader with a titlebar that empties when they look away, in the one
+    /// state where its last control is the way to preferences.
+    func reportRestingChrome(_ report: @escaping (String) -> Void) {
+        let js = """
+        (function () {
+          var zone = document.querySelector('.editor-topbar .tb-zone--right');
+          if (!zone) { return 'absent'; }
+          var was = document.body.classList.contains('jot-resting');
+          document.body.classList.add('jot-resting');
+          var s = getComputedStyle(zone);
+          var out = ['opacity=' + s.opacity, 'visibility=' + s.visibility,
+                     'missing=' + document.body.classList.contains('jot-note-missing')].join(' ');
+          if (!was) { document.body.classList.remove('jot-resting'); }
+          return out;
+        })()
+        """
+        webView.evaluateJavaScript(js) { value, _ in
+            report(value as? String ?? "unavailable")
+        }
+    }
+
     /// Ask the page where its formatting dock is, for `jot/scripts/measure.sh`.
     ///
     /// The panel's own page carries CSS the browser harness does not (the

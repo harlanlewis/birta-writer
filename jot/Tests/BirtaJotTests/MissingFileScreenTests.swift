@@ -156,6 +156,26 @@ final class MissingFileScreenTests: XCTestCase {
                              shown(unsaved: false).cardRect.height)
     }
 
+    /// Every offered button has a box, inside the card.
+    ///
+    /// Asked because a snapshot of this state draws the card and the words and
+    /// nothing where the buttons are: a bezeled `NSButton` is hosted rather
+    /// than drawn on recent macOS, so it contributes nothing to the PDF path
+    /// `__jotSnapshot` uses, and a picture cannot tell that apart from a row
+    /// that laid out to no width at all. `performClick` cannot tell them apart
+    /// either, which is what every other check in this file reaches for.
+    func testEveryOfferedButtonShouldHaveABoxInsideTheCard() throws {
+        let screen = shown(unsaved: true)
+        let card = screen.cardRect
+        for title in screen.stateForMeasurement.buttons {
+            let button = try XCTUnwrap(screen.buttonForMeasurement(titled: title))
+            let box = button.convert(button.bounds, to: screen)
+            XCTAssertGreaterThan(box.width, 0, "\(title) laid out to no width")
+            XCTAssertGreaterThan(box.height, 0, "\(title) laid out to no height")
+            XCTAssertTrue(card.contains(box), "\(title) is drawn outside the card at \(box)")
+        }
+    }
+
     /// Everything around the card falls through to the page.
     ///
     /// The point of the shape: the reader can select and copy the text they
