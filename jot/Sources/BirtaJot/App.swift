@@ -665,6 +665,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc func menuOpenSettings() {
         if settingsWindow == nil {
             settingsWindow = SettingsWindowController(
+                // Explicit rather than a default the window reads for itself:
+                // this literal is the whole of what a test cannot cover, and
+                // it is legible here.
+                flavour: .current,
                 onHotkeyChange: { [weak self] in self?.windows.registerHotkey() ?? -1 },
                 onChange: { [weak self] work in self?.front?.preferencesChanged(beforeReload: work) },
                 onShowWelcome: { [weak self] in self?.showWelcome() },

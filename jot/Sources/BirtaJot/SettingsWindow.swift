@@ -190,6 +190,25 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     /// to interfere with them.
     private let agentProbe = AgentRunner()
 
+    /// Which build this window is drawing for.
+    ///
+    /// Taken rather than read from `AppFlavor.current`, and every one of this
+    /// window's flavour differences goes through it: the auto-update row being
+    /// dead, the Welcome screen row existing at all, the window's own title
+    /// and the sentence under Reset. A `static let` read at the point of use
+    /// is fixed by the process, and under `swift test` that process is the
+    /// xctest tool, whose bundle id is neither of ours: `AppFlavor.forBundle`
+    /// answers `.release` for it, so the development arm of every one of those
+    /// four was unreachable and the suite was green either way.
+    ///
+    /// The one production caller passes `.current` EXPLICITLY rather than
+    /// taking a default. A default every production call site takes is a seam
+    /// nothing proves is wired: the tests would then exercise a sibling of the
+    /// path the app runs rather than that path itself. As it stands the only
+    /// thing not under test is one literal at one call site, which is visible
+    /// where it is written instead of spread across four reads.
+    let flavour: AppFlavor
+
     private let onHotkeyChange: () -> OSStatus
     /// Re-read the preferences. The argument is work to run between the
     /// buffer's flush and the page's reload; only a location change uses it.
@@ -201,10 +220,12 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     /// outlives this window.
     private let onCheckForUpdates: () -> Void
 
-    init(onHotkeyChange: @escaping () -> OSStatus,
+    init(flavour: AppFlavor,
+         onHotkeyChange: @escaping () -> OSStatus,
          onChange: @escaping (BeforeReload?) -> Void,
          onShowWelcome: @escaping () -> Void,
          onCheckForUpdates: @escaping () -> Void) {
+        self.flavour = flavour
         self.onHotkeyChange = onHotkeyChange
         self.onChange = onChange
         self.onShowWelcome = onShowWelcome
@@ -218,7 +239,14 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         // named somewhere else on screen; Jot is an accessory app with no Dock
         // icon, so "General" alone belongs to nothing the user can see. The
         // toolbar below the title already names and highlights the pane.
-        window.title = "\(AppFlavor.current.displayName) Settings"
+        //
+        // Read from outside Swift: `shared/__tests__/editorCommandsContributions.test.ts`
+        // relates this template to the editor row that opens the window, since
+        // no TypeScript can import it. It matches the interpolation by shape
+        // rather than by the expression inside, so renaming what carries the
+        // name is safe; making the title a bare literal, or interpolating
+        // something that is not a display name, is what it refuses.
+        window.title = "\(flavour.displayName) Settings"
         // No `window.level` here, and that absence is the point. This window
         // used to be raised to `.floating` to match a panel that could float,
         // because an ordinary-level window opened BEHIND the one it was opened
@@ -385,13 +413,25 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
 
     /// The rows a pane declares, by that same name. Paired with `tabNames` so
     /// a test can walk the panes without knowing which array is which.
-    static func declaredRows(forTab name: String) -> [SettingsRow]? {
+    ///
+    /// On the instance rather than the type, because Advanced is not the same
+    /// pane on every build: the Welcome screen row exists only where the
+    /// flavour shows the first run. A static answer here would be the release
+    /// pane compared against whatever this window actually drew, which is a
+    /// comparison that reports a disagreement on a development build and
+    /// tells you nothing about either.
+    func declaredRows(forTab name: String) -> [SettingsRow]? {
         guard let tab = Tab(rawValue: name) else { return nil }
         switch tab {
         case .general: return SettingsForm.rows(of: SettingsForm.general)
         case .aiAgent: return SettingsForm.rows(of: SettingsForm.aiAgent)
-        case .advanced: return SettingsForm.rows(of: SettingsForm.advanced)
+        case .advanced: return SettingsForm.rows(of: advancedPane)
         }
+    }
+
+    /// The Advanced pane THIS window draws, which its flavour decides.
+    var advancedPane: SettingsPane {
+        SettingsForm.advanced(showsWelcomeScreen: flavour.showsWelcomeScreen)
     }
 
     /// One row of the pane on screen, so a check can read back the label and
@@ -683,7 +723,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     /// than sitting there switched on and doing nothing: replacing it would
     /// delete the change it was installed to show.
     private func showAutoUpdate() {
-        let availability = RowAvailability.autoUpdate(updatesItself: AppFlavor.current.updatesItself)
+        let availability = RowAvailability.autoUpdate(updatesItself: flavour.updatesItself)
         updateSwitch.isEnabled = availability.isEnabled
         updateButton.isEnabled = availability.isEnabled
         updateSwitch.state = Prefs.autoUpdate && availability.isEnabled ? .on : .off
@@ -832,7 +872,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
                     Caption("Terminal command executed by /ai in Birta Writer."))
         case .resetSettings:
             return (resetButton, [],
-                    Caption("Revert \(AppFlavor.current.displayName) to default settings. Will not "
+                    Caption("Revert \(flavour.displayName) to default settings. Will not "
                             + "move, delete, or modify any of your files."))
         case .welcomeScreen:
             return (welcomeButton, [], Caption("The questions Birta Writer asks the first time it runs. An empty note gets the welcome note back too."))
@@ -850,7 +890,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         switch tab {
         case .general: sections = render(SettingsForm.general)
         case .aiAgent: sections = render(SettingsForm.aiAgent)
-        case .advanced: sections = render(SettingsForm.advanced)
+        case .advanced: sections = render(advancedPane)
         }
         // After the sections exist, not before. `wireControls` runs at the top
         // of this method and `showFiles` hides a row of a card that this

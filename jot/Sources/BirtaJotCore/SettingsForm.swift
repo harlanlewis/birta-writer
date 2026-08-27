@@ -181,11 +181,6 @@ public enum SettingsForm {
         ])
     }
 
-    /// The Advanced pane this build actually draws.
-    public static var advanced: SettingsPane {
-        advanced(showsWelcomeScreen: AppFlavor.current.showsWelcomeScreen)
-    }
-
     /// Every pane, in toolbar order. `SettingsFormTests` sums these to check
     /// that a case added to `SettingsRow` was actually placed on a screen, and
     /// summing a LIST rather than naming each array is what stops a new pane

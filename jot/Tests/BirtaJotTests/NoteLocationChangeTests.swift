@@ -284,7 +284,8 @@ final class NoteLocationChangeTests: XCTestCase {
     /// offer. It is a sentence rather than a behaviour, so nothing else in the
     /// suite fails when it stops being drawn.
     func testTheLocationRowShouldSayThatAFolderInICloudDriveSyncs() throws {
-        let controller = SettingsWindowController(onHotkeyChange: { 0 }, onChange: { _ in },
+        let controller = SettingsWindowController(flavour: .release, onHotkeyChange: { 0 },
+                                                  onChange: { _ in },
                                                   onShowWelcome: {}, onCheckForUpdates: {})
         defer { controller.window?.close() }
         controller.selectTabForTesting("general")
