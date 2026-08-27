@@ -58,12 +58,21 @@ export BIRTA_JOT_DEFAULTS_SUITE="com.birtalabs.jot.measure.$$"
 # rather than through a debug message: the restore path is itself part of what
 # is being checked, and a message that forced the row open would leave it
 # unexercised.
-# `-string` is load-bearing: without it `defaults` reads the braces as
-# old-style plist syntax, fails to parse, and writes nothing at all.
-# The key has to match `STATE_KEY` in webview/components/toolbar/dock.ts. A
-# name that has drifted seeds nothing, and this script still passes, having
-# measured a CLOSED row: the failure is a wrong number rather than a red.
-defaults write "$BIRTA_JOT_DEFAULTS_SUITE" viewState -string '{"formattingRowExpanded":true}'
+# A DICTIONARY keyed by the document's path, because view state belongs to a
+# file rather than to the app: one value for everything meant a second window
+# mounting at whatever position the first was left at. The key is the path as
+# the app spells it, which is the path handed in through BIRTA_JOT_SCRATCHPAD
+# (`standardizedFileURL` does not rewrite /var to /private/var, so the two
+# agree without either resolving anything).
+# The inner key has to match `STATE_KEY` in webview/components/toolbar/dock.ts.
+# A name that has drifted seeds nothing; the `expanded` assertion below is what
+# turns that into a red rather than a quietly wrong measurement.
+# The value is wrapped in plist quotes with its own quotes escaped, and that
+# is load-bearing in the way `-string` used to be: `-dict` parses each VALUE
+# as plist syntax and has no per-value type flag, so bare braces are read as a
+# nested dictionary, fail to parse, and write nothing at all.
+defaults write "$BIRTA_JOT_DEFAULTS_SUITE" viewState \
+    -dict "$BIRTA_JOT_SCRATCHPAD" '"{\"formattingRowExpanded\":true}"'
 LOG="$(mktemp -t jot-measure)"
 KEEP=0
 if [ "${1:-}" = "--keep" ]; then KEEP=1; fi

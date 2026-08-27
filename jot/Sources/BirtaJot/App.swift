@@ -99,11 +99,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// consults nothing.
     func application(_ application: NSApplication, open urls: [URL]) {
         guard let url = DocumentTypes.firstToOpen(from: urls) else { return }
-        guard let front else {
+        guard !windows.windows.isEmpty else {
             pendingOpen = url
             return
         }
-        front.openDocument(at: url)
+        windows.openDocument(at: url)
     }
 
     /// Clicking the Dock icon summons the panel. Without this the icon is a
@@ -139,7 +139,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let launchedWith { Prefs.documentURL = launchedWith.standardizedFileURL }
         windows.openPreferences = { [weak self] in self?.menuOpenSettings() }
         windows.hidePreferences = { [weak self] in self?.settingsWindow?.close() }
-        let first = windows.adopt(Coordinator(boundTo: Prefs.activeURL, slot: Prefs.activeSlot))
+        let first = windows.openFirstWindow()
         buildStatusMenu()
         applyMenuBarPresence()
         first.start()
@@ -236,7 +236,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // Nobody sent this by hand, and something is waiting on the
             // process to go: with autosave off the quit writes the buffer
             // rather than putting a sheet in front of an installer.
-            self?.front?.quitIsUnattended = true
+            self?.windows.quitUnattended()
             NSApp.perform(#selector(NSApplication.terminate(_:)), with: nil, afterDelay: 0)
         }
         source.resume()
@@ -251,20 +251,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // `NSApp.reply(toApplicationShouldTerminate:)` may be sent exactly
         // once, so a window that is not there has to answer for itself rather
         // than leave the reply unsent and the quit hung forever.
-        guard let front else { return .terminateNow }
-        front.prepareToTerminate { [weak self] proceed in
-            // Only once the quit is certain. Giving up the summon key before
-            // the window has answered would leave the app running for the rest
-            // of the session with no way to summon it, every time somebody
-            // pressed Cancel.
-            if proceed { self?.windows.releaseHotkey() }
+        windows.prepareToTerminate { proceed in
             NSApp.reply(toApplicationShouldTerminate: proceed)
         }
         return .terminateLater
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-        front?.finalWrite()
+        windows.finalWrite()
     }
 
     // MARK: menus
@@ -466,8 +460,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func hidePanel() { windows.dismissAll() }
     @objc private func copyEverything() { front?.copyEverything() }
     @objc func menuSaveNow() { front?.saveNow() }
-    @objc func menuNewNote() { front?.newNote() }
-    @objc func menuOpenDocument() { front?.openDocumentPanel() }
+    @objc func menuNewNote() { windows.newNote() }
+    @objc func menuOpenDocument() { windows.openDocumentPanel() }
 
     /// Raise the recents list from a control that is not a menu row: the
     /// titlebar's button. The File menu reaches the same list as a submenu
@@ -492,7 +486,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// one arriving from anywhere else.
     @objc func menuOpenRecentDocument(_ sender: NSMenuItem) {
         guard let url = sender.representedObject as? URL else { return }
-        front?.openDocument(at: url)
+        windows.openDocument(at: url)
     }
 
     /// Forget the list. The files are untouched; this is the only control over
@@ -608,7 +602,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             guard ok else { return }
             // The swap script is already staged and polling for this pid, so
             // this quit has nothing to ask and nobody waiting to answer.
-            self.front?.quitIsUnattended = true
+            self.windows.quitUnattended()
             NSApp.perform(#selector(NSApplication.terminate(_:)), with: nil, afterDelay: 0)
         }
     }

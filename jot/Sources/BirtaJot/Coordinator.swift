@@ -42,7 +42,7 @@ final class Coordinator {
     /// height in its `dock` line, which is where to check it.
     private static let statusBaseline: CGFloat = 7
 
-    private let panel = JotPanel()
+    private let panel: JotPanel
     private let contentView = AppearanceObservingView()
     /// The draggable middle of the titlebar band (TitlebarDrag.swift). Above
     /// the web view, which is what covers the band and swallowed the drag.
@@ -97,15 +97,28 @@ final class Coordinator {
     /// dismissing afterwards should put the user back in the Finder.
     var onWillShow: (() -> Void)?
 
-    /// The close button, Cmd+W and a double Escape all mean "put this away",
-    /// and what that DOES is the app's to decide rather than this window's.
-    var onDismissRequest: (() -> Void)?
+    /// The close button and Cmd+W. What closing MEANS is the app's to decide
+    /// rather than this window's, because it depends on how many there are:
+    /// the last window hides, so the editor stays mounted and the next summon
+    /// is still instant, and any other really closes.
+    var onCloseRequest: (() -> Void)?
 
     /// Re-register the summon key after the recorder on the first-run screen
     /// has changed it. The key is one registration for the process, so this
     /// window can only ask.
     var onHotkeyChanged: (() -> OSStatus)?
-    private var pendingFlushes: [String: (String?) -> Void] = [:]
+    /// A flush in flight: what to run when it lands, and whether its own
+    /// result may be written straight to disk.
+    ///
+    /// The flag travels WITH the flush rather than sitting in a set beside it,
+    /// because two structures keyed by the same id are two things to keep in
+    /// step and one of them will eventually be forgotten on a path that
+    /// removes from the other.
+    private struct PendingFlush {
+        let persists: Bool
+        let resolve: (String?) -> Void
+    }
+    private var pendingFlushes: [String: PendingFlush] = [:]
     /// In-flight `requestEditorContext` calls, by id. Bounded the same way the
     /// flushes are: a page that never answers must not leave a closure holding
     /// the coordinator for the life of the app.
@@ -222,7 +235,36 @@ final class Coordinator {
     private let flushTimeout: TimeInterval = 1.0
     private let measure = Measure()
 
+    /// The key-window notification observers, held so a window that closes
+    /// stops listening. `NotificationCenter` retains a block observer for the
+    /// life of the process, so discarding these tokens was invisible while a
+    /// window lived as long as the app and is a leak per closed window now.
+    private var observers: [NSObjectProtocol] = []
+
     var isVisible: Bool { panel.isVisible }
+
+    /// Put this window one step off `other` and answer where the next goes.
+    func cascade(after other: Coordinator, from point: NSPoint?) -> NSPoint {
+        panel.cascade(after: other.panel, from: point)
+    }
+
+    /// Let this window go, after `prepareToClose` has said it may.
+    ///
+    /// Everything here is a registration that outlives the object unless it is
+    /// given back: a file presenter sits in a process-wide registry, and a
+    /// block observer is retained by `NotificationCenter` for the life of the
+    /// process. Neither mattered while a window lived exactly as long as the
+    /// app did.
+    func tearDown() {
+        watcher.stop()
+        observers.forEach(NotificationCenter.default.removeObserver)
+        observers.removeAll()
+        cancelPendingAutosave()
+        panel.onHideRequest = nil
+        panel.orderOut(nil)
+        panel.contentView = nil
+        host.webView.removeFromSuperview()
+    }
 
     /// Whether this is the window the keyboard is talking to.
     var isKey: Bool { panel.isKeyWindow }
@@ -248,9 +290,13 @@ final class Coordinator {
 
     /// A window on `url`, which is the only thing that distinguishes one of
     /// these from another and so is required rather than defaulted.
-    init(boundTo url: URL, slot: ActiveBinding.Slot?) {
+    /// - Parameter remembersFrame: whether this is the window that keeps its
+    ///   size and position between launches. Exactly one is; `JotPanel` says
+    ///   why it cannot be all of them.
+    init(boundTo url: URL, slot: ActiveBinding.Slot?, remembersFrame: Bool) {
         boundURL = url
         bindingSlot = slot
+        panel = JotPanel(remembersFrame: remembersFrame)
         let webRoot = Coordinator.locateWebRoot()
         host = WebHost(webRoot: webRoot, documentDirectory: url.deletingLastPathComponent())
         writer = CoalescingWriter(onError: { error in
@@ -261,12 +307,6 @@ final class Coordinator {
     // MARK: lifecycle
 
     func start() {
-        // "Open to a blank note" is decided before the first page loads, so
-        // the editor mounts against the file it will actually edit rather than
-        // mounting the last one and swapping it out a moment later.
-        if Prefs.openToBlankNote, Prefs.documentURL == nil {
-            startBlank()
-        }
         // No fallback to the app's active file when this window is gone: that
         // would be the global read this window exists not to do, and a window
         // being torn down has no view state worth restoring. `WebHost`'s own
@@ -304,7 +344,7 @@ final class Coordinator {
             // written at all; the bytes of the old one are what the button
             // says it is discarding.
             self?.noteMissing = false
-            self?.newNote()
+            self?.startNewNoteHere()
         }
         host.webView.translatesAutoresizingMaskIntoConstraints = false
         statusOverlay.translatesAutoresizingMaskIntoConstraints = false
@@ -393,7 +433,7 @@ final class Coordinator {
         // window in the background.
         for (name, key) in [(NSWindow.didBecomeKeyNotification, true),
                             (NSWindow.didResignKeyNotification, false)] {
-            NotificationCenter.default.addObserver(
+            observers.append(NotificationCenter.default.addObserver(
                 forName: name, object: panel, queue: .main
             ) { [weak self] _ in
                 MainActor.assumeIsolated {
@@ -401,12 +441,12 @@ final class Coordinator {
                     self.titleBar.titleView.setWindowKey(key)
                     self.applyChromeVisibility()
                 }
-            }
+            })
         }
         titleBar.titleView.setWindowKey(panel.isKeyWindow)
         refreshTitle()
         panel.contentView = contentView
-        panel.onHideRequest = { [weak self] in self?.onDismissRequest?() }
+        panel.onHideRequest = { [weak self] in self?.onCloseRequest?() }
         applyTheme(initial: true)
 
         // The activation policy the Dock switch decides, as the app actually
@@ -783,7 +823,7 @@ final class Coordinator {
     func hide() {
         guard panel.isVisible else { return }
         panel.orderOut(nil)
-        flushThen { [weak self] in self?.write(.panelHidden) }
+        flushThen(persisting: false) { [weak self] in self?.write(.panelHidden) }
     }
 
     // MARK: bridge
@@ -848,25 +888,29 @@ final class Coordinator {
                 break
             }
         case let .flushResult(id, content, base, seq):
-            let resolve = pendingFlushes.removeValue(forKey: id)
+            let pending = pendingFlushes.removeValue(forKey: id)
             switch guardState.judge(baseSyncVersion: base, seq: seq) {
             case .admit:
                 latest = content
-                // Not through the policy: a flush only ever happens because
-                // something that always writes asked for one, and its own
-                // `write(...)` follows. Deferring here would put the debounce
-                // in front of a hide or a quit.
-                cancelPendingAutosave()
-                writeLatest()
+                // Only for a caller that has said its own `then` does not
+                // decide. `flushThen` holds the argument; the short version is
+                // that this used to write unconditionally, on the belief that
+                // every flush was asked for by something that always writes,
+                // and hiding the panel with autosave off is a flush asked for
+                // by something that does not (MAR-420).
+                if pending?.persists ?? true {
+                    cancelPendingAutosave()
+                    writeLatest("flushResult")
+                }
                 host.send(.flushAck(id: id, applied: true))
-                resolve?(content)
+                pending?.resolve(content)
             case .repush:
                 host.send(.flushAck(id: id, applied: false))
                 host.send(.externalUpdate(content: latest, syncVersion: guardState.version))
-                resolve?(nil)
+                pending?.resolve(nil)
             case .staleSeq:
                 host.send(.flushAck(id: id, applied: false))
-                resolve?(nil)
+                pending?.resolve(nil)
             }
         case let .viewState(json):
             Prefs.setViewStateJSON(json, for: boundURL)
@@ -1240,7 +1284,21 @@ final class Coordinator {
     /// wedged web process turned hiding the panel into a write nobody asked
     /// for. `write(_:)` is the one funnel, and every caller that wants bytes
     /// on disk goes through it in `then`.
-    private func flushThen(_ then: @escaping () -> Void) {
+    ///
+    /// - Parameter persisting: whether the flush's own RESULT may be written
+    ///   as soon as it lands. That arm was left writing when the two fallbacks
+    ///   above were fixed, so the rule this comment states was true of two
+    ///   paths out of three, and the third is the one that runs when the page
+    ///   answers, which is nearly always (MAR-420).
+    ///
+    ///   True is the default because most callers follow with an explicit save
+    ///   and the write is theirs either way. Pass false when `then` consults
+    ///   `AutosavePolicy`, which is to say when the answer might be "do not
+    ///   write": hiding the panel, and quitting. Writing first makes the
+    ///   policy's refusal meaningless, and on the quit path it pre-empts the
+    ///   Save / Don't Save sheet, so somebody who answers Don't Save has
+    ///   already had their buffer written.
+    private func flushThen(persisting: Bool = true, _ then: @escaping () -> Void) {
         guard state == .warm else {
             then()
             return
@@ -1248,7 +1306,7 @@ final class Coordinator {
         let id = "flush-\(UUID().uuidString)"
         var done = false
         let finish: () -> Void = { if !done { done = true; then() } }
-        pendingFlushes[id] = { _ in finish() }
+        pendingFlushes[id] = PendingFlush(persists: persisting) { _ in finish() }
         host.send(.flushSave(id: id))
         DispatchQueue.main.asyncAfter(deadline: .now() + flushTimeout) { [weak self] in
             guard let self, self.pendingFlushes.removeValue(forKey: id) != nil else { return }
@@ -1303,8 +1361,22 @@ final class Coordinator {
     /// way through `applicationWillTerminate` does not undo the answer.
     private var quitDecided = false
 
-    /// Everything that has to happen before the app may go, and the one place
-    /// a quit can be refused.
+    /// Forget an answer given during a quit that was then refused.
+    ///
+    /// The fan-out asks each window in turn, so by the time one of them says
+    /// Cancel the earlier ones have already decided and written. Leaving them
+    /// decided would suppress their last-chance write on the NEXT quit, which
+    /// is the one that goes through.
+    func forgetQuitDecision() { quitDecided = false }
+
+    /// Everything that has to happen before this window may go, and the one
+    /// place closing it can be refused.
+    ///
+    /// One window's half of a quit, and also the whole of closing a window,
+    /// which is the same question asked of one buffer: with autosave off and
+    /// unwritten bytes it asks, and Cancel means the window stays. Reusing it
+    /// is what stops closing a window acquiring a second, quieter answer to
+    /// "what happens to what I typed".
     ///
     /// `done(false)` means the user cancelled: the app stays up, and nothing
     /// may have been torn down on the way to asking. That ordering is the
@@ -1312,8 +1384,12 @@ final class Coordinator {
     /// be dropped first, which is invisible while every quit succeeds and is a
     /// summon key that stops working for the rest of the session the first
     /// time somebody presses Cancel.
-    func prepareToTerminate(_ done: @escaping (Bool) -> Void) {
-        flushThen { [weak self] in
+    func prepareToClose(_ done: @escaping (Bool) -> Void) {
+        // `decideFinalWrite` may ask, and with autosave off it does. A flush
+        // that wrote as it landed would put the bytes on disk before the sheet
+        // was even on screen, so Don't Save would be answering a question the
+        // app had already settled.
+        flushThen(persisting: false) { [weak self] in
             guard let self else { done(true); return }
             self.decideFinalWrite { answer in
                 guard answer != .cancel else {
@@ -1347,7 +1423,7 @@ final class Coordinator {
         switch AutosavePolicy.action(for: .terminating, autosaveEnabled: Prefs.autosave) {
         case .now, .deferred, .skip:
             cancelPendingAutosave()
-            writeLatest()
+            writeLatest("decideFinalWrite")
             keep(.save)
         case .ask:
             cancelPendingAutosave()
@@ -1358,7 +1434,7 @@ final class Coordinator {
             // a buffer nobody edited is still the only copy of one of those.
             guard isEdited else { keep(.save); return }
             guard !quitIsUnattended else {
-                writeLatest()
+                writeLatest("decideFinalWrite")
                 keep(.save)
                 return
             }
@@ -1384,7 +1460,7 @@ final class Coordinator {
             guard AutosavePolicy.canAsk(panelIsUp: promptWindow.isVisible,
                                         firstRunScreenIsUp: isWelcoming,
                                         anotherSheetIsUp: promptWindow.attachedSheet != nil) else {
-                writeLatest()
+                writeLatest("decideFinalWrite")
                 keep(.save)
                 return
             }
@@ -1393,7 +1469,7 @@ final class Coordinator {
                                          on: promptWindow) { [weak self] answer in
                 guard let self else { keep(answer); return }
                 self.quitPromptIsUp = false
-                if answer == .save { self.writeLatest() }
+                if answer == .save { self.writeLatest("quitPromptSave") }
                 keep(answer)
             }
         }
@@ -1440,7 +1516,7 @@ final class Coordinator {
     /// before the file has been read once (`hasLoaded`): before the first
     /// `ready`, or forever when the web assets are missing, `latest` is the
     /// empty string and writing it would truncate the user's scratchpad.
-    private func writeLatest() {
+    private func writeLatest(_ reason: StaticString) {
         // `noteMissing` alongside `hasLoaded`, and both are about the same
         // thing: a path this write would create rather than update.
         // Every attempt, with the four facts that decide it, for
@@ -1449,7 +1525,7 @@ final class Coordinator {
         // well by a guard that refused and by a path that was never reached,
         // and only one of those is the behaviour being claimed.
         if measure.enabled {
-            measure.trace("writeattempt hasLoaded=\(hasLoaded) missing=\(noteMissing) seen=\(everSeenOnDisk) exists=\(FileManager.default.fileExists(atPath: boundURL.path)) at=\(boundURL.lastPathComponent)")
+            measure.trace("writeattempt by=\(reason) hasLoaded=\(hasLoaded) missing=\(noteMissing) seen=\(everSeenOnDisk) exists=\(FileManager.default.fileExists(atPath: boundURL.path)) at=\(boundURL.lastPathComponent)")
         }
         // Nothing is written while the first-run screen is up. Two reasons,
         // and the second is the one that bites: there is nothing to write,
@@ -1506,7 +1582,7 @@ final class Coordinator {
         switch AutosavePolicy.action(for: trigger, autosaveEnabled: autosave) {
         case .now:
             cancelPendingAutosave()
-            writeLatest()
+            writeLatest("write")
         case .deferred:
             scheduleAutosave()
         case .skip:
@@ -1519,7 +1595,7 @@ final class Coordinator {
             // before this is ever reached; what lands here is the quit that
             // did not go through it, which is a quit nobody initiated.
             cancelPendingAutosave()
-            writeLatest()
+            writeLatest("write")
         }
     }
 
@@ -1540,7 +1616,7 @@ final class Coordinator {
     @objc private func autosaveFired() {
         autosaveTimer = nil
         autosaveDeadline = nil
-        writeLatest()
+        writeLatest("autosaveFired")
     }
 
     private func cancelPendingAutosave() {
@@ -1734,89 +1810,6 @@ final class Coordinator {
         }
     }
 
-    /// Open a file the user pointed this app at: the Finder's Open With, a
-    /// drop on the Dock icon, or `open -a`.
-    ///
-    /// This is the only way INTO `ActiveBinding`'s `document` slot, the
-    /// highest of its three, and `backToNotes` below is the only way out.
-    ///
-    /// The file being LEFT is written first, whatever autosave says, for the
-    /// same reason New Note writes before it switches: being pointed at
-    /// another file is not a reason to lose what was typed into this one, and
-    /// a path the user started from another app has no sheet to ask on.
-    ///
-    /// The rebind then goes through a page load rather than `bindTo`, because
-    /// `bindTo` is for a caller that already HOLDS the bytes and this one has
-    /// a path nobody has read. `reloadFromDisk` makes the next `ready` adopt
-    /// the file, which is the one path that also settles `hasLoaded`,
-    /// `noteUnreadable` and `isEdited` for it; `hasLoaded` is dropped here so
-    /// that until it does, nothing can write the outgoing note's bytes into
-    /// the incoming file.
-    func openDocument(at url: URL) {
-        let target = url.standardizedFileURL
-        guard DocumentTypes.accepts(target) else {
-            show()
-            statusOverlay.flash("Birta Writer does not open \(target.lastPathComponent).")
-            return
-        }
-        // Already the bound file: summon it. Flushing and reloading would put
-        // the disk over a buffer that is legitimately ahead of it.
-        guard target != boundURL.standardizedFileURL else {
-            show()
-            return
-        }
-        flushThen { [weak self] in
-            guard let self else { return }
-            self.write(.explicitSave)
-            Prefs.documentURL = target
-            // `boundURL`'s `didSet` does the rest of the rebind in one step:
-            // the title, the folder the page may read images from, the
-            // watcher, and the per-path flags the outgoing file left set.
-            self.boundURL = target
-            self.hasLoaded = false
-            self.reloadFromDisk = true
-            self.loadPage()
-            self.show()
-        }
-    }
-
-    /// Cmd+O. Ask for a file, then open it the way the Finder's Open With
-    /// does.
-    ///
-    /// Everything about the rebind is `openDocument(at:)`'s, including the
-    /// flush of the note being left, so this is only the chooser. That is the
-    /// point of the split: a file arriving from a panel and a file arriving
-    /// from the Finder must reach the buffer by one path, or the two acquire
-    /// different answers to what happens to the outgoing note.
-    ///
-    /// The panel starts in the folder of the file on screen, which is where a
-    /// second note usually is. `Prefs.saveAsDirectory` is deliberately not
-    /// reused: that is where copies are written OUT to, and starting a chooser
-    /// there points at a folder of exports rather than at the notes.
-    ///
-    /// A sheet when the panel is up and a modal when it is not, matching Save
-    /// a Copy As. An accessory app can have no window on screen at all, and a
-    /// sheet on a hidden window is a chooser nobody can see or dismiss.
-    func openDocumentPanel() {
-        NSApp.activate(ignoringOtherApps: true)
-        let chooser = NSOpenPanel()
-        chooser.title = "Open"
-        chooser.allowedContentTypes = DocumentTypes.openedContentTypes
-        chooser.allowsMultipleSelection = false
-        chooser.canChooseDirectories = false
-        chooser.canChooseFiles = true
-        chooser.directoryURL = boundURL.deletingLastPathComponent()
-        let respond: (NSApplication.ModalResponse) -> Void = { [weak self] response in
-            guard response == .OK, let url = chooser.url, let self else { return }
-            self.openDocument(at: url)
-        }
-        if panel.isVisible {
-            chooser.beginSheetModal(for: panel, completionHandler: respond)
-        } else {
-            respond(chooser.runModal())
-        }
-    }
-
     /// Leave a document Jot was pointed at, and go back to the notes.
     ///
     /// The `document` slot in `ActiveBinding` outranks the other two, so this
@@ -1824,7 +1817,10 @@ final class Coordinator {
     /// buffer is flushed to the document first: leaving a file is not a reason
     /// to lose what was typed into it.
     func backToNotes() {
-        guard Prefs.documentURL != nil else {
+        // The slot as well as the setting: with several windows, only the one
+        // that actually holds `document` may clear it, or a window that never
+        // opened a document would take another window's out from under it.
+        guard bindingSlot == .document, Prefs.documentURL != nil else {
             statusOverlay.flash("Birta Writer is already on your notes.")
             return
         }
@@ -1854,51 +1850,44 @@ final class Coordinator {
     /// refused and switching away really does drop those bytes. Nothing else
     /// can reach this state, because every other caller has a file.
     ///
-    func newNote() {
+    /// Make the empty file a new note starts as, and answer where it went.
+    ///
+    /// Created now rather than held in memory, because a note that exists only
+    /// in a buffer is one the next launch cannot find its way back to.
+    ///
+    /// Static because two callers make one: the app, when New Note opens a
+    /// window, and this window, when the missing-note screen's Discard has
+    /// nowhere left to write. Throwing rather than reporting, so each caller
+    /// puts the message where its own gesture was made.
+    static func makeNoteFile() throws -> URL {
+        let directory = Prefs.notesDirectory
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let target = Coordinator.unusedNoteURL(in: directory)
+        try AtomicFile.writeString("", to: target)
+        return target
+    }
+
+    /// Replace THIS window's buffer with a fresh note.
+    ///
+    /// Not what Cmd+N does any more, which opens a window. The one caller left
+    /// is the missing-note screen's Discard, where there is no file to write
+    /// the buffer back to and opening a second window would leave the broken
+    /// one on screen.
+    func startNewNoteHere() {
         flushThen { [weak self] in
             guard let self else { return }
             self.write(.explicitSave)
-            // A bound document is LEFT, not a reason to refuse. This gesture
-            // and Back to My Notes beside it are the two ways out of one.
-            Prefs.documentURL = nil
-            let directory = Prefs.notesDirectory
             do {
-                try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+                let target = try Coordinator.makeNoteFile()
+                if self.bindingSlot == .document { Prefs.documentURL = nil }
+                Prefs.currentNoteURL = target
+                self.bindingSlot = .currentNote
+                self.bindTo(target, content: "")
+                self.statusOverlay.flash("New note.")
             } catch {
-                NSLog("Birta Writer: could not create \(directory.path): \(error)")
-                self.statusOverlay.flash("Could not make a new note in \(directory.lastPathComponent).")
-                return
-            }
-            let target = Coordinator.unusedNoteURL(in: directory)
-            do {
-                // Create it now, empty. A note that exists only in memory is
-                // one the next launch cannot find its way back to.
-                try AtomicFile.writeString("", to: target)
-            } catch {
-                NSLog("Birta Writer: could not write \(target.path): \(error)")
+                NSLog("Birta Writer: could not make a new note: \(error)")
                 self.statusOverlay.flash("Could not make a new note.")
-                return
             }
-            Prefs.currentNoteURL = target
-            self.bindTo(target, content: "")
-            self.statusOverlay.flash("New note.")
-        }
-    }
-
-    /// The launch half of New Note: a fresh file, chosen before anything has
-    /// loaded, so there is no buffer to flush and nothing to write first.
-    private func startBlank() {
-        let directory = Prefs.notesDirectory
-        do {
-            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-            let target = Coordinator.unusedNoteURL(in: directory)
-            try AtomicFile.writeString("", to: target)
-            Prefs.currentNoteURL = target
-            boundURL = target
-        } catch {
-            // The scratchpad is the fallback, and it is a good one: the setting
-            // says where to START, not that the old note may be lost.
-            NSLog("Birta Writer: could not start a blank note in \(directory.path): \(error)")
         }
     }
 
@@ -2387,7 +2376,7 @@ final class Coordinator {
         // as a first one and `AtomicFile` recreates the file and its folder,
         // which is exactly what the button promises.
         everSeenOnDisk = false
-        writeLatest()
+        writeLatest("saveMissingNoteBack")
         guard FileManager.default.fileExists(atPath: boundURL.path) else {
             noteMissing = true
             statusOverlay.flash("Could not write \(boundURL.lastPathComponent).")
