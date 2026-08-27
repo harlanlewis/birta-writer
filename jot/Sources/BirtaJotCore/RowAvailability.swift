@@ -84,6 +84,19 @@ public struct RowAvailability: Sendable, Equatable {
             : .blocked("A development build does not replace itself.")
     }
 
+    /// A presence row (the menu-bar icon, the Dock icon), from where the app
+    /// can be reached right now.
+    ///
+    /// The rule is `AppPresence`'s and this is only the adapter, in the shape
+    /// `startAtLogin` below already established. Both rows go through it, so
+    /// the one that is currently last says so and the other stays live.
+    public static func appPresence(_ surface: AppPresence.Surface,
+                                   menuBar: Bool, dock: Bool) -> RowAvailability {
+        AppPresence.isOnlyWayIn(surface, menuBar: menuBar, dock: dock)
+            ? .blocked(surface.lastWayInReason)
+            : .available()
+    }
+
     /// The start-at-login row, from what the system reported.
     ///
     /// `LoginItemState` already answers both halves; this is the adapter that

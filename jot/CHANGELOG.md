@@ -12,7 +12,19 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ## [Unreleased]
 
+### Added
+
+- More than one window. Cmd+N and Open now make a window rather than replacing what is on screen, so two notes can be open at once, and each window has its own title, its own buffer and its own saving. Opening a file that is already open brings that window forward instead of opening it twice, which matters beyond tidiness: two windows over one file would both write the whole file and the later write would win with nothing to say so. Cmd+W closes a window, except the last one, which hides as it always did so the next summon is still instant. The summon hotkey shows and hides every window together. Quitting asks about each unsaved note in turn, and Cancel on any of them keeps the app running.
+
+- The notes folders wear the app's mark in the Finder, the way the folders of other apps that keep one in iCloud Drive do, so the folder is found by looking rather than by reading. Both folders the app names get it, the one in iCloud Drive and the one in Documents, whichever is currently in use. A folder you have given your own picture to is left alone, and deleting the icon puts the plain folder back for good.
+
+- A Show in menu bar setting, on by default, under Settings > General. Turning it off leaves the app with no menu-bar icon, which suits anybody who summons it by hotkey or keeps it in the Dock. It is bound to Show in Dock by one rule: whichever of the two is the last one on cannot be switched off, so there is always a way to open the app without its hotkey. The row that is currently the last one says so rather than simply refusing.
+
 ### Fixed
+
+- The panel keeps its own controls when the file it was on has gone missing. Find, the checks, the outline and the Settings gear are drawn by the page, and the screen that says a file is gone used to hide the page entirely to wall off the document, taking all four with it. Somebody whose notes have just disappeared is exactly the person who wants to look at where they are kept.
+
+- With Automatically save changes turned off, dismissing the panel no longer writes the note. It did so through a path that never consulted the setting, so the one promise that switch makes was being broken by the most ordinary gesture there is. The same path also wrote the file on the way out of a quit before the Save / Don't Save question appeared, which meant Don't Save had nothing left to decline. Anybody who keeps autosave off should stop assuming a dismissed panel left the file alone; it did not.
 
 - The titlebar's Open Recent list opens below the button rather than across the titlebar. It was positioned at the button's bottom-left corner in coordinates that grow the other way, so it came up over the name of the file it was offering to replace.
 

@@ -19,7 +19,31 @@ import BirtaJotCore
 final class JotPanel: NSPanel {
     var onHideRequest: (() -> Void)?
 
-    init() {
+    /// Whether this window is the one that remembers its size and position
+    /// between launches.
+    ///
+    /// Exactly one is, and it has to be: AppKit's frame autosave is a name to
+    /// frame map, so a second window sharing the name would overwrite the same
+    /// entry on every move and they would all restore on top of each other.
+    /// `setFrameAutosaveName` says so itself, by returning false for a name
+    /// already in use in this process, which is a return value worth reading
+    /// rather than discarding: the quiet version of this failure is windows
+    /// two and after silently keeping no frame at all.
+    ///
+    /// The first window keeps the historic name, so somebody who has been
+    /// dragging this panel to where they like it for months finds it there.
+    /// The rest cascade off whichever window spawned them.
+    private let remembersFrame: Bool
+
+    /// Whether this window has been given a position yet.
+    ///
+    /// `placeIfUnplaced` runs from every `show`, and a summon now shows every
+    /// window at once, so without this a window that had been dragged
+    /// somewhere would be re-centred under the pointer on the next summon.
+    private var placed = false
+
+    init(remembersFrame: Bool) {
+        self.remembersFrame = remembersFrame
         // All three window buttons, and the style mask each one needs: a panel
         // showing a lone close button reads as a window with something missing.
         super.init(contentRect: NSRect(x: 0, y: 0, width: 640, height: 480),
@@ -47,24 +71,58 @@ final class JotPanel: NSPanel {
         // the one piece of state `BIRTA_JOT_DEFAULTS_SUITE` does not already
         // cover, and a checking run that resizes the panel would otherwise
         // hand the user back a window the width of whatever it finished on.
-        if Prefs.isUserStore { setFrameAutosaveName("JotPanel") }
+        if remembersFrame, Prefs.isUserStore, !setFrameAutosaveName("JotPanel") {
+            NSLog("Birta Writer: the panel frame autosave name was refused, so this window will not remember its size")
+        }
     }
 
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { true }
 
-    /// The close button hides; the buffer is never "closed".
+    /// A close is a REQUEST while anybody is listening for one, and a real
+    /// close when nobody is.
+    ///
+    /// The close button and Cmd+W both arrive here, and what they mean is the
+    /// app's to decide: with several windows open this one closes, and with one
+    /// it hides, so the editor stays mounted and the next summon is immediate.
+    ///
+    /// The fall-through matters as much as the request, and did not exist while
+    /// nothing could close a window. Without it there is no way to close this
+    /// window at all, in any code path: `orderOut` takes it off the screen and
+    /// leaves it in `NSApp.windows`, which is the list AppKit builds the Window
+    /// menu from, so a note you closed would go on being listed there. Clearing
+    /// `onHideRequest` is what a teardown does to say it means this one.
     override func close() {
-        onHideRequest?()
+        guard let onHideRequest else {
+            super.close()
+            return
+        }
+        onHideRequest()
+    }
+
+    /// Put this window one step down and right of `point`, at the size of the
+    /// window it was spawned from, and answer where the NEXT one goes.
+    ///
+    /// The step is AppKit's rather than a number chosen here, which is what
+    /// `cascadeTopLeft(from:)` is for. Seeding it is the part worth reading:
+    /// asking the SPAWN window to cascade from `NSZeroPoint` does not move it,
+    /// because a zero point means "tell me where the next one goes", so the
+    /// seed is obtained without disturbing the window it came from.
+    func cascade(after other: JotPanel, from point: NSPoint?) -> NSPoint {
+        setContentSize(other.contentRect(forFrameRect: other.frame).size)
+        placed = true
+        return cascadeTopLeft(from: point ?? other.cascadeTopLeft(from: .zero))
     }
 
     /// First show with no remembered frame: centre on the screen under the mouse.
     func placeIfUnplaced() {
+        guard !placed else { return }
+        placed = true
         // Guarded for the reason the autosave above is, and separately:
         // `setFrameUsingName` reads that defaults key whether or not this
         // window ever named itself, so without this a checking run would still
         // open at the user's own size and measure a width nobody chose.
-        if Prefs.isUserStore, setFrameUsingName("JotPanel") { return }
+        if remembersFrame, Prefs.isUserStore, setFrameUsingName("JotPanel") { return }
         let mouse = NSEvent.mouseLocation
         let screen = NSScreen.screens.first(where: { $0.frame.contains(mouse) }) ?? NSScreen.main
         guard let visible = screen?.visibleFrame else { return }

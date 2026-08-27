@@ -468,10 +468,21 @@ final class NotesMoveOfferLaunchTests: XCTestCase {
         guard let offer = body.range(of: "NotesMoveOffer.offerAtLaunch(") else {
             return XCTFail("nothing on the launch path offers to carry stranded notes; MAR-413 is back")
         }
-        guard let coordinator = body.range(of: "coordinator = Coordinator(") else {
-            return XCTFail("App.swift no longer builds the Coordinator in launch; this guard needs rewriting")
+        // The moment a file is bound, which is what the offer has to precede.
+        //
+        // This anchor has moved TWICE while the fact behind it never changed:
+        // once when the app was given a set of windows rather than one
+        // coordinator, and again when opening the first window became a named
+        // step of its own. So read a red here as a rename until you have
+        // checked otherwise, and follow the anchor rather than weakening the
+        // assertion. What must stay true is only the ORDER: the stranded-notes
+        // offer is answered while nothing is bound to a file, because the
+        // binding is the new folder's scratchpad and a note carried in
+        // afterwards can land on the path a window is already editing.
+        guard let binding = body.range(of: "openFirstWindow(") else {
+            return XCTFail("App.swift no longer opens the first window during launch; this guard needs rewriting")
         }
-        XCTAssertTrue(offer.lowerBound < coordinator.lowerBound,
+        XCTAssertTrue(offer.lowerBound < binding.lowerBound,
                       "the offer must be answered before anything is bound to a file")
     }
 }

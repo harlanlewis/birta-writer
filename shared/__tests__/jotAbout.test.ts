@@ -106,7 +106,13 @@ describe("Jot's About window", () => {
         // rows could be deleted with every XCTest still green, and an
         // accessory app's app menu is invisible: lose the status-menu row and
         // most installs have no route to the window at all.
-        for (const builder of ["buildMainMenu", "buildStatusItem"]) {
+        //
+        // `buildStatusMenu` and not `buildStatusItem`: the menu-bar ITEM is now
+        // built and destroyed by `applyMenuBarPresence`, since it comes and
+        // goes with a setting, while the menu it shows is built once and
+        // outlives any particular item. What this holds is unchanged, so follow
+        // the name rather than weakening the check.
+        for (const builder of ["buildMainMenu", "buildStatusMenu"]) {
             const body = swiftFunctionBody(app, builder);
             expect(body, builder).toContain("#selector(menuOpenAbout)");
             expect(body, builder).toContain('addItem(withTitle: "About ');

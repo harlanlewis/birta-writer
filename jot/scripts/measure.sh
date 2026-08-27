@@ -58,12 +58,21 @@ export BIRTA_JOT_DEFAULTS_SUITE="com.birtalabs.jot.measure.$$"
 # rather than through a debug message: the restore path is itself part of what
 # is being checked, and a message that forced the row open would leave it
 # unexercised.
-# `-string` is load-bearing: without it `defaults` reads the braces as
-# old-style plist syntax, fails to parse, and writes nothing at all.
-# The key has to match `STATE_KEY` in webview/components/toolbar/dock.ts. A
-# name that has drifted seeds nothing, and this script still passes, having
-# measured a CLOSED row: the failure is a wrong number rather than a red.
-defaults write "$BIRTA_JOT_DEFAULTS_SUITE" viewState -string '{"formattingRowExpanded":true}'
+# A DICTIONARY keyed by the document's path, because view state belongs to a
+# file rather than to the app: one value for everything meant a second window
+# mounting at whatever position the first was left at. The key is the path as
+# the app spells it, which is the path handed in through BIRTA_JOT_SCRATCHPAD
+# (`standardizedFileURL` does not rewrite /var to /private/var, so the two
+# agree without either resolving anything).
+# The inner key has to match `STATE_KEY` in webview/components/toolbar/dock.ts.
+# A name that has drifted seeds nothing; the `expanded` assertion below is what
+# turns that into a red rather than a quietly wrong measurement.
+# The value is wrapped in plist quotes with its own quotes escaped, and that
+# is load-bearing in the way `-string` used to be: `-dict` parses each VALUE
+# as plist syntax and has no per-value type flag, so bare braces are read as a
+# nested dictionary, fail to parse, and write nothing at all.
+defaults write "$BIRTA_JOT_DEFAULTS_SUITE" viewState \
+    -dict "$BIRTA_JOT_SCRATCHPAD" '"{\"formattingRowExpanded\":true}"'
 LOG="$(mktemp -t jot-measure)"
 KEEP=0
 if [ "${1:-}" = "--keep" ]; then KEEP=1; fi
@@ -327,6 +336,30 @@ if ! grep -q "^jot-trace noteMissing " "$LOG"; then
     grep -E "jot-trace (writeattempt|noteMissing)|jot-measure (visible|hide)" "$LOG" | tail -20 >&2; exit 1
 fi
 echo "deleted note         ok: the write was refused, and the note was not recreated"
+# ...and the screen it puts up leaves the page's own controls reachable.
+#
+# Find, the checks, the outline and the SETTINGS gear are drawn by the page, in
+# the titlebar band. Hiding the web view to wall off the document took all four
+# with it, so a window whose file had just gone missing had no way to Settings
+# except the menu bar, and somebody whose notes have just disappeared is exactly
+# the person who wants to look at where they are kept.
+#
+# Geometry rather than a screenshot, and not as a compromise: a WKWebView
+# contributes nothing to the PDF path `__jotSnapshot` uses, so a picture of this
+# state cannot show the page's controls whether they are there or not.
+MISSING="$(grep "^jot-trace missingscreen " "$LOG" | tail -1)"
+case "$MISSING" in
+    *"webviewHidden=false"*) ;;
+    "") echo "missing screen       FAILED: the screen never reported its geometry" >&2; exit 1 ;;
+    *) echo "missing screen       FAILED: the page is hidden, so Settings is unreachable: $MISSING" >&2; exit 1 ;;
+esac
+M_SCREEN="$(printf '%s' "$MISSING" | sed 's/.*screen=\([0-9]*\).*/\1/')"
+M_CONTENT="$(printf '%s' "$MISSING" | sed 's/.*content=\([0-9]*\).*/\1/')"
+if [ -z "$M_SCREEN" ] || [ -z "$M_CONTENT" ] || [ "$M_SCREEN" -ge "$M_CONTENT" ]; then
+    echo "missing screen       FAILED: the screen covers the whole window, including the band: $MISSING" >&2
+    exit 1
+fi
+echo "missing screen       ok: covers the document ($M_SCREEN of $M_CONTENT) and leaves the page's controls"
 # ...and a reload while the note is missing leaves the panel still writable.
 #
 # The read side refuses while the note is gone, because the buffer is the only
@@ -1694,6 +1727,14 @@ if grep -q "$OFF_STAMP" "$SCRATCH_DIR/Scratch pad.md" 2>/dev/null; then
     # anything else means the wait stopped working and this is again a red
     # about the probe.
     grep "^jot-trace writedecision " "$LOG" | tail -3 | sed 's/^/  /' >&2
+    # ...and every write that was ATTEMPTED, which is the half that names the
+    # culprit. A decision and a write are not the same event: `writeLatest` is
+    # reachable without going through `write(_:)` at all, from the quit path,
+    # from the missing-note rescue and from Save It Back, and none of those
+    # leaves a `writedecision` line. Printing only the decisions produced a
+    # failure saying the app had refused to write, next to a file it had
+    # plainly written, with nothing on screen to reconcile the two.
+    grep "^jot-trace writeattempt " "$LOG" | tail -3 | sed 's/^/  /' >&2
     cat "$SCRATCH_DIR/Scratch pad.md" >&2; exit 1
 fi
 # The typing has to have LANDED, or this passes on a probe that never reached
@@ -1705,6 +1746,76 @@ case "$OFF_TITLE" in
     *) echo "autosave off         FAILED: nothing was written and the title does not say Edited either," >&2
        echo "  so the probe never reached the page: \"$OFF_TITLE\"" >&2; exit 1 ;;
 esac
+
+# A SECOND WINDOW, and the only claim that matters about it: the two buffers
+# are independent. Typing into the new one must reach its own file and must not
+# reach the file the first window is on.
+#
+# Last, deliberately. Everything above is written against one window, and this
+# leaves a second one key: `__jotKeys` types into whichever window is in front,
+# and the summon toggles now show and hide the whole set.
+#
+# Autosave is off by the time this runs, so the write is asked for explicitly.
+# That is the honest way round anyway: it checks that a save reaches the right
+# file, rather than that a timer eventually does.
+PAD_BEFORE="$(cat "$BIRTA_JOT_SCRATCHPAD" 2>/dev/null || true)"
+printf '{"type":"__jotNewWindow"}' > "$SCRATCH_DIR/.debug-message.json"
+kill -URG $PID; sleep 1.2
+rm -f "$SCRATCH_DIR/.debug-message.json"
+TWO_STAMP="twowin-$(date +%s)"
+printf '{"type":"__testInsertText","text":"%s\\n"}' "$TWO_STAMP" > "$SCRATCH_DIR/.debug-message.json"
+kill -URG $PID; sleep 0.6
+rm -f "$SCRATCH_DIR/.debug-message.json"
+printf '{"type":"__jotSaveNow"}' > "$SCRATCH_DIR/.debug-message.json"
+kill -URG $PID; sleep 1.0
+rm -f "$SCRATCH_DIR/.debug-message.json"
+
+# The new note is a file in the same folder that is not the scratchpad.
+# Named by the app's own template, so it is found by content rather than by a
+# name this script would have to keep in step with NoteNameTemplate.
+TWO_FILE=""
+for f in "$SCRATCH_DIR"/*.md; do
+    [ "$f" = "$BIRTA_JOT_SCRATCHPAD" ] && continue
+    if grep -q "$TWO_STAMP" "$f" 2>/dev/null; then TWO_FILE="$f"; break; fi
+done
+if [ -z "$TWO_FILE" ]; then
+    echo "two windows          FAILED: '$TWO_STAMP' reached no file of its own" >&2
+    echo "  files beside the scratchpad:" >&2
+    ls -1 "$SCRATCH_DIR"/*.md 2>/dev/null | sed 's/^/    /' >&2
+    grep "^jot-trace writeattempt " "$LOG" | tail -3 | sed 's/^/  /' >&2
+    exit 1
+fi
+if grep -q "$TWO_STAMP" "$BIRTA_JOT_SCRATCHPAD" 2>/dev/null; then
+    echo "two windows          FAILED: typing in the new window also reached the first window's file" >&2
+    exit 1
+fi
+# ...and the first window's file was not disturbed at all, which is the half a
+# check that only looked at the new file would miss: a window that had rebound
+# both buffers onto one path would still put the stamp somewhere new.
+if [ "$(cat "$BIRTA_JOT_SCRATCHPAD" 2>/dev/null || true)" != "$PAD_BEFORE" ]; then
+    echo "two windows          FAILED: the first window's file changed while the second was typed into" >&2
+    exit 1
+fi
+echo "two windows          ok: '$TWO_STAMP' went to $(basename "$TWO_FILE") and the first note is untouched"
+
+# What a second window COSTS, measured rather than estimated: MAR-396 asks for
+# this figure and nobody had one.
+#
+# The helper set is re-diffed against the pre-launch snapshot rather than reused
+# from the idle measurement above, and that is the whole difference between a
+# figure and a wrong figure: `WK_OURS` was captured when there was one window,
+# so a helper the second window started would not be in it and the delta would
+# read as almost nothing. Whether a second WKWebView on the same origin gets a
+# WebContent process of its own is WebKit's business and not something to
+# assume in either direction, which is exactly why this counts rather than
+# reasons.
+sleep 3
+WK_TWO="$(comm -13 <(printf '%s\n' "$WC_BEFORE") <(pgrep -f com.apple.WebKit | sort || true) | tr '\n' ' ')"
+RSS_TWO=$(ps -o rss= -p $PID | tr -d ' ')
+for h in $WK_TWO; do
+    RSS_TWO=$((RSS_TWO + $(ps -o rss= -p "$h" 2>/dev/null || echo 0)))
+done
+echo "RSS with two windows $((RSS_TWO / 1024)) MB   (app + $(printf '%s' "$WK_TWO" | wc -w | tr -d ' ') WebKit helpers)"
 
 echo "idle RSS app         $((RSS_APP / 1024)) MB"
 echo "idle RSS helpers     $((RSS_HELPERS / 1024)) MB   (WebKit helpers that appeared since launch: ${WK_OURS:-none})"

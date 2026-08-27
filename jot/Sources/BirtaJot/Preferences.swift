@@ -46,6 +46,7 @@ enum Prefs {
         case autosave
         case agentCommand
         case showInDock
+        case showInMenuBar
         case openToBlankNote
         case currentNotePath
         case storeInICloud
@@ -259,6 +260,19 @@ enum Prefs {
         ActiveBinding.url(document: documentURL, currentNote: currentNoteURL, scratchpad: scratchpadURL)
     }
 
+    /// WHICH of the three settings supplies `activeURL`.
+    ///
+    /// The pair a window is opened with: the file, and the slot it came
+    /// through, so a rename later writes back to the same one. Both derive
+    /// from `ActiveBinding`, which is written so the two cannot disagree.
+    ///
+    /// Never nil, unlike a window's own `bindingSlot`: this answers what the
+    /// app would open right now, and something always supplies that, down to
+    /// the default scratchpad location.
+    static var activeSlot: ActiveBinding.Slot {
+        ActiveBinding.slot(hasDocument: documentURL != nil, hasCurrentNote: currentNoteURL != nil)
+    }
+
     /// One stored path, with no existence filter on it.
     private static func stored(_ key: Key) -> URL? {
         guard let path = d.string(forKey: key.rawValue), !path.isEmpty else { return nil }
@@ -307,15 +321,31 @@ enum Prefs {
     ///
     /// Matched against the STORED strings rather than through the accessors,
     /// for the same reason: the accessors are what filter on existence.
-    static func rebindActive(from old: URL, to url: URL) {
-        switch slot(holding: old) {
+    /// Write a moved file back to the slot the WINDOW holding it was bound
+    /// through.
+    ///
+    /// The slot is the window's rather than something derived here from the
+    /// old path, and that difference is the whole point. Matching a path
+    /// against the stored settings answers "which setting names this file",
+    /// which was the same question while there was one window and is a
+    /// different one once there are several: a window can be on a file that no
+    /// setting names, because another window has since claimed the slot it was
+    /// opened through.
+    ///
+    /// `nil` therefore means what it says: nothing to write back. It used to
+    /// mean "the default scratchpad location", and adopting the scratchpad was
+    /// right for that, because with one window the only way to be named by no
+    /// setting was to be the default. Keeping that fallback here would take a
+    /// person's scratchpad setting and point it at whatever unrelated file they
+    /// happened to rename in a second window. The default-scratchpad case is
+    /// still handled, one level up: a window on it is bound through
+    /// `.scratchpad` and says so.
+    static func rebind(to url: URL, slot: ActiveBinding.Slot?) {
+        switch slot {
         case .document: documentURL = url
         case .currentNote: currentNoteURL = url
         case .scratchpad: adoptScratchpad(url)
-        // Nothing stored names it, so it is the default scratchpad location,
-        // and pointing the scratchpad setting at where it went is what keeps
-        // the panel on it next launch.
-        case nil: adoptScratchpad(url)
+        case nil: break
         }
     }
 
@@ -454,9 +484,48 @@ enum Prefs {
         set { d.set(newValue, forKey: Key.tocWidth.rawValue) }
     }
 
-    static var viewStateJSON: String? {
-        get { d.string(forKey: Key.viewState.rawValue) }
-        set { d.set(newValue, forKey: Key.viewState.rawValue) }
+    /// The editor's own memory of a DOCUMENT: where it was scrolled, which
+    /// sections were folded, where the caret was.
+    ///
+    /// Keyed by file, where it used to be one value for the whole app. One
+    /// value was indistinguishable from correct while there was one buffer,
+    /// and is a visible defect with several windows: every window writes this
+    /// on every view-state message, so a window would mount at whatever
+    /// position another one was left at, and a reload would restore one
+    /// window's scroll into another.
+    ///
+    /// By PATH rather than by window, which is the more correct answer to
+    /// begin with: a scroll position belongs to the document, so keying it
+    /// this way also survives closing a file and opening it again, which a
+    /// per-window slot would not.
+    static func viewStateJSON(for url: URL) -> String? {
+        viewStates[url.standardizedFileURL.path]
+    }
+
+    /// Bounded by the RECENTS list rather than by a counter of its own.
+    ///
+    /// This map grows with every file ever opened and nothing else would ever
+    /// remove an entry. A file that has fallen off the last `RecentFiles`
+    /// entries is one whose scroll position nobody is coming back for, and
+    /// reusing that order means there is no second piece of recency
+    /// bookkeeping to be kept in step with the first. The file being written
+    /// is always kept, because it may not have joined the list yet.
+    static func setViewStateJSON(_ json: String?, for url: URL) {
+        let key = url.standardizedFileURL.path
+        var states = viewStates
+        if let json { states[key] = json } else { states.removeValue(forKey: key) }
+        if states.count > RecentFiles.capacity {
+            let keep = Set(recentDocuments.map(\.standardizedFileURL.path)).union([key])
+            states = states.filter { keep.contains($0.key) }
+        }
+        d.set(states, forKey: Key.viewState.rawValue)
+    }
+
+    /// Nil for the single string this key used to hold, so an install
+    /// upgrading across this change forgets one scroll position rather than
+    /// failing to read its settings.
+    private static var viewStates: [String: String] {
+        (d.dictionary(forKey: Key.viewState.rawValue) as? [String: String]) ?? [:]
     }
 
     /// Where the last Save As went, so the next one opens there. A memory of
@@ -511,6 +580,27 @@ enum Prefs {
     static var showInDock: Bool {
         get { d.bool(forKey: Key.showInDock.rawValue) }
         set { d.set(newValue, forKey: Key.showInDock.rawValue) }
+    }
+
+    /// Whether the app has an icon in the menu bar.
+    ///
+    /// ON, and the opposite default to the Dock icon beside it, because a
+    /// menu-bar accessory is what this app IS: the item is where the panel is
+    /// toggled from, and for anybody running without a Dock icon it is also
+    /// the only route to About and Settings.
+    ///
+    /// Neither switch is free of the other. `AppPresence` holds the rule and
+    /// both rows read it: either surface alone is enough to reach the app, and
+    /// whichever is currently the last one on cannot be turned off. Nothing in
+    /// this file enforces that, deliberately, because a setter that refused a
+    /// value would leave the two switches disagreeing with what is stored.
+    ///
+    /// `AppDelegate.applyMenuBarPresence()` is what acts on it, at launch and
+    /// whenever the switch moves, exactly as `applyActivationPolicy()` does
+    /// for the Dock.
+    static var showInMenuBar: Bool {
+        get { d.object(forKey: Key.showInMenuBar.rawValue) == nil ? true : d.bool(forKey: Key.showInMenuBar.rawValue) }
+        set { d.set(newValue, forKey: Key.showInMenuBar.rawValue) }
     }
 
     /// Whether this install has never stored a setting.
@@ -640,6 +730,7 @@ enum Prefs {
         report("network", !networkEnabled, "off")
         report("automatic updates", !autoUpdate, "off")
         report("show in Dock", showInDock, "on")
+        report("show in menu bar", !showInMenuBar, "off")
         report("agent", !agentEnabled, "off")
         report("agent command", agentEnabled && agentCommand != AgentPreset.fallback.template)
         report("note home", noteHome != .iCloud, noteHome.rawValue)
@@ -746,6 +837,29 @@ enum Prefs {
     /// chose and to `BIRTA_JOT_SCRATCHPAD`. This one is spelled from the
     /// product name by `ScratchpadLocation`, which makes it the one a rename
     /// can move, and the only one worth recording.
+    /// BOTH folders this app derives from its own name: the one in iCloud
+    /// Drive and the one in Documents.
+    ///
+    /// Both, rather than only the one in force, because the other is where a
+    /// person's notes were before they moved them or will be after: a folder
+    /// that carries the mark only while it is selected would gain and lose it
+    /// as the setting moved.
+    ///
+    /// A folder the USER chose is deliberately not here. It can be anything,
+    /// including a folder that holds far more than notes, and putting a mark
+    /// on somebody's Documents folder because they once pointed this app at it
+    /// is not a decoration, it is a claim.
+    static var derivedNotesDirectories: [URL] {
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        let suffix = AppFlavor.current.nameSuffix
+        var folders = [ScratchpadLocation.local
+            .url(root: home.appendingPathComponent("Documents", isDirectory: true), nameSuffix: suffix)]
+        if let root = ScratchpadLocation.iCloudDriveRoot() {
+            folders.append(ScratchpadLocation.iCloud.url(root: root, nameSuffix: suffix))
+        }
+        return folders.map { $0.deletingLastPathComponent() }
+    }
+
     static var derivedNotesDirectory: URL {
         defaultScratchpadURL.deletingLastPathComponent()
     }
@@ -807,7 +921,10 @@ enum Prefs {
             })
     }
 
-    static func bootConfig() -> BootConfig {
+    /// - Parameter viewStateFor: the file the window being booted is on, so
+    ///   it is restored to its OWN remembered position. Every window asks with
+    ///   its own binding.
+    static func bootConfig(viewStateFor url: URL) -> BootConfig {
         BootConfig(
             toolbarJSON: toolbarLayout.json,
             fontPreset: fontPreset,
@@ -835,7 +952,7 @@ enum Prefs {
             // arms.
             hostCapabilities: ["spellAndGrammar", "imageUpload", "toc", "appPreferences", "agent"]
                 .filter { $0 != "agent" || agentAvailable },
-            viewStateJSON: viewStateJSON,
+            viewStateJSON: viewStateJSON(for: url),
             hostShortcuts: JotMenu.shortcuts
         )
     }

@@ -9,7 +9,12 @@ import os
 /// (cold recovery) and `launch→ready`.
 final class Measure {
     private let log = OSLog(subsystem: "com.birtalabs.jot", category: "summon")
-    let enabled = ProcessInfo.processInfo.environment["BIRTA_JOT_MEASURE"] == "1"
+    /// Whether this process is being measured at all.
+    ///
+    /// Static as well as per-instance because the app decides whether to
+    /// install the measurement signals before it has any window to ask.
+    static let isEnabled = ProcessInfo.processInfo.environment["BIRTA_JOT_MEASURE"] == "1"
+    let enabled = Measure.isEnabled
     private let start = ProcessInfo.processInfo.systemUptime
 
     func mark(_ name: StaticString) {

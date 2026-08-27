@@ -11,6 +11,7 @@ public enum SettingsRow: String, CaseIterable, Sendable {
     case storeInICloud = "Store in iCloud Drive"
     case location = "Location"
     case autosave = "Automatically save changes"
+    case showInMenuBar = "Show in menu bar"
     case showInDock = "Show in Dock"
     case startAtLogin = "Start at login"
     case autoUpdate = "Automatically update"
@@ -117,7 +118,7 @@ public enum SettingsForm {
         SettingsGroup(rows: [.summon]),
         SettingsGroup(rows: [.storeInICloud, .location, .autosave]),
         SettingsGroup(rows: [.opens, .newNoteName]),
-        SettingsGroup(rows: [.showInDock, .startAtLogin, .autoUpdate, .richLinks]),
+        SettingsGroup(rows: [.showInMenuBar, .showInDock, .startAtLogin, .autoUpdate, .richLinks]),
     ])
 
     /// The agent `/ai` hands a prompt to.
