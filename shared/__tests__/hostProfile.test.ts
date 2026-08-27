@@ -381,11 +381,24 @@ describe("the Jot profile's copies", () => {
         return line;
     }
 
+    /**
+     * Where the Swift builds the page's boot config, as a name rather than a
+     * signature. Both checks below slice the file from here.
+     */
+    const BOOT_CONFIG = "func bootConfig(";
+
     it("the Swift shell should declare exactly the profile", () => {
         const swift = read("jot/Sources/BirtaJot/Preferences.swift");
         // Fail loudly if the call moved, rather than matching some other array.
-        expect(swift).toContain("func bootConfig()");
-        expect(declaredIn(swift.slice(swift.indexOf("func bootConfig()")))).toEqual([...HOST_PROFILES.jot]);
+        //
+        // Anchored on the NAME and not on the full signature, which has already
+        // gained a parameter once: view state became per document, so this is
+        // `bootConfig(viewStateFor:)` now, and the guard went red for a rename
+        // that changed nothing it holds. Read a red here as a moved anchor
+        // until you have checked otherwise, and follow it rather than loosening
+        // the equality below, which is the part doing the work.
+        expect(swift).toContain(BOOT_CONFIG);
+        expect(declaredIn(swift.slice(swift.indexOf(BOOT_CONFIG)))).toEqual([...HOST_PROFILES.jot]);
     });
 
     /**
@@ -409,7 +422,7 @@ describe("the Jot profile's copies", () => {
      */
     it("every capability name the Swift spells should be a real capability", () => {
         const swift = read("jot/Sources/BirtaJot/Preferences.swift");
-        const body = swift.slice(swift.indexOf("func bootConfig()"));
+        const body = swift.slice(swift.indexOf(BOOT_CONFIG));
         const expr = /hostCapabilities:([\s\S]*?)viewStateJSON:/.exec(body);
         expect(expr, "no hostCapabilities argument found; fix the parser").not.toBeNull();
         const names = [...expr![1]!.matchAll(/"([^"]+)"/g)].map((m) => m[1]!);
