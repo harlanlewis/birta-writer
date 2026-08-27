@@ -1735,10 +1735,14 @@ body.editor-width-auto :is(.code-width-toggle-btn, .mw-bc-width) {
                it. The widened width gives that pixel back. Keep all three in
                step; changing one alone moves the grid.
 
-               `node e2e/run.mjs tableGridlines` is what holds this: it compares
-               each outer edge against an interior gridline, at BOTH device
-               scale factors, because half a CSS pixel rounds back to a whole
-               device pixel at 1x and the loss is invisible there. */
+               `node e2e/run.mjs tableGridlines` holds all three, by two separate
+               checks, because one cannot see the other's declaration. The
+               padding and margin are held by comparing each outer edge against
+               an interior gridline, at BOTH device scale factors, since half a
+               CSS pixel rounds back to a whole device pixel at 1x and the loss
+               is invisible there. The width is held by comparing the table's own
+               box against a paragraph's, because reverting it leaves every ink
+               ratio perfect and moves the right edge alone. */
             width: calc(100% + 1px);
             padding-left: 1px;
             margin-left: -1px;

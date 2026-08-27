@@ -135,5 +135,12 @@ export async function run({ page, check, baseUrl }) {
     const off = await readMarks(page);
     check("proofreading off ⇒ no style decorations", off.styleHits === 0, `${off.styleHits} .pf-style-hit`);
     check("proofreading off ⇒ no proofread pass at all", off.pfStart == null, `start=${off.pfStart}`);
+    // The counter's own control, and the negative arm that makes the two checks
+    // above it mean something: with the feature off nothing is handed across the
+    // boundary, so nothing is counted. It also pins where `countWork` sits — move
+    // it above the gate and a disabled feature starts reporting work.
+    check("proofreading off ⇒ no work counter either",
+        off.work.every((w) => w.name !== "lint-request"),
+        off.work.map((w) => w.name).join(", ") || "(none)");
     check("proofreading off ⇒ round-trip protection still runs", off.rtpEnd != null, `end=${off.rtpEnd}`);
 }

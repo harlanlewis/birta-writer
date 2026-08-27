@@ -78,6 +78,17 @@ export async function run({ page, check, baseUrl }) {
                 colCount: rows[0].children.length,
                 rows: rows.map((tr) => ({ ...r(tr), cells: [...tr.children].map((c) => ({ tag: c.tagName, ...r(c) })) })),
                 bqRows: bq ? [...bq.querySelectorAll("tr")].map((tr) => ({ cells: [...tr.children].map((c) => ({ tag: c.tagName, ...r(c) })) })) : null,
+                // The table's own box against a paragraph's, for the alignment
+                // check below. A paragraph is the measure the reader sees, so
+                // it is what a full-width table has to agree with.
+                table: r(t),
+                // A DIRECT child of the editor: `.ProseMirror p` also matches a
+                // paragraph inside a table cell, which is a few tens of pixels
+                // wide and spans nothing.
+                para: (() => {
+                    const p = document.querySelector(".ProseMirror > p");
+                    return p ? r(p) : null;
+                })(),
             };
         });
 
@@ -87,6 +98,33 @@ export async function run({ page, check, baseUrl }) {
         check(`[${theme} @${scale}x] fixture is a 3-column, 4-row table with a header row`,
             geom.rowCount === 4 && geom.colCount === 3 && geom.rows[0].cells.every((c) => c.tag === "TH"),
             `rows=${geom.rowCount} cols=${geom.colCount} row0=${geom.rows[0].cells.map((c) => c.tag).join(",")}`);
+        // The table's CONTENT spans the same measure a paragraph does.
+        //
+        // Its own guard, because the ink checks below cannot see this: the left
+        // edge is repaired by a padding and a negative margin, and under
+        // `box-sizing: border-box` that pair alone would carry the RIGHT edge a
+        // pixel inboard while every ink ratio stayed perfect. A full-measure
+        // table would stop lining up with the paragraph above it and nothing
+        // here would say so. The widened width is what cancels the pair, and
+        // this is what holds the widened width.
+        // Its premise asserted rather than guarded: a missing paragraph must
+        // fail loudly, not skip. Guarding it behind `if (geom.para)` is how a
+        // check ends up not running at all and the suite's pass count is the
+        // only thing that would ever have said so.
+        check(`[${theme} @${scale}x] the fixture has a body paragraph to measure against`,
+            geom.para != null && geom.para.w > 100, JSON.stringify(geom.para));
+        const dx = Math.abs(geom.table.x + 1 - (geom.para?.x ?? NaN));
+        const dRight = Math.abs(geom.table.right - (geom.para?.right ?? NaN));
+        // Half a pixel, not one and a half. The defect this exists for moves the
+        // right edge by exactly 1px, so a tolerance of 1.5 admits it: the first
+        // version of this check passed with the width reverted, which is the
+        // whole failure mode the suite is about. Both edges land on the
+        // container's content edge, so there is no fractional slack to allow for.
+        check(`[${theme} @${scale}x] the table spans the same measure as a paragraph`,
+            dx <= 0.5 && dRight <= 0.5,
+            `table ${geom.table.x.toFixed(1)}..${geom.table.right.toFixed(1)} `
+            + `paragraph ${geom.para?.x?.toFixed(1)}..${geom.para?.right?.toFixed(1)}`);
+
         check(`[${theme} @${scale}x] and its body rows are data cells`,
             geom.rows[1].cells.every((c) => c.tag === "TD"),
             geom.rows[1].cells.map((c) => c.tag).join(","));

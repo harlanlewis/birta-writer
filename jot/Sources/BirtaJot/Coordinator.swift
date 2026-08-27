@@ -142,6 +142,24 @@ final class Coordinator {
     /// for the app's lifetime so its spell-document tag, and with it anything
     /// ignored in this session, survives a page reload.
     private let spell = SpellService()
+
+    /// What THIS window's page currently shows, for the menus that draw it.
+    ///
+    /// A mirror of what the page has reported, seeded from `Prefs` at boot and
+    /// updated as each flip arrives. `Prefs` remains the store, because these
+    /// settings persist across launches and a new window should open the way the
+    /// last one was left; what `Prefs` cannot be is the source a MENU reads.
+    ///
+    /// The menu bar belongs to the application and its commands go to the front
+    /// window, while `Prefs` holds one value for the whole process. With two
+    /// windows open those disagree: turn Check Spelling off in one, focus the
+    /// other, and its View menu would draw the row unchecked while that window is
+    /// still checking spelling. Picking it would then turn the thing OFF from a
+    /// row that said it was already off, which is worse than a menu that simply
+    /// omitted the state.
+    private(set) var menuState = MenuState(proofreadOptions: Prefs.proofreadOptions,
+                                           noteHighlight: Prefs.noteHighlight,
+                                           tocShown: Prefs.tocVisibility == "shown")
     /// Per run, the file holding the agent's own version while the page's
     /// merge decides whether the document ended up with all of it.
     private var agentRescues: [String: URL] = [:]
@@ -1117,15 +1135,23 @@ final class Coordinator {
             // in the extension, where this write is also one-way.
             spell.learn(word)
         case let .setProofreadOption(key, value):
+            // Both, and they answer different questions: `Prefs` is what the
+            // NEXT window opens with, `menuState` is what THIS window's menus
+            // draw. See `menuState`'s own comment for why one store cannot be
+            // both.
             Prefs.rememberProofreadOption(key: key, value: value)
+            menuState.record(.proofread(key), on: value)
         case let .setNoteHighlight(enabled):
             Prefs.noteHighlight = enabled
+            menuState.record(.noteHighlight, on: enabled)
         case let .styleAddException(phrase):
             // One-way, like `spellAddWord`: the page has already stopped
             // drawing the hit from its own set, and this is what makes it
             // stick past the next page load.
             Prefs.rememberStyleException(phrase)
-        case let .setTocVisibility(v): Prefs.tocVisibility = v
+        case let .setTocVisibility(v):
+            Prefs.tocVisibility = v
+            menuState.record(.tocShown, on: v == "shown")
         case .setTocPosition:
             // Nothing to remember: the side is this app's rather than the
             // reader's (`fixedTocSide`, and `BirtaSchemeHandler.renderPage`

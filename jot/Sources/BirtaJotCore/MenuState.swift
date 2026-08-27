@@ -59,4 +59,21 @@ public struct MenuState: Equatable {
         case .tocShown: return tocShown
         }
     }
+
+    /// Record a flip the page has reported.
+    ///
+    /// Here rather than as three assignments at the message handler, because
+    /// this is the half that is decidable without a window: a `Coordinator`
+    /// cannot be built in the unit suite without starting WebKit, so anything
+    /// left there is unreachable by a test. What is worth pinning is that every
+    /// toggle a menu DRAWS is also a toggle this RECORDS, and a mutating method
+    /// over the same `MenuToggle` the drawing reads makes the two one list
+    /// rather than two that can drift.
+    public mutating func record(_ toggle: MenuToggle, on: Bool) {
+        switch toggle {
+        case let .proofread(key): proofreadOptions[key] = on
+        case .noteHighlight: noteHighlight = on
+        case .tocShown: tocShown = on
+        }
+    }
 }

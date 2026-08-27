@@ -34,6 +34,11 @@
   const DOC = [
     "# Tables",
     "",
+    // A body paragraph, for the alignment check: it is the measure a reader
+    // sees, and a full-width table has to agree with it. Without one here the
+    // check has nothing to compare against and says so rather than skipping.
+    "A paragraph of ordinary prose, which sets the measure the table is checked against.",
+    "",
     "| Alpha | Beta | Gamma |",
     "|---|---|---|",
     "| one | two | three |",

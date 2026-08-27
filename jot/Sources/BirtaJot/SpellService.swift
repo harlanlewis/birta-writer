@@ -114,8 +114,15 @@ final class SpellService {
     /// The cost of the most recently COMPLETED `lint`, for the trace line.
     ///
     /// Written once, when a drain finishes, so an overlapping request cannot
-    /// blank it midway; a completion reads the cost handed to it rather than
-    /// this, and this exists for a caller that has only the service.
+    /// blank it midway the way a counter stored per service did.
+    ///
+    /// What makes it right for the request being traced, and it is a constraint
+    /// rather than an observation: the write sits IMMEDIATELY before
+    /// `completion(done)`, with no suspension point between them, and both are
+    /// on the main actor. A completion reads this and gets its own drain's cost,
+    /// because nothing can interleave between those two lines. Put an `await`
+    /// between them and a second request finishing in the gap becomes the figure
+    /// this reports.
     private(set) var lastCost = Cost()
 
     /// One batch, then either the answer or a turn of the run loop.

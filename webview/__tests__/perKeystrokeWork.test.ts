@@ -204,6 +204,13 @@ describe("per-keystroke work does not scale with the document", () => {
         // keystroke ever stops reaching the rescan: the gate would then report
         // success having measured nothing, in the one file whose whole subject
         // is instruments that measure nothing.
+        //
+        // One is the design's number rather than the fixture's: the edit is a
+        // single character inserted inside one textblock (position 3 is in the
+        // opening heading, which both documents have and neither repeats), so
+        // exactly one block's text is new and exactly one is asked about. An
+        // edit that split a block or landed in a repeated one would be a
+        // different claim and would need a different number.
         expect(smallBlocks).toBe(1);
         // And then the differential: one edit touches one block whatever the
         // document's size, so any growth at all is the defect this is for.

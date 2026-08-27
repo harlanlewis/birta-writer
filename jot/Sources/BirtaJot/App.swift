@@ -735,7 +735,7 @@ extension AppDelegate: NSMenuDelegate, NSMenuItemValidation {
             showItem.keyEquivalent = combo.menuKeyEquivalent
             showItem.keyEquivalentModifierMask = combo.menuModifierMask
         } else if menu === viewMenu {
-            JotMenu.applyState(AppDelegate.menuState(), to: menu)
+            JotMenu.applyState(menuState(), to: menu)
         }
 
         AppDelegate.suppressAutomaticIcons(in: menu)
@@ -749,10 +749,20 @@ extension AppDelegate: NSMenuDelegate, NSMenuItemValidation {
     /// posts every one of these as the reader flips it (`setProofreadOption`,
     /// `setNoteHighlight`, `tocVisibility`) and the shell stores it, so what is
     /// stored IS what the page is showing.
-    static func menuState() -> MenuState {
-        MenuState(proofreadOptions: Prefs.proofreadOptions,
-                  noteHighlight: Prefs.noteHighlight,
-                  tocShown: Prefs.tocVisibility == "shown")
+    /// What the front window shows, which is what its menus must draw.
+    ///
+    /// The FRONT window's, not the process's, because the commands these rows
+    /// run go to the front window. Reading `Prefs` here instead put one value
+    /// on a menu bar serving several windows, so a row could draw the state of
+    /// a window the reader was not looking at and picking it would invert what
+    /// it said. `Coordinator.menuState` carries the argument in full.
+    ///
+    /// With no window, the stored settings ARE the answer, because they are what
+    /// the next window will open with.
+    func menuState() -> MenuState {
+        front?.menuState ?? MenuState(proofreadOptions: Prefs.proofreadOptions,
+                                      noteHighlight: Prefs.noteHighlight,
+                                      tocShown: Prefs.tocVisibility == "shown")
     }
 
     /// Enablement for the main menu and the status menu, which keep their items

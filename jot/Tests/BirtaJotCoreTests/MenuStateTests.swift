@@ -39,6 +39,58 @@ final class MenuStateTests: XCTestCase {
         XCTAssertTrue(fresh.isOn(.noteHighlight))
         XCTAssertFalse(fresh.isOn(.tocShown))
     }
+
+    // MARK: - Recording what a window's page reports
+
+    /// Every toggle the menus DRAW, so the sweep below cannot silently cover
+    /// fewer than it should. `MenuToggle` carries an associated value and so
+    /// cannot be `CaseIterable`; this is the nearest honest thing, and the
+    /// count assertion is what makes it a sweep rather than a sample.
+    private static let everyToggle: [MenuToggle] = [
+        .proofread("proofreading"), .proofread("spellCheck"), .proofread("grammarCheck"),
+        .proofread("styleCheck"), .proofread("fillers"),
+        .noteHighlight, .tocShown,
+    ]
+
+    func testEveryToggleTheMenusDrawShouldAlsoBeOneTheyCanRecord() {
+        // The failure this rules out: a toggle that `isOn` answers and `record`
+        // silently drops would draw a checkmark that never changed, and the row
+        // would then invert whatever it claimed. Asserted over the same
+        // vocabulary both halves read, in both directions.
+        XCTAssertGreaterThanOrEqual(Self.everyToggle.count, 7)
+        for toggle in Self.everyToggle {
+            var state = MenuState()
+            state.record(toggle, on: false)
+            XCTAssertFalse(state.isOn(toggle), "\(toggle) did not record off")
+            state.record(toggle, on: true)
+            XCTAssertTrue(state.isOn(toggle), "\(toggle) did not record on")
+        }
+    }
+
+    func testRecordingOneToggleShouldLeaveTheOthersAlone() {
+        // A window's state is several independent answers, so a recorder that
+        // reset its neighbours would make the menu bar report the last row
+        // touched rather than the window.
+        var state = MenuState()
+        state.record(.proofread("spellCheck"), on: false)
+        XCTAssertFalse(state.isOn(.proofread("spellCheck")))
+        XCTAssertTrue(state.isOn(.proofread("grammarCheck")))
+        XCTAssertTrue(state.isOn(.noteHighlight))
+        XCTAssertFalse(state.isOn(.tocShown))
+    }
+
+    func testTwoStatesShouldNotShareStorage() {
+        // The whole point of putting this on a value per window: one window's
+        // flip must not reach another's menus. A reference type here would make
+        // the multi-window bug this replaced unfixable.
+        var a = MenuState()
+        var b = a
+        a.record(.proofread("spellCheck"), on: false)
+        b.record(.tocShown, on: true)
+        XCTAssertTrue(b.isOn(.proofread("spellCheck")), "a window's flip reached another window")
+        XCTAssertFalse(a.isOn(.tocShown), "a window's flip reached another window")
+    }
+
 }
 
 /// The AppKit behaviours the app turns off before `NSApplication` exists.

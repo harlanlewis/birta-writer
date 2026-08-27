@@ -25,7 +25,7 @@ const styleIgnores = new Set<string>();
  * `isLintSuppressed`. REMOVING a word is not, because the cached answer for a
  * block already has no finding in it and nothing downstream can put one back;
  * the word would stay unflagged until that block's text changed or the tab
- * reloaded. Reachable by editing `birta.proofread.userWords` by hand, and on the
+ * reloaded. Reachable by editing `birta.spellCheck.userWords` by hand, and on the
  * Mac by unlearning a word in the system dictionary.
  *
  * So the cache is dropped on any change, rather than only on a shrink: telling
