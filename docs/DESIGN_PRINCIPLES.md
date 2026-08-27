@@ -70,6 +70,8 @@ Before nesting any new toggle under a master, ask which side of that line it fal
 
 The note highlight is flippable from four places: the Checks menu, the Notes tab, the palette and slash command, and the setting. Every one of them funnels through the plugin's re-gate, which fires a single event that each mirroring control repaints from. No polling, and no surface holding a private copy. A defensive second repaint, say on menu open, is the anti-pattern: it makes one surface look right while another goes quietly stale, which is the failure that is hardest to notice.
 
+A surface outside the page is the exception, and it is narrow enough to state: a native menu cannot hear that event, so Birta Writer for Mac's View menu reads the host's stored answers when it opens. That is not the defensive second repaint above, which is a surface that has an announcement to listen to and repaints again anyway. It is the only pass such a surface has, the store is written by the same flip that fires the event, and a menu is looked at only at the moment it opens. What it does share with every control in this section is the rule about lying: nothing outside the page may hold a value the page can change without telling it, so a switch that reaches a native surface has to be one the page reports as the reader flips it.
+
 ### A silent absence needs a signal
 
 When proofreading is gated off there are simply no underlines, which is indistinguishable from clean text, so the toolbar button dims to say "off". Any feature whose off state looks like a passing all-clear owes the user a visible cue.
