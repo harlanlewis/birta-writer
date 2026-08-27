@@ -65,6 +65,24 @@ enum JotMenu {
             case .help: return "Help"
             }
         }
+
+        /// Whether AppKit appends rows of its own after this table's, so the
+        /// menu needs a trailing separator to keep them in a section of their
+        /// own.
+        ///
+        /// One menu does: a menu titled View gets Enter Full Screen appended,
+        /// and it arrives carrying an IMAGE. macOS aligns the titles in a
+        /// separator-delimited section against the widest image column in it,
+        /// so without a rule between them every row in this table's last group
+        /// is indented by the width of a glyph none of them has, lined up
+        /// against blank space. Four rows read that way before Folding became a
+        /// submenu, and moving them would only have handed the indent to
+        /// whichever group ended up last.
+        ///
+        /// The Window menu is not one of these. It is built by `windowMenu()`
+        /// with its own separators, and the rows AppKit inserts there go into
+        /// the middle rather than after the end.
+        var systemAppendsRows: Bool { self == .view }
     }
 
     /// What a row does when it is picked.
@@ -373,6 +391,15 @@ enum JotMenu {
     /// does not have, and `hostHasCommand` withdraws them from the toolbar's
     /// own menu for the same reason.
     ///
+    /// Folding is a submenu by that same measure read the other way: four rows
+    /// is more than fits, they are two pairs rather than four peers, and only
+    /// two of them carry a chord, so on the menu they spent four lines saying
+    /// what one disclosure says. It sits beside Font because the two are the
+    /// same kind of row, a pocket of view options, and a section holding both
+    /// reads as one. That placement is also what keeps the fold rows out of the
+    /// menu's last group, though it is not what fixes the indent that group
+    /// used to take: `Menu.systemAppendsRows` is.
+    ///
     /// Table of Contents is one row rather than a Show/Hide pair, because this
     /// table has no way to retitle a row from what the page currently shows;
     /// the toolbar's own button carries the state, by the classes the panel
@@ -408,6 +435,16 @@ enum JotMenu {
         .init(title: "Monospace",
               action: .command("fontMono"), menu: .view, submenu: "Font", group: 0),
 
+        .init(title: "Folding", action: .submenu, menu: .view, group: 1),
+        .init(title: "Fold", key: "[", modifiers: [.command, .option],
+              action: .command("fold"), menu: .view, submenu: "Folding", group: 0),
+        .init(title: "Unfold", key: "]", modifiers: [.command, .option],
+              action: .command("unfold"), menu: .view, submenu: "Folding", group: 0),
+        .init(title: "Fold All",
+              action: .command("foldAll"), menu: .view, submenu: "Folding", group: 1),
+        .init(title: "Unfold All",
+              action: .command("unfoldAll"), menu: .view, submenu: "Folding", group: 1),
+
         .init(title: "Table of Contents",
               action: .command("toggleToc"), menu: .view, group: 2),
 
@@ -415,15 +452,6 @@ enum JotMenu {
               action: .command("toggleStyleCheck"), menu: .view, group: 3),
         .init(title: "Highlight Note Markers",
               action: .command("toggleNoteHighlights"), menu: .view, group: 3),
-
-        .init(title: "Fold", key: "[", modifiers: [.command, .option],
-              action: .command("fold"), menu: .view, group: 4),
-        .init(title: "Unfold", key: "]", modifiers: [.command, .option],
-              action: .command("unfold"), menu: .view, group: 4),
-        .init(title: "Fold All",
-              action: .command("foldAll"), menu: .view, group: 4),
-        .init(title: "Unfold All",
-              action: .command("unfoldAll"), menu: .view, group: 4),
     ]
 
     // MARK: help
@@ -500,6 +528,10 @@ enum JotMenu {
     static func add(_ menu: Menu, to nsMenu: NSMenu, target: AnyObject) {
         fill(nsMenu, with: rows.filter { $0.menu == menu && $0.submenu == nil },
              menu: menu, target: target)
+        // The boundary the system's own rows arrive after. `systemAppendsRows`
+        // says why a menu wants one; it is written here rather than at the call
+        // site so the fact stays in the table with the rows it is about.
+        if menu.systemAppendsRows { nsMenu.addItem(.separator()) }
     }
 
     @MainActor

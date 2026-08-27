@@ -21,9 +21,16 @@ final class MissingFileScreenTests: XCTestCase {
         _ = NSApplication.shared
     }
 
-    private func shown(name: String = "Note.md", unsaved: Bool) -> MissingFileScreen {
+    /// In a container, because `hitTest` takes its point in the SUPERVIEW's
+    /// coordinates and a screen with no superview cannot tell a conversion
+    /// that works from one that is a no-op standing in for it.
+    private func shown(name: String = "Note.md",
+                       unsaved: Bool,
+                       height: CGFloat = 400) -> MissingFileScreen {
         let screen = MissingFileScreen()
-        screen.setFrameSize(NSSize(width: 640, height: 400))
+        let container = NSView(frame: NSRect(x: 0, y: 0, width: 640, height: height))
+        container.addSubview(screen)
+        screen.frame = container.bounds
         screen.show(true, name: name, hasUnsavedText: unsaved)
         screen.layoutSubtreeIfNeeded()
         return screen
@@ -83,11 +90,93 @@ final class MissingFileScreenTests: XCTestCase {
         // It sits over a live editor. A hidden one that still hit-tests is a
         // sheet nobody can see swallowing every click on the note.
         let screen = MissingFileScreen()
-        screen.setFrameSize(NSSize(width: 640, height: 400))
+        let container = NSView(frame: NSRect(x: 0, y: 0, width: 640, height: 400))
+        container.addSubview(screen)
+        screen.frame = container.bounds
         screen.show(false)
         XCTAssertNil(screen.hitTest(NSPoint(x: 320, y: 200)))
         screen.show(true, name: "Note.md", hasUnsavedText: true)
+        screen.layoutSubtreeIfNeeded()
         XCTAssertNotNil(screen.hitTest(NSPoint(x: 320, y: 200)))
+    }
+
+    // MARK: the card, and the two lanes it must not enter
+
+    /// The lane under the titlebar band, where the page draws the chip naming
+    /// whichever titlebar button the pointer is on.
+    ///
+    /// This is the check the shape exists for. An opaque view starting at the
+    /// band hides every one of those labels, the Settings gear's included, and
+    /// on a panel with no Dock icon that gear is the way to preferences. The
+    /// pair is compared against the LIVE chip in `jot/scripts/measure.sh`;
+    /// what is held here is that the clearance is there at all.
+    func testTheCardShouldLeaveTheTooltipLaneUnderTheBandClear() {
+        for unsaved in [false, true] {
+            let screen = shown(unsaved: unsaved)
+            let card = screen.cardRect
+            XCTAssertFalse(card.isEmpty, "no card drawn (unsaved: \(unsaved))")
+            XCTAssertLessThanOrEqual(card.maxY,
+                                     screen.bounds.height - MissingFileScreen.topLane,
+                                     "the card reaches into the tooltip lane (unsaved: \(unsaved))")
+        }
+    }
+
+    /// The status line floats over the trailing bottom corner, and a message
+    /// arriving under a card that is already there is one crowded block.
+    func testTheCardShouldLeaveTheStatusLineCornerClear() {
+        for unsaved in [false, true] {
+            let card = shown(unsaved: unsaved).cardRect
+            XCTAssertGreaterThanOrEqual(card.minY, MissingFileScreen.bottomLane,
+                                        "the card reaches the status corner (unsaved: \(unsaved))")
+        }
+    }
+
+    /// Ranked rather than all required, and this is the arm that says which
+    /// one gives. A window too short for the card plus both lanes has to break
+    /// one of them, and the tooltip lane is the one that must survive: a
+    /// crowded corner is a nuisance, a card over the band's labels is a
+    /// control nobody can name.
+    func testInAWindowTooShortForBothLanesTheTooltipLaneShouldWin() {
+        let screen = shown(unsaved: true, height: 200)
+        let card = screen.cardRect
+        XCTAssertFalse(card.isEmpty)
+        XCTAssertLessThanOrEqual(card.maxY, screen.bounds.height - MissingFileScreen.topLane,
+                                 "the tooltip lane gave way first")
+        // ...and the case really is the squeezed one, or the assertion above
+        // held for a window that had room to spare and proved nothing.
+        XCTAssertLessThan(card.minY, MissingFileScreen.bottomLane,
+                          "200pt was not short enough to make the two lanes disagree")
+    }
+
+    /// The card is the stack plus its air, rather than a size written down, so
+    /// the two shapes are two different heights: the body wraps to a second
+    /// line only when there is text to lose.
+    func testTheCardShouldBeSizedFromWhatItIsSaying() {
+        XCTAssertGreaterThan(shown(unsaved: true).cardRect.height,
+                             shown(unsaved: false).cardRect.height)
+    }
+
+    /// Everything around the card falls through to the page.
+    ///
+    /// The point of the shape: the reader can select and copy the text they
+    /// have just been told is their only copy, and the page's own controls go
+    /// on answering. Four directions, because a hit test that took only the
+    /// card's own box would still be wrong if it took the whole row or the
+    /// whole column it sits in.
+    func testAClickOutsideTheCardShouldReachThePageBehindIt() {
+        let screen = shown(unsaved: true)
+        let card = screen.cardRect
+        let outside: [(String, NSPoint)] = [
+            ("the tooltip lane", NSPoint(x: card.midX, y: screen.bounds.maxY - 8)),
+            ("the status corner", NSPoint(x: card.midX, y: 8)),
+            ("left of the card", NSPoint(x: card.minX - 8, y: card.midY)),
+            ("right of the card", NSPoint(x: card.maxX + 8, y: card.midY)),
+        ]
+        for (where_, point) in outside {
+            XCTAssertNil(screen.hitTest(point), "the card swallowed a click in \(where_)")
+        }
+        XCTAssertNotNil(screen.hitTest(NSPoint(x: card.midX, y: card.midY)),
+                        "the card itself takes no clicks either, so the sweep proved nothing")
     }
 
     func testNoButtonShouldTakeTheReturnKey() {

@@ -111,6 +111,46 @@ final class JotMenuTests: XCTestCase {
         XCTAssertNil(item?.submenu, "one row, not a menu about the sidebar")
     }
 
+    func testTheViewMenuShouldPutFoldingBehindOneRow() throws {
+        let view = build(.view)
+        XCTAssertEqual(titles(of: view), [
+            "Zoom In", "Zoom Out", "Actual Size",
+            "-", "Font", "Folding",
+            "-", "Table of Contents",
+            "-", "Check Style", "Highlight Note Markers",
+            "-",
+        ])
+        let folding = try XCTUnwrap(view.items.first { $0.title == "Folding" }?.submenu)
+        XCTAssertEqual(titles(of: folding),
+                       ["Fold", "Unfold", "-", "Fold All", "Unfold All"])
+    }
+
+    /// The rule at the end of the View menu, which is the only menu that has
+    /// one and the only menu AppKit appends to.
+    ///
+    /// Enter Full Screen arrives after this table's last row carrying an IMAGE,
+    /// and macOS aligns the titles in a separator-delimited section against the
+    /// widest image column in it. Without the rule, whichever group ends up
+    /// last is indented by the width of a glyph none of its rows has.
+    ///
+    /// Derived from `systemAppendsRows` rather than written as "the View menu",
+    /// so a second menu that starts taking system rows is covered by declaring
+    /// it and nothing here. The negative arm is the one that matters: a
+    /// trailing rule on a menu nothing is appended to is a stray line under the
+    /// last row.
+    func testOnlyAMenuTheSystemAppendsToShouldEndWithARule() {
+        var appended = 0
+        for menu in JotMenu.Menu.allCases {
+            let items = build(menu).items
+            let ends = items.last?.isSeparatorItem ?? false
+            XCTAssertEqual(ends, menu.systemAppendsRows,
+                           "\(menu.rawValue) ends with a rule: \(ends)")
+            if menu.systemAppendsRows { appended += 1 }
+        }
+        XCTAssertGreaterThan(appended, 0,
+                             "no menu declares that the system appends to it, so this proved nothing")
+    }
+
     // MARK: open recent
 
     func testTheFileMenuShouldOpenRecentThroughASubmenuOfItsOwn() {
@@ -168,12 +208,10 @@ final class JotMenuTests: XCTestCase {
         let styleCheck = try XCTUnwrap(view.items.first { $0.title == "Check Style" })
         XCTAssertNil(styleCheck.submenu, "the two check rows are the menu's own")
         XCTAssertNotNil(view.items.first { $0.title == "Highlight Note Markers" })
-        // Where they sit is the point: directly after Font, which is the row
-        // above them once the separator between the two groups is drawn.
-        let rows = titles(of: view)
-        XCTAssertEqual(Array(rows.drop { $0 != "Font" }.prefix(6)),
-                       ["Font", "-", "Table of Contents", "-", "Check Style", "Highlight Note Markers"],
-                       rows.joined(separator: " "))
+        // Where they sit is `testTheViewMenuShouldPutFoldingBehindOneRow`'s,
+        // which asserts the whole order in one place. A second slice of it
+        // here would be a copy that a reordering has to be made to agree with
+        // twice.
         for absent in ["Focus Mode", "Checks", "Check Spelling", "Check Grammar"] {
             XCTAssertNil(view.items.first { $0.title == absent },
                          "\(absent) is not a row this surface can honour")

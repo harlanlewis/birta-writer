@@ -105,6 +105,10 @@ final class WindowSet {
         }
         coordinator.onHotkeyChanged = { [weak self] in self?.registerHotkey() ?? -1 }
         coordinator.onNewWindowRequest = { [weak self] in self?.newNote() }
+        coordinator.onOpenRequest = { [weak self] url in
+            self?.openDocument(at: url)
+            return self?.windows.count ?? 0
+        }
         coordinator.onBecameKey = { [weak self, weak coordinator] in
             guard let coordinator else { return }
             self?.moveToFront(coordinator)
@@ -161,7 +165,8 @@ final class WindowSet {
     }
 
     /// Open a file: the Finder's Open With, a drop on the Dock icon, `open -a`,
-    /// Cmd+O, or a row of Open Recent. In a new window.
+    /// Cmd+O, or a row of Open Recent. In a new window, unless the window in
+    /// front is standing on a file that has gone.
     ///
     /// A file already open brings ITS window forward instead of opening a
     /// second one. That is a data-loss guard rather than tidiness: two windows
@@ -174,6 +179,25 @@ final class WindowSet {
     /// folder, `/tmp` against `/private/tmp`, and a case-insensitive volume are
     /// all the same file spelled differently, and each is a way to end up with
     /// two windows over one note.
+    ///
+    /// ## Why the window in front, and only that one
+    ///
+    /// A window whose file has been deleted is showing `MissingFileScreen` and
+    /// is editing nothing. Opening a file from it and getting a SECOND window,
+    /// with the dead one still sitting behind, is the pile-up this avoids.
+    ///
+    /// The frontmost window is the only one asked, which is what keeps the rule
+    /// to one sentence when several windows are vacant at once. Searching for
+    /// any vacant window would open the file somewhere the reader is not
+    /// looking, and with more than one candidate there is no answer to "why
+    /// that one" that a reader could have predicted. Every gesture that reaches
+    /// here points at the window in front: Cmd+O and the titlebar's Open button
+    /// act on it, Open Recent is raised from it, and a file arriving from the
+    /// Finder lands in the app rather than in any particular window, so the one
+    /// in front is the one about to come forward anyway.
+    ///
+    /// `isVacant` is the whole of the test, and its second half is why a window
+    /// with unsaved text is left alone; the coordinator states the reason.
     func openDocument(at url: URL) {
         let target = url.standardizedFileURL
         guard DocumentTypes.accepts(target) else {
@@ -186,6 +210,14 @@ final class WindowSet {
             return
         }
         Prefs.documentURL = target
+        if let here = key, here.isVacant {
+            // The same release every spawn does, and needed for the same
+            // reason: only one window may hold a slot, or two would both write
+            // a rename back to one setting.
+            releaseSlot(.document, except: here)
+            here.openInPlace(target, slot: .document)
+            return
+        }
         open(makeWindow(on: target, slot: .document))
     }
 

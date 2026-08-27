@@ -8,18 +8,32 @@ import AppKit
 ///
 ///     [Save It Back]  [Discard and Start New]  [Open Recent…]
 ///
-/// A SCREEN rather than a strip along the bottom edge, and the change is the
-/// whole point of this file. The strip said the same words in the smallest
-/// type on the window, at the edge furthest from where anybody was looking,
-/// beside two buttons that read as two ways of making a file. It is the state
-/// where somebody's only copy of a note is in memory, and it looked like a
-/// status line.
+/// A CARD in the middle of the window, rather than a strip along the bottom
+/// edge, and rather than the opaque full-bleed screen it was between them.
 ///
-/// The strip's own argument for staying out of the way was that the text
-/// underneath is what is at risk, so covering it would be perverse. That was
-/// right about what matters and wrong about what follows: what protects the
-/// text is SAYING it is at risk and offering to write it, which needs the
-/// room this takes. Covering it costs nothing while the offer is on screen.
+/// The strip said the same words in the smallest type on the window, at the
+/// edge furthest from where anybody was looking, beside two buttons that read
+/// as two ways of making a file. It is the state where somebody's only copy of
+/// a note is in memory, and it looked like a status line. What replaced it is
+/// unchanged and is the whole point: the words belong in the middle, at a size
+/// somebody reads, beside buttons named for what they cost.
+///
+/// What DID change is the covering. Filling everything below the band was
+/// chosen on the grounds that it cost nothing while the offer was on screen,
+/// and it turned out to cost two things. The page draws the titlebar's own
+/// tooltip chip just under the band, so an opaque view starting there hid the
+/// label of every button in the strip above it, including the Settings gear
+/// that is the one way to preferences on a panel with no Dock icon. And the
+/// text a reader is being told is at risk could not be selected or copied out,
+/// which is the first thing somebody does when told their only copy is in
+/// memory.
+///
+/// So the card covers itself and nothing else, and two lanes are kept clear of
+/// it whatever the window's height: the tooltip lane under the band, and the
+/// status line's corner at the bottom (`topLane`, `bottomLane`). Losing the
+/// mouse block costs nothing that was being relied on, because the keyboard
+/// was never blocked and `writeLatest` is what actually makes the state safe:
+/// it refuses every write while the note is missing.
 ///
 /// Not `StatusOverlay`, which sits a few points away and looks like the
 /// obvious home. Its own header states its rule: "News, never state. Nothing
@@ -42,6 +56,29 @@ final class MissingFileScreen: NSView {
     private let recentButton = NSButton(title: "Open Recent…", target: nil, action: nil)
     private var column: NSStackView?
 
+    /// Air between the card's edge and the words inside it.
+    private static let padding: CGFloat = 28
+    /// How round the card is. `--ui-radius-l` on the page's scale, which is
+    /// what its own cards and popups use, so this reads as one of them rather
+    /// than as a system alert that wandered in.
+    private static let cornerRadius: CGFloat = 10
+
+    /// Kept clear at the top, under the titlebar band.
+    ///
+    /// The page draws the band's tooltip chip in this lane, a single line of
+    /// chip text a couple of points under the band, and the card must never
+    /// reach it: hiding those labels is what the full-bleed screen did and what
+    /// this shape exists to stop. A FLOOR rather than a fit, because the chip's
+    /// height is the page's to decide and nothing here can ask before laying
+    /// out. `jot/scripts/measure.sh` is where the pair is actually compared,
+    /// against the live chip in the running window.
+    static let topLane: CGFloat = 40
+    /// Kept clear at the bottom, for the status line that floats over the
+    /// trailing corner (`StatusOverlay`, placed by `Coordinator`). Its own two
+    /// constants plus air, so a message and the card are never one crowded
+    /// block in a short window.
+    static let bottomLane: CGFloat = StatusOverlay.height + 24
+
     init() {
         super.init(frame: .zero)
         build()
@@ -49,18 +86,49 @@ final class MissingFileScreen: NSView {
 
     required init?(coder: NSCoder) { fatalError("not used") }
 
-    /// The system's own ground, so the screen follows the theme without this
-    /// file choosing a colour.
+    /// The card, and nothing around it.
     ///
-    /// Drawn rather than set on the layer. `NSColor.controlBackgroundColor` is
-    /// dynamic and `.cgColor` resolves it once, so a layer fill is frozen at
-    /// whichever appearance was current when this was built and keeps the old
-    /// ground across a light/dark switch. Drawing also puts it into
+    /// Drawn rather than set on a layer, and rather than an `NSVisualEffectView`
+    /// behind the stack. `NSColor.controlBackgroundColor` is dynamic and
+    /// `.cgColor` resolves it once, so a layer fill is frozen at whichever
+    /// appearance was current when this was built and keeps the old ground
+    /// across a light/dark switch. Drawing also puts the card into
     /// `Coordinator.writeSnapshot`, whose PDF path runs `draw(_:)` and copies
-    /// no layer.
+    /// neither a layer nor a vibrancy view: a snapshot of this state would
+    /// otherwise show the words with nothing behind them.
+    ///
+    /// The border and the shadow are what make it a card, and they are not
+    /// decoration here. Its ground and the page's paper are the same colour to
+    /// within nothing in both themes, by design on both sides, so the fill
+    /// alone would leave the words floating on the document.
     override func draw(_ dirtyRect: NSRect) {
+        let box = cardRect
+        guard !box.isEmpty else { return }
+        let path = NSBezierPath(roundedRect: box,
+                                xRadius: Self.cornerRadius, yRadius: Self.cornerRadius)
+        NSGraphicsContext.saveGraphicsState()
+        let shadow = NSShadow()
+        shadow.shadowColor = NSColor.shadowColor.withAlphaComponent(0.22)
+        shadow.shadowBlurRadius = 18
+        shadow.shadowOffset = NSSize(width: 0, height: -3)
+        shadow.set()
         NSColor.controlBackgroundColor.setFill()
-        dirtyRect.fill()
+        path.fill()
+        NSGraphicsContext.restoreGraphicsState()
+        NSColor.separatorColor.setStroke()
+        path.lineWidth = 1
+        path.stroke()
+    }
+
+    /// The card's box, which is the stack plus its air.
+    ///
+    /// Derived from the laid-out stack rather than from a size written down, so
+    /// the card is exactly as tall as what it is saying: the body text wraps to
+    /// two lines with unsaved text and one without, and a card sized to a
+    /// constant would be wrong in one of those.
+    var cardRect: NSRect {
+        guard let column, !column.frame.isEmpty else { return .zero }
+        return column.frame.insetBy(dx: -Self.padding, dy: -Self.padding)
     }
 
     private func build() {
@@ -94,6 +162,16 @@ final class MissingFileScreen: NSView {
         buttons.spacing = 12
 
         let stack = NSStackView(views: [heading, body, buttons])
+        // The words are what the card is for, so they are the last thing to
+        // give. A label's own vertical resistance is below the lane
+        // constraints below it, so without this a window short enough to make
+        // the lanes disagree squeezes the message and clips it, and the card
+        // stays neatly inside both lanes saying nothing legible. Raised so the
+        // card runs past the status corner instead, which is the outcome the
+        // priorities on those constraints are ranked to produce.
+        for view in [heading, body, buttons] {
+            view.setContentCompressionResistancePriority(.required, for: .vertical)
+        }
         stack.orientation = .vertical
         stack.alignment = .centerX
         stack.spacing = 10
@@ -101,12 +179,43 @@ final class MissingFileScreen: NSView {
         stack.translatesAutoresizingMaskIntoConstraints = false
         addSubview(stack)
         column = stack
+        // Centred, but never into either reserved lane. The three are ranked
+        // rather than all required, because a window short enough to make them
+        // disagree has to break ONE of them and which one is a decision:
+        //
+        //   top     required. The tooltip lane is what this shape exists to
+        //           keep clear, and a card in it takes the labels off the
+        //           whole titlebar strip, the Settings gear included.
+        //   bottom  999. A status message and the card overlapping is a
+        //           crowded corner; a card over the tooltips is a control
+        //           nobody can name.
+        //   centre  500, so it is the first to give.
+        //
+        // The insets carry the card's own padding as well as the lane, because
+        // the constraint is on the stack and the lane has to clear the CARD.
+        let pad = Self.padding
+        let centre = stack.centerYAnchor.constraint(equalTo: centerYAnchor)
+        centre.priority = .defaultLow
+        let floor = stack.bottomAnchor.constraint(lessThanOrEqualTo: bottomAnchor,
+                                                  constant: -(Self.bottomLane + pad))
+        floor.priority = .init(999)
         NSLayoutConstraint.activate([
             stack.centerXAnchor.constraint(equalTo: centerXAnchor),
-            stack.centerYAnchor.constraint(equalTo: centerYAnchor),
-            stack.widthAnchor.constraint(lessThanOrEqualTo: widthAnchor, constant: -48),
+            centre,
+            floor,
+            stack.topAnchor.constraint(greaterThanOrEqualTo: topAnchor,
+                                       constant: Self.topLane + pad),
+            stack.widthAnchor.constraint(lessThanOrEqualTo: widthAnchor,
+                                         constant: -(48 + pad * 2)),
         ])
         isHidden = true
+    }
+
+    /// The card is drawn from the stack's frame, so a pass that moved the stack
+    /// has moved the card and the old one is still on screen.
+    override func layout() {
+        super.layout()
+        needsDisplay = true
     }
 
     /// What the screen says, and which ways out it offers.
@@ -134,10 +243,22 @@ final class MissingFileScreen: NSView {
         column?.needsLayout = true
     }
 
-    /// Nothing outside the screen takes a click, so a hidden one is never a
-    /// dead sheet over the panel.
+    /// Only the card takes a click.
+    ///
+    /// Everything around it falls through to the page, which is the difference
+    /// the card makes and not a side effect of it: the reader can select and
+    /// copy the text they have just been told is their only copy, and the
+    /// page's own controls in the band above go on answering. Nothing is given
+    /// up by letting the document take a click, because `writeLatest` refuses
+    /// every write while the note is missing, which is what made the keyboard
+    /// safe to leave open here in the first place.
+    ///
+    /// `point` arrives in the SUPERVIEW's coordinates, as `hitTest` always
+    /// does, and `cardRect` is in this view's. Comparing them without the
+    /// conversion puts the live box wherever this view happens to sit.
     override func hitTest(_ point: NSPoint) -> NSView? {
-        isHidden ? nil : super.hitTest(point)
+        guard !isHidden, cardRect.contains(convert(point, from: superview)) else { return nil }
+        return super.hitTest(point)
     }
 
     /// What a check reads instead of a screenshot: what is said, and what is

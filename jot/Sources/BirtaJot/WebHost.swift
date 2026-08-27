@@ -254,6 +254,24 @@ final class WebHost: NSObject, WKScriptMessageHandler, WKNavigationDelegate, WKU
         webView.evaluateJavaScript(js) { _, _ in }
     }
 
+    /// Host → page: the bound file is gone, so the band shows the gear alone.
+    ///
+    /// A class, for the same reason `jot-resting` is one: the bundle is the
+    /// extension's and knows nothing about a window whose file has been
+    /// deleted. The rule it drives is the host page's
+    /// (`jot/Resources/index.html`), which is also where the argument for it
+    /// lives.
+    ///
+    /// The SET of controls in the band changes here, which is the one thing
+    /// `Coordinator.refreshTitlebarControlsWidth` says it cannot see coming, so
+    /// the caller re-measures after this. Two evaluations on one web view run
+    /// in the order they were made, so the query that follows reads the row
+    /// this class has already changed.
+    func setNoteMissing(_ missing: Bool) {
+        let js = "document.body.classList.toggle('jot-note-missing', \(missing ? "true" : "false"));"
+        webView.evaluateJavaScript(js) { _, _ in }
+    }
+
     /// Ask the page where its formatting dock is, for `jot/scripts/measure.sh`.
     ///
     /// The panel's own page carries CSS the browser harness does not (the
