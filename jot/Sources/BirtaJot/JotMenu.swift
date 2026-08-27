@@ -198,10 +198,19 @@ enum JotMenu {
         /// What this row draws of the state it toggles, or nil for a row whose
         /// title and appearance never change.
         let state: RowState?
+        /// What has to be ON for this row to be offered at all. Empty for a row
+        /// nothing governs.
+        ///
+        /// Declaring what a row NEEDS and filtering once is the shape the
+        /// editor already uses for host-gated toolbar items, and it is what
+        /// keeps a gate from growing a branch per governed row: a second gate
+        /// is another entry in this list rather than another `if` in the
+        /// repaint.
+        let needs: [MenuToggle]
 
         init(title: String, key: String = "", modifiers: NSEvent.ModifierFlags = [],
              action: Action, menu: Menu, submenu: String? = nil, group: Int = 0,
-             state: RowState? = nil) {
+             state: RowState? = nil, needs: [MenuToggle] = []) {
             self.title = title
             self.key = key
             self.modifiers = modifiers
@@ -210,6 +219,21 @@ enum JotMenu {
             self.submenu = submenu
             self.group = group
             self.state = state
+            self.needs = needs
+        }
+
+        /// What the built item answers to, so a repaint finds it again.
+        ///
+        /// Derived from where the row IS rather than from what it says,
+        /// because one of these rows retitles itself and a lookup by title
+        /// would stop finding it the first time it did. The three parts are
+        /// what `fill` already treats as a row's address: a submenu is
+        /// resolved by title within its menu, so two rows sharing all three
+        /// would already be ambiguous to the builder. `JotMenuTests` pins that
+        /// they do not.
+        var itemIdentifier: NSUserInterfaceItemIdentifier {
+            NSUserInterfaceItemIdentifier(
+                "com.birtalabs.jot.menu.\(menu.rawValue)/\(submenu ?? "")/\(title)")
         }
 
         /// The chord in the page's notation, which is what the cheatsheet
@@ -468,6 +492,10 @@ enum JotMenu {
     /// Full Width / Fixed Width are absent by the same rule that keeps Edit Raw
     /// Markdown out: `hostHasCommand` withdraws them from a host that declares
     /// no `contentMeasure`, and a panel is already its own reading measure.
+    /// The master proofreading gate, named once because four rows are governed
+    /// by it and a typo in one of their keys would silently un-gate that row.
+    private static let gate = MenuToggle.proofread("proofreading")
+
     private static let viewRows: [Row] = [
         .init(title: "Zoom In", key: "+", modifiers: [.command],
               action: .command("increaseFontSize"), menu: .view, group: 0),
@@ -498,7 +526,10 @@ enum JotMenu {
               action: .command("toggleToc"), menu: .view, group: 2,
               state: .title(.tocShown, whenOn: "Hide Table of Contents")),
 
-        .init(title: "Proofreading", action: .submenu, menu: .view, group: 3),
+        .init(title: "Proofreading", action: .submenu, menu: .view, group: 3,
+              // Not gated on itself: the disclosure that holds the gate has to
+              // be reachable to turn it back on.
+              state: nil),
         // The gate, first and alone in its group, as it leads the toolbar's
         // Checks menu. It never rewrites the rows under it, so turning it back
         // on restores exactly what was on before; the rows stay visible while
@@ -509,14 +540,18 @@ enum JotMenu {
               state: .checkmark(.proofread("proofreading"))),
         .init(title: "Check Spelling",
               action: .command("toggleSpellCheck"), menu: .view, submenu: "Proofreading", group: 1,
-              state: .checkmark(.proofread("spellCheck"))),
+              state: .checkmark(.proofread("spellCheck")), needs: [gate]),
         .init(title: "Check Grammar",
               action: .command("toggleGrammarCheck"), menu: .view, submenu: "Proofreading", group: 1,
-              state: .checkmark(.proofread("grammarCheck"))),
+              state: .checkmark(.proofread("grammarCheck")), needs: [gate]),
         .init(title: "Check Style",
               action: .command("toggleStyleCheck"), menu: .view, submenu: "Proofreading", group: 1,
-              state: .checkmark(.proofread("styleCheck"))),
-        .init(title: "Style Options", action: .submenu, menu: .view, submenu: "Proofreading", group: 1),
+              state: .checkmark(.proofread("styleCheck")), needs: [gate]),
+        // Two gates, because the style options are two levels down: the
+        // master silences everything, and Check Style silences these. Declaring
+        // both is what keeps the repaint from growing a branch per gate.
+        .init(title: "Style Options", action: .submenu, menu: .view, submenu: "Proofreading", group: 1,
+              needs: [gate, .proofread("styleCheck")]),
         // The note-marker highlight, below the rule, governed by nothing. Same
         // rank as the gate and separated from it rather than headed, which is
         // the layout the toolbar's menu uses and for the argument
@@ -632,13 +667,14 @@ enum JotMenu {
              menu: menu, target: target)
     }
 
-    /// Repaint the rows of `nsMenu`, and of its submenus, that draw live state.
+    /// Repaint the rows of `nsMenu`, and of its submenus, that draw live state:
+    /// the checkmarks, the one title that changes, and which rows a gate is
+    /// currently withdrawing.
     ///
-    /// Matched by the command each row already carries in `representedObject`,
-    /// which is unique across the table (`JotMenuTests` pins that): matching on
-    /// titles would go wrong the first time two menus shared a word, and a
-    /// side table of items would be a second thing to keep in step with the
-    /// menu it describes.
+    /// Matched by the identifier `fill` gives every item, which is the row's
+    /// address in the table rather than anything it says. A side table of items
+    /// would be a second thing to keep in step with the menu it describes, and
+    /// a lookup by title stops finding the one row here that retitles itself.
     ///
     /// Called from `menuNeedsUpdate` rather than kept up to date as things
     /// change, because there is nothing to be up to date WITH: the page reports
@@ -652,15 +688,49 @@ enum JotMenu {
             if let sub = item.submenu, sub.identifier != recentsMenuIdentifier {
                 applyState(state, to: sub)
             }
-            guard let command = item.representedObject as? Command,
-                  let row = rows.first(where: { $0.action.command == command }),
-                  let rowState = row.state else { continue }
+            guard let identifier = item.identifier,
+                  let row = rows.first(where: { $0.itemIdentifier == identifier })
+            else { continue }
+            // Withdrawn rather than dimmed, which is the rule a master and its
+            // children have on every surface of this editor
+            // (docs/DESIGN_PRINCIPLES.md): a gate that is off hides what it
+            // governs instead of leaving controls that are set on and doing
+            // nothing. Assigned both ways on every pass, so a row comes back
+            // when the gate does.
+            item.isHidden = !row.needs.allSatisfy { state.isOn($0) }
+            guard let rowState = row.state else { continue }
             let on = state.isOn(rowState.toggle)
             switch rowState {
             case .checkmark: item.state = on ? .on : .off
             case let .title(_, whenOn): item.title = on ? whenOn : row.title
             }
         }
+        tidyRules(in: nsMenu)
+    }
+
+    /// Hide any rule that a withdrawn group has left with nothing on one side
+    /// of it.
+    ///
+    /// A separator is a claim that there are rows either side, so one drawn
+    /// against the top or bottom of a menu, or against another separator, is a
+    /// line under nothing. Recomputed from scratch on every pass rather than
+    /// toggled, because the rule that is stray depends on which rows are
+    /// hidden this time.
+    @MainActor
+    private static func tidyRules(in nsMenu: NSMenu) {
+        var rowSinceLastRule = false
+        var trailingRule: NSMenuItem?
+        for item in nsMenu.items {
+            if item.isSeparatorItem {
+                item.isHidden = !rowSinceLastRule
+                trailingRule = item.isHidden ? trailingRule : item
+                rowSinceLastRule = false
+            } else if !item.isHidden {
+                rowSinceLastRule = true
+                trailingRule = nil
+            }
+        }
+        trailingRule?.isHidden = true
     }
 
     @MainActor
@@ -674,6 +744,9 @@ enum JotMenu {
             let item = nsMenu.addItem(withTitle: row.title, action: row.action.selector,
                                       keyEquivalent: row.key)
             item.keyEquivalentModifierMask = row.modifiers
+            // The row's address, so `applyState` can find this item again
+            // whatever its title says by then.
+            item.identifier = row.itemIdentifier
             if case .recents = row.action {
                 // A menu that fills itself, rather than rows built from this
                 // table: the list changes as files are opened, and a submenu

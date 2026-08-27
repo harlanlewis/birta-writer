@@ -387,8 +387,103 @@ final class JotMenuTests: XCTestCase {
         }
     }
 
+    /// A gate that is off withdraws what it governs rather than dimming it.
+    ///
+    /// The rule every master in this editor keeps
+    /// (docs/DESIGN_PRINCIPLES.md): the alternative is a submenu of rows that
+    /// are set on and doing nothing, which is a menu that lies in the one state
+    /// where the reader most needs it to be plain. The gate itself stays, or
+    /// there would be no way back.
+    func testTheGateShouldWithdrawWhatItGovernsRatherThanLeaveItSetAndDead() throws {
+        let view = build(.view)
+        let proofreading = try XCTUnwrap(view.items.first { $0.title == "Proofreading" }?.submenu)
+
+        JotMenu.applyState(MenuState(proofreadOptions: ["proofreading": false]), to: view)
+        XCTAssertEqual(visibleTitles(of: proofreading), ["Proofreading", "-", "Highlight Note Markers"],
+                       "with the gate off the submenu is the gate and the row it does not govern")
+        // The note-marker row is a SIBLING of the gate, not a child: it marks
+        // up text the writer typed on purpose, so silencing the editor's
+        // opinions must not take it away.
+        XCTAssertFalse(try XCTUnwrap(proofreading.items.first { $0.title == "Highlight Note Markers" }).isHidden)
+
+        // And back, with the rows' own answers untouched: a gate that
+        // overwrote its children would bring them back off.
+        JotMenu.applyState(MenuState(proofreadOptions: ["proofreading": true]), to: view)
+        XCTAssertEqual(visibleTitles(of: proofreading), [
+            "Proofreading",
+            "-", "Check Spelling", "Check Grammar", "Check Style", "Style Options",
+            "-", "Highlight Note Markers",
+        ])
+        for title in ["Check Spelling", "Check Grammar", "Check Style"] {
+            XCTAssertEqual(proofreading.items.first { $0.title == title }?.state, .on, title)
+        }
+    }
+
+    /// Check Style governs the Style Options row, one level further in.
+    ///
+    /// Two gates on one row, which is what `Row.needs` is a list for: the
+    /// master silences everything and Check Style silences these.
+    func testTurningOffCheckStyleShouldWithdrawTheStyleOptions() throws {
+        let view = build(.view)
+        let proofreading = try XCTUnwrap(view.items.first { $0.title == "Proofreading" }?.submenu)
+
+        JotMenu.applyState(MenuState(proofreadOptions: ["styleCheck": false]), to: view)
+        XCTAssertEqual(visibleTitles(of: proofreading), [
+            "Proofreading",
+            "-", "Check Spelling", "Check Grammar", "Check Style",
+            "-", "Highlight Note Markers",
+        ])
+        JotMenu.applyState(MenuState(), to: view)
+        XCTAssertTrue(visibleTitles(of: proofreading).contains("Style Options"))
+    }
+
+    /// No rule is left drawing a line under nothing when a group is withdrawn.
+    ///
+    /// The half a check on titles alone cannot see. With the gate off the four
+    /// rows between the two separators are gone, and without this pass the
+    /// submenu shows two rules in a row with nothing between them.
+    func testAWithdrawnGroupShouldTakeItsRuleWithIt() throws {
+        let view = build(.view)
+        let proofreading = try XCTUnwrap(view.items.first { $0.title == "Proofreading" }?.submenu)
+        JotMenu.applyState(MenuState(proofreadOptions: ["proofreading": false]), to: view)
+
+        let visible = proofreading.items.filter { !$0.isHidden }
+        XCTAssertEqual(visible.filter { $0.isSeparatorItem }.count, 1)
+        XCTAssertFalse(visible.first?.isSeparatorItem ?? true, "a rule above the first row")
+        XCTAssertFalse(visible.last?.isSeparatorItem ?? true, "a rule under the last row")
+        // And the sweep met the rules it is about: both separators are still
+        // IN the menu, one of them hidden, rather than the menu having been
+        // rebuilt without them.
+        XCTAssertEqual(proofreading.items.filter { $0.isSeparatorItem }.count, 2)
+    }
+
+    /// Two rows must not share an address, because that is what a repaint finds
+    /// them by.
+    ///
+    /// `fill` already resolves a submenu by its title within its menu, so a
+    /// duplicate here was ambiguous to the builder before it was ambiguous to
+    /// the repaint; this is what says so out loud. The Proofreading submenu is
+    /// the near case: its disclosure row and its master row share a title and
+    /// are told apart by which container they sit in.
+    func testNoTwoRowsShouldShareAnItemIdentifier() {
+        var seen: [NSUserInterfaceItemIdentifier: String] = [:]
+        for row in JotMenu.rows {
+            let identifier = row.itemIdentifier
+            XCTAssertNil(seen[identifier],
+                         "\(identifier.rawValue) is both \(seen[identifier] ?? "") and \(row.title)")
+            seen[identifier] = "\(row.menu.rawValue)/\(row.submenu ?? "")/\(row.title)"
+        }
+        XCTAssertEqual(seen.count, JotMenu.rows.count)
+        XCTAssertGreaterThan(seen.count, 60)
+    }
+
     private func row(_ items: [NSMenuItem], _ id: String, arg: String? = nil) -> NSMenuItem? {
         items.first { ($0.representedObject as? JotMenu.Command) == JotMenu.Command(id, arg: arg) }
+    }
+
+    /// The titles a reader would see: hidden rows and hidden rules left out.
+    private func visibleTitles(of menu: NSMenu) -> [String] {
+        menu.items.filter { !$0.isHidden }.map { $0.isSeparatorItem ? "-" : $0.title }
     }
 
     func testEveryCommandRowShouldCarryItsCommandIdToOneRouter() {
