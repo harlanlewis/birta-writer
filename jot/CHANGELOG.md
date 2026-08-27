@@ -14,6 +14,10 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ### Added
 
+- Check Spelling and Check Grammar, in the menu bar. Both have been running on every note this app opens, answered by macOS's own checker, and neither had a control anywhere in the menus: the View menu did not list them at all. They sit under View > Proofreading now, with the master switch above them and a checkmark on each. Check Grammar does have an effect, and always did; macOS objects to a sentence that disagrees with itself and draws it in a different colour from a misspelling.
+
+- Style Options, under View > Proofreading, with a row for each individual style check: Fillers, Redundancies, Cliches and Wordiness, then the AI tells, then the prose ones. The same rows the panel's Checks button offers, in the same order and under the same names, each with a checkmark.
+
 - More than one window. Cmd+N and Open now make a window rather than replacing what is on screen, so two notes can be open at once, and each window has its own title, its own buffer and its own saving. Opening a file that is already open brings that window forward instead of opening it twice, which matters beyond tidiness: two windows over one file would both write the whole file and the later write would win with nothing to say so. Cmd+W closes a window, except the last one, which hides as it always did so the next summon is still instant. The summon hotkey shows and hides every window together. Quitting asks about each unsaved note in turn, and Cancel on any of them keeps the app running.
 
 - The notes folders wear the app's mark in the Finder, the way the folders of other apps that keep one in iCloud Drive do, so the folder is found by looking rather than by reading. Both folders the app names get it, the one in iCloud Drive and the one in Documents, whichever is currently in use. A folder you have given your own picture to is left alone, and deleting the icon puts the plain folder back for good.
@@ -21,6 +25,8 @@ Versions are shared. Both files are stamped with the same release version, and a
 - A Show in menu bar setting, on by default, under Settings > General. Turning it off leaves the app with no menu-bar icon, which suits anybody who summons it by hotkey or keeps it in the Dock. It is bound to Show in Dock by one rule: whichever of the two is the last one on cannot be switched off, so there is always a way to open the app without its hotkey. The row that is currently the last one says so rather than simply refusing.
 
 ### Fixed
+
+- The Highlight note markers switch is remembered. Nothing stored it, so it went back to on at every page load, which for this app is every file you open. If you had turned the `[TK]` and `TODO:` tints off, they came back the next time you opened a note.
 
 - The editor is locked while the file it was editing is gone. It stayed editable, so anything typed into it was refused by the panel and dropped without a word, in the one state where what is on screen may be the only copy of it. What is there can still be selected and copied somewhere safe, which is what the card is offering; it just cannot be added to until the file is back or a new note is started.
 
@@ -54,6 +60,18 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ### Changed
 
+- The menu bar reads View before Format. View is about the window rather than about the document, so it sits above the menu that writes in the file, which is where Mail puts its own.
+
+- The View menu's proofreading rows are behind one Proofreading row rather than loose in the menu, with the master switch at the top of it and Highlight Note Markers below a rule. Every row carries a checkmark, so a switch's position can be read without flipping it. Turning the master off takes away the rows it governs rather than leaving them ticked and doing nothing, and turning it back on brings back exactly what was on before; Check Style does the same for Style Options.
+
+- Table of Contents says Show Table of Contents or Hide Table of Contents, for what picking it will do.
+
+- Settings rows are regrouped so each card holds one question. Show in Dock and Show in menu bar share a card, since each one's availability depends on the other, and Start at login and Rich link previews and embeds each have their own.
+
+- Automatically update moved from General to Advanced, which now holds what the app does to itself. Reset all settings leads the card below it.
+
+- The spelling and grammar checker hands the run loop back on a budget of text rather than of paragraphs. It used to yield every twenty blocks, which is a very different amount of work for a note of one-line bullets than for one of long unwrapped paragraphs, and the second is where the caret stuttered while a note was being checked.
+
 - The card that says a file is gone reads This file can't be found, and leaves naming the file to the window's own title bar a few inches above it. A file name is arbitrary length and it was in the largest type on the window, so a long one set the width of the whole card and a very long one truncated in the middle of the only sentence saying what had happened.
 
 - Show in Dock sits above Show in menu bar under Settings > General, which is the order the two are usually thought about in.
@@ -75,6 +93,10 @@ Versions are shared. Both files are stamped with the same release version, and a
 - The table of contents docks on the right and no longer offers to move, and the toolbar button is the only control that shows and hides it. Resting on that button flies the outline out over the text without opening it; pressing opens it for good, and pressing again puts it away. The panel used to carry a hide button and a swap-sides button of its own, and a reveal tab on the window's edge when it was shut, so there were three controls for two questions and one of them sat a few pixels from the button that already did the same thing. A Mac puts a sidebar on the trailing edge, so the side is the app's answer rather than a question, and Swap Table of Contents Side is gone from the command list with it. Birta Writer for VS Code is unchanged: it keeps both controls and the reader keeps the side.
 
 - The titlebar's buttons go away when you are neither pointing at the window nor typing in it, and are there the whole time you are. Checks, Find, Settings and the table of contents used to sit in the titlebar at every moment, including on a window in the background you were not using; New Note, Open and Open Recent had the opposite problem and appeared only while the pointer was on the band, which is a hard place to discover a button and an impossible place to read its tooltip. Both halves of the band now follow one rule, so a window you are working in shows its controls and a window at rest is a page and a cursor. Nothing moves when they come and go: the room they take is held either way, so the file's name never changes width. The three file buttons are also drawn at the size the toolbar's own icons are, which they were not.
+
+### Removed
+
+- Enter Full Screen, from the View menu. macOS adds it to any menu called View and it was permanently dimmed: this app's windows accompany another window's full screen rather than taking one of their own, so the row could never do anything. It is not moved to the Window menu, for the same reason it is gone from this one.
 
 ---
 

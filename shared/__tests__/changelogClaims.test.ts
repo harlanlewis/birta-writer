@@ -57,30 +57,56 @@ const RETIRED_SETTINGS: Record<string, string> = {
     // and so never reach this check. Add here only with the entry's wording.)
 };
 
-function liveSettingKeys(): Set<string> {
+/**
+ * Every `birta.*` identifier the extension contributes: settings AND commands.
+ *
+ * Both, because the citation regex below cannot tell them apart and should not
+ * have to. What the guard is for is that an identifier a reader might paste into
+ * their settings or their keybindings actually exists, and a command id is as
+ * paste-able as a setting key. Reading only the settings made a true entry
+ * naming a real command fail as a stale citation.
+ *
+ * A command withdrawn from the palette still counts as contributed: it is
+ * bindable in `keybindings.json`, which is the whole reason an entry would name
+ * it rather than the menu row it sits behind.
+ */
+function liveBirtaIds(): Set<string> {
     const pkg = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8"));
+    const ids = new Set<string>();
     const config = pkg.contributes?.configuration;
-    const keys = new Set<string>();
     const blocks = Array.isArray(config) ? config : [config];
     for (const block of blocks) {
-        for (const key of Object.keys(block?.properties ?? {})) keys.add(key);
+        for (const key of Object.keys(block?.properties ?? {})) ids.add(key);
     }
-    return keys;
+    for (const command of pkg.contributes?.commands ?? []) {
+        if (typeof command?.command === "string") { ids.add(command.command); }
+    }
+    return ids;
 }
 
 describe("CHANGELOG setting-key citations", () => {
     it("every birta.* key the CHANGELOG names should still exist, or be recorded as retired", () => {
-        const live = liveSettingKeys();
+        const live = liveBirtaIds();
         const cited = [...CHANGELOG.matchAll(/`(birta\.[A-Za-z0-9.]+)`/g)].map((m) => m[1]!);
         expect(cited.length, "no keys cited — this guard would be vacuous").toBeGreaterThan(10);
 
         const stale = [...new Set(cited)].filter((k) => !live.has(k) && !(k in RETIRED_SETTINGS));
         expect(
             stale,
-            "a CHANGELOG entry names a setting that does not exist. Either the key is " +
-                "wrong, or it was renamed and the entries naming it are now false. If it " +
-                "was deliberately removed, add it to RETIRED_SETTINGS with the entry's wording.",
+            "a CHANGELOG entry names a setting or command that does not exist. Either the " +
+                "id is wrong, or it was renamed and the entries naming it are now false. If " +
+                "it was deliberately removed, add it to RETIRED_SETTINGS with the entry's wording.",
         ).toEqual([]);
+    });
+
+    it("the guard should be reading commands as well as settings", () => {
+        // Without this, narrowing `liveBirtaIds` back to settings alone would
+        // pass on any CHANGELOG that happens to cite no command, and the next
+        // entry that cites one would fail for a reason nobody could act on.
+        const live = liveBirtaIds();
+        const settingsOnly = [...live].filter((id) => !id.startsWith("birta.editor."));
+        expect(live.size).toBeGreaterThan(settingsOnly.length);
+        expect(live.has("birta.editor.toggleStyleOption")).toBe(true);
     });
 });
 

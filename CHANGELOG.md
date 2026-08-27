@@ -4,7 +4,15 @@
 
 ## [Unreleased]
 
+### Added
+
+- `birta.editor.toggleStyleOption`, which turns one style check on or off, taking the check's key as its argument (`fillers`, `passive`, `emDash`, and the rest of the rows in the Checks menu). It is deliberately not in the command palette, because a palette row cannot supply the argument; bind it in `keybindings.json` with `"args": "passive"`. It is the first way to put a single style check on a key, where the master gate and the three domain switches already had commands.
+
 ### Fixed
+
+- Typing in a long document was slowed by spelling and grammar checking. The whole document was re-checked after every keystroke rather than only the blocks an edit changed, and because the check runs on a pause in typing, a document big enough for the check to outlast that pause got worse the slower it got: every keystroke then bought another whole-document check. Findings are now remembered per block, so an edit costs a check of what it changed. A document you had given up on because the caret lagged behind your hands is worth trying again.
+
+- Table gridlines no longer draw a darker dot at every intersection, and the grid is one weight all the way round: the outer edges used to render lighter than the interior lines, the left edge worst. Both came from a partly transparent line colour painting over itself where two gridlines meet, so a document full of tables read as speckled. Header rows also take a consistent wash now, instead of a fainter one wherever the table sits on something other than the page background, such as inside a quote. A multi-cell selection's outline is even too, rather than brighter along the edges between selected cells.
 
 - The Codex CLI route offered by `Birta: Ask AI About This` runs. It was `codex exec --full-auto {prompt}`, and current Codex has no `--full-auto`, so choosing that route got a usage error instead of an answer. It is now `codex exec --sandbox workspace-write --skip-git-repo-check {prompt}`, which is the same two things the old flag stood for, spelled the way Codex spells them and with the check that otherwise refuses to run outside a git repository. If you already chose that route, `birta.agent.command` holds the old line and this does not rewrite it; run the command again and pick Codex to take the new one, or edit the setting.
 
