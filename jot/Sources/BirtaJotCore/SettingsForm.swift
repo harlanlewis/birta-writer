@@ -120,12 +120,19 @@ public enum SettingsForm {
     /// file your typing ends up in, which is settled before the editor sees
     /// anything.
     ///
-    /// A card is one question, or one question and its dependents. The two
-    /// presence rows are the one card holding two independent switches, and
-    /// they earn it: they are one question asked twice (where can this app be
+    /// A card is one SUBJECT: a question and its dependents, or the few
+    /// questions a reader would look for in the same place. Two cards here hold
+    /// more than one switch, and each earns it differently.
+    ///
+    /// The presence rows are one question asked twice (where can this app be
     /// reached from), and `RowAvailability.appPresence` makes each one's answer
     /// depend on the other, so the card is where that dependence is visible.
-    /// Nothing else here groups, so nothing else shares.
+    ///
+    /// Store in iCloud Drive and Automatically save changes are independent of
+    /// each other and share a card anyway: both are about where your typing ends
+    /// up, which is the same argument that keeps Autosave on this pane at all
+    /// rather than with the editor's own settings. Nothing links them
+    /// mechanically, so nothing enforces the pairing; it is a reading order.
     ///
     /// `.location` and `.newNoteName` are hidden dependents rather than cards
     /// of their own, and each sits directly under the row that takes it away.

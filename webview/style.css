@@ -1716,7 +1716,6 @@ body.editor-width-auto :is(.code-width-toggle-btn, .mw-bc-width) {
         /* Tables */
         table {
             border-collapse: collapse;
-            width: 100%;
             margin: 0 0 var(--content-flow-gap);
             overflow-x: auto;
             display: block;
@@ -1727,13 +1726,20 @@ body.editor-width-auto :is(.code-width-toggle-btn, .mw-bc-width) {
                x and is clipped away. WebKit loses it; Chromium offsets the grid
                by that half instead and keeps it. The padding gives the half
                somewhere legal to land, and the equal negative margin puts the
-               grid back exactly where it was, so this repairs what was missing
-               without moving anything. Keep the two in step.
+               grid back where it was.
+
+               THREE declarations, not two, and the third is why: `box-sizing`
+               is `border-box` globally, so with a plain `width: 100%` the
+               negative margin would carry the RIGHT edge 1px inboard, and a
+               full-measure table would stop lining up with the paragraph above
+               it. The widened width gives that pixel back. Keep all three in
+               step; changing one alone moves the grid.
 
                `node e2e/run.mjs tableGridlines` is what holds this: it compares
                each outer edge against an interior gridline, at BOTH device
                scale factors, because half a CSS pixel rounds back to a whole
                device pixel at 1x and the loss is invisible there. */
+            width: calc(100% + 1px);
             padding-left: 1px;
             margin-left: -1px;
 

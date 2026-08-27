@@ -6,7 +6,7 @@ import Foundation
 /// A port of the toggleable half of `STYLE_CATEGORIES` in
 /// `webview/utils/styleCategories.ts`, in the same family as `ProofreadFilter`
 /// and `AgentRequest`: Swift cannot import TypeScript, so the vocabulary lives
-/// twice and `shared/__tests__/styleCategories.test.ts` reads both files and
+/// twice and `shared/__tests__/styleCategoriesPort.test.ts` reads both files and
 /// fails when they disagree on a key, a label, an order or a section.
 ///
 /// `CaseIterable` is what makes the Style Options submenu derived rather than

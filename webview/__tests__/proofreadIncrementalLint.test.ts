@@ -249,6 +249,39 @@ describe("the proofread rescan asks the host only about what changed", () => {
         expect(third[0].blocks).toHaveLength(1);
     });
 
+    it("a third open request should cost a repeated question, never a wrong decoration", async () => {
+        // The bound on open requests is two, so a host slow enough to leave
+        // three outstanding drops the oldest. What must survive that is
+        // correctness: the page must still end up drawing findings for the whole
+        // document, from the reply it does keep.
+        await vi.advanceTimersByTimeAsync(2000);
+        answer(lintRequests(spy)[0]);
+        spy.mockClear();
+
+        const v = view(editor);
+        // Three edits, each settling into its own request, none answered.
+        for (let i = 0; i < 3; i++) {
+            v.dispatch(v.state.tr.insertText("x", 3));
+            await vi.advanceTimersByTimeAsync(2000);
+        }
+        const open = lintRequests(spy);
+        expect(open).toHaveLength(3);
+
+        // Answer the OLDEST, which the bound has dropped: it must be ignored
+        // rather than applied against positions three edits out of date.
+        answer(open[0]);
+        // Then the newest, which is the one the page is drawing from.
+        answer(open[2]);
+        spy.mockClear();
+
+        // The document is fully known again, so the next settle asks nothing.
+        v.dispatch(v.state.tr.insertText("y", 3));
+        await vi.advanceTimersByTimeAsync(2000);
+        const after = lintRequests(spy);
+        expect(after).toHaveLength(1);
+        expect(after[0].blocks).toHaveLength(1);
+    });
+
     it("a run of keystrokes should ask about one block per settle, never the document", async () => {
         // The shape a person types in when the editor already feels slow: each
         // character followed by a pause longer than the debounce, so every one

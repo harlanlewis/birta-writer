@@ -40,7 +40,7 @@ export async function run({ page, check, baseUrl }) {
     // the collapsed left border is half a CSS pixel, which at scale 1 rounds
     // back to a whole device pixel and disappears. Verified by mutation —
     // reverting the padding/margin repair and leaving the opaque ink in place
-    // passed all 24 checks at scale 1 and fails at scale 2. A guard that runs
+    // passed every check at scale 1 and failed at scale 2. A guard that runs
     // at one scale is a guard for one of the two bugs.
     const runnerPage = page;
     const browser = page.context().browser();
@@ -205,8 +205,10 @@ export async function run({ page, check, baseUrl }) {
 
         // ── Finding 1: a crossing is one gridline's weight, not two ──────────
         // A translucent ink cannot pass this: it composites with itself wherever
-        // two gridlines meet. Measured before the fix at 1.90x (Chromium) and
-        // 2.83x (WebKit); the ceiling here sits well clear of both.
+        // two gridlines meet, so a crossing is two layers where Chromium
+        // draws it and eight where WebKit does. The ceiling sits well clear of
+        // what either produces; `node e2e/run.mjs tableGridlines` prints the
+        // ratio each run rather than leaving a figure here to rot.
         const linePeak = Math.max(m.vLinePeak, m.hLinePeak);
         const nexusRatio = m.nexusPeak / Math.max(1, linePeak);
         check(`[${theme} @${scale}x] a gridline crossing is no darker than the lines through it`,
@@ -214,17 +216,17 @@ export async function run({ page, check, baseUrl }) {
             `nexus=${m.nexusPeak} line=${linePeak} ratio=${nexusRatio.toFixed(3)}`);
 
         // ── Finding 3: every edge of the grid weighs the same ────────────────
-        // The outer edges are the ones a scroll container can clip. Before the
-        // fix WebKit's left edge integrated 0.27x an interior gridline; the
-        // other three were already whole, so the check covers all four rather
-        // than only the one that was broken.
+        // The outer edges are the ones a scroll container can clip, and the
+        // left edge is the one that was clipped. The other three were already
+        // whole, so the check covers all four rather than only the one that was
+        // broken: an edge that starts failing later is the case this is for.
         for (const [name, value] of [["left", m.leftEdge], ["right", m.rightEdge], ["top", m.topEdge], ["bottom", m.bottomEdge]]) {
             const interior = name === "left" || name === "right" ? m.interiorV : m.interiorH;
             const ratio = value / Math.max(1, interior);
             // The top edge is the one asymmetric case: its scan runs from plain
             // paper into the header wash, so it integrates the wash as well as
-            // the line and reads about 2x an interior gridline whatever the ink
-            // is. A ceiling there would be measuring the wash, so it gets a
+            // the line and reads well above an interior gridline whatever the
+            // ink is. A ceiling there would be measuring the wash, so it gets a
             // floor only — and its name has to say so, because a check called
             // "weighs the same" that passes at 2.1x is a check whose name is a
             // claim nobody made.

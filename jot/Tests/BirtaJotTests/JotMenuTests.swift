@@ -282,7 +282,7 @@ final class JotMenuTests: XCTestCase {
     ///
     /// The count is asserted against the enum rather than against a number, so
     /// a fifteenth category joins this by existing;
-    /// `shared/__tests__/styleCategories.test.ts` is what holds that enum
+    /// `shared/__tests__/styleCategoriesPort.test.ts` is what holds that enum
     /// against the page's own list.
     func testTheStyleOptionsSubmenuShouldOfferEveryCategoryThePageToggles() throws {
         let proofreading = try XCTUnwrap(

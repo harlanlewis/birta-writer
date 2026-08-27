@@ -532,9 +532,10 @@ enum JotMenu {
               state: nil),
         // The gate, first and alone in its group, as it leads the toolbar's
         // Checks menu. It never rewrites the rows under it, so turning it back
-        // on restores exactly what was on before; the rows stay visible while
-        // it is off, because a menu that hid them would look like a menu that
-        // had lost them.
+        // on restores exactly what was on before; while it is off they are
+        // WITHDRAWN rather than left ticked and inert, which is
+        // `docs/DESIGN_PRINCIPLES.md`'s rule for a master and is carried by the
+        // `needs:` on each of them (see `applyState` and `tidyRules`).
         .init(title: "Proofreading",
               action: .command("toggleProofreading"), menu: .view, submenu: "Proofreading", group: 0,
               state: .checkmark(.proofread("proofreading"))),

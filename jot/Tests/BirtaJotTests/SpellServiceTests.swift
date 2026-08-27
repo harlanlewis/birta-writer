@@ -200,7 +200,7 @@ final class SpellServiceTests: XCTestCase {
         let done = expectation(description: "lint")
         service.lint(blocks: blocks) { _ in done.fulfill() }
         wait(for: [done], timeout: timeout)
-        return service.batchCount
+        return service.lastCost.batches
     }
 
     private func blocks(count: Int, chars: Int) -> [LintBlock] {

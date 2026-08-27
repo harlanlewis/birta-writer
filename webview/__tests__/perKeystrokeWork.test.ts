@@ -16,9 +16,10 @@
  * shaped that way needs no stored figure and cannot go stale.
  *
  * It is deliberately generic over the counters `webview/perf.ts`'s `countWork`
- * stamps rather than naming one: a new counter joins this gate by existing, and
- * `theCountersUnderTest` asserts a floor so a run that found none fails loudly
- * instead of passing having measured nothing.
+ * stamps rather than naming one, so a new counter joins this gate by existing.
+ * Each case asserts its own reach for that reason: a sweep over no counters, or
+ * over counters reading zero on both sides, would satisfy every differential
+ * here by having nothing to compare.
  *
  * What it cannot see: per-keystroke work that crosses no instrumented boundary.
  * Counters find only what they are put on. The rule that goes with this gate is
@@ -57,7 +58,7 @@ beforeAll(() => {
  * differed in anything else, a count that grew between them would have a second
  * explanation and the gate would prove nothing.
  */
-function document(sections: number): string {
+function workingNote(sections: number): string {
     let out = "# Working note\n\n";
     for (let i = 1; i <= sections; i++) {
         out += `## Section ${i}\n\n`;
@@ -68,8 +69,8 @@ function document(sections: number): string {
     return out;
 }
 
-const SMALL = document(4);
-const LARGE = document(40);
+const SMALL = workingNote(4);
+const LARGE = workingNote(40);
 
 type Counter = { name: string; amounts: Record<string, number> };
 
@@ -81,10 +82,21 @@ function postMessageSpy(): ReturnType<typeof vi.fn> {
 }
 
 /**
- * jsdom's `performance.mark` accepts the options form but does not retain
- * `detail`, so the counters are captured at the call rather than read back off
- * the timeline. Capturing at the call is also what makes them attributable to
- * one keystroke.
+ * Counters are captured AT THE CALL rather than read back off the timeline.
+ *
+ * Two reasons, and the first is the one that would otherwise be guessed wrong.
+ * These tests run under `vi.useFakeTimers()`, which replaces `performance`
+ * wholesale with the fake clock's own object; its `mark` ignores the options
+ * argument and its `getEntriesBy*` return nothing. So there is no timeline to
+ * read here whatever jsdom would have done, and a test written to read one
+ * would report zero counters and pass its differential by having nothing to
+ * compare. The second reason stands on its own: capturing at the call is what
+ * makes a counter attributable to one keystroke.
+ *
+ * The consequence is a real limit on what this file can claim. It pins the
+ * COUNTS, which is what the gate is for, and it cannot establish that
+ * `countWork` reaches a real timeline at all. `e2e/perf/checks.mjs` asserts that
+ * half, in a browser, where `e2e/perf-typing.mjs` actually reads it.
  */
 function captureCounters(): { seen: Counter[]; restore: () => void } {
     const seen: Counter[] = [];
@@ -123,12 +135,12 @@ function view(editor: Editor): EditorView {
  */
 async function workForOneKeystroke(doc: string): Promise<Counter[]> {
     clearLintCache();
-    document_reset();
+    document.body.innerHTML = "";
     vi.useFakeTimers();
     const spy = postMessageSpy();
     spy.mockClear();
-    const container = window.document.createElement("div");
-    window.document.body.appendChild(container);
+    const container = document.createElement("div");
+    document.body.appendChild(container);
     const editor = await createEditor(container, doc, vi.fn());
     try {
         await vi.advanceTimersByTimeAsync(2000);
@@ -136,19 +148,20 @@ async function workForOneKeystroke(doc: string): Promise<Counter[]> {
         spy.mockClear();
 
         const capture = captureCounters();
-        const v = view(editor);
-        v.dispatch(v.state.tr.insertText("x", 3));
-        await vi.advanceTimersByTimeAsync(2000);
-        capture.restore();
+        try {
+            const v = view(editor);
+            v.dispatch(v.state.tr.insertText("x", 3));
+            await vi.advanceTimersByTimeAsync(2000);
+        } finally {
+            // In a `finally`, or a throw here leaks the patched `mark` into
+            // every later test in the file.
+            capture.restore();
+        }
         return capture.seen;
     } finally {
         vi.useRealTimers();
         await editor.destroy();
     }
-}
-
-function document_reset(): void {
-    window.document.body.innerHTML = "";
 }
 
 function total(counters: Counter[], name: string, key: string): number {
@@ -172,7 +185,7 @@ describe("per-keystroke work does not scale with the document", () => {
         expect(large.map((c) => c.name).sort()).toEqual(small.map((c) => c.name).sort());
     });
 
-    it("the larger document should be the larger document", async () => {
+    it("the larger document should be the larger document", () => {
         // The other half of the instrument check: if the two fixtures were not
         // actually different sizes, "the work did not grow" would be true for a
         // reason that has nothing to do with the code.
@@ -186,9 +199,14 @@ describe("per-keystroke work does not scale with the document", () => {
         const smallBlocks = total(smallWork, "lint-request", "blocks");
         const largeBlocks = total(largeWork, "lint-request", "blocks");
 
-        // Equal, not merely bounded. One edit touches one block, and any growth
-        // at all between a 4-section and a 40-section document is the defect
-        // this gate is for, whatever its size.
+        // The exact number, not merely equality between the two. `toBe(small)`
+        // alone is satisfied by 0 === 0, which is what this reads if the
+        // keystroke ever stops reaching the rescan: the gate would then report
+        // success having measured nothing, in the one file whose whole subject
+        // is instruments that measure nothing.
+        expect(smallBlocks).toBe(1);
+        // And then the differential: one edit touches one block whatever the
+        // document's size, so any growth at all is the defect this is for.
         expect(largeBlocks).toBe(smallBlocks);
     });
 
@@ -207,12 +225,19 @@ describe("per-keystroke work does not scale with the document", () => {
         expect(keys.size).toBeGreaterThan(0);
 
         const grew: string[] = [];
+        let counted = 0;
         for (const compound of keys) {
             const [name, key] = compound.split("::");
             const a = total(smallWork, name, key);
             const b = total(largeWork, name, key);
+            // A counter reading zero on both sides can never enter `grew`, so
+            // without this the sweep could be all zeroes and still pass. A key
+            // existing is not the same as a number having been measured.
+            if (a > 0 && b > 0) { counted++; }
             if (b > a) { grew.push(`${compound}: ${a} at 4 sections, ${b} at 40`); }
         }
+        expect(counted, "every counter read zero on both sides, so nothing was compared")
+            .toBeGreaterThan(0);
         expect(grew).toEqual([]);
     });
 });

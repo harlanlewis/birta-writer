@@ -341,8 +341,11 @@ async function sampleTyping(browser, url, content, keys, fixture = "?", side = "
         // complexity defect moves and a duration only hints at. The gate for
         // this lives in `webview/__tests__/perKeystrokeWork.test.ts`, where it
         // costs nothing and cannot flake; here it is context.
+        // Filtered by the `mdw:` prefix as well as by having a detail: any
+        // library on the page may stamp a mark carrying one, and without the
+        // prefix its numbers would be summed into ours under its own name.
         work: performance.getEntriesByType("mark")
-            .filter((e) => e.detail && typeof e.detail === "object")
+            .filter((e) => e.name.startsWith("mdw:") && e.detail && typeof e.detail === "object")
             .reduce((acc, e) => {
                 for (const [k, v] of Object.entries(e.detail)) {
                     if (typeof v === "number") { acc[`${e.name}.${k}`] = (acc[`${e.name}.${k}`] ?? 0) + v; }

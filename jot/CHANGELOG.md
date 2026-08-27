@@ -66,7 +66,7 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 - Table of Contents says Show Table of Contents or Hide Table of Contents, for what picking it will do.
 
-- Settings rows are regrouped so each card holds one question. Show in Dock and Show in menu bar share a card, since each one's availability depends on the other, and Start at login and Rich link previews and embeds each have their own.
+- Settings rows are regrouped by subject rather than piled into one card. Show in Dock and Show in menu bar share a card, since each one's availability depends on the other, and Start at login and Rich link previews and embeds each have their own.
 
 - Automatically update moved from General to Advanced, which now holds what the app does to itself. Reset all settings leads the card below it.
 

@@ -743,9 +743,17 @@ export const proofreadPlugin = $prose(() => {
             // scan ask the host the same whole-document question again.
             //
             // Bounded, because a host that never answers must not accumulate a
-            // copy of the document per request. Two is enough for the ordering
-            // this exists for (a reply overtaken by one newer request) and small
-            // enough that the bound is obviously safe.
+            // copy of the document per request.
+            //
+            // What the bound gives up, stated because two is not "enough" in
+            // general: with three requests open, the oldest is evicted and its
+            // reply's findings are discarded and asked for again. Nothing is
+            // drawn wrongly by that, and the reason is worth keeping: every
+            // request asks about everything not already cached, so a later
+            // request's blocks are a superset of an evicted one's, and the id
+            // being DRAWN from is always the newest, which is never the one
+            // evicted. So the cost of the bound is a repeated question, never a
+            // wrong or missing decoration.
             const lintRequests = new Map<number, LintBlock[]>();
             const MAX_OPEN_LINT_REQUESTS = 2;
             // The first proofread pass is deferred off the mount/paint path and
@@ -768,7 +776,10 @@ export const proofreadPlugin = $prose(() => {
             currentApplier = (id, results) => {
                 if (destroyed || view.isDestroyed) { return; }
                 const asked = lintRequests.get(id);
-                if (!asked) { return; } // a reply to a request this view never made
+                // No open request under this id: one this view never made, one
+                // already answered (the entry is deleted below, so a duplicate
+                // reply lands here), or one the bound above dropped.
+                if (!asked) { return; }
                 lintRequests.delete(id);
                 // The findings are kept FIRST, before either staleness check
                 // below, and that order is the point rather than an accident.

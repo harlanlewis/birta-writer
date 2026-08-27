@@ -58,6 +58,15 @@ const readMarks = (page) => page.evaluate(() => {
         pfEnd: at("proofread-end"),
         measures: performance.getEntriesByType("measure")
             .filter((m) => m.name.startsWith("mdw:")).map((m) => m.name.slice(4)),
+        // Work COUNTERS, read back off the real timeline the way
+        // `e2e/perf-typing.mjs` reads them. The jsdom gate that uses these
+        // (`webview/__tests__/perKeystrokeWork.test.ts`) runs under fake timers,
+        // whose `performance` ignores the options form of `mark` entirely, so it
+        // captures counters at the call and CANNOT establish that a counter
+        // survives to a timeline at all. This is the only place that does.
+        work: performance.getEntriesByType("mark")
+            .filter((e) => e.name.startsWith("mdw:") && e.detail && typeof e.detail === "object")
+            .map((e) => ({ name: e.name.slice(4), detail: e.detail })),
         styleHits: document.querySelectorAll(".pf-style-hit").length,
     };
 });
@@ -102,6 +111,20 @@ export async function run({ page, check, baseUrl }) {
     check("both post-paint spans are measured, not just marked",
         m.measures.includes("rtp") && m.measures.includes("proofread"),
         m.measures.join(", "));
+
+    // A work counter reaches the timeline WITH its numbers. `countWork` rides
+    // `performance.mark`'s `detail`, which is the part a runtime can accept and
+    // silently drop, and the whole value of a counter is the number rather than
+    // the mark. Asserted on a real engine because it is the only place that can:
+    // the counting gate runs under fake timers and reads its own stub.
+    const lintCounter = m.work.find((w) => w.name === "lint-request");
+    check("the lint work counter reaches the timeline", lintCounter != null,
+        m.work.map((w) => w.name).join(", ") || "(no counters stamped)");
+    check("and carries its counts rather than an empty detail",
+        typeof lintCounter?.detail?.blocks === "number"
+            && typeof lintCounter?.detail?.chars === "number"
+            && lintCounter.detail.blocks > 0,
+        JSON.stringify(lintCounter?.detail ?? null));
 
     // ── proofreading OFF ──────────────────────────────────────
     // The control (MAR-311): with the feature off the post-paint block is still

@@ -1,25 +1,29 @@
 /**
  * Spelling and grammar results, remembered by the text they were computed for.
  *
- * The proofread rescan walks the WHOLE document on a debounce after every edit
- * and hands every block to the host's checker. One keystroke changes one block,
- * so without this the other blocks are re-checked for an answer nobody has any
- * reason to expect to have changed. What that costs is not theoretical and not
- * the page's own time: on this surface the checker is `NSSpellChecker`, which is
- * AppKit and runs on the main thread, the same thread key events arrive on, so
- * a whole-document recheck is paid in caret latency. `jot-trace lint` prints
- * `blocks`, `chars` and `ms` for every round trip and is how to read the cost
- * back rather than trusting a number written here.
+ * The proofread rescan walks the WHOLE document on a debounce after every edit,
+ * and without this it would hand every block to the host's checker. One
+ * keystroke changes one block, so the rest would be re-checked for an answer
+ * nobody has any reason to expect to have changed. What that costs is not
+ * theoretical and not always the page's own time: in Birta Writer for Mac the
+ * checker is `NSSpellChecker`, which is AppKit and runs on the main thread, the
+ * same thread key events arrive on, so a whole-document recheck is paid in caret
+ * latency. `jot-trace lint` prints `blocks`, `chars` and `ms` for every round
+ * trip and is how to read the cost back rather than trusting a number here.
  *
- * The cache key is the block's plain text and nothing else, which is the whole
- * reason this is safe: the checker is a pure function of the text it is given.
- * Block POSITION deliberately is not part of the key, so moving a paragraph, or
- * editing the one above it, keeps its answer.
+ * The cache key is the block's plain text and nothing else. Block POSITION
+ * deliberately is not part of the key, so moving a paragraph, or editing the one
+ * above it, keeps its answer.
  *
- * It is not invalidated when the user learns a word or ignores a finding, and
+ * That is safe as long as the host's answer depends on nothing but the text, and
+ * there is exactly one thing it also depends on: the user's dictionary, which
+ * both hosts read fresh on every request. `setUserWords` in `engine.ts` clears
+ * this for that reason, and its comment carries the argument for why one
+ * direction of that change cannot be repaired downstream.
+ *
+ * Learning a word or ignoring a finding does NOT invalidate anything here, and
  * that is correct rather than an oversight: both are applied downstream at
- * decoration-build time by `isLintSuppressed`, over whatever this returns. A
- * cache cleared on learn would be a cache cleared for nothing.
+ * decoration-build time by `isLintSuppressed`, over whatever this returns.
  *
  * Host-agnostic on purpose. The extension's Harper pass has the same shape and
  * the same waste, so this belongs beside the plugin rather than in either host.
@@ -67,9 +71,10 @@ export function rememberLints(text: string, lints: HarperLint[]): void {
  * Forget everything.
  *
  * For a change in what the CHECKER would answer, which no edit to the document
- * can cause: the host swapping engines, or a language change underneath it.
- * Exported chiefly so tests start from a known state, because a module-level
- * cache is otherwise shared between them.
+ * can cause. `setUserWords` is the production caller and the case that matters;
+ * a host swapping engines or a language changing underneath it would be the
+ * same shape. Tests also use it, because a module-level cache is otherwise
+ * shared between them.
  */
 export function clearLintCache(): void {
     cache.clear();

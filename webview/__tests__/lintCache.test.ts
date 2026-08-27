@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { clearLintCache, lintCacheSize, lookupLints, rememberLints } from "../proofread/lintCache";
 import { lintBlocksToAsk, resolveLintResults } from "../plugins/proofread";
+import { setUserWords } from "../proofread/engine";
 import type { HarperLint, LintBlock } from "../../shared/messages";
 
 /**
@@ -108,6 +109,44 @@ describe("resolveLintResults", () => {
             { key: 100, lints: [] },
             { key: 200, lints: [lint(0, 4)] },
         ]);
+    });
+});
+
+describe("the user dictionary changing", () => {
+    beforeEach(() => { clearLintCache(); setUserWords([]); });
+
+    it("removing a word should forget the answers that were computed without it", () => {
+        // The direction nothing downstream can repair. Both hosts filter their
+        // own findings by this dictionary, fresh per request, so while a word
+        // is in it a block containing that word comes back with no finding. If
+        // that answer outlived the removal, the word would stay unflagged until
+        // its block's text changed.
+        setUserWords(["birta"]);
+        rememberLints("a paragraph mentioning birta", []);
+        expect(lookupLints("a paragraph mentioning birta")).toEqual([]);
+
+        setUserWords([]);
+        expect(lookupLints("a paragraph mentioning birta")).toBeUndefined();
+    });
+
+    it("adding a word should forget too, rather than relying on the direction being safe", () => {
+        // Adding IS repairable downstream (`isLintSuppressed` hides the cached
+        // finding), so this is the cheaper rule rather than the necessary one.
+        // It is asserted so that narrowing the clear to removals alone is a
+        // deliberate change with a test to update, not a silent one.
+        rememberLints("some text", []);
+        setUserWords(["birta"]);
+        expect(lookupLints("some text")).toBeUndefined();
+    });
+
+    it("setting the same words again should keep the answers", () => {
+        // The discriminating case: a config round trip that changes nothing
+        // must not throw the document's findings away, or every settings write
+        // costs a whole-document recheck.
+        setUserWords(["birta", "milkdown"]);
+        rememberLints("some text", []);
+        setUserWords(["MILKDOWN", "Birta"]);
+        expect(lookupLints("some text")).toEqual([]);
     });
 });
 

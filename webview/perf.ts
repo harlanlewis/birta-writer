@@ -110,8 +110,6 @@ export function countWork(name: string, amounts: Record<string, number>): void {
     }
 }
 
-/** Prefix applied to every name here. Exported so readers can filter by it. */
-export const PERF_PREFIX = PREFIX;
 
 /**
  * Wrap the view's transaction dispatch so every doc-changing transaction stamps

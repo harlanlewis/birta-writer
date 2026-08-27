@@ -352,7 +352,11 @@ const xlarge = (() => {
 // above hold it constant: every one of them is built from `richSection`, whose
 // paragraphs are short and wrapped. A per-keystroke cost budgeted in BLOCKS
 // cannot tell twenty one-line bullets from twenty 900-character paragraphs, and
-// nothing in this list could tell the gate which of the two it was measuring.
-// The launch gate has carried this fixture all along; the typing one was blind
-// to it.
+// nothing in this list carried that distinction at all.
+//
+// This makes `pnpm perf:typing` spread over it. It does NOT change what CI
+// gates: `AB_FIXTURES` is `TYPING_GATED_FIXTURES`, still `xlarge` alone, so the
+// `typing-perf` job neither sees this fixture nor spends a minute on it. Gating
+// it would be the cost decision documented beside `AB_FIXTURES`, and is not
+// taken here.
 export const TYPING_FIXTURES = { tiny, medium, large, xlarge, "link-heavy": linkHeavy, realistic };

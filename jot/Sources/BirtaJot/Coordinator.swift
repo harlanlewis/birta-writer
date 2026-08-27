@@ -1105,7 +1105,7 @@ final class Coordinator {
                 self.measure.trace("lint blocks=\(blocks.count) "
                     + "chars=\(blocks.reduce(0) { $0 + $1.text.count }) "
                     + "ms=\(Int(Date().timeIntervalSince(lintStart) * 1000)) "
-                    + "hold=\(Int(self.spell.longestHold * 1000)) "
+                    + "hold=\(Int(self.spell.lastCost.longestHold * 1000)) "
                     + "lints=\(lints.count) "
                     + "spelling=\(spelling) grammar=\(lints.count - spelling)")
                 self.host.send(.lintResults(id: id, results: results))

@@ -83,27 +83,40 @@ final class SpellService {
     /// and it correlates the answer by id, so an unanswered batch is a request
     /// that never settles.
     func lint(blocks: [LintBlock], completion: @escaping @MainActor ([LintBlockResult]) -> Void) {
-        longestHold = 0
-        batchCount = 0
-        drain(blocks[...], done: [], completion: completion)
+        drain(blocks[...], done: [], cost: Cost(), completion: completion)
     }
 
-    /// The longest UNINTERRUPTED main-thread hold of the last `lint`, in
-    /// seconds, which is the number the batch budget exists to bound.
+    /// What one `lint` cost the thread it ran on.
     ///
-    /// Total time is the wrong reading for this: a check spread over many turns
-    /// costs the same total and costs the caret nothing, and the two are
-    /// indistinguishable in a figure that only says how long the answer took.
-    /// This says how long the thread was unavailable at a stretch.
-    private(set) var longestHold: TimeInterval = 0
+    /// Carried through the recursion beside `done` and `pending` rather than
+    /// stored on the service, because nothing serializes two lint requests: a
+    /// second one arriving mid-drain would reset counters held here and the
+    /// first request's trace line would report the second's numbers. The
+    /// coordinator holds ONE service per window and the page can have a request
+    /// open when the next rescan fires, so that overlap is reachable.
+    struct Cost {
+        /// The longest UNINTERRUPTED main-thread hold, in seconds, which is the
+        /// number the batch budget exists to bound.
+        ///
+        /// Total time is the wrong reading for it: a check spread over many
+        /// turns costs the same total and costs the caret nothing, and a figure
+        /// that only says how long the answer took cannot tell the two apart.
+        /// This says how long the thread was unavailable at a stretch.
+        var longestHold: TimeInterval = 0
+        /// How many turns of the run loop it took.
+        ///
+        /// The testable half of `longestHold`, which is a duration and so is a
+        /// figure a loaded machine can move. This one is arithmetic, and is
+        /// what a test can assert without asserting a clock.
+        var batches = 0
+    }
 
-    /// How many turns of the run loop the last `lint` took.
+    /// The cost of the most recently COMPLETED `lint`, for the trace line.
     ///
-    /// The testable half of `longestHold`, which is a duration and so is a
-    /// figure a loaded machine can move. This one is arithmetic: it says how
-    /// often the thread was handed back, and it is what a test can assert
-    /// without asserting a clock.
-    private(set) var batchCount = 0
+    /// Written once, when a drain finishes, so an overlapping request cannot
+    /// blank it midway; a completion reads the cost handed to it rather than
+    /// this, and this exists for a caller that has only the service.
+    private(set) var lastCost = Cost()
 
     /// One batch, then either the answer or a turn of the run loop.
     ///
@@ -112,9 +125,11 @@ final class SpellService {
     /// and that is a shared mutable box the compiler is right to warn about.
     private func drain(_ pending: ArraySlice<LintBlock>,
                        done: [LintBlockResult],
+                       cost: Cost,
                        completion: @escaping @MainActor ([LintBlockResult]) -> Void) {
         var pending = pending
         var done = done
+        var cost = cost
         var spent = 0
         let batchStart = Date()
         // `spent == 0` first, so the budget can never refuse the batch's first
@@ -126,15 +141,20 @@ final class SpellService {
             spent += block.text.count
             done.append(LintBlockResult(key: block.key, lints: check(block.text)))
         }
-        longestHold = max(longestHold, Date().timeIntervalSince(batchStart))
-        batchCount += 1
-        guard !pending.isEmpty else { completion(done); return }
+        cost.longestHold = max(cost.longestHold, Date().timeIntervalSince(batchStart))
+        cost.batches += 1
+        guard !pending.isEmpty else {
+            lastCost = cost
+            completion(done)
+            return
+        }
         // Back through the run loop, so a long document is checked in the gaps
         // rather than in front of the caret.
         let rest = pending
         let far = done
+        let carried = cost
         Task { @MainActor [weak self] in
-            self?.drain(rest, done: far, completion: completion)
+            self?.drain(rest, done: far, cost: carried, completion: completion)
         }
     }
 
