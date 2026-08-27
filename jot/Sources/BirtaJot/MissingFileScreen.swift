@@ -2,7 +2,7 @@ import AppKit
 
 /// The panel, given over to saying the file is gone and offering the ways out.
 ///
-///     Jot 2026-08-26.md doesn't exist
+///     This file can't be found
 ///     It may have been deleted or moved. What you were writing is
 ///     still on screen and is not saved anywhere else.
 ///
@@ -141,7 +141,6 @@ final class MissingFileScreen: NSView {
     private func build() {
         heading.font = .systemFont(ofSize: NSFont.systemFontSize + 6, weight: .semibold)
         heading.alignment = .center
-        heading.lineBreakMode = .byTruncatingMiddle
         body.font = .systemFont(ofSize: NSFont.systemFontSize)
         body.textColor = .secondaryLabelColor
         body.alignment = .center
@@ -247,18 +246,27 @@ final class MissingFileScreen: NSView {
 
     /// What the screen says, and which ways out it offers.
     ///
-    /// `hasUnsavedText` is the whole of the difference, and it is a fact about
-    /// the BUFFER rather than about the file: the file is gone either way, so
-    /// what decides the offer is whether anything on screen exists nowhere
-    /// else. With text to lose, saving it is the first thing offered and the
-    /// button that throws it away is named for what it costs. With nothing to
-    /// lose, neither belongs: an offer to save an empty buffer writes an empty
-    /// file, and a warning about discarding nothing is a warning people learn
-    /// to click through.
-    func show(_ shown: Bool, name: String = "", hasUnsavedText: Bool = false) {
+    /// The heading does NOT name the file, and that is the one thing about it
+    /// worth stating. A file name is arbitrary length: it went in the heading,
+    /// at the largest type on the window, where a long one set the width of the
+    /// whole card and a very long one truncated in the middle of the only
+    /// sentence saying what had happened. The window's own title bar is a few
+    /// inches above and names the file already, with a ceiling that was built
+    /// for exactly this (`TitlebarBand`), so the card says what is wrong and
+    /// lets the title say which file it is wrong about.
+    ///
+    /// `hasUnsavedText` is the whole of the rest, and it is a fact about the
+    /// BUFFER rather than about the file: the file is gone either way, so what
+    /// decides the offer is whether anything on screen exists nowhere else.
+    /// With text to lose, saving it is the first thing offered and the button
+    /// that throws it away is named for what it costs. With nothing to lose,
+    /// neither belongs: an offer to save an empty buffer writes an empty file,
+    /// and a warning about discarding nothing is a warning people learn to
+    /// click through.
+    func show(_ shown: Bool, hasUnsavedText: Bool = false) {
         isHidden = !shown
         guard shown else { return }
-        heading.stringValue = "\(name) doesn't exist"
+        heading.stringValue = "This file can't be found"
         body.stringValue = hasUnsavedText
             ? "It may have been deleted or moved. What you were writing is still on screen, and is not saved anywhere else."
             : "It may have been deleted or moved."
@@ -304,19 +312,38 @@ final class MissingFileScreen: NSView {
         [saveButton, newButton, recentButton].first { !$0.isHidden && $0.title == title }
     }
 
-    /// Whether the body text has room for every line it needs, for a check
+    /// Whether each line of the card has room for what it says, for a check
     /// that cannot look at the window.
     ///
-    /// The box it is DRAWN in against the height it NEEDS at that width, which
-    /// is the pair a clipped label breaks: the field goes on reporting the
-    /// height it was measured for, so nothing about its own frame says the last
-    /// line is missing.
-    var bodyFitForMeasurement: (box: NSRect, needs: CGFloat) {
-        let box = body.convert(body.bounds, to: self)
-        let needs = body.cell?.cellSize(
-            forBounds: NSRect(x: 0, y: 0, width: box.width, height: .greatestFiniteMagnitude)
-        ).height ?? 0
-        return (box, needs)
+    /// The box a label is DRAWN in against what it NEEDS at that width, which
+    /// is the pair a clipped label breaks: the field goes on reporting the size
+    /// it was measured for, so nothing about its own frame says a line is
+    /// missing. BOTH labels, because they are clipped in different directions
+    /// and only one of them wraps: the body runs out of height when its wrap
+    /// measure is wider than its box, and the heading is a single line that
+    /// runs out of width.
+    var labelFitsForMeasurement: [(name: String, box: NSRect, needs: NSSize)] {
+        [heading, body].enumerated().map { index, field in
+            let box = field.convert(field.bounds, to: self)
+            let wraps = field.lineBreakMode == .byWordWrapping
+            // Two different questions, and asking one of them twice is how this
+            // becomes decoration: `cellSize(forBounds:)` CLAMPS its answer to
+            // the width it is given, so measuring a single-line label at its
+            // own box width reports that it needs exactly the room it has,
+            // whatever it is actually drawing. A wrapping label is measured at
+            // its box width, where the height is the real answer; a single-line
+            // one is measured unbounded, where the width is.
+            let infinite = CGFloat.greatestFiniteMagnitude
+            let measured = field.cell?.cellSize(
+                forBounds: NSRect(x: 0, y: 0, width: wraps ? box.width : infinite, height: infinite)
+            ) ?? .zero
+            // Zero, not the measurement, for the dimension the field is allowed
+            // to be smaller than: a wrapping label is narrower than its text by
+            // construction, and saying it needs that width would fail every
+            // time. A requirement of zero reads as "no requirement".
+            let needs = wraps ? NSSize(width: 0, height: measured.height) : measured
+            return (index == 0 ? "heading" : "body", box, needs)
+        }
     }
 
     @objc private func saveItBack() { onSaveItBack?() }

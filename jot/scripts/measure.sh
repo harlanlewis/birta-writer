@@ -302,6 +302,10 @@ else
 fi
 rm -f "$SCRATCH_DIR/.debug-message.json"
 
+# What launch alone accounts for, so the folder-mark check at the end compares
+# against it rather than against zero.
+MARKS_AT_LAUNCH="$(grep -c "jot-trace markfolders " "$LOG" || true)"
+
 # A deleted note is NOT written back.
 #
 # `AtomicFile.write` creates the file and every directory above it, so before
@@ -405,6 +409,39 @@ if [ "${M_PAGE_COUNT:-0}" != "1" ]; then
     grep "^jot-trace titlebarstrip " "$LOG" | tail -1 | sed 's/^/  /' >&2; exit 1
 fi
 echo "missing screen       ok: the band is down to the Settings gear"
+# ...and the editor is locked, so nothing can be typed into a file that is gone.
+#
+# Text typed here was refused by `writeLatest` and dropped, silently, in the one
+# state where the buffer may be the only copy of something. Locked rather than
+# hidden: what is on screen can still be selected and copied somewhere safe,
+# which is what the card is promising.
+#
+# Asked of the PAGE rather than of what the shell last sent. Those are different
+# claims and the difference is the whole failure mode: a remount forgets the
+# message and leaves the send true. Both layers, because `webview/readOnly.ts`
+# keeps its promise in more than one and a half-applied mode is a lock with
+# chrome that still offers to edit.
+printf '{"type":"__jotEditorLock"}' > "$SCRATCH_DIR/.debug-message.json"
+kill -URG $PID; sleep 1.2
+rm -f "$SCRATCH_DIR/.debug-message.json"
+LOCK="$(grep "^jot-trace editorlock " "$LOG" | tail -1 | sed 's/^jot-trace editorlock //')"
+case "$LOCK" in
+    # Refuses a bad state rather than proving a good one, and the difference is
+    # worth saying: this run's document is not empty, so the slash-menu hint is
+    # never in the DOM here and `hint=absent` is the only answer it can give.
+    # What the arm is for is a build where a locked document goes on offering a
+    # gesture that does nothing, which would report `shown`.
+    *"hint=shown"*)
+        echo "editor lock          FAILED: the locked document still offers the slash menu: $LOCK" >&2
+        exit 1 ;;
+    "contenteditable=false bodyClass=true hint="*" missing=true") ;;
+    *"missing=false"*)
+        echo "editor lock          FAILED: asked outside the missing state, so this proved nothing: $LOCK" >&2
+        exit 1 ;;
+    *) echo "editor lock          FAILED: the editor is still editable with its file gone: ${LOCK:-<nothing>}" >&2
+       exit 1 ;;
+esac
+echo "editor lock          ok: with the file gone the editor is read-only"
 # ...and it does not fade when the window is left alone.
 #
 # The rest of that row fades when the pointer and the keyboard both go
@@ -490,6 +527,25 @@ else
     echo "deleted note         FAILED: Save It Back wrote a file without the buffer in it" >&2
     cat "$SCRATCH_DIR/Scratch pad.md" >&2; exit 1
 fi
+
+# ...and the lock comes OFF with the file back.
+#
+# The pair, for the reason the resting one is a pair: an editor nothing ever
+# locks also reports unlocked, so one arm alone cannot tell a working lock from
+# an absent one. One answer has to be true and the other false.
+printf '{"type":"__jotEditorLock"}' > "$SCRATCH_DIR/.debug-message.json"
+kill -URG $PID; sleep 1.2
+rm -f "$SCRATCH_DIR/.debug-message.json"
+LOCK_BACK="$(grep "^jot-trace editorlock " "$LOG" | tail -1 | sed 's/^jot-trace editorlock //')"
+case "$LOCK_BACK" in
+    "contenteditable=true bodyClass=false hint="*" missing=false")
+        echo "editor lock          ok: and editable again once the file is back" ;;
+    *"missing=true"*)
+        echo "editor lock          FAILED: the note is still missing, so this asked the same question twice: $LOCK_BACK" >&2
+        exit 1 ;;
+    *) echo "editor lock          FAILED: the editor stayed locked after the file came back: ${LOCK_BACK:-<nothing>}" >&2
+       exit 1 ;;
+esac
 
 # The other half of the resting question, asked now that there is a file again.
 #
@@ -1989,6 +2045,73 @@ if [ "$K_WINDOWS" != 4 ] || [ "$K_AT" != "Third note.md" ]; then
     echo "  wanted windows=4 at=Third note.md, got: ${KEPT:-<nothing>}" >&2; exit 1
 fi
 echo "open into empty      ok: and a window still holding unsaved text kept it, in a window of its own"
+
+# A file a window CLOSED on joins the recents list.
+#
+# `Coordinator.boundURL`'s `didSet` records a rebind and is the one slot every
+# rebind passes through, which was the whole rule while there was one window:
+# the only way to stop looking at a file was to go to another one. A window can
+# now open a file and close without ever rebinding, and that file is one Open
+# Recent has never heard of, which is exactly the shape somebody reports as an
+# empty menu after using the app all morning.
+#
+# The stored list rather than the menu, for the reason the other recents check
+# gives: a menu row is not evidence that anything was recorded. The file is the
+# one the closing window names in its own trace, so this reads what was actually
+# closed rather than reasoning about which window was in front.
+# `|| true` because this one is EXPECTED to find nothing: it is the before
+# reading, and `pipefail` makes an empty grep the status of the whole pipeline.
+CLOSED="$(grep "^jot-trace closewindow " "$LOG" | tail -1 || true)"
+# The list BEFORE. What stops this passing on a file that was already recorded:
+# the window about to close was made by `openDocument`, and `boundURL`'s
+# `didSet` does not fire for an initializer, so this file has never been on the
+# list and closing is the only thing that can put it there.
+RECENTS_BEFORE="$(defaults read "$BIRTA_JOT_DEFAULTS_SUITE" recentDocuments 2>/dev/null || true)"
+printf '{"type":"__jotCloseWindow"}' > "$SCRATCH_DIR/.debug-message.json"
+kill -URG $PID; sleep 1.5
+rm -f "$SCRATCH_DIR/.debug-message.json"
+# The list BEFORE, which is what stops this passing on a file that was already
+# recorded: the window about to close was made by `openDocument`, and
+# `boundURL`'s `didSet` does not fire for an initializer, so this file has
+# never been on the list and the close is the only thing that can put it there.
+CLOSED_LINE="$(grep "^jot-trace closewindow " "$LOG" | tail -1 || true)"
+CLOSED_AT="$(printf '%s' "$CLOSED_LINE" | sed 's/^jot-trace closewindow at=//')"
+if [ -z "$CLOSED_AT" ] || [ "$CLOSED_LINE" = "$CLOSED" ]; then
+    echo "recents on close     FAILED: no window closed, so nothing below was measured" >&2
+    exit 1
+fi
+RECENTS_AFTER="$(defaults read "$BIRTA_JOT_DEFAULTS_SUITE" recentDocuments 2>/dev/null || true)"
+case "$RECENTS_BEFORE" in
+    *"$CLOSED_AT"*)
+        echo "recents on close     FAILED: that file was already on the list, so closing proved nothing" >&2
+        echo "  closed: $CLOSED_AT" >&2; exit 1 ;;
+esac
+case "$RECENTS_AFTER" in
+    *"$CLOSED_AT"*)
+        echo "recents on close     ok: $(basename "$CLOSED_AT") joined the list when its window closed" ;;
+    *)  echo "recents on close     FAILED: the file a window closed on never reached the recents list" >&2
+        echo "  closed: $CLOSED_AT" >&2
+        echo "  list: ${RECENTS_AFTER:-<empty>}" >&2; exit 1 ;;
+esac
+
+# ...and the folder mark is asked for when the app rebuilds a notes folder.
+#
+# The WIRING only. Drawing the icon is refused under a throwaway defaults
+# domain on purpose, because the mark is a file in the user's real notes folder
+# whatever domain a run is using, so a checking run would decorate it for them.
+# What the mark IS, and when a folder counts as unmarked, is `FolderIconTests`.
+# What had no caller was this: a folder deleted and recreated during a session
+# lost its mark and stayed plain until the next launch.
+# A COUNT against the launch reading, never presence. Launch marks the folders
+# too, so "is there a markfolders line" is answered yes by a build that only
+# ever does it at launch, which is the state this fixes.
+MARKS_NOW="$(grep -c "jot-trace markfolders " "$LOG" || true)"
+if [ "${MARKS_NOW:-0}" -le "${MARKS_AT_LAUNCH:-0}" ]; then
+    echo "folder mark          FAILED: no notes folder was marked after launch ($MARKS_AT_LAUNCH then, $MARKS_NOW now)" >&2
+    echo "  (a folder deleted mid-session would stay plain until the next launch)" >&2
+    exit 1
+fi
+echo "folder mark          ok: rebuilding a note asks for the folders again ($MARKS_AT_LAUNCH at launch, $MARKS_NOW now)"
 
 # What a second window COSTS, measured rather than estimated: MAR-396 asks for
 # this figure and nobody had one.

@@ -177,6 +177,7 @@ jot/Sources/BirtaJotCore/ActiveBinding.swift  WHICH of Jot's three file settings
 jot/Sources/BirtaJotCore/DocumentTypes.swift  The file types the Mac app OPENS against the one it WRITES, and why those are two lists; the Open With claim's Swift half
 jot/Sources/BirtaJotCore/DocumentName.swift   What a typed filename means: the extension kept, `/` and `:` refused, an unchanged field not a rename
 jot/Sources/BirtaJotCore/AutosavePolicy.swift  When Jot writes, when it does not, and when it asks instead; what the autosave setting promises in both directions
+jot/Sources/BirtaJotCore/DockPresence.swift  What moving Show in Dock has to do, and why turning it OFF is the direction that needs the window put back
 jot/Sources/BirtaJotCore/RowAvailability.swift Whether a settings row can do what it says, and what colour the sentence under it is; the two are independent and both surfaces read them here
 jot/Sources/BirtaJotCore/UnsavedChanges.swift What the quit sheet says when autosave is off and the buffer is ahead of the file
 jot/Sources/BirtaJotCore/AboutInfo.swift      What the About window says, and THE repository string its two GitHub links and the updater's release feed all derive from

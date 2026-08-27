@@ -395,7 +395,12 @@ final class WelcomeView: NSView {
 
     @objc private func toggleDock() {
         Prefs.showInDock = dockSwitch.state == .on
-        AppDelegate.applyActivationPolicy()
+        // Keeping this window, for the reason the Settings pane's copy of this
+        // switch gives: turning the Dock icon off deactivates the app, and the
+        // reader is looking at the screen the switch is on. It is worse here
+        // than there, because this is somebody's first run and the window that
+        // would go behind is the one asking them the questions.
+        AppDelegate.applyActivationPolicy(keepingFrontmost: true)
     }
 
     /// macOS can refuse the registration, and the switch has to follow what the

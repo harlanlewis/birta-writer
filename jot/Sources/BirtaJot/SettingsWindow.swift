@@ -1303,7 +1303,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         alert.beginSheetModal(for: window) { [weak self] response in
             guard response == .alertFirstButtonReturn, let self else { return }
             Prefs.reset()
-            AppDelegate.applyActivationPolicy()
+            AppDelegate.applyActivationPolicy(keepingFrontmost: true)
             AppDelegate.shared?.applyMenuBarPresence()
             _ = self.onHotkeyChange()
             self.syncControlsFromPrefs()
@@ -1536,7 +1536,11 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     /// happening for a round trip. Nothing else needs re-reading for it.
     @objc private func toggleShowInDock() {
         Prefs.showInDock = dockSwitch.state == .on
-        AppDelegate.applyActivationPolicy()
+        // Keeping this window, which is the whole difference between a switch
+        // and a disappearing act: turning the Dock icon off sends the app to
+        // the background, and the reader is looking at Settings when they do
+        // it. `applyActivationPolicy` says how.
+        AppDelegate.applyActivationPolicy(keepingFrontmost: true)
         showPresence()
     }
 
