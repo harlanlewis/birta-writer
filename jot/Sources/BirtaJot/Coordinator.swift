@@ -145,10 +145,16 @@ final class Coordinator {
 
     /// What THIS window's page currently shows, for the menus that draw it.
     ///
-    /// A mirror of what the page has reported, seeded from `Prefs` at boot and
-    /// updated as each flip arrives. `Prefs` remains the store, because these
-    /// settings persist across launches and a new window should open the way the
-    /// last one was left; what `Prefs` cannot be is the source a MENU reads.
+    /// A mirror of what the page has reported, updated as each flip arrives and
+    /// re-seeded from `Prefs` at EVERY page boot, in the `bootConfig` closure
+    /// where the page itself is seeded. Both matter: a reload re-reads `Prefs`,
+    /// which another window may have written since, so a mirror seeded only at
+    /// construction would drift back out of step the first time this window
+    /// reloaded. This initializer is the default that closure supersedes.
+    ///
+    /// `Prefs` remains the store, because these settings persist across launches
+    /// and a new window should open the way the last one was left; what `Prefs`
+    /// cannot be is the source a MENU reads.
     ///
     /// The menu bar belongs to the application and its commands go to the front
     /// window, while `Prefs` holds one value for the whole process. With two
@@ -385,7 +391,17 @@ final class Coordinator {
         // being torn down has no view state worth restoring. `WebHost`'s own
         // default is the honest answer.
         host.bootConfig = { [weak self] in
-            self.map { Prefs.bootConfig(viewStateFor: $0.boundURL) } ?? BootConfig()
+            guard let self else { return BootConfig() }
+            // The menu mirror is re-seeded HERE, at the one instant the page is
+            // seeded, so the two cannot disagree about what this window shows.
+            // A page boot is not only a launch: `preferencesChanged` reloads,
+            // and a reload re-reads `Prefs`, which another window may have
+            // written since. Seeded only at construction, this window's menus
+            // would go on drawing the state its page had before the reload.
+            self.menuState = MenuState(proofreadOptions: Prefs.proofreadOptions,
+                                       noteHighlight: Prefs.noteHighlight,
+                                       tocShown: Prefs.tocVisibility == "shown")
+            return Prefs.bootConfig(viewStateFor: self.boundURL)
         }
         host.onMessage = { [weak self] m in self?.handle(m) }
         host.onProcessTerminated = { [weak self] in self?.contentProcessDied() }

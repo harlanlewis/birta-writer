@@ -42,22 +42,34 @@ final class MenuStateTests: XCTestCase {
 
     // MARK: - Recording what a window's page reports
 
-    /// Every toggle the menus DRAW, so the sweep below cannot silently cover
-    /// fewer than it should. `MenuToggle` carries an associated value and so
-    /// cannot be `CaseIterable`; this is the nearest honest thing, and the
-    /// count assertion is what makes it a sweep rather than a sample.
-    private static let everyToggle: [MenuToggle] = [
-        .proofread("proofreading"), .proofread("spellCheck"), .proofread("grammarCheck"),
-        .proofread("styleCheck"), .proofread("fillers"),
-        .noteHighlight, .tocShown,
-    ]
+    /// Every toggle the menus DRAW.
+    ///
+    /// The style rows are DERIVED from `StyleCategory.allCases`, which is the
+    /// same registry `JotMenu.styleOptionRows` builds them from, so a fifteenth
+    /// category joins this sweep the day it lands rather than the day somebody
+    /// remembers. Written out by hand it sampled one of the fourteen and the
+    /// count assertion below could only have failed if an entry were deleted,
+    /// which is a list a new case never joins.
+    ///
+    /// The six above them are written out because they are in no enum: four
+    /// gate keys the page owns (`ProofreadOptionKey` in shared/messages.ts) and
+    /// the two toggles that are not proofreading options at all.
+    private static let everyToggle: [MenuToggle] =
+        [.proofread("proofreading"), .proofread("spellCheck"),
+         .proofread("grammarCheck"), .proofread("styleCheck"),
+         .noteHighlight, .tocShown]
+        + StyleCategory.allCases.map { MenuToggle.proofread($0.rawValue) }
 
     func testEveryToggleTheMenusDrawShouldAlsoBeOneTheyCanRecord() {
         // The failure this rules out: a toggle that `isOn` answers and `record`
         // silently drops would draw a checkmark that never changed, and the row
         // would then invert whatever it claimed. Asserted over the same
         // vocabulary both halves read, in both directions.
-        XCTAssertGreaterThanOrEqual(Self.everyToggle.count, 7)
+        // Against the registry, not against the literal: this fails when a new
+        // category stops being swept, which a floor on the literal's own length
+        // never could.
+        XCTAssertEqual(Self.everyToggle.count, StyleCategory.allCases.count + 6)
+        XCTAssertGreaterThan(StyleCategory.allCases.count, 10)
         for toggle in Self.everyToggle {
             var state = MenuState()
             state.record(toggle, on: false)
