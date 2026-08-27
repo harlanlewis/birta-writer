@@ -68,6 +68,24 @@ final class JotMenuTests: XCTestCase {
         XCTAssertTrue(built.menu.items.allSatisfy { $0.submenu != nil })
     }
 
+    /// The About row, in the BUILT app menu.
+    ///
+    /// `shared/__tests__/jotAbout.test.ts` holds the same claim by reading the
+    /// source, because the status menu is built by nothing a test constructs
+    /// and it has to be read some way. The app menu no longer needs that, and
+    /// the two checks fail on different mistakes: a rename empties the one that
+    /// names a function, and a reformat is invisible to this one. It targets
+    /// the delegate rather than travelling up the responder chain, which is
+    /// what opens Jot's own About window instead of AppKit's standard panel.
+    func testTheAppMenuShouldCarryTheAboutRow() throws {
+        let delegate = AppDelegate()
+        let appMenu = try XCTUnwrap(delegate.mainMenu().menu.items.first?.submenu)
+        let about = try XCTUnwrap(appMenu.items.first { $0.title.hasPrefix("About ") })
+        XCTAssertEqual(about.action, #selector(AppDelegate.menuOpenAbout))
+        XCTAssertTrue(about.target === delegate,
+                      "an About row on the responder chain opens AppKit's panel, not ours")
+    }
+
     // MARK: the table reaches the menus
 
     func testEveryMenuShouldBuildRowsOfItsOwn() {
