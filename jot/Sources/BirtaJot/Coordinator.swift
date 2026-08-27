@@ -111,6 +111,12 @@ final class Coordinator {
     /// one is the app's, so a window can only ask.
     var onNewWindowRequest: (() -> Void)?
 
+    /// Ask the app to open a file, under BIRTA_JOT_MEASURE only, and answer
+    /// how many windows are open once it has. Which window takes the file is
+    /// the app's rule (`WindowSet.openDocument`) and the count is what says
+    /// which way it went.
+    var onOpenRequest: ((URL) -> Int)?
+
     /// Re-register the summon key after the recorder on the first-run screen
     /// has changed it. The key is one registration for the process, so this
     /// window can only ask.
@@ -299,6 +305,43 @@ final class Coordinator {
     /// hold each. `WindowSet` is what hands them out and takes them away, so
     /// two windows never both believe they own `.document`.
     var bindingSlot: ActiveBinding.Slot?
+
+    /// This window is standing on a file that is not there, with nothing in the
+    /// buffer to lose, so another file may take it over.
+    ///
+    /// BOTH halves, and the second is the safety one: a missing note whose
+    /// buffer still holds text is holding the only copy of that text, and it
+    /// is the buffer AS THE PANEL LAST HEARD IT, which is the same value the
+    /// card is drawn from (`showMissingFileScreen`), so the two always agree
+    /// about whether anything is at stake. The page reports its first edit
+    /// within an IPC hop (`webview/syncScheduler.ts`), which is what keeps
+    /// that value from trailing the writing it describes.
+    /// rebinding away from it is what `rescueMissingNote` exists to catch at
+    /// quit. A window in that state keeps its file and Open makes a new window,
+    /// which is also the honest answer to the question the screen is asking:
+    /// Save It Back has not been answered yet.
+    var isVacant: Bool { noteMissing && latest.isBlank }
+
+    /// Take `url` over in this window, in place of the file that has gone.
+    ///
+    /// Nothing is flushed and nothing is written first, and both are safe here
+    /// rather than skipped: `isVacant` is the caller's gate, so the buffer is
+    /// blank and `writeLatest` is refusing every write anyway while the note is
+    /// missing.
+    ///
+    /// `boundURL`'s own `didSet` does most of it, which is why this is short:
+    /// it re-titles, records both files in the recents list, and re-watches,
+    /// and `startWatching` is what clears `noteMissing` and takes the screen
+    /// down. What is left is the page, which has to be loaded again against the
+    /// new binding, and the slot, which is `WindowSet`'s to hand out.
+    func openInPlace(_ url: URL, slot: ActiveBinding.Slot?) {
+        bindingSlot = slot
+        boundURL = url
+        reloadFromDisk = true
+        loadPage()
+        refreshTitle()
+        show()
+    }
 
     /// A window on `url`, which is the only thing that distinguishes one of
     /// these from another and so is required rather than defaulted.
@@ -619,6 +662,40 @@ final class Coordinator {
                 onNewWindowRequest?()
                 return
             }
+            // Open a file, exactly as Cmd+O and the titlebar's folder button
+            // do: the chooser is skipped and `WindowSet.openDocument` is not,
+            // so what runs is the rule about WHICH window takes the file. A
+            // script cannot click a file chooser, and a closure here that
+            // opened a window itself would be a second answer to that question
+            // able to agree with the real one while it was being checked.
+            //
+            // The window count comes back from the set, because that is the
+            // whole of what this is asked to prove: whether the file landed in
+            // the window that was already open or in a new one beside it.
+            if obj["type"] as? String == "__jotOpen", let path = obj["path"] as? String {
+                measure.mark("debug-open")
+                let count = onOpenRequest?(URL(fileURLWithPath: path)) ?? -1
+                measure.trace("open windows=\(count) at=\(boundURL.lastPathComponent)"
+                                + " missing=\(noteMissing)")
+                return
+            }
+            // What the band's trailing controls look like with the window at
+            // rest, which a script cannot reach: resting is the pointer and the
+            // key window, and a shell driving this app has neither.
+            if obj["type"] as? String == "__jotResting" {
+                measure.mark("debug-resting")
+                host.reportRestingChrome { [weak self] line in
+                    MainActor.assumeIsolated {
+                        guard let self else { return }
+                        self.measure.trace("restingchrome \(line)")
+                        // The app's own writer, asked again, so the read leaves
+                        // the page in the state the window actually implies
+                        // rather than in whatever the query last set.
+                        self.applyChromeVisibility()
+                    }
+                }
+                return
+            }
             if obj["type"] as? String == "__jotRename", let name = obj["name"] as? String {
                 measure.mark("debug-rename")
                 titleBar.titleView.commitNameForMeasurement(name)
@@ -884,6 +961,13 @@ final class Coordinator {
             // A fresh page starts with its chrome shown; tell it where the
             // pointer is, and say which file it is now bound to.
             refreshTitle()
+            // ...and whether that file is there at all. A class on the body is
+            // the page's whole memory of this, so a remount for any reason
+            // brings the band back with every control in it while the card in
+            // the middle of the window is still saying the note is gone. It is
+            // set BEFORE the width query below, which measures the row this
+            // decides the contents of.
+            host.setNoteMissing(noteMissing)
             // Ask for the width the title's ceiling is computed against as
             // soon as there is a page to ask, rather than waiting for the
             // first summon. Until it answers, the width reads 0, which the
@@ -2335,47 +2419,68 @@ final class Coordinator {
                                name: boundURL.lastPathComponent,
                                hasUnsavedText: !latest.isBlank)
         layoutMissingFileScreen()
+        // The band's other half. With no file there is nothing for Find, the
+        // checks, the outline or the typography controls to act on, and the
+        // gear is the one control in this state that still has a job: on a
+        // panel with no Dock icon it is the way to preferences.
+        host.setNoteMissing(noteMissing)
+        // The cluster just changed WIDTH, which the drag strip is sized from.
+        // Without this the strip keeps the width of a row that is no longer
+        // there and lies over the gear, so the click that reaches preferences
+        // drags the window instead.
+        refreshTitlebarControlsWidth()
     }
 
-    /// Over the DOCUMENT, and not over the band above it.
+    /// The area the card centres in: the DOCUMENT, and not the band above it.
     ///
-    /// The web view used to be hidden outright while this screen was up, which
-    /// walled off the document and took the page's own controls with it: Find,
-    /// the checks, the outline and the Settings gear are all drawn by the page,
-    /// in the titlebar band, so hiding the view left a window whose only way to
-    /// Settings was the menu bar. Somebody whose file has just gone missing is
-    /// exactly the person who might want to look at where their notes are kept.
+    /// The web view is never hidden while this is up. Find, the checks, the
+    /// outline and the Settings gear are all drawn by the page, in the titlebar
+    /// band, so hiding the view leaves a window whose only way to Settings is
+    /// the menu bar, and somebody whose file has just gone missing is exactly
+    /// the person who might want to look at where their notes are kept.
     ///
-    /// So the screen covers everything below the band instead. The document is
-    /// no more reachable by mouse than it was, since the screen is over it, and
-    /// the controls stay live because nothing is covering them.
+    /// The frame given here is the area, not the covering: `MissingFileScreen`
+    /// paints and hit-tests only its own card inside it, and keeps the tooltip
+    /// lane at the top of this box clear so the band's labels are readable.
     ///
-    /// The keyboard is deliberately not walled off, which is unchanged: a
-    /// hidden view can still be first responder, so typing always reached the
-    /// buffer here. It is safe because `writeLatest` refuses while the note is
-    /// missing, and it is what makes "what you were writing is still on screen"
-    /// true rather than a description of something the user cannot touch.
+    /// The keyboard is deliberately not walled off: a hidden view can still be
+    /// first responder, so typing reaches the buffer here. It is safe because
+    /// `writeLatest` refuses while the note is missing, and it is what makes
+    /// "what you were writing is still on screen" true rather than a
+    /// description of something the user cannot touch.
     private func layoutMissingFileScreen() {
         guard !missingFileScreen.isHidden else { return }
         let bounds = contentView.bounds
         // Zero before the window has been laid out, which is the same "not
-        // known yet" the drag strip reads it for. Covering the whole view is
-        // the right answer then: it is never less than the document's area.
+        // known yet" the drag strip reads it for. Taking the whole view is the
+        // right answer then: it is never less than the document's area.
         let band = max(0, titlebarBandHeight)
         missingFileScreen.frame = NSRect(x: bounds.minX, y: bounds.minY,
                                          width: bounds.width,
                                          height: max(0, bounds.height - band))
-        // The two facts that decide whether Settings is still reachable, for
-        // `jot/scripts/measure.sh`. Geometry rather than appearance, and that
-        // is not a compromise: the page's controls are drawn by WebKit, which
-        // contributes nothing to the PDF path `writeSnapshot` uses, so a
+        // What decides whether the band's controls are reachable AND readable,
+        // for `jot/scripts/measure.sh`. Geometry rather than appearance, and
+        // that is not a compromise: the page's controls are drawn by WebKit,
+        // which contributes nothing to the PDF path `writeSnapshot` uses, so a
         // screenshot of this state cannot show them whether they are there or
-        // not. What can be checked is that nothing is covering them and that
-        // the view holding them was not hidden.
+        // not.
+        //
+        // `cardTop` is reported in the PAGE's coordinates, y down from the top
+        // of the window, because the thing it has to be compared against is the
+        // tooltip chip's box and that is what the page measures in. Reporting
+        // it in AppKit's would give a difference that looks like clearance and
+        // is an inversion.
         if measure.enabled {
+            // Only for the reading. AppKit lays the screen out in this same
+            // pass, so the app needs nothing here; forcing it in the ordinary
+            // path would be a layout run inside the one that asked for it.
+            missingFileScreen.layoutSubtreeIfNeeded()
+            let card = missingFileScreen.cardRect
+            let cardTop = band + (missingFileScreen.bounds.height - card.maxY)
             measure.trace("missingscreen webviewHidden=\(host.webView.isHidden)"
-                            + " band=\(Int(band)) screen=\(Int(missingFileScreen.frame.height))"
-                            + " content=\(Int(bounds.height))")
+                            + " band=\(Int(band)) area=\(Int(missingFileScreen.frame.height))"
+                            + " content=\(Int(bounds.height))"
+                            + " cardTop=\(Int(cardTop)) cardH=\(Int(card.height))")
         }
     }
 

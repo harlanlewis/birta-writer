@@ -171,6 +171,7 @@ jot/Sources/BirtaJot/TitleBar.swift           Draws it as a leading titlebar acc
 jot/Sources/BirtaJot/TitlebarDrag.swift       Makes the band draggable where the page is not using it; why the CSS answer does not exist in WebKit
 jot/Sources/BirtaJotCore/TitlebarBand.swift   Where that strip starts and stops, how wide the title may be drawn so a strip is still left, and what a double click on a titlebar is the user's setting to decide
 jot/Sources/BirtaJot/TitlePopover.swift       The Name/Tags/Where popover the title opens, and why it is built rather than inherited from NSDocument
+jot/Sources/BirtaJot/MissingFileScreen.swift  What the panel says when the bound file has gone, and the two lanes its card keeps clear so the titlebar can still name its own controls
 jot/Sources/BirtaJot/StatusOverlay.swift      The transient status line: legible with no frame, so the ink is measured and the scrim is the page's own paper colour
 jot/Sources/BirtaJotCore/ActiveBinding.swift  WHICH of Jot's three file settings is in force, so a rename writes back to the one it was read from
 jot/Sources/BirtaJotCore/DocumentTypes.swift  The file types the Mac app OPENS against the one it WRITES, and why those are two lists; the Open With claim's Swift half

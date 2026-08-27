@@ -353,13 +353,81 @@ case "$MISSING" in
     "") echo "missing screen       FAILED: the screen never reported its geometry" >&2; exit 1 ;;
     *) echo "missing screen       FAILED: the page is hidden, so Settings is unreachable: $MISSING" >&2; exit 1 ;;
 esac
-M_SCREEN="$(printf '%s' "$MISSING" | sed 's/.*screen=\([0-9]*\).*/\1/')"
-M_CONTENT="$(printf '%s' "$MISSING" | sed 's/.*content=\([0-9]*\).*/\1/')"
-if [ -z "$M_SCREEN" ] || [ -z "$M_CONTENT" ] || [ "$M_SCREEN" -ge "$M_CONTENT" ]; then
-    echo "missing screen       FAILED: the screen covers the whole window, including the band: $MISSING" >&2
+# ...and the card leaves the page's tooltip lane clear.
+#
+# Reachable and READABLE are two claims and only the first survives an opaque
+# view starting at the band: the page draws the chip naming a titlebar button
+# just under the band, so a covering that begins there hides the label of every
+# control in the strip, the Settings gear's included.
+#
+# Against the LIVE chip rather than against the lane constant, which is what
+# makes this the check and `MissingFileScreenTests` the floor. The chip's
+# height is the page's to decide, so a value in Swift can be right on the day
+# it is written and wrong after a font change nothing on that side can see.
+# Both figures are in the page's coordinates, y down from the top of the
+# window, which is the one convention they can be compared in.
+show_panel
+printf '{"type":"__jotHoverButton","index":0,"hovered":true}' > "$SCRATCH_DIR/.debug-message.json"
+kill -URG $PID; sleep 1.2
+rm -f "$SCRATCH_DIR/.debug-message.json"
+M_TIP="$(grep "^jot-trace hovertooltip " "$LOG" | tail -1 | sed 's/^jot-trace hovertooltip //')"
+if [ -z "$M_TIP" ] || [ "$M_TIP" = "none" ]; then
+    echo "missing screen       FAILED: with the note gone, pointing at a file button drew no tooltip" >&2
+    echo "  trace: ${M_TIP:-<none>}" >&2; exit 1
+fi
+M_TIP_Y="$(echo "$M_TIP" | sed -n 's/.* y=\([0-9-]*\).*/\1/p')"
+M_TIP_H="$(echo "$M_TIP" | sed -n 's/.* h=\([0-9-]*\).*/\1/p')"
+printf '{"type":"__jotHoverButton","index":0,"hovered":false}' > "$SCRATCH_DIR/.debug-message.json"
+kill -URG $PID; sleep 0.6
+rm -f "$SCRATCH_DIR/.debug-message.json"
+M_CARD_TOP="$(printf '%s' "$MISSING" | sed -n 's/.*cardTop=\([0-9-]*\).*/\1/p')"
+M_CARD_H="$(printf '%s' "$MISSING" | sed -n 's/.*cardH=\([0-9-]*\).*/\1/p')"
+if [ -z "$M_CARD_TOP" ] || [ -z "$M_CARD_H" ] || [ "$M_CARD_H" -le 0 ]; then
+    echo "missing screen       FAILED: no card was drawn, so the clearance below is about nothing: $MISSING" >&2
     exit 1
 fi
-echo "missing screen       ok: covers the document ($M_SCREEN of $M_CONTENT) and leaves the page's controls"
+if [ -z "$M_TIP_Y" ] || [ -z "$M_TIP_H" ] || [ "$M_CARD_TOP" -lt $((M_TIP_Y + M_TIP_H)) ]; then
+    echo "missing screen       FAILED: the card covers the band's tooltip, so its controls cannot be named" >&2
+    echo "  card top=$M_CARD_TOP  tooltip y=$M_TIP_Y h=$M_TIP_H" >&2; exit 1
+fi
+echo "missing screen       ok: the card starts at $M_CARD_TOP, clear of the tooltip ending at $((M_TIP_Y + M_TIP_H))"
+# ...and the band itself is down to the one control that still has a job.
+#
+# With no file there is nothing for Find, the checks, the outline or the
+# typography controls to act on. The gear is the exception, and it is the whole
+# point of the state: on a panel with no Dock icon it is the way to
+# preferences. The count comes off the same trace the two halves of the band
+# are compared with, so a page that hid the lot would read as zero here rather
+# than passing for being tidy.
+M_PAGE_COUNT="$(grep "^jot-trace titlebarstrip " "$LOG" | tail -1 | sed -n 's/.*pageCount=\([0-9]*\).*/\1/p')"
+if [ "${M_PAGE_COUNT:-0}" != "1" ]; then
+    echo "missing screen       FAILED: the band holds ${M_PAGE_COUNT:-no} page controls, wanted the gear alone" >&2
+    grep "^jot-trace titlebarstrip " "$LOG" | tail -1 | sed 's/^/  /' >&2; exit 1
+fi
+echo "missing screen       ok: the band is down to the Settings gear"
+# ...and it does not fade when the window is left alone.
+#
+# The rest of that row fades when the pointer and the keyboard both go
+# elsewhere, which is right for controls you reach for while working and wrong
+# for the one control that is a way OUT of this state. A gear somebody has to
+# know to hover for is not a route to preferences, and the window most likely
+# to be in this state is a summoned panel that has just lost the pointer.
+#
+# Two selectors over one property, so what is asked is the COMPUTED value: a
+# rule that lost the specificity tie would leave no trace anywhere else.
+printf '{"type":"__jotResting"}' > "$SCRATCH_DIR/.debug-message.json"
+kill -URG $PID; sleep 1.2
+rm -f "$SCRATCH_DIR/.debug-message.json"
+REST="$(grep "^jot-trace restingchrome " "$LOG" | tail -1 | sed 's/^jot-trace restingchrome //')"
+case "$REST" in
+    "opacity=1 visibility=visible missing=true") ;;
+    *"missing=false"*)
+        echo "missing screen       FAILED: the page was asked about resting outside the missing state: $REST" >&2
+        exit 1 ;;
+    *) echo "missing screen       FAILED: the gear fades with the rest of the row at rest: ${REST:-<nothing>}" >&2
+       exit 1 ;;
+esac
+echo "missing screen       ok: and the gear stays put when the window is left alone"
 # ...and a reload while the note is missing leaves the panel still writable.
 #
 # The read side refuses while the note is gone, because the buffer is the only
@@ -389,6 +457,20 @@ rm -f "$SCRATCH_DIR/.debug-message.json"
 if [ -e "$SCRATCH_DIR/Scratch pad.md" ]; then
     echo "deleted note         FAILED: reloading recreated the deleted note" >&2; exit 1
 fi
+# ...and the band is STILL down to the gear on the other side of that remount.
+#
+# The page's whole memory of this state is a class on its body, so a remount
+# for any reason at all brings the row back in full while the card in the
+# middle of the window is still saying the note is gone. Nothing in the app
+# would look wrong: the reload is invisible, and a window that has been open a
+# while has been through several. Asserted after the wait above, so it is a
+# question about a page that really was rebuilt.
+R_PAGE_COUNT="$(grep "^jot-trace titlebarstrip " "$LOG" | tail -1 | sed -n 's/.*pageCount=\([0-9]*\).*/\1/p')"
+if [ "${R_PAGE_COUNT:-0}" != "1" ]; then
+    echo "missing screen       FAILED: a remount put ${R_PAGE_COUNT:-no} controls back in the band" >&2
+    grep "^jot-trace titlebarstrip " "$LOG" | tail -1 | sed 's/^/  /' >&2; exit 1
+fi
+echo "missing screen       ok: and the band is still the gear alone after a remount"
 
 # Put it back the way the panel's own button does, so the checks below have a
 # file to read. This is also the only exercise Save It Back gets, and after the
@@ -408,6 +490,27 @@ else
     echo "deleted note         FAILED: Save It Back wrote a file without the buffer in it" >&2
     cat "$SCRATCH_DIR/Scratch pad.md" >&2; exit 1
 fi
+
+# The other half of the resting question, asked now that there is a file again.
+#
+# The arm above says the gear survives the fade; on its own it cannot tell that
+# from a fade that never happens, because a row nothing hides also reads as
+# fully opaque. This is the same query in the state the override does not
+# apply to, so the pair discriminates: one answer has to be 0 and the other 1,
+# and a page where either rule went missing gives the same answer twice.
+printf '{"type":"__jotResting"}' > "$SCRATCH_DIR/.debug-message.json"
+kill -URG $PID; sleep 1.2
+rm -f "$SCRATCH_DIR/.debug-message.json"
+REST_BACK="$(grep "^jot-trace restingchrome " "$LOG" | tail -1 | sed 's/^jot-trace restingchrome //')"
+case "$REST_BACK" in
+    "opacity=0 visibility=hidden missing=false")
+        echo "resting chrome       ok: the row fades with a file open and the gear stays without one" ;;
+    *"missing=true"*)
+        echo "resting chrome       FAILED: the note is still missing, so this asked the same question twice: $REST_BACK" >&2
+        exit 1 ;;
+    *) echo "resting chrome       FAILED: the band's controls no longer settle down at rest: ${REST_BACK:-<nothing>}" >&2
+       exit 1 ;;
+esac
 
 # The system date picker opens AT THE CARET.
 #
@@ -1797,6 +1900,95 @@ if [ "$(cat "$BIRTA_JOT_SCRATCHPAD" 2>/dev/null || true)" != "$PAD_BEFORE" ]; th
     exit 1
 fi
 echo "two windows          ok: '$TWO_STAMP' went to $(basename "$TWO_FILE") and the first note is untouched"
+
+# WHICH window a file opens into, when the one in front is standing on a file
+# that has gone.
+#
+# `WindowSet.openDocument` asks the frontmost window and nothing else, so both
+# arms below are about that window: vacant, it takes the file and no second
+# window appears; holding unsaved text, it is left alone and the file gets a
+# window of its own. The second arm is the safety one, and it is the reason
+# this is a pair rather than one check: a rule that reused any window whose
+# file was missing would pass the first arm and rebind away from a buffer
+# holding the only copy of somebody's note.
+#
+# Driven through `__jotOpen`, which skips the chooser and nothing else: the
+# rule under test is `openDocument`'s, and a probe that opened a window itself
+# would be a second answer able to agree with the real one while being checked.
+# The count comes back from `WindowSet` for the same reason.
+printf '{"type":"__jotNewWindow"}' > "$SCRATCH_DIR/.debug-message.json"
+kill -URG $PID; sleep 1.5
+rm -f "$SCRATCH_DIR/.debug-message.json"
+# The window it just made, found by SHAPE rather than by a name this script
+# would have to keep in step with `NoteNameTemplate`: a new note is the one
+# empty file in the folder.
+VACANT_FILE=""
+VACANT_N=0
+for f in "$SCRATCH_DIR"/*.md; do
+    [ -s "$f" ] && continue
+    VACANT_FILE="$f"; VACANT_N=$((VACANT_N + 1))
+done
+if [ "$VACANT_N" != 1 ]; then
+    echo "open into empty      FAILED: wanted one empty note to work with, found $VACANT_N" >&2
+    ls -l "$SCRATCH_DIR"/*.md >&2; exit 1
+fi
+# Gone, and the panel told about it the way the deleted-note check above does:
+# `rm` is not a coordinated delete, so it is the pre-write existence check that
+# notices rather than the file presenter.
+rm -f "$VACANT_FILE"
+printf '{"type":"__jotSaveNow"}' > "$SCRATCH_DIR/.debug-message.json"
+kill -URG $PID; sleep 1.2
+rm -f "$SCRATCH_DIR/.debug-message.json"
+if ! grep -q "^jot-trace noteMissing at=$(basename "$VACANT_FILE")$" "$LOG"; then
+    echo "open into empty      FAILED: the front window never noticed its file was gone" >&2
+    echo "  (so the open below would have proved nothing)" >&2
+    grep "^jot-trace noteMissing " "$LOG" | tail -3 | sed 's/^/  /' >&2; exit 1
+fi
+printf 'a third note\n' > "$SCRATCH_DIR/Third note.md"
+printf '{"type":"__jotOpen","path":"%s"}' "$SCRATCH_DIR/Third note.md" > "$SCRATCH_DIR/.debug-message.json"
+# Longer than the other waits here: taking the file over reloads the page, and
+# the arm below types into it.
+kill -URG $PID; sleep 3.0
+rm -f "$SCRATCH_DIR/.debug-message.json"
+OPENED="$(grep "^jot-trace open " "$LOG" | tail -1 | sed 's/^jot-trace open //')"
+O_WINDOWS="$(echo "$OPENED" | sed -n 's/.*windows=\([0-9-]*\).*/\1/p')"
+O_AT="$(echo "$OPENED" | sed -n 's/.*at=\(.*\) missing=.*/\1/p')"
+if [ "$O_WINDOWS" != 3 ] || [ "$O_AT" != "Third note.md" ] || [ "${OPENED#*missing=}" != "false" ]; then
+    echo "open into empty      FAILED: the file did not take over the window whose note had gone" >&2
+    echo "  wanted windows=3 at=Third note.md missing=false, got: ${OPENED:-<nothing>}" >&2; exit 1
+fi
+echo "open into empty      ok: the file took the window that was standing on a deleted note"
+
+# ...and the other arm: a window whose buffer is the only copy is left alone.
+#
+# Same gesture, same state, one difference: this window's buffer has text in it
+# that exists nowhere else, because the file it came from has just been
+# deleted. Rebinding it away would drop those bytes, so the file opened here
+# has to get a window of its own.
+O_STAMP="vacancy-$(date +%s)"
+printf '{"type":"__testInsertText","text":"%s\n"}' "$O_STAMP" > "$SCRATCH_DIR/.debug-message.json"
+kill -URG $PID; sleep 0.6
+rm -f "$SCRATCH_DIR/.debug-message.json"
+rm -f "$SCRATCH_DIR/Third note.md"
+printf '{"type":"__jotSaveNow"}' > "$SCRATCH_DIR/.debug-message.json"
+kill -URG $PID; sleep 1.2
+rm -f "$SCRATCH_DIR/.debug-message.json"
+if ! grep -q "^jot-trace noteMissing at=Third note.md$" "$LOG"; then
+    echo "open into empty      FAILED: the window never noticed Third note.md was gone" >&2
+    grep "^jot-trace noteMissing " "$LOG" | tail -3 | sed 's/^/  /' >&2; exit 1
+fi
+printf 'a fourth note\n' > "$SCRATCH_DIR/Fourth note.md"
+printf '{"type":"__jotOpen","path":"%s"}' "$SCRATCH_DIR/Fourth note.md" > "$SCRATCH_DIR/.debug-message.json"
+kill -URG $PID; sleep 1.5
+rm -f "$SCRATCH_DIR/.debug-message.json"
+KEPT="$(grep "^jot-trace open " "$LOG" | tail -1 | sed 's/^jot-trace open //')"
+K_WINDOWS="$(echo "$KEPT" | sed -n 's/.*windows=\([0-9-]*\).*/\1/p')"
+K_AT="$(echo "$KEPT" | sed -n 's/.*at=\(.*\) missing=.*/\1/p')"
+if [ "$K_WINDOWS" != 4 ] || [ "$K_AT" != "Third note.md" ]; then
+    echo "open into empty      FAILED: a window holding the only copy of a note was rebound away from it" >&2
+    echo "  wanted windows=4 at=Third note.md, got: ${KEPT:-<nothing>}" >&2; exit 1
+fi
+echo "open into empty      ok: and a window still holding unsaved text kept it, in a window of its own"
 
 # What a second window COSTS, measured rather than estimated: MAR-396 asks for
 # this figure and nobody had one.

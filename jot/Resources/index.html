@@ -132,6 +132,39 @@
   .editor-topbar .tb-zone--right {
     transition: opacity 0.12s ease, visibility 0s;
   }
+
+  /* The bound file is gone: the band keeps the gear and nothing else.
+
+     `Coordinator.showMissingFileScreen` sets the class, and the state it names
+     is the one where there is no document. Find has nothing to search, the
+     checks nothing to flag, the outline no headings and the typography
+     controls no text to set; every one of them is a control that answers with
+     nothing, in the one state where the window is already saying something has
+     gone wrong. The gear is the exception because its job is not about the
+     document at all: on a panel launched with no Dock icon and no menu bar in
+     front of it, that button is the way to preferences, and where the notes
+     are kept is exactly what somebody looks for when one has disappeared.
+
+     The formatting row goes too, and it is the one thing here that reflows the
+     page. That is the cost the resting treatment above refuses to pay and this
+     one is right to: resting happens whenever attention leaves the window, and
+     this happens once, on a state change the reader has already been told
+     about by a card in the middle of the window. */
+  body.jot-note-missing .editor-topbar .tb-zone > *:not([data-item-id="settings"]),
+  body.jot-note-missing .tb-dock {
+    display: none;
+  }
+
+  /* ...and the gear does not fade with the rest at rest.
+
+     A control somebody has to know to hover for is not a route to preferences,
+     and the window this state is most likely to be seen on is a summoned panel
+     that has just lost the pointer. It overrides the resting rule above rather
+     than being excluded from it, so nothing about the ordinary case moves. */
+  body.jot-note-missing.jot-resting .editor-topbar .tb-zone--right {
+    opacity: 1;
+    visibility: visible;
+  }
 </style>
 </head>
 <body class="{{THEME_CLASS}}">
