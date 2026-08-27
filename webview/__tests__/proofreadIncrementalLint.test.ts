@@ -186,6 +186,32 @@ describe("the proofread rescan asks the host only about what changed", () => {
         expect(lintRequests(spy)).toHaveLength(0);
     });
 
+    it("an answer that arrives after the document moved on should still be remembered", async () => {
+        // Opening a long note and typing before the annotations settle. The
+        // first pass is still in flight, so its reply is keyed to positions that
+        // have moved and cannot be drawn from. Its FINDINGS are still valid,
+        // because they are about text, and the rescan that follows must not
+        // re-ask the host for the whole document to learn them again.
+        await vi.advanceTimersByTimeAsync(2000);
+        const first = lintRequests(spy);
+        expect(first).toHaveLength(1);
+
+        // Edit BEFORE answering, so the reply lands against a document that has
+        // already changed.
+        const v = view(editor);
+        v.dispatch(v.state.tr.insertText("x", 3));
+        answer(first[0]);
+        spy.mockClear();
+
+        await vi.advanceTimersByTimeAsync(2000);
+
+        // One block: the edited one. Everything the discarded reply covered is
+        // known. Before this, the whole document was asked about again.
+        const requests = lintRequests(spy);
+        expect(requests).toHaveLength(1);
+        expect(requests[0].blocks).toHaveLength(1);
+    });
+
     it("a run of keystrokes should ask about one block per settle, never the document", async () => {
         // The shape a person types in when the editor already feels slow: each
         // character followed by a pause longer than the debounce, so every one

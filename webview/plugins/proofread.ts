@@ -757,17 +757,23 @@ export const proofreadPlugin = $prose(() => {
             currentApplier = (id, results) => {
                 if (destroyed || view.isDestroyed) { return; }
                 if (id !== lintRequestId) { return; } // stale response
-                // If the doc changed since the request, positions are invalid;
-                // the pending rescan will re-request.
-                if (view.state.doc !== lintRequestDoc) { return; }
-                // The host answered only about the blocks it had not seen, so
-                // its reply is folded into the cache and the decoration set is
-                // then built from EVERY block of the request.
+                // The reply is folded into the cache BEFORE the staleness check
+                // below, and that order is the point rather than an accident.
+                // What the host sent back is an answer about TEXT, and text does
+                // not go stale when the document moves under it; only the
+                // POSITIONS the answer is keyed to do. Discarding the whole
+                // reply because the caret moved on is how a person who opens a
+                // long note and starts typing before the annotations settle pays
+                // for the same whole-document check twice.
                 const askedText = new Map(lintRequestBlocks.map((b) => [b.key, b.text]));
                 for (const { key, lints } of results) {
                     const text = askedText.get(key);
                     if (text !== undefined) { rememberLints(text, lints); }
                 }
+                // Positions ARE stale, so no decorations are built from them;
+                // the pending rescan will rebuild, and will now find these
+                // answers already known.
+                if (view.state.doc !== lintRequestDoc) { return; }
                 const cfg = proofreadPluginKey.getState(view.state)?.config;
                 const meta: ProofreadMeta = {
                     type: "lints",
