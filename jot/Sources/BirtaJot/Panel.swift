@@ -79,9 +79,25 @@ final class JotPanel: NSPanel {
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { true }
 
-    /// The close button hides; the buffer is never "closed".
+    /// A close is a REQUEST while anybody is listening for one, and a real
+    /// close when nobody is.
+    ///
+    /// The close button and Cmd+W both arrive here, and what they mean is the
+    /// app's to decide: with several windows open this one closes, and with one
+    /// it hides, so the editor stays mounted and the next summon is immediate.
+    ///
+    /// The fall-through matters as much as the request, and did not exist while
+    /// nothing could close a window. Without it there is no way to close this
+    /// window at all, in any code path: `orderOut` takes it off the screen and
+    /// leaves it in `NSApp.windows`, which is the list AppKit builds the Window
+    /// menu from, so a note you closed would go on being listed there. Clearing
+    /// `onHideRequest` is what a teardown does to say it means this one.
     override func close() {
-        onHideRequest?()
+        guard let onHideRequest else {
+            super.close()
+            return
+        }
+        onHideRequest()
     }
 
     /// Put this window one step down and right of `point`, at the size of the

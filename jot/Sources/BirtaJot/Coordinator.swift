@@ -268,8 +268,12 @@ final class Coordinator {
         observers.forEach(NotificationCenter.default.removeObserver)
         observers.removeAll()
         cancelPendingAutosave()
+        // Cleared FIRST, which is what turns the next line from a request to
+        // hide into a real close: `JotPanel.close` states that rule. A window
+        // only ordered out stays in `NSApp.windows` and so stays in the Window
+        // menu, listed as open long after it was closed.
         panel.onHideRequest = nil
-        panel.orderOut(nil)
+        panel.close()
         panel.contentView = nil
         host.webView.removeFromSuperview()
     }
