@@ -138,10 +138,24 @@ describe("editor command contributions", () => {
         // belongs to. So the literal is the template around the name, and what
         // relates it to the row is that expanding it with the shared constant
         // reproduces the row exactly.
-        const expanded = titles[0].replace(
-            /\\\(AppFlavor\.current\.displayName\)/g,
-            JOT_PRODUCT_NAME,
-        );
+        //
+        // The interpolation is matched by its SHAPE and its tail, never by the
+        // whole expression inside it. A pattern spelling out the expression
+        // pins a Swift identifier in a TypeScript regex, and a rename on the
+        // Swift side then breaks a guard that nothing in that diff points at:
+        // moving the window off `AppFlavor.current` and onto a flavour of its
+        // own is a refactor that changes no behaviour, and it broke exactly
+        // this line. What the claim actually needs is that ONE thing is
+        // interpolated and that it is a display name; which value carries the
+        // name is the window's business.
+        const interpolations = [...titles[0].matchAll(/\\\(([^)]+)\)/g)].map((m) => m[1]!);
+        expect(interpolations,
+               "the settings window title should interpolate exactly one name")
+            .toHaveLength(1);
+        expect(interpolations[0],
+               "the settings window title should be built from a display name, not a literal")
+            .toMatch(/\.displayName$/);
+        const expanded = titles[0].replace(/\\\([^)]+\)/g, JOT_PRODUCT_NAME);
         expect(expanded).toBe(settingsMenuTitle(JOT_PRODUCT_NAME));
     });
 

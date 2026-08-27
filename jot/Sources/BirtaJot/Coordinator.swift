@@ -2287,7 +2287,8 @@ final class Coordinator {
     }
 
     private func makeWelcome() -> WelcomeView {
-        let view = WelcomeView(onHotkeyChange: { [weak self] in self?.onHotkeyChanged?() ?? -1 })
+        let view = WelcomeView(flavour: .current,
+                               onHotkeyChange: { [weak self] in self?.onHotkeyChanged?() ?? -1 })
         view.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(view)
         NSLayoutConstraint.activate([

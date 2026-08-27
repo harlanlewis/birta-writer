@@ -48,7 +48,7 @@ final class WelcomeScreenTests: XCTestCase {
     }
 
     func testTheFirstRunScreenShouldDrawEveryRowItAsksAbout() {
-        let welcome = WelcomeView(onHotkeyChange: { 0 })
+        let welcome = WelcomeView(flavour: .release, onHotkeyChange: { 0 })
         welcome.layoutSubtreeIfNeeded()
         let drawn = rowLabels(in: welcome)
         let declared = SettingsForm.rows(of: SettingsForm.welcome).map(\.rawValue)
@@ -64,7 +64,7 @@ final class WelcomeScreenTests: XCTestCase {
     /// of claim nothing else on this screen can make: every other check here
     /// asks whether something is drawn.
     func testTheFirstRunScreenShouldNotWriteTheAppsNameUnderItsOwnMark() {
-        let welcome = WelcomeView(onHotkeyChange: { 0 })
+        let welcome = WelcomeView(flavour: .release, onHotkeyChange: { 0 })
         welcome.layoutSubtreeIfNeeded()
 
         var text: [String] = []
@@ -95,12 +95,13 @@ final class WelcomeScreenTests: XCTestCase {
     /// question is findable in Settings rather than findable on one particular
     /// tab. Automatically update is the row that makes the distinction real.
     func testEveryRowTheFirstRunDrawsShouldBeDrawnInSettingsToo() {
-        let welcome = WelcomeView(onHotkeyChange: { 0 })
+        let welcome = WelcomeView(flavour: .release, onHotkeyChange: { 0 })
         welcome.layoutSubtreeIfNeeded()
         let asked = rowLabels(in: welcome)
 
-        let controller = SettingsWindowController(onHotkeyChange: { 0 }, onChange: { _ in },
-                                                  onShowWelcome: {}, onCheckForUpdates: {})
+        let controller = SettingsWindowController(flavour: .release, onHotkeyChange: { 0 },
+                                                  onChange: { _ in }, onShowWelcome: {},
+                                                  onCheckForUpdates: {})
         defer { controller.window?.close() }
         var settings: [String] = []
         for tab in SettingsWindowController.tabNames {
@@ -117,5 +118,53 @@ final class WelcomeScreenTests: XCTestCase {
                           "the first run asks about \(label) on screen, and no Settings pane "
                           + "draws a row by that name to go back to")
         }
+    }
+
+    /// The first run's update row, on both builds, and the pair is what is
+    /// asserted.
+    ///
+    /// This screen applies `problemsOnly`, so the two builds differ in a
+    /// SECOND way that Settings does not have: a working row says nothing at
+    /// all here, because the screen asks questions rather than documenting
+    /// answers, and a row that cannot be operated says the same sentence
+    /// Settings gives it. Both halves of that promise are the development
+    /// arm's, and neither was reachable while the screen read
+    /// `AppFlavor.current`: under `swift test` that is always the release.
+    func testOnlyADevelopmentBuildsFirstRunShouldExplainADeadUpdateRow() {
+        var drawn: [AppFlavor: (dimmed: Bool, note: String, red: Bool)] = [:]
+        for flavour in AppFlavor.allCases {
+            let welcome = WelcomeView(flavour: flavour, onHotkeyChange: { 0 })
+            welcome.layoutSubtreeIfNeeded()
+            guard let row = updateRow(in: welcome) else {
+                return XCTFail("the first-run screen draws no update row on \(flavour)")
+            }
+            drawn[flavour] = (row.titleLabel.textColor == .disabledControlTextColor,
+                              row.caption?.stringValue ?? "",
+                              row.caption?.textColor == .systemRed)
+        }
+
+        XCTAssertEqual(drawn[.release]?.dimmed, false)
+        XCTAssertEqual(drawn[.release]?.note, "",
+                       "the first run documents a setting that works, which is Settings' job")
+        XCTAssertEqual(drawn[.dev]?.dimmed, true)
+        XCTAssertEqual(drawn[.dev]?.note, "A development build does not replace itself.")
+        XCTAssertEqual(drawn[.dev]?.red, true)
+        // The same words as Settings, and taken from the rule rather than
+        // written twice: two screens disagreeing about what is wrong with a
+        // row is the thing `problemsOnly` exists to prevent.
+        XCTAssertEqual(drawn[.dev]?.note,
+                       RowAvailability.autoUpdate(updatesItself: false).note)
+    }
+
+    /// The update row on the first-run screen, found by its own name. Read
+    /// back off the hierarchy: the screen's `rowViews` is its own, and a check
+    /// holding it would pass whether or not the row reached the screen.
+    private func updateRow(in view: NSView) -> SettingsRowView? {
+        if let row = view as? SettingsRowView,
+           row.titleLabel.stringValue == SettingsRow.autoUpdate.rawValue { return row }
+        for subview in view.subviews {
+            if let found = updateRow(in: subview) { return found }
+        }
+        return nil
     }
 }

@@ -26,7 +26,7 @@ final class WelcomeAppearanceTests: XCTestCase {
     }
 
     private func made() -> WelcomeView {
-        let welcome = WelcomeView(onHotkeyChange: { 0 })
+        let welcome = WelcomeView(flavour: .release, onHotkeyChange: { 0 })
         welcome.frame = NSRect(x: 0, y: 0, width: 520, height: 720)
         welcome.layoutSubtreeIfNeeded()
         return welcome
