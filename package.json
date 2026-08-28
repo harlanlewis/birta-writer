@@ -2600,7 +2600,7 @@
                     "markdownDescription": "**Display only — your file never changes.** Show Google Sheets links as cards. A published-to-web sheet, framed only when you click. Requires `#birta.embeds.enabled#` and `#birta.network.enabled#`. Turn this off to leave Google Sheets links looking like ordinary links."
                 },
                 "birta.embeds.providers.googlefile": {
-                    "order": 105.40,
+                    "order": 105.4,
                     "type": "boolean",
                     "default": true,
                     "scope": "application",
@@ -2730,6 +2730,7 @@
         "@vscode/test-electron": "^3.1.0",
         "@vscode/vsce": "^3.9.2",
         "esbuild": "^0.28.1",
+        "happy-dom": "20.11.12",
         "jsdom": "24.1.3",
         "mocha": "^11.8.0",
         "ovsx": "1.1.1",

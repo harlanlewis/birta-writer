@@ -1,4 +1,10 @@
 /**
+ * @vitest-environment jsdom
+ *
+ * happy-dom does not expose `DOMTokenList` as an environment global, and
+ * the incremental-surfacing spec spies on `DOMTokenList.prototype.remove`.
+ */
+/**
  * The multi-block selection cover pass (plugins/headingFold/plugin.ts): the
  * markers of every top-level block a selection spans surface with
  * `heading-fold-marker--covered`, and the pass is INCREMENTAL — a selection

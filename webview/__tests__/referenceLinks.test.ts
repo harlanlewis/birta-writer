@@ -1,4 +1,11 @@
 /**
+ * @vitest-environment jsdom
+ *
+ * The non-comment html node's rendering runs through the DOMPurify
+ * sanitize path, which does not actually work under happy-dom — the
+ * `<sub>` face arrives stripped to bare text there.
+ */
+/**
  * Reference-style links and HTML comments: visible in the editor, faithful
  * on disk. Drives the REAL Milkdown editor with the production serialization
  * config (which filters remark-inline-links and registers the
