@@ -51,16 +51,13 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
-      - name: Run unit tests with coverage
-        run: pnpm test:coverage
-
-      - name: Upload coverage report
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: coverage-report
-          path: coverage/
-          retention-days: 7
+      # No coverage on the PR path, deliberately. V8 instrumentation plus
+      # report generation slows every push for a number nobody reads per-PR;
+      # the 70% thresholds are still enforced on a schedule by the `coverage`
+      # job in nightly-fidelity.yml, where a breach lands as a scheduled-run
+      # failure email rather than a red check on an unrelated author's PR.
+      - name: Run unit tests
+        run: pnpm test
 
   build:
     name: Build

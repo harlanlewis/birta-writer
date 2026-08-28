@@ -1,5 +1,9 @@
 name: Nightly Fidelity
 
+# Two nightly gates ride this schedule: the deep fidelity sweep below, and the
+# `coverage` job at the bottom — the coverage-threshold check CI's per-push
+# `unit-test` job used to carry (see that job's comment for why it moved).
+#
 # The deep half of a tiered fidelity gate.
 #
 # `corpusMoveSampling.test.ts` samples the (source block, target boundary) pair
@@ -103,3 +107,41 @@ jobs:
             echo "Content conservation under moves is \`phase-0-fidelity\`. File it in **Linear**"
             echo "(team Birta Writer) after reproducing it locally — not as a GitHub issue."
           } >> "$GITHUB_STEP_SUMMARY"
+
+  # The coverage gate, moved here from CI's per-push `unit-test` job. That job
+  # now runs the suite bare (`pnpm test`): V8 instrumentation plus report
+  # generation slowed every push for a threshold that moves on the order of
+  # days, not commits. Nightly is the right cadence for it — the 70%
+  # line/function thresholds in vitest.config.ts still FAIL this job when
+  # breached, so a coverage slide surfaces at most a day after it lands, via
+  # the same scheduled-failure email as the sweep above. A breach is main's
+  # problem, not a PR author's: `git log` since the last green nightly names
+  # the commits that could have moved it.
+  coverage:
+    name: Coverage thresholds
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run unit tests with coverage
+        run: pnpm test:coverage
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-report
+          path: coverage/
+          retention-days: 7
