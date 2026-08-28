@@ -2707,6 +2707,7 @@
         "mac:test": "bash mac/scripts/test.sh",
         "typecheck": "tsc --noEmit -p tsconfig.typecheck.json && tsc --noEmit -p tsconfig.webview.typecheck.json",
         "test": "vitest run",
+        "test:changed": "vitest run --changed origin/main",
         "fidelity": "vitest run --reporter=verbose toolFidelity roundTripCorpus logseqRoundTrip",
         "test:e2e": "node e2e/run.mjs",
         "test:integration": "node -e \"require('fs').rmSync('out',{recursive:true,force:true})\" && pnpm build && tsc -p tsconfig.integration.json && node out/test/runTest.js",
