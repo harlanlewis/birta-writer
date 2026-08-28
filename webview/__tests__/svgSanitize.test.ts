@@ -1,4 +1,13 @@
 /**
+ * @vitest-environment jsdom
+ *
+ * DOMPurify does not actually work under happy-dom: `sanitize()` reports
+ * `isSupported: true` and then returns markup with remote hrefs, event
+ * handlers and the MAR-366 style declarations intact. Every stripping
+ * assertion here would fail — or worse, be rewritten to pass while
+ * guarding nothing.
+ */
+/**
  * The ```svg fence's sanitize policy (MAR-402).
  *
  * Asserted against the REAL path: the production config plus the hooks the

@@ -56,7 +56,37 @@ export default defineConfig({
                 extends: "./vitest.config.ts",
                 test: {
                     name: "webview",
-                    environment: "jsdom",
+                    // happy-dom, not jsdom: constructing a jsdom window cost
+                    // ~0.44s in every isolated worker, which across 300+
+                    // webview files dominated the suite's wall clock. Files
+                    // that need real jsdom behavior pin it back per-file with
+                    // `@vitest-environment jsdom` (grep for it); each pin
+                    // names the incompatibility that earned it. setup.ts
+                    // needs no fork: its DOM shims are `??=`/`typeof` guards,
+                    // so whichever environment is live keeps its own
+                    // implementations and only the true gaps are filled.
+                    environment: "happy-dom",
+                    // happy-dom, unlike jsdom, really performs the loads a
+                    // document asks for: it fetches `<link rel=stylesheet>`
+                    // hrefs (katexLoader's `<link>` surfaced as a file:-URL
+                    // fetch error in every worker) and follows link-click
+                    // navigations onto the actual network (a click test was
+                    // observed opening a TLS connection to example.com).
+                    // A unit suite must never touch the network, so both are
+                    // off; navigation falls back to setting the URL, which is
+                    // the jsdom behavior the tests were written against.
+                    environmentOptions: {
+                        happyDOM: {
+                            settings: {
+                                disableCSSFileLoading: true,
+                                navigation: {
+                                    disableMainFrameNavigation: true,
+                                    disableChildFrameNavigation: true,
+                                    disableChildPageNavigation: true,
+                                },
+                            },
+                        },
+                    },
                     include: ["webview/__tests__/**/*.test.ts"],
                     setupFiles: ["./webview/__tests__/setup.ts"],
                 },

@@ -1,4 +1,11 @@
 /**
+ * @vitest-environment jsdom
+ *
+ * The stale-reply spec (a reply landing after the caret left the code
+ * span) depends on jsdom's async ordering; under happy-dom the dropdown
+ * the test expects torn down is still mounted.
+ */
+/**
  * pathComplete tests: the inline-code path autocomplete (typing `img/` inside
  * an inline `code` span offers workspace paths).
  *

@@ -1,4 +1,11 @@
 /**
+ * @vitest-environment jsdom
+ *
+ * The html NodeView's rendered face comes out of the DOMPurify sanitize
+ * path, which does not actually work under happy-dom — the set-piece
+ * renders empty there and `revealColumn` waits forever for children.
+ */
+/**
  * Editable HTML (MAR-14): the source panel on the html NodeView, and the
  * live inline-pair decorations. Drives the REAL Milkdown editor with the
  * production serialization config, NodeView, and plugin — no mocks — so a
