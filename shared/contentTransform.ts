@@ -19,6 +19,11 @@
  * - A block opened with one delimiter is never closed by the other. A
  *   mismatched pair is not frontmatter at all, so the panel can never write one
  *   dialect's fence over the other's.
+ *
+ * Ported into Swift as `Frontmatter.split` (mac/Sources/BirtaWriterCore/
+ * Frontmatter.swift), pattern string included, with the cases below mirrored
+ * there. Splitting is the host's job on every surface, so a change here needs
+ * the same change there or the two disagree about the same file's bytes.
  */
 export function extractFrontmatter(content: string): { frontmatter: string; body: string } {
     const match = content.match(/^(---|\+\+\+)\r?\n[\s\S]*?\r?\n\1(?:\r?\n|$)/);

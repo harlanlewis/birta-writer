@@ -8,6 +8,16 @@ final class BridgeTests: XCTestCase {
                        .update(content: "# a", baseSyncVersion: 0, seq: 3))
         XCTAssertEqual(WebviewMessage.parse(#"{"type":"flushResult","id":"f1","content":"x","baseSyncVersion":1,"seq":4}"#),
                        .flushResult(id: "f1", content: "x", baseSyncVersion: 1, seq: 4))
+        // The frontmatter panel's own edit. It carries no seq, which is why it
+        // needs a case of its own rather than riding `update`: it rewrites the
+        // block and nothing else, and the body it does not name must survive.
+        XCTAssertEqual(WebviewMessage.parse(##"{"type":"frontmatterUpdate","frontmatter":"---\ntitle: A\n---\n","baseSyncVersion":2}"##),
+                       .frontmatterUpdate(frontmatter: "---\ntitle: A\n---\n", baseSyncVersion: 2))
+        // Clearing the panel is a real edit, not an absent field: it is how the
+        // block is deleted, so an empty string must parse rather than fall to
+        // `.other` and leave the file with metadata the panel no longer shows.
+        XCTAssertEqual(WebviewMessage.parse(#"{"type":"frontmatterUpdate","frontmatter":"","baseSyncVersion":0}"#),
+                       .frontmatterUpdate(frontmatter: "", baseSyncVersion: 0))
         XCTAssertEqual(WebviewMessage.parse(#"{"type":"openUrl","url":"https://a.b"}"#), .openUrl("https://a.b"))
         // The host-prompt seam (MAR-395). A step that parses arrives whole.
         XCTAssertEqual(
@@ -197,17 +207,31 @@ final class BridgeTests: XCTestCase {
     func testUnknownAndMalformedAreNeverFatal() {
         XCTAssertEqual(WebviewMessage.parse(#"{"type":"wordCount","doc":{}}"#), .other(type: "wordCount"))
         XCTAssertEqual(WebviewMessage.parse(#"{"type":"update","content":"x"}"#), .other(type: "update"))
+        XCTAssertEqual(WebviewMessage.parse(#"{"type":"frontmatterUpdate","frontmatter":"x"}"#),
+                       .other(type: "frontmatterUpdate"))
         XCTAssertNil(WebviewMessage.parse("not json"))
         XCTAssertNil(WebviewMessage.parse(#"{"noType":1}"#))
     }
 
     func testHostMessagesEncodeTheSharedShapes() {
-        XCTAssertEqual(HostMessage.initDoc(content: "# a", syncVersion: 0, viewStateJSON: #"{"scrollY":3}"#).jsonString(),
-                       ##"{"content":"# a","syncVersion":0,"type":"init","viewState":{"scrollY":3}}"##)
-        XCTAssertEqual(HostMessage.initDoc(content: "", syncVersion: 0, viewStateJSON: "garbage").jsonString(),
-                       #"{"content":"","syncVersion":0,"type":"init"}"#)
-        XCTAssertEqual(HostMessage.externalUpdate(content: "", syncVersion: 2).jsonString(),
-                       #"{"content":"","syncVersion":2,"type":"externalUpdate"}"#)
+        XCTAssertEqual(HostMessage.initDoc(content: "# a", frontmatter: "", lineOffset: 0, syncVersion: 0,
+                                           viewStateJSON: #"{"scrollY":3}"#).jsonString(),
+                       ##"{"content":"# a","frontmatter":"","lineOffset":0,"syncVersion":0,"type":"init","viewState":{"scrollY":3}}"##)
+        XCTAssertEqual(HostMessage.initDoc(content: "", frontmatter: "", lineOffset: 0, syncVersion: 0,
+                                           viewStateJSON: "garbage").jsonString(),
+                       #"{"content":"","frontmatter":"","lineOffset":0,"syncVersion":0,"type":"init"}"#)
+        XCTAssertEqual(HostMessage.externalUpdate(content: "", frontmatter: "", lineOffset: 0, syncVersion: 2).jsonString(),
+                       #"{"content":"","frontmatter":"","lineOffset":0,"syncVersion":2,"type":"externalUpdate"}"#)
+        // The panel's half of a document, on both messages that carry one. A
+        // host that sends only `content` sends the panel nothing to draw, and
+        // an offset the page never hears leaves every document line it reports
+        // short by the block (webview/agentContext.ts adds it back).
+        XCTAssertEqual(HostMessage.initDoc(content: "# a", frontmatter: "---\ntitle: A\n---\n", lineOffset: 3,
+                                           syncVersion: 1, viewStateJSON: nil).jsonString(),
+                       ##"{"content":"# a","frontmatter":"---\ntitle: A\n---\n","lineOffset":3,"syncVersion":1,"type":"init"}"##)
+        XCTAssertEqual(HostMessage.externalUpdate(content: "# a", frontmatter: "+++\ntitle = \"A\"\n+++\n",
+                                                  lineOffset: 3, syncVersion: 4).jsonString(),
+                       ##"{"content":"# a","frontmatter":"+++\ntitle = \"A\"\n+++\n","lineOffset":3,"syncVersion":4,"type":"externalUpdate"}"##)
         XCTAssertEqual(HostMessage.flushSave(id: "f").jsonString(), #"{"id":"f","type":"flushSave"}"#)
         XCTAssertEqual(HostMessage.flushAck(id: "f", applied: true).jsonString(), #"{"applied":true,"id":"f","type":"flushAck"}"#)
         XCTAssertEqual(HostMessage.imageUploadError(id: "u", error: "no").jsonString(),

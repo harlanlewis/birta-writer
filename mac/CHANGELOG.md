@@ -12,6 +12,16 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ## [Unreleased]
 
+### Added
+
+- Edit Frontmatter, in the Edit menu. It puts the cursor in the metadata panel, or starts one on a note that has none. This window has no command palette, so the panel had no way in of its own: a note that arrived without metadata could not be given any.
+
+### Fixed
+
+- A note's frontmatter is shown in the metadata panel, the way it is in Birta Writer for VS Code, and it is editable there. Birta Writer for Mac handed the whole file to the editor, so the block reached the Markdown parser instead of the panel: the opening `---` drew a horizontal rule, the keys under it became a paragraph and a list, and there was nowhere to read or change the values as fields.
+
+- Editing a note that has frontmatter no longer damages the block. Because the block was in the document rather than the panel, the editor wrote it back as what it had parsed, and the closing `---` was not part of that: the first edit to such a note turned its metadata into ordinary body text, saved. Notes already damaged this way are not repaired, and the fence has to be typed back by hand.
+
 ---
 
 ## [2026.828.0] - 2026, August 28

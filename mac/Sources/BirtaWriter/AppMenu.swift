@@ -348,6 +348,13 @@ enum AppMenu {
               action: .command("deleteBlock"), menu: .edit, group: 1),
         .init(title: "Join Lines", key: "j", modifiers: [.control],
               action: .command("joinLines"), menu: .edit, group: 1),
+        // The metadata panel: focus the block a document already has, or start
+        // one where there is none. Keyless because the extension contributes no
+        // chord for it either, and a row here rather than nothing because this
+        // window has no command palette: without it the panel is reachable only
+        // by having metadata already, which is not a way in.
+        .init(title: "Edit Frontmatter",
+              action: .command("editFrontmatter"), menu: .edit, group: 2),
     ]
 
     // MARK: format
