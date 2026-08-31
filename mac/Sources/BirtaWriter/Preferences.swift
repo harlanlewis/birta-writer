@@ -64,6 +64,7 @@ enum Prefs {
         case proofreadOptions
         case styleExceptions
         case noteHighlight
+        case syntaxSets
     }
 
     /// The keys a reset must NOT clear, each for a reason of its own.
@@ -370,6 +371,29 @@ enum Prefs {
     static var networkEnabled: Bool {
         get { d.bool(forKey: Key.networkEnabled.rawValue) }
         set { d.set(newValue, forKey: Key.networkEnabled.rawValue) }
+    }
+
+    /// The publishing targets whose syntax the editor OFFERS to write.
+    ///
+    /// The absent value means every target, which is what a reader who has
+    /// never opened the setting gets: the app exactly as it was before targets
+    /// existed. An empty STORED list is a different answer and is honoured as
+    /// one, because emptying the list is how a writer asks for CommonMark
+    /// alone; `stringArray(forKey:)` returns nil for a key that was never
+    /// written and an empty array for one that was, which is the distinction
+    /// this getter turns on.
+    ///
+    /// Nothing about the document depends on this. It withdraws Format menu
+    /// rows and it is handed to the page, which withdraws the same tools from
+    /// its own surfaces; the file renders whatever it contains either way.
+    static var syntaxSets: Set<SyntaxSet> {
+        get {
+            guard let stored = d.stringArray(forKey: Key.syntaxSets.rawValue) else {
+                return SyntaxScope.all
+            }
+            return SyntaxScope.sets(from: stored)
+        }
+        set { d.set(SyntaxScope.stored(newValue), forKey: Key.syntaxSets.rawValue) }
     }
 
     static var toolbarLayout: ToolbarLayout {
@@ -756,6 +780,13 @@ enum Prefs {
         report("font", fontPreset != defaultFontPreset, fontPreset)
         report("font size", fontSize != defaultFontSize, String(fontSize))
         report("content width", contentWidth != defaultContentWidth, contentWidth)
+        // Named by what is still ON, because that is what the reader picked and
+        // what a diagnostic reader needs to reproduce the toolbar in front of
+        // them. An empty list is the CommonMark-only target, which reads as
+        // nothing at all unless it is spelled.
+        report("syntax sets", syntaxSets != SyntaxScope.all,
+               syntaxSets.isEmpty ? "CommonMark only"
+                                  : SyntaxScope.stored(syntaxSets).joined(separator: ", "))
         return lines
     }
 
@@ -953,6 +984,7 @@ enum Prefs {
             tocVisibility: tocVisibility,
             tocWidth: tocWidth,
             networkEnabled: networkEnabled,
+            syntaxSets: SyntaxScope.stored(syntaxSets),
             // HOST_PROFILES.mac in shared/hostProfile.ts is the source;
             // Swift cannot import it, so this literal restates it and
             // shared/__tests__/hostProfile.test.ts parses this file and

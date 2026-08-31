@@ -25,6 +25,7 @@ import { DEFAULT_CONTENT_WIDTH_MODE, DEFAULT_MAX_WIDTH_CH } from "./contentWidth
 import { DEFAULT_BLOCK_HANDLES_MODE } from "./blockHandles";
 import { DEFAULT_MERMAID_THEME_MODE } from "./mermaid";
 import { DEFAULT_PLANTUML_THEME_MODE } from "./plantuml";
+import { DEFAULT_SYNTAX_SETS, type SyntaxSet } from "./syntaxSets";
 
 /**
  * Snapshot of every `birta.*` setting the extension reads. Fields whose values
@@ -59,6 +60,22 @@ export interface BirtaConfig extends ProofreadConfig {
      * honored forever: no prompt, no nag, nothing re-enables it.
      */
     whatsNewIndicator: boolean;
+    /**
+     * The publishing targets whose syntax the editor OFFERS to write
+     * (birta.syntax.sets). Every set ships enabled, and the list is a set of
+     * independent opt-ins rather than a single choice: they overlap, and a
+     * tool is offered when any enabled target spells what it writes.
+     *
+     * CommonMark is the floor and is not in the list. It is what every target
+     * already contains, so it can never be switched off; emptying the list is
+     * how a writer asks for CommonMark alone.
+     *
+     * This governs the TOOLS, never the document. Nothing here reaches the
+     * parser or the serializer: a file holding a table renders as a table
+     * under every setting, and only the Insert Table button, its slash row and
+     * its command go away. See shared/syntaxSets.ts.
+     */
+    syntaxSets: readonly SyntaxSet[];
     tableWrap: TableWrapMode;
     codeBlockMaxHeight: number;
     codeBlockAutoConvert: boolean;
@@ -330,6 +347,7 @@ export const BIRTA_SETTING_KEYS: { readonly [K in keyof BirtaConfig]: string } =
     debugMode: "debugMode",
     readOnly: "readOnly",
     whatsNewIndicator: "whatsNew.indicator",
+    syntaxSets: "syntax.sets",
     tableWrap: "tableWrap",
     codeBlockMaxHeight: "codeBlockMaxHeight",
     codeBlockAutoConvert: "codeBlockAutoConvert",
@@ -415,6 +433,10 @@ export const BIRTA_CONFIG_DEFAULTS: BirtaConfig = {
     // is a decision for evidence rather than for launch.
     readOnly: false,
     whatsNewIndicator: true,
+    // Every target ships enabled, so an installation that never opens this
+    // setting is the editor as it was before targets existed. Narrowing is the
+    // deliberate act; see shared/syntaxSets.ts.
+    syntaxSets: DEFAULT_SYNTAX_SETS,
     tableWrap: "normal",
     codeBlockMaxHeight: 600,
     codeBlockAutoConvert: true,

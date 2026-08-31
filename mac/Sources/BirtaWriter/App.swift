@@ -13,6 +13,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// item's Show/Hide retitle would run on every File and View opening, and
     /// the View menu's own repaint on every status-menu one.
     private var viewMenu: NSMenu?
+    private var formatMenu: NSMenu?
     /// The app's windows, and the process-wide things that used to live in
     /// the one window there was. `WindowSet` holds why.
     private let windows = WindowSet()
@@ -410,6 +411,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let formatMenu = NSMenu(title: "Format")
         AppMenu.add(.format, to: formatMenu, target: self)
+        // Repainted on every opening for the same reason the View menu is, and
+        // for a different fact: the rows that write a syntax the reader's
+        // publishing target does not spell are withdrawn, so this menu and the
+        // toolbar in the page below it offer the same tools. The target is a
+        // setting, so it can change between two openings of this menu.
+        self.formatMenu = formatMenu
+        formatMenu.delegate = self
         let formatItem = NSMenuItem(); formatItem.submenu = formatMenu; main.addItem(formatItem)
 
         let windowMenu = AppMenu.windowMenu()
@@ -734,8 +742,13 @@ extension AppDelegate: NSMenuDelegate, NSMenuItemValidation {
             showItem.title = windows.isAnyVisible ? "Hide \(AppFlavor.current.displayName)" : "Show \(AppFlavor.current.displayName)"
             showItem.keyEquivalent = combo.menuKeyEquivalent
             showItem.keyEquivalentModifierMask = combo.menuModifierMask
-        } else if menu === viewMenu {
-            AppMenu.applyState(menuState(), to: menu)
+        } else if menu === viewMenu || menu === formatMenu {
+            // One call for both, because both menus are asking the same
+            // question of the same table: which of my rows is withdrawn right
+            // now. The View menu has the toggles and the Format menu has the
+            // syntax targets, and neither has to know which of the two gates
+            // is the one that applies to it.
+            AppMenu.applyState(menuState(), syntaxSets: Prefs.syntaxSets, to: menu)
         }
 
         AppDelegate.suppressAutomaticIcons(in: menu)

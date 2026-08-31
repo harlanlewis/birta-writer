@@ -9,6 +9,7 @@ import { scanHeadings } from "../shared/headingScan";
 import { EDITOR_COMMANDS, editorCommandName } from "../shared/editorCommands";
 import { DOCUMENT_EXTENSIONS, isDocumentPath } from "../shared/documentExtensions";
 import { normalizeCopyFormat, normalizePasteFormat } from "../shared/config";
+import { normalizeSyntaxSets } from "../shared/syntaxSets";
 import { WordCountStatusBar } from "./wordCountStatus";
 import { registerAgentBridge, currentAgentRoute, type BirtaApi } from "./agentBridge";
 import { reportErrorWithNotification } from "./errorSink";
@@ -649,6 +650,18 @@ export function activate(context: vscode.ExtensionContext) {
                 || e.affectsConfiguration("birta.spellCheck")
                 || e.affectsConfiguration("birta.grammarCheck")) {
                 broadcastProofreadConfig();
+            }
+            if (e.affectsConfiguration("birta.syntax.sets")) {
+                // Changing the target rebuilds the toolbar, the slash list and
+                // the block menu's Turn into rows in every open editor. It has
+                // to be live: a writer narrows the target BECAUSE they are
+                // about to write for it, and a bar that goes on offering the
+                // old tools until the file is reopened is the bar lying about
+                // what the document may contain.
+                MarkdownEditorProvider.current?.postToAll({
+                    type: "syntaxSetsChanged",
+                    sets: normalizeSyntaxSets(readBirtaSetting("syntaxSets")),
+                });
             }
             if (e.affectsConfiguration("birta.whatsNew.indicator")) {
                 // Turning it off must take the dot away now, not at the next

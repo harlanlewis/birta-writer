@@ -39,7 +39,8 @@ import { registerEscapeLayer } from "@/ui/escapeLayers";
 import { onOutsideClick } from "@/ui/outsideClick";
 import { claimDock, releaseDock } from "@/ui/dockExclusive";
 import { notifyOpenKeybindings } from "@/messaging";
-import { hostHasCommand, hostShortcuts } from "../../../shared/hostProfile";
+import { hostShortcuts } from "../../../shared/hostProfile";
+import { commandAvailable } from "../../../shared/commandAvailability";
 
 /**
  * kbd() output post-processing: kbd() upper-cases the final key segment
@@ -312,7 +313,7 @@ function buildPanel(): HTMLDivElement {
     // one accurate inventory of everything rebindable. It is the same action
     // as the `openKeyboardShortcuts` command, so it goes with that command on
     // a host that has no keybindings UI (shared/hostProfile.ts).
-    if (hostHasCommand("openKeyboardShortcuts")) {
+    if (commandAvailable("openKeyboardShortcuts")) {
         const footer = document.createElement("div");
         footer.className = "shortcuts-help__footer";
         const btnCustomize = createButton({

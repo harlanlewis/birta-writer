@@ -98,6 +98,8 @@ export interface ToolbarController {
     setDebugMode(enabled: boolean): void;
     /** Rebuild the toolbar for a changed per-item placement config. */
     applyConfig(config: import("../shared/messages").ToolbarConfig): void;
+    /** Re-place the bar's items after a syntax-target change (shared/syntaxSets.ts). */
+    applySyntaxSets(): void;
     /** Update the font picker's active-preset indicator (and, when provided, its per-preset stack previews). */
     setFontPreset(preset: import("../shared/messages").FontPreset, stacks?: import("../shared/messages").FontStacks): void;
     /** Update the font picker's size-stepper display (percent). */
@@ -585,6 +587,17 @@ export function createMessageHandlers(
         },
         toolbarConfig(msg) {
             topbarTb?.applyConfig(msg.config);
+        },
+        syntaxSetsChanged(msg) {
+            // The gate reads this blob on every call, so writing it back IS the
+            // update: the slash menu, the block menu and `runEditorCommand` all
+            // pick up the new target with nothing to notify. The bar is the one
+            // surface that decided its contents once, so it is the one asked to
+            // re-place them.
+            if (window.__i18n) {
+                window.__i18n.syntaxSets = msg.sets;
+            }
+            topbarTb?.applySyntaxSets();
         },
         agentRoute(msg) {
             // Display only: it feeds the `/ai` caret hint and nothing else.

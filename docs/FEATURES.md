@@ -143,6 +143,7 @@ The settings you're most likely to touch. The full list is searchable in VS Code
 | `birta.fontSize` | `100` | Content font size as % of the editor font (50 to 200) |
 | `birta.contentWidth` | `"full"` | Fill the pane, or cap at Max Content Width (`fixed`) |
 | `birta.maxContentWidth` | `100` | Width cap in `ch` when Content Width is `fixed` |
+| `birta.syntax.sets` | `["gfm", "obsidian", "pandoc", "birta"]` | The publishing targets you write for, so the editor offers only the formatting they understand. Independent and overlapping; CommonMark is always available and is not in the list. Never changes what a document renders |
 | `birta.tocPosition` | `"right"` | Which side the table of contents docks on |
 | `birta.frontmatterExpanded` | `true` | Frontmatter table starts expanded or collapsed |
 | `birta.frontmatterAddButton` | `false` | Show the Add metadata button on documents without frontmatter (Edit Frontmatter starts the same flow either way) |

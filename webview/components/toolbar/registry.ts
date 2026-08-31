@@ -8,6 +8,7 @@
 import type { ToolbarConfig, ToolbarPlacement, ToolbarZone } from "../../../shared/messages";
 import type { EditorCommandId } from "../../../shared/editorCommands";
 import { hostHas, type HostCapability, hostArranges } from "../../../shared/hostProfile";
+import { commandAvailable } from "../../../shared/commandAvailability";
 
 /**
  * Every toolbar item id, in canonical order. Items render in this order within
@@ -188,7 +189,7 @@ export const ITEM_COMMANDS: Record<ToolbarItemId, readonly EditorCommandId[]> = 
  * `toolbarRegistry.test.ts` asserts an item is gated on C exactly when ALL of
  * its `ITEM_COMMANDS` need C. An item whose commands are mixed, some needing a
  * host and some not, or two needing different hosts, must be null and must
- * filter its own rows through `hostHasCommand`. The gear does that, the font
+ * filter its own rows through `commandAvailable`. The gear does that, the font
  * menu does, and the Checks menu does.
  *
  * That rule is derived rather than a list, and the difference is what it
@@ -241,6 +242,39 @@ export function hostAvailableItems(): ReadonlySet<ToolbarItemId> {
         if (id === "fontPreset" && hostArranges("typographyInGearMenu")) { return false; }
         const cap = ITEM_HOST_CAPABILITY[id];
         return cap === null || hostHas(cap);
+    }));
+}
+
+/**
+ * The items to PLACE right now: what the host can carry, minus what no enabled
+ * syntax set spells (shared/syntaxSets.ts).
+ *
+ * Two functions rather than one, and the split is the difference between a
+ * fact that is baked and a setting that is not. `hostAvailableItems` answers
+ * at BUILD time, because the host declaration is fixed for the life of the
+ * page and an item the host cannot carry is never constructed. A syntax target
+ * is the user's and changes while the editor is open, so it is answered at
+ * RENDER time over items that already exist; folding it into the build-time
+ * set would leave an item unbuilt and unreachable for the rest of the session
+ * the moment its target came back.
+ *
+ * Withdrawal is DERIVED from `ITEM_COMMANDS` rather than declared in a table of
+ * its own, and the rule is the one `ITEM_HOST_CAPABILITY` documents: an item
+ * goes when EVERY command it runs is withdrawn. An item whose commands are
+ * mixed stays and filters its own rows, which is what keeps the list dropdown
+ * (bullet and ordered are CommonMark, task lists are not) and the quote
+ * dropdown (a blockquote is CommonMark, a callout is not) on the bar with one
+ * row fewer instead of taking two CommonMark controls away with them.
+ *
+ * An item with no commands at all is never withdrawn: an empty `every` is
+ * vacuously true, which would read as "all of its commands are gone", so the
+ * length check states the intended answer rather than inheriting the wrong one.
+ */
+export function offeredItems(): ReadonlySet<ToolbarItemId> {
+    const host = hostAvailableItems();
+    return new Set([...host].filter((id) => {
+        const commands = ITEM_COMMANDS[id];
+        return commands.length === 0 || commands.some((cmd) => commandAvailable(cmd));
     }));
 }
 

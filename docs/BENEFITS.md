@@ -183,6 +183,12 @@ CommonMark is the floor. On top of it Birta renders, live as you type, the exten
 
 You rarely hit a wall where the editor can't show what you wrote, and where it can't, the previous section guarantees it's preserved rather than mangled.
 
+### You can write for one target without writing around the toolbar
+
+Rendering everything is the right default for reading and the wrong one for writing, because a document that renders here has to render wherever you are publishing it. `birta.syntax.sets` names the targets you write for, and the editor then offers you only the formatting those targets understand: turn GitHub off and the Insert Table button, its slash row, its Turn into row and the key you bound to it all go together, on the same setting, in the same moment. The targets ship on and overlap freely, so this costs nothing until you narrow them, and CommonMark is the floor you cannot switch off.
+
+The line it does not cross is the one the section above is about. A target governs the tools and never the file: every document still opens with everything it contains drawn in full, and a construct already in the file keeps its own controls, so a table in a CommonMark-only note is still a table you can add a row to. Typing `~~text~~` still strikes it through, because that is you spelling the syntax on purpose.
+
 ## It's a real editor, not a preview pane
 
 The point of staying in WYSIWYG is that you never _need_ the raw text editor. That only holds if the editor does the things you expect from VS Code.

@@ -2439,6 +2439,33 @@
                     "maximum": 600,
                     "description": "%config.tocWidth.description%"
                 },
+                "birta.syntax.sets": {
+                    "order": 88,
+                    "type": "array",
+                    "items": {
+                        "type": "string",
+                        "enum": [
+                            "gfm",
+                            "obsidian",
+                            "pandoc",
+                            "birta"
+                        ],
+                        "enumDescriptions": [
+                            "%config.syntax.sets.gfm%",
+                            "%config.syntax.sets.obsidian%",
+                            "%config.syntax.sets.pandoc%",
+                            "%config.syntax.sets.birta%"
+                        ]
+                    },
+                    "uniqueItems": true,
+                    "default": [
+                        "gfm",
+                        "obsidian",
+                        "pandoc",
+                        "birta"
+                    ],
+                    "markdownDescription": "%config.syntax.sets.description%"
+                },
                 "birta.whatsNew.indicator": {
                     "order": 89,
                     "type": "boolean",

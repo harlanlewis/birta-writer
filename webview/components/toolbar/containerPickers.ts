@@ -33,6 +33,7 @@ import type { CalloutKind } from "@/plugins/callouts";
 import { isChecklistSinkEnabled, setChecklistSinkEnabled } from "@/editing/checklistSink";
 import { appendRowChord, createFillItem, createMenuTrigger, createSwitchItem, makeSep, type FillItem } from "./menuPrimitives";
 import type { EditorCommandId } from "../../../shared/editorCommands";
+import { syntaxAllows, type SyntaxFeature } from "../../../shared/syntaxSets";
 import { wireHoverMenu } from "./hoverMenu";
 
 export interface ContainerPicker {
@@ -47,6 +48,49 @@ export interface ContainerPicker {
      * family, every row would consume the click and change nothing.
      */
     setActive: (current: string | null, applicable?: boolean) => void;
+    /**
+     * Re-hide the rows the reader's syntax target does not spell
+     * (shared/syntaxSets.ts), and the separator above them where that empties
+     * a whole group.
+     *
+     * Required rather than optional, so a new family dropdown answers the
+     * question rather than silently going on offering everything. A picker
+     * with no gated rows implements it as a no-op, which is a claim rather
+     * than an omission.
+     */
+    regate: () => void;
+}
+
+/** A row a syntax target can withdraw, and the syntax it writes. */
+interface GatedRow {
+    readonly el: HTMLElement;
+    readonly syntax: SyntaxFeature;
+}
+
+/**
+ * Hide every row whose syntax no enabled set spells, and hide `sep` when that
+ * leaves nothing under it.
+ *
+ * The separator is the part worth stating. It draws a group boundary, so a
+ * separator with an empty group below it is a rule at the foot of a menu,
+ * which reads as a row that failed to render rather than as a group that was
+ * withdrawn. The rows it governs are the ones after it, which for all three
+ * pickers is every gated row they have.
+ *
+ * `hidden` rather than a `display` write, because `ui/chrome.css` honours the
+ * attribute once and globally; restating the rule per element is what the
+ * global `[hidden]` rule exists to stop.
+ */
+function applySyntaxGate(rows: readonly GatedRow[], sep: HTMLElement | null): void {
+    let anyShown = false;
+    for (const { el, syntax } of rows) {
+        const allowed = syntaxAllows(syntax);
+        el.hidden = !allowed;
+        anyShown = anyShown || allowed;
+    }
+    if (sep) {
+        sep.hidden = !anyShown;
+    }
 }
 
 export interface FormatPicker {
@@ -143,6 +187,11 @@ export function createListMenu(getEditor: GetEditor): ContainerPicker {
     // into this to slim the default bar.
     type ListType = "bullet" | "ordered" | "task";
     const listRows: { type: ListType; setActive: (on: boolean) => void }[] = [];
+    // Task lists are GFM, and bullet and ordered lists are CommonMark, so a
+    // target with no task lists takes one row from this menu and leaves the
+    // dropdown itself on the bar. That is the mixed-menu rule the registry
+    // states: the item stays and filters its own rows.
+    const listGated: GatedRow[] = [];
     // Trigger refs for the container dropdowns, so onSelectionChange can light up
     // the bar button when the caret is inside that container (like the mark
     // buttons). The menu row shows WHICH one; the trigger shows THAT one.
@@ -162,12 +211,12 @@ export function createListMenu(getEditor: GetEditor): ContainerPicker {
         listMenu.style.display = "none";
         listMenu.setAttribute("role", "menu");
 
-        const choices: { type: ListType; icon: string; label: string; command: EditorCommandId }[] = [
+        const choices: { type: ListType; icon: string; label: string; command: EditorCommandId; syntax?: SyntaxFeature }[] = [
             { type: "bullet", icon: IconList, label: t("Bullet List"), command: "toggleBulletList" },
             { type: "ordered", icon: IconListOrdered, label: t("Ordered List"), command: "toggleOrderedList" },
-            { type: "task", icon: IconCheckSquare, label: t("Task List"), command: "toggleTaskList" },
+            { type: "task", icon: IconCheckSquare, label: t("Task List"), command: "toggleTaskList", syntax: "taskList" },
         ];
-        for (const { type, icon, label, command } of choices) {
+        for (const { type, icon, label, command, syntax } of choices) {
             const row = document.createElement("button");
             row.type = "button";
             row.className = "ui-menu-row tb-fmt-item tb-list-item";
@@ -188,6 +237,7 @@ export function createListMenu(getEditor: GetEditor): ContainerPicker {
                 closeListMenu(); // shared close — owns the Escape-layer unregister
             });
             listMenu.appendChild(row);
+            if (syntax) { listGated.push({ el: row, syntax }); }
             listRows.push({
                 type,
                 setActive: (on: boolean): void => {
@@ -229,9 +279,17 @@ export function createListMenu(getEditor: GetEditor): ContainerPicker {
     }
 
     const el = createListPicker();
+    // No separator to withdraw with it: the one rule in this menu sits BELOW
+    // the three list rows, above the checked-task preference, so hiding the
+    // task row leaves no group empty. That preference stays whatever the target
+    // says, because it governs task lists a document already has rather than
+    // offering to write one.
+    const regate = (): void => applySyntaxGate(listGated, null);
+    regate();
     return {
         el,
         trigger: listTriggerBtn,
+        regate,
         setActive: (current: string | null, applicable = true): void => {
             el.classList.toggle("tb-fmt-wrap--disabled", !applicable);
             for (const { type, setActive } of listRows) {
@@ -250,6 +308,12 @@ export function createCodeMenu(getEditor: GetEditor): ContainerPicker {
     // language. All three are also in the slash menu.
     type CodeRowKey = "code" | "mermaid" | "math";
     const codeRows: { key: CodeRowKey; setActive: (on: boolean) => void }[] = [];
+    // Both language-typed rows write a target's syntax through the one command
+    // that cannot say so (`insertCodeBlock` with a language baked in), so they
+    // declare it here the way their slash rows do. The plain code block above
+    // them is CommonMark and never goes.
+    const codeGated: GatedRow[] = [];
+    let codeSep: HTMLElement | null = null;
     let codeTriggerBtn: HTMLElement | null = null;
     function createCodePicker(): HTMLElement {
         const codeWrap = document.createElement("div");
@@ -272,7 +336,7 @@ export function createCodeMenu(getEditor: GetEditor): ContainerPicker {
         // Mermaid and Math rows run insertCodeBlock with a language, which is
         // not what the chord does, so printing it there would name a key that
         // produces a different block.
-        const addRow = (key: CodeRowKey, icon: string, label: string, run: () => void, command?: EditorCommandId): void => {
+        const addRow = (key: CodeRowKey, icon: string, label: string, run: () => void, command?: EditorCommandId, syntax?: SyntaxFeature): void => {
             const row = document.createElement("button");
             row.type = "button";
             row.className = "ui-menu-row tb-fmt-item tb-callout-item";
@@ -290,6 +354,7 @@ export function createCodeMenu(getEditor: GetEditor): ContainerPicker {
                 closeCodeMenu(); // shared close — owns the Escape-layer unregister
             });
             codeMenu.appendChild(row);
+            if (syntax) { codeGated.push({ el: row, syntax }); }
             codeRows.push({
                 key,
                 setActive: (on: boolean): void => {
@@ -302,11 +367,12 @@ export function createCodeMenu(getEditor: GetEditor): ContainerPicker {
         // Plain code block first — the common case and the dropdown's identity.
         addRow("code", IconTerminal, t("Code Block"), () => runEditorCommand("insertCodeBlock", getEditor), "insertCodeBlock");
 
-        codeMenu.appendChild(makeSep());
+        codeSep = makeSep();
+        codeMenu.appendChild(codeSep);
 
         // Language-typed blocks (same insertCodeBlock command, fence language baked in).
-        addRow("mermaid", IconNetwork, t("Mermaid Diagram"), () => runEditorCommand("insertCodeBlock", getEditor, "mermaid"));
-        addRow("math", IconMath, t("Math Block"), () => runEditorCommand("insertCodeBlock", getEditor, "LaTeX"));
+        addRow("mermaid", IconNetwork, t("Mermaid Diagram"), () => runEditorCommand("insertCodeBlock", getEditor, "mermaid"), undefined, "mermaid");
+        addRow("math", IconMath, t("Math Block"), () => runEditorCommand("insertCodeBlock", getEditor, "LaTeX"), undefined, "math");
 
         const { close: closeCodeMenu } = wireHoverMenu(codeWrap, codeBtn, codeMenu);
 
@@ -316,9 +382,12 @@ export function createCodeMenu(getEditor: GetEditor): ContainerPicker {
     }
 
     const el = createCodePicker();
+    const regate = (): void => applySyntaxGate(codeGated, codeSep);
+    regate();
     return {
         el,
         trigger: codeTriggerBtn,
+        regate,
         setActive: (current: string | null, applicable = true): void => {
             el.classList.toggle("tb-fmt-wrap--disabled", !applicable);
             for (const { key, setActive } of codeRows) {
@@ -337,6 +406,11 @@ export function createQuoteMenu(getEditor: GetEditor): ContainerPicker {
     // callout types on the default (visible) bar, where the standalone Callouts
     // dropdown used to ship hidden.
     const quoteRows: { key: string; setActive: (on: boolean) => void }[] = [];
+    // The five callout rows are the whole group below the rule, so a target
+    // with no `> [!NOTE]` leaves this dropdown as a single Blockquote row and
+    // the rule above them goes with them.
+    const quoteGated: GatedRow[] = [];
+    let quoteSep: HTMLElement | null = null;
     let quoteTriggerBtn: HTMLElement | null = null;
     function createQuotePicker(): HTMLElement {
         const quoteWrap = document.createElement("div");
@@ -358,7 +432,7 @@ export function createQuoteMenu(getEditor: GetEditor): ContainerPicker {
         // `command` only where the row IS that command with no argument: every
         // callout row runs toggleCallout with a different kind, so a shared
         // chord would claim each of them does what one of them does.
-        const addRow = (key: string, icon: string, label: string, run: () => void, command?: EditorCommandId): void => {
+        const addRow = (key: string, icon: string, label: string, run: () => void, command?: EditorCommandId, syntax?: SyntaxFeature): void => {
             const row = document.createElement("button");
             row.type = "button";
             row.className = "ui-menu-row tb-fmt-item tb-callout-item";
@@ -378,6 +452,7 @@ export function createQuoteMenu(getEditor: GetEditor): ContainerPicker {
                 closeQuoteMenu(); // shared close — owns the Escape-layer unregister
             });
             quoteMenu.appendChild(row);
+            if (syntax) { quoteGated.push({ el: row, syntax }); }
             quoteRows.push({
                 key,
                 setActive: (on: boolean): void => {
@@ -390,7 +465,8 @@ export function createQuoteMenu(getEditor: GetEditor): ContainerPicker {
         // Plain blockquote first — the common case, and the dropdown's identity.
         addRow("blockquote", IconQuote, t("Blockquote"), () => runEditorCommand("toggleBlockquote", getEditor), "toggleBlockquote");
 
-        quoteMenu.appendChild(makeSep());
+        quoteSep = makeSep();
+        quoteMenu.appendChild(quoteSep);
 
         const calloutKinds: [CalloutKind, string][] = [
             ["note", t("Note")],
@@ -403,7 +479,7 @@ export function createQuoteMenu(getEditor: GetEditor): ContainerPicker {
             // toggleCallout keeps the checkbox honest: the checked kind
             // lifts out, another kind retypes in place, outside wraps —
             // insertCallout itself now always nests (slash/block menus).
-            addRow(kind, CALLOUT_ICONS[kind], label, () => runEditorCommand("toggleCallout", getEditor, kind));
+            addRow(kind, CALLOUT_ICONS[kind], label, () => runEditorCommand("toggleCallout", getEditor, kind), undefined, "calloutAlert");
         }
 
         const { close: closeQuoteMenu } = wireHoverMenu(quoteWrap, quoteBtn, quoteMenu);
@@ -414,9 +490,12 @@ export function createQuoteMenu(getEditor: GetEditor): ContainerPicker {
     }
 
     const el = createQuotePicker();
+    const regate = (): void => applySyntaxGate(quoteGated, quoteSep);
+    regate();
     return {
         el,
         trigger: quoteTriggerBtn,
+        regate,
         setActive: (current: string | null): void => {
             for (const { key, setActive } of quoteRows) { setActive(key === current); }
         },

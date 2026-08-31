@@ -27,6 +27,7 @@ import { clampMaxWidthCh } from "../shared/contentWidth";
 import { normalizeBlockHandlesMode, blockHandlesBodyClass } from "../shared/blockHandles";
 import { normalizeMermaidThemeMode } from "../shared/mermaid";
 import { normalizePlantUmlThemeMode } from "../shared/plantuml";
+import { normalizeSyntaxSets } from "../shared/syntaxSets";
 import { normalizeTocVisibility } from "../shared/tocVisibility";
 import { foldingBodyClasses } from "../shared/foldingControls";
 import { HOST_PROFILES } from "../shared/hostProfile";
@@ -295,6 +296,11 @@ export function buildWebviewHtml(
     const lineNumbers = config.lineNumbers === true;
     const mermaidTheme = normalizeMermaidThemeMode(config.mermaidTheme);
     const plantumlTheme = normalizePlantUmlThemeMode(config.plantumlTheme);
+    // Which targets' syntax the editor OFFERS to write. Normalized here
+    // rather than in the page: a settings.json typo would otherwise reach the
+    // gate as a set nothing provides, and the page reads this blob on every
+    // call precisely so it has no second chance to normalize it.
+    const syntaxSets = normalizeSyntaxSets(config.syntaxSets);
     const folding = readFoldingConfig(document.uri);
     const proofread = getProofreadConfig(config);
     const toolbar = getToolbarConfig(config);
@@ -304,7 +310,7 @@ export function buildWebviewHtml(
     // .replace(/</g, "\\u003c"): JSON.stringify leaves "<" intact, so a string
     // setting containing "</script>" would close the inline script element
     // early (no code execution under the nonce CSP, but style injection).
-    const i18nScript = `window.__i18n=${JSON.stringify({ translations, isMac, readOnly, debugMode, codeBlockAutoConvert, smartLinks, network: networkEnabled, pasteUnfurl, pasteUnfurlAutoApply, linkCardsEnabled, calcEnabled, calcBlocksEnabled, calcAutoInsert, autoUpdateAnchors, embedsEnabled, embedProviders, checklistSinkChecked, lineNumbers, notesCustomMarkers: config.notesCustomMarkers, notesHighlightMarkers: config.notesHighlightMarkers, reviewGroupByType: config.reviewGroupByType, codeBlockWordWrap, tocAutoHideThreshold, tocVisibility, frontmatterExpanded, frontmatterAddButton, copyFormat, pasteFormat, proofread, toolbar, floatingToolbar, fontPreset, fontStacks, fontSize, contentWidth: contentWidth.mode, maxContentWidth, mermaidTheme, plantumlTheme, documentUri, resourceBaseUri, workspaceBaseUri, host: { capabilities: HOST_PROFILES.vscode, arrangements: [], shortcuts: hostShortcutsFor(context, process.platform) } }).replace(/</g, "\\u003c")};`;
+    const i18nScript = `window.__i18n=${JSON.stringify({ translations, isMac, readOnly, debugMode, codeBlockAutoConvert, smartLinks, network: networkEnabled, pasteUnfurl, pasteUnfurlAutoApply, linkCardsEnabled, calcEnabled, calcBlocksEnabled, calcAutoInsert, autoUpdateAnchors, embedsEnabled, embedProviders, checklistSinkChecked, lineNumbers, notesCustomMarkers: config.notesCustomMarkers, notesHighlightMarkers: config.notesHighlightMarkers, reviewGroupByType: config.reviewGroupByType, codeBlockWordWrap, tocAutoHideThreshold, tocVisibility, frontmatterExpanded, frontmatterAddButton, copyFormat, pasteFormat, proofread, toolbar, floatingToolbar, fontPreset, fontStacks, fontSize, contentWidth: contentWidth.mode, maxContentWidth, mermaidTheme, plantumlTheme, syntaxSets, documentUri, resourceBaseUri, workspaceBaseUri, host: { capabilities: HOST_PROFILES.vscode, arrangements: [], shortcuts: hostShortcutsFor(context, process.platform) } }).replace(/</g, "\\u003c")};`;
     const bodyClasses = [
         isAutoWidth ? "editor-width-auto" : "",
         codeBlockWordWrap ? "code-block-word-wrap" : "",

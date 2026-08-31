@@ -682,12 +682,14 @@ enum AppMenu {
     /// each of these once, when the reader flips it, and the menu is only ever
     /// read at the moment it opens.
     @MainActor
-    static func applyState(_ state: MenuState, to nsMenu: NSMenu) {
+    static func applyState(_ state: MenuState,
+                           syntaxSets: Set<SyntaxSet> = SyntaxScope.all,
+                           to nsMenu: NSMenu) {
         for item in nsMenu.items {
             // Not into the recents menu: its rows are files rather than table
             // rows, and it fills itself.
             if let sub = item.submenu, sub.identifier != recentsMenuIdentifier {
-                applyState(state, to: sub)
+                applyState(state, syntaxSets: syntaxSets, to: sub)
             }
             guard let identifier = item.identifier,
                   let row = rows.first(where: { $0.itemIdentifier == identifier })
@@ -698,7 +700,17 @@ enum AppMenu {
             // governs instead of leaving controls that are set on and doing
             // nothing. Assigned both ways on every pass, so a row comes back
             // when the gate does.
-            item.isHidden = !row.needs.allSatisfy { state.isOn($0) }
+            //
+            // Two gates, one assignment. A `MenuToggle` is something the reader
+            // switched off in this window; a syntax target is Markdown the
+            // reader's publishing target does not spell (`SyntaxSets.swift`).
+            // They meet here rather than at two call sites for the reason the
+            // page's own `commandAvailable` gives: a row and the chord it binds
+            // must never disagree about whether the tool exists, and AppKit
+            // takes that chord before the page can be asked.
+            let gatesOn = row.needs.allSatisfy { state.isOn($0) }
+            let spelled = row.commandId.map { SyntaxScope.allows(command: $0, in: syntaxSets) } ?? true
+            item.isHidden = !(gatesOn && spelled)
             guard let rowState = row.state else { continue }
             let on = state.isOn(rowState.toggle)
             switch rowState {

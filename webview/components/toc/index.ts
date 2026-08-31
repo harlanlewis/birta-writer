@@ -7,7 +7,8 @@ import { notifyTocWidth, notifyTocVisibility, notifySetTocPosition } from "@/mes
 import type { TocVisibility } from "../../../shared/messages";
 import { revealPosition } from "@/editing/blockOps";
 import { IconPanelLeft, IconPanelRight, IconArrowLeftRight } from "@/ui/icons";
-import { hostArranges, hostHasCommand } from "../../../shared/hostProfile";
+import { hostArranges } from "../../../shared/hostProfile";
+import { commandAvailable } from "../../../shared/commandAvailability";
 import type { EventManager } from "@/eventManager";
 import { onOutsideClick } from "@/ui/outsideClick";
 import {
@@ -106,7 +107,7 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
     //
     // The flip button IS `swapTocSide`, so it asks the command predicate rather
     // than the arrangement behind it. `fixedTocSide` is declared on that
-    // command's own metadata and read by `hostHasCommand`, which is what makes
+    // command's own metadata and read by `commandAvailable`, which is what makes
     // the palette, the slash row and this button withdraw together; reading the
     // arrangement here instead would put a second reader on one declaration and
     // let the panel and the command lists drift.
@@ -114,7 +115,7 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
     // The hide button is not a command being withdrawn: `toggleToc` still runs,
     // from the bar, the palette and the slash row. What the surface settled is
     // WHICH control carries it, and that has no command to ask.
-    const offerFlip = hostHasCommand("swapTocSide");
+    const offerFlip = commandAvailable("swapTocSide");
     const toggleInBar = hostArranges("tocToggleInBar");
 
     const panel = document.createElement("div");

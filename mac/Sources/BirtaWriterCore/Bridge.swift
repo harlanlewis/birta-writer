@@ -549,6 +549,15 @@ public struct BootConfig: Equatable {
     public var tocVisibility: String
     public var tocWidth: Int?
     public var networkEnabled: Bool
+    /// The publishing targets whose syntax the editor OFFERS to write, as the
+    /// page's own set names (`shared/syntaxSets.ts`).
+    ///
+    /// It has to be sent, not left to the page's default, and for the reason
+    /// `noteHighlight` above is: absent means every target, so a window opened
+    /// after the reader narrowed the list would come up offering tools the
+    /// Format menu beside it has already withdrawn, and the two surfaces would
+    /// disagree at every load.
+    public var syntaxSets: [String]
     public var hostCapabilities: [String]
     /// Persisted `viewState` bag, JSON object text, or nil.
     public var viewStateJSON: String?
@@ -568,6 +577,7 @@ public struct BootConfig: Equatable {
                 tocVisibility: String = "hidden",
                 tocWidth: Int? = nil,
                 networkEnabled: Bool = false,
+                syntaxSets: [String] = SyntaxScope.stored(SyntaxScope.all),
                 hostCapabilities: [String] = [],
                 viewStateJSON: String? = nil,
                 hostShortcuts: [HostShortcut] = []) {
@@ -582,6 +592,7 @@ public struct BootConfig: Equatable {
         self.tocVisibility = tocVisibility
         self.tocWidth = tocWidth
         self.networkEnabled = networkEnabled
+        self.syntaxSets = syntaxSets
         self.hostCapabilities = hostCapabilities
         self.viewStateJSON = viewStateJSON
     }
@@ -694,6 +705,12 @@ public struct BootConfig: Equatable {
             // page that comes up with the highlight on regardless is a page the
             // mark is wrong about at every load.
             "notesHighlightMarkers": noteHighlight,
+            // Which targets the editor writes for. The page reads this blob on
+            // every gate check rather than caching it, so this one key is what
+            // withdraws a tool from the toolbar, the slash menu, the block menu
+            // and `runEditorCommand` together. It reaches nothing that parses
+            // or serializes the document.
+            "syntaxSets": syntaxSets,
             // The panel as the reader last left it. A first launch gets
             // "hidden" rather than "auto": the page's heuristic opens the
             // sidebar once a document has a few headings, which is right for an

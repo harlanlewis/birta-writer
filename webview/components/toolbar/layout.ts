@@ -29,7 +29,7 @@ import { createMenuTrigger } from "./menuPrimitives";
 import { wireHoverMenu } from "./hoverMenu";
 import { createOverflowController } from "./overflow";
 import type { OverflowController, OverflowGroup } from "./overflow";
-import { computeDockPartition, computeZones, hostAvailableItems } from "./registry";
+import { computeDockPartition, computeZones, offeredItems } from "./registry";
 import type { ToolbarItemId } from "./registry";
 import { createFormattingDock, type FormattingDock } from "./dock";
 import { hostArranges } from "../../../shared/hostProfile";
@@ -54,6 +54,8 @@ export interface ToolbarLayout {
     toolbar: HTMLElement;
     /** Rebuild the zones for a changed placement config (deferred while dragging). */
     applyConfig: (config: ToolbarConfig) => void;
+    /** Re-place the items after a syntax-target change (shared/syntaxSets.ts). */
+    applySyntaxSets: () => void;
     /** Enter the drag-and-drop customize mode. */
     startCustomize: () => void;
     /** Show or hide the whole bar, writing the setting through. */
@@ -120,12 +122,26 @@ export function createToolbarLayout(deps: ToolbarLayoutDeps): ToolbarLayout {
     // they don't tear down the drag state mid-session.
     let latestConfig: ToolbarConfig | undefined = window.__i18n?.toolbar;
     let editing = false;
-    // The items this host can carry (shared/hostProfile.ts). Read once:
-    // the declaration is baked at panel load and a webview is rebuilt on open.
-    const available = hostAvailableItems();
+    // The items to place: what this host can carry (shared/hostProfile.ts),
+    // minus what the reader's syntax target does not spell
+    // (shared/syntaxSets.ts). NOT read once, unlike the two facts below it: the
+    // host declaration is baked at panel load, and the target is a setting the
+    // reader changes with the editor open, so `applySyntaxSets` recomputes this
+    // and re-renders rather than leaving the bar on the target the document was
+    // opened under.
+    let available = offeredItems();
+    // Whether a syntax-target change arrived while the customize tray was open,
+    // so it can be applied on exit. The tray's own exit deliberately keeps the
+    // DOM rather than rebuilding, because the config echo can lag the drags;
+    // that reasoning does not cover a withdrawn item, which would be left on
+    // the bar as a control the target has made inert, and a live-looking button
+    // that does nothing is the one outcome the read-only mode and every other
+    // gate in this editor are written to avoid.
+    let syntaxChangedWhileEditing = false;
     // The second holder, or null on a surface that keeps everything in the bar.
-    // Read once for the same reason `available` is, and null is the fact every
-    // branch below asks about, so no call site re-reads the declaration.
+    // Read once because the arrangement is baked at panel load, and null is the
+    // fact every branch below asks about, so no call site re-reads the
+    // declaration.
     const dock: FormattingDock | null = hostArranges("formattingInSecondRow")
         ? createFormattingDock({ items })
         : null;
@@ -230,6 +246,16 @@ export function createToolbarLayout(deps: ToolbarLayoutDeps): ToolbarLayout {
                 // (which may lag behind the write echo). Detach the tray (drops
                 // any still-hidden items) and re-sync overflow to the live DOM.
                 tray.remove();
+                if (syntaxChangedWhileEditing) {
+                    syntaxChangedWhileEditing = false;
+                    // Rebuild rather than resync: an item the target withdrew
+                    // has to leave, and only a render decides placement. The
+                    // config this renders from can be a drag behind, and that
+                    // is the cheaper wrong: every drag was written through, so
+                    // its echo arrives as a `toolbarConfig` and renders again.
+                    render(latestConfig);
+                    return;
+                }
                 resyncOverflow();
             },
         });
@@ -419,6 +445,19 @@ export function createToolbarLayout(deps: ToolbarLayoutDeps): ToolbarLayout {
             logseqItem.style.display = active ? "" : "none";
             // Same as debug: the right zone's width changed.
             overflow?.update(availableWidth());
+        },
+        applySyntaxSets(): void {
+            // The set of items the target spells has changed. Everything is
+            // already built (the build-time question is the host's, and that
+            // has not moved), so this is a re-placement: recompute which of
+            // them may be placed and render, under a fixed layout too, where
+            // there is no config to apply but there are still items to withdraw.
+            available = offeredItems();
+            if (editing) {
+                syntaxChangedWhileEditing = true;
+                return;
+            }
+            render(latestConfig);
         },
         applyConfig(config: ToolbarConfig): void {
             // A fixed layout has no config to apply: placements are derived and

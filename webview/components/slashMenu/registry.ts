@@ -11,6 +11,7 @@
  * asserts membership at runtime.
  */
 import type { EditorCommandId } from "../../../shared/editorCommands";
+import type { SyntaxFeature } from "../../../shared/syntaxSets";
 import { t } from "@/i18n";
 import { CALLOUT_ICONS } from "../callout";
 import { formatCalendarDate, relativeCalendarDate } from "@/utils/dateFormat";
@@ -149,6 +150,19 @@ interface SlashMenuItemBase {
      * the user reads back. Every other row keeps Space a filter character,
      * which multi-word queries ("delete table") depend on.
      */
+    /**
+     * The syntax this row WRITES, where the command it runs cannot say so on
+     * its own (shared/syntaxSets.ts). Most rows need nothing here, because
+     * their command already declares its own target scope and
+     * `commandAvailable` reads it.
+     *
+     * What this field is for is the four rows that share `insertCodeBlock`
+     * and differ only by the language they bake in: a Mermaid diagram, an SVG
+     * fence, a math block and a calc worksheet are four targets' syntax
+     * spelled through one command, so the command cannot carry the answer and
+     * the row must.
+     */
+    readonly syntax?: SyntaxFeature;
     readonly takesArgument?: true;
     /**
      * `takesArgument` rows only: the placeholder shown at the caret once the
@@ -220,19 +234,19 @@ export const SLASH_MENU_ITEMS: readonly SlashMenuItem[] = [
     { id: "callout-important", group: "insert", label: t("Important"), icon: CALLOUT_ICONS.important, keywords: ["important", "callout", "admonition"], commandId: "insertCallout", args: "important", searchOnly: true },
     { id: "callout-warning", group: "insert", label: t("Warning"), icon: CALLOUT_ICONS.warning, keywords: ["warning", "attention", "callout", "admonition", "alert"], commandId: "insertCallout", args: "warning", searchOnly: true },
     { id: "callout-caution", group: "insert", label: t("Caution"), icon: CALLOUT_ICONS.caution, keywords: ["caution", "callout", "admonition", "alert"], commandId: "insertCallout", args: "caution", searchOnly: true },
-    { id: "mermaid", group: "insert", label: t("Mermaid Diagram"), icon: IconNetwork, keywords: ["mermaid", "diagram", "flowchart", "graph", "chart"], commandId: "insertCodeBlock", args: "mermaid", detail: t("empty diagram") },
+    { id: "mermaid", group: "insert", label: t("Mermaid Diagram"), icon: IconNetwork, keywords: ["mermaid", "diagram", "flowchart", "graph", "chart"], commandId: "insertCodeBlock", args: "mermaid", syntax: "mermaid", detail: t("empty diagram") },
     // A ```svg fence: the picture IS the source, so unlike every other diagram
     // row this one is a place to paste markup rather than a language to write.
     // Search-revealed, like the parity rows above: someone reaching for it knows
     // the word, and the browse list already carries a diagram row.
-    { id: "svgBlock", group: "insert", label: t("SVG"), icon: IconImage, keywords: ["svg", "vector", "graphic", "drawing", "diagram", "illustration"], commandId: "insertCodeBlock", args: "svg", detail: t("paste vector markup"), searchOnly: true },
+    { id: "svgBlock", group: "insert", label: t("SVG"), icon: IconImage, keywords: ["svg", "vector", "graphic", "drawing", "diagram", "illustration"], commandId: "insertCodeBlock", args: "svg", syntax: "svg", detail: t("paste vector markup"), searchOnly: true },
     // Inline math is a real node; a math BLOCK is a LaTeX-language code block
     // (same mechanism as Mermaid), otherwise reachable only by typing "$$ ".
     { id: "math", group: "insert", label: t("Inline Math"), icon: IconMath, hint: "$", keywords: ["math", "latex", "katex", "equation", "formula", "inline"], commandId: "insertMath" },
-    { id: "mathBlock", group: "insert", label: t("Math Block"), icon: IconMath, hint: "$$", keywords: ["math", "latex", "katex", "equation", "formula", "block", "display"], commandId: "insertCodeBlock", args: "LaTeX" },
+    { id: "mathBlock", group: "insert", label: t("Math Block"), icon: IconMath, hint: "$$", keywords: ["math", "latex", "katex", "equation", "formula", "block", "display"], commandId: "insertCodeBlock", args: "LaTeX", syntax: "math" },
     // A living-calculation block (```calc): variables + units, computed line by
     // line in a rendered preview. Same insert mechanism as Mermaid / Math Block.
-    { id: "calcBlock", group: "insert", label: t("Calculation Block"), icon: IconCalculator, keywords: ["calc", "calculate", "calculation", "math", "spreadsheet", "variables", "units"], commandId: "insertCodeBlock", args: "calc", visibleWhen: () => window.__i18n?.calcBlocksEnabled ?? true },
+    { id: "calcBlock", group: "insert", label: t("Calculation Block"), icon: IconCalculator, keywords: ["calc", "calculate", "calculation", "math", "spreadsheet", "variables", "units"], commandId: "insertCodeBlock", args: "calc", syntax: "calc", visibleWhen: () => window.__i18n?.calcBlocksEnabled ?? true },
     { id: "link", group: "insert", label: t("Link"), icon: IconLink, hint: "[]()", keywords: ["link", "url", "anchor"], commandId: "insertLink" },
     // In-note anchor link to a heading (MAR-176). Terse noun label per the slash
     // convention; the verb-phrase "Link to Section" lives on the palette/tooltip.

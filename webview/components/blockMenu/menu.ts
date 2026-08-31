@@ -65,6 +65,7 @@ import { clampLeft, viewportSize } from "../../ui/anchoredPlacement";
 import { onOutsideClick } from "../../ui/outsideClick";
 import { t } from "../../i18n";
 import { filterSlashItems, SLASH_MENU_ITEMS } from "../slashMenu/registry";
+import { syntaxAllows, type SyntaxFeature } from "../../../shared/syntaxSets";
 import {
     IconAlertCircle,
     IconAlignCenter,
@@ -862,6 +863,34 @@ const SLASH_ID_BY_KIND: Record<ConversionKind, string | { label: string; icon: s
     notionCallout: { label: t("Notion Callout"), icon: IconAlertCircle },
 };
 
+/**
+ * The syntax each conversion target WRITES, or null where the result is
+ * CommonMark (shared/syntaxSets.ts).
+ *
+ * A `Record` over every kind, so a new `ConversionKind` fails to compile until
+ * its author has said which targets can spell it. `blockquote` is null and
+ * `callout` is not, which is the whole distinction the two kinds exist to
+ * draw: a callout is a blockquote with a `> [!NOTE]` line that CommonMark
+ * prints as literal text.
+ */
+const KIND_SYNTAX: Record<ConversionKind, SyntaxFeature | null> = {
+    paragraph: null,
+    h1: null,
+    h2: null,
+    h3: null,
+    h4: null,
+    h5: null,
+    h6: null,
+    bulletList: null,
+    orderedList: null,
+    taskList: "taskList",
+    blockquote: null,
+    callout: "calloutAlert",
+    codeBlock: null,
+    directive: "fencedDiv",
+    notionCallout: "notionCallout",
+};
+
 interface TurnIntoRow {
     kind: ConversionKind;
     label: string;
@@ -1431,9 +1460,19 @@ export function openBlockMenu(
     // source kinds are and which converter runs.
     const sourceKinds: (ConversionKind | null)[] = coveredRun ? runKinds : [currentKind];
     if (sourceKinds.some((kind) => kind !== null)) {
-        const offered = TURN_INTO_CHOICES.filter(({ kind }) => coveredRun
+        const offered = TURN_INTO_CHOICES.filter(({ kind }) => (coveredRun
             ? canConvertRange(view, coveredRun, kind)
-            : canConvert(view, conversionPos, kind));
+            : canConvert(view, conversionPos, kind))
+            // A target the reader's syntax sets do not spell is not offered to
+            // convert INTO. The block's OWN kind is the exception and has to
+            // be: the current row is filled rather than actionable, and it is
+            // how this menu says what you are looking at. Dropping it would
+            // leave a callout in a CommonMark-only document with no row
+            // marked, which reads as a block the menu does not recognise
+            // rather than as one whose type the target no longer writes, and
+            // every row it could convert AWAY to is still there.
+            && (syntaxAllows(KIND_SYNTAX[kind] ?? undefined)
+                || sourceKinds.every((source) => source === kind)));
         for (const choice of offered) {
             // The row is "current" only when EVERY source block already is
             // that kind; a mixed run has no current row, and its pick still

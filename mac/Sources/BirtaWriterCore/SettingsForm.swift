@@ -20,6 +20,19 @@ public enum SettingsRow: String, CaseIterable, Sendable {
     case newNoteName = "File name"
     case agentEnabled = "Enable /ai commands"
     case agentCommand = "Terminal command"
+    // One row per publishing target (`SyntaxSets.swift`). Four cases rather
+    // than one row holding four boxes, because the form's whole model is one
+    // row per question and these are four independent questions: the targets
+    // are not exclusive, and enabling two offers the union of what they spell.
+    //
+    // A hand-written list is a list a new target never joins, so
+    // `SettingsFormTests` compares these raw values against
+    // `SyntaxSet.allCases` labels: a fifth target fails to build a pane until
+    // it has a row here.
+    case syntaxGfm = "GitHub"
+    case syntaxObsidian = "Obsidian"
+    case syntaxPandoc = "Pandoc"
+    case syntaxBirta = "Birta Writer"
     case resetSettings = "Reset all settings"
     case welcomeScreen = "Welcome screen"
 }
@@ -164,6 +177,40 @@ public enum SettingsForm {
         ],
         groups: [SettingsGroup(rows: [.agentEnabled, .agentCommand])])
 
+    /// WHICH Markdown the editor offers to write.
+    ///
+    /// Its own pane rather than a card on General, because General is what the
+    /// app IS (how you reach it, where it puts your bytes) and this is about
+    /// the writing. It earns an intro under the same rule the AI Agent pane
+    /// does: what these switches do is not guessable from their labels, and the
+    /// thing a reader most needs told is the thing the switches cannot say,
+    /// which is that none of it touches what a document renders.
+    public static let markdown = SettingsPane(
+        intro: [
+            "Choose which publishing targets you write for. Birta Writer offers you the "
+                + "formatting each target understands, in the toolbar, the / menu and the block menu.",
+            "This never changes what a document renders. Every note opens with everything it "
+                + "contains drawn in full, whatever is selected here.",
+            "CommonMark is always available and is not in this list, because every target below "
+                + "includes it. Turn all four off to write CommonMark alone.",
+        ],
+        groups: [SettingsGroup(rows: [.syntaxGfm, .syntaxObsidian, .syntaxPandoc, .syntaxBirta])])
+
+    /// The row that carries a target, in the vocabulary's own order.
+    ///
+    /// Derived from `SyntaxSet.allCases` rather than listed, so the pane above
+    /// and every screen that walks it grow with the vocabulary; the exhaustive
+    /// switch is what makes a new target a compile error here rather than a
+    /// target with no switch to turn it off.
+    public static func row(for set: SyntaxSet) -> SettingsRow {
+        switch set {
+        case .gfm: return .syntaxGfm
+        case .obsidian: return .syntaxObsidian
+        case .pandoc: return .syntaxPandoc
+        case .birta: return .syntaxBirta
+        }
+    }
+
     /// What the app does to ITSELF: how it replaces itself, and the gestures
     /// that undo rather than set.
     ///
@@ -199,7 +246,7 @@ public enum SettingsForm {
     /// is coverage: a row some build hides is still a row that has to be
     /// placed somewhere, and a `panes` that hid it would report it unplaced.
     public static var panes: [SettingsPane] {
-        [general, aiAgent, advanced(showsWelcomeScreen: true)]
+        [general, markdown, aiAgent, advanced(showsWelcomeScreen: true)]
     }
 
     /// The rows of a Settings pane, top to bottom, with the cards flattened

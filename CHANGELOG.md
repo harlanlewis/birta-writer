@@ -4,6 +4,16 @@
 
 ## [Unreleased]
 
+### Added
+
+- Syntax targets, in `birta.syntax.sets`: pick the publishing targets you write for, and the editor offers you the formatting each of them understands. Four are shipped and all four are on, so nothing changes until you narrow them: GitHub (tables, strikethrough, task lists, footnotes, math, `> [!NOTE]` alerts, Mermaid), Obsidian (wikilinks, `==highlights==`, callouts), Pandoc (footnotes, math, `:::` fenced divs) and Birta Writer's own (calculation and SVG blocks, Notion callouts). They are independent and overlap freely, so enabling two offers the union of what they spell.
+
+  Narrowing withdraws the tool everywhere at once: the toolbar item, its rows in the Lists, Code and Quote dropdowns, the slash menu row, the block menu's Turn into, the floating palette, the command palette entry, and any key you bound to it. With every target off you are writing CommonMark, and the bar keeps Bold, Italic, Inline Code, headings, bullet and ordered lists, links, code blocks, blockquotes and rules.
+
+  It never changes what a document renders. Every file opens with everything it contains drawn in full, whatever you have selected, and the parser and the serializer never read the setting. Nor does it touch what is already in the file: a table in a CommonMark-only document is still a table, and its row, column and alignment controls are all still there. The same holds for a task list's checkboxes and for a wikilink, which keeps the Local link format control so you can convert it rather than being left with a link the editor will not name.
+
+  Typing the syntax yourself still works. `~~text~~`, `==text==`, `$x$` and `[[page]]` are you writing the characters deliberately, so the input rules fire whatever the target says; what a target changes is what the editor offers you.
+
 ---
 
 ## [2026.827.0] - 2026, August 27
