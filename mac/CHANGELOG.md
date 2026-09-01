@@ -12,6 +12,10 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ## [Unreleased]
 
+---
+
+## [2026.901.0] - 2026, September 1
+
 ### Added
 
 - Edit Frontmatter, in the Edit menu. It puts the cursor in the metadata panel, or starts one on a note that has none. This window has no command palette, so the panel had no way in of its own: a note that arrived without metadata could not be given any.
