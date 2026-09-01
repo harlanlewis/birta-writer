@@ -95,6 +95,29 @@ Injected by the runner as `window.__perfInit` before any script runs, so fixture
 
 `large` and `xlarge` repeat a section that contains a table and a code block. Worth knowing before designing a probe: a caret walked blindly into one of those fixtures lands in a table cell or a code block about as often as in prose, and those have very different costs.
 
+## Heavy fixtures (`HEAVY_FIXTURES`)
+
+Two documents are exported separately as a by-name pool: either runner can be pointed at one explicitly, and neither is in `FIXTURES`, so neither is ever measured by `pnpm perf` or by the `launch-perf` gate. `xlarge` remains a member of `TYPING_FIXTURES` exactly as it was, so `pnpm perf:typing` still sweeps it; what is new is that the launch runner can open it at all.
+
+```bash
+node e2e/perf.mjs huge-outline          # launch spans on a ~765 KB working file
+node e2e/perf-typing.mjs huge-outline   # per-keystroke dispatch on the same
+node e2e/perf.mjs xlarge                # the 300 KB typing fixture, cold start
+```
+
+| fixture | shape |
+| --- | --- |
+| `xlarge` | ~300 KB of `richSection`, the typing-lag tail |
+| `huge-outline` | ~765 KB: ~440 headings across three levels, ~3000 list items, unwrapped paragraphs, and no tables, code, images, raw HTML, math or diagrams |
+
+They exist because the harnesses could not open a document the size of the ones users complain about. `large`, at 96 KB, was the biggest cold start anything here could measure: `e2e/perf.mjs` resolved a fixture name against `FIXTURES` alone, so `xlarge` had sat in `TYPING_FIXTURES` for a long time with no way to launch it. Both of the defects fixed in #421 scale with document size, and neither was found by an instrument in this repository. They were found by hand, on a file eight times larger than anything the harnesses could reach.
+
+`huge-outline` is a SHAPE and not only a size, and scaling an existing fixture would not have produced it. Every sized fixture here is built from `richSection`, which carries a table and a fenced code block per section, so the same byte count would hold ~800 of each and its cost would be dominated by two NodeViews and the highlighter. The motivating file contains none of those three constructs and was still seconds to open and seconds to answer a keystroke. `webview/__tests__/perfFixtureConstructs.test.ts` asserts the absence through the real parser, and the presence of the headings and list items alongside it, because a parse that produced nothing would satisfy every absence on its own.
+
+Why a third set rather than an ungated eighth fixture: `launch-perf` is a required, blocking check that measures every entry of `FIXTURES` on both sides of the A/B, twice when a regression has to be confirmed, and `perf:typing` is the most expensive check in the repo and is dominated by its largest fixture. Report-only avoids the verdict and not the cost. A 765 KB document in either default sweep would spend minutes of every PR's critical path.
+
+Two properties of `huge-outline` are load-bearing and easy to lose in a rewrite. Its heading DENSITY, roughly one per 1.7 KB, is what mount-time id work scales with. And its heading text REPEATS, roughly two in three, because `headingIdAssigner`'s `-#N` dedup counter only runs when two headings slug the same, and every other fixture numbers its headings uniquely. `fixtures.test.mjs` asserts both, along with the size band, so an edited section that is never re-derived fails rather than quietly becoming a different document.
+
 The prose fixtures deliberately trip the style check (`STYLE_SENTENCES`); the non-prose ones deliberately do not. `birta.proofreading.enabled` defaults to `true`, so every measured launch has always paid a proofread scan, but until MAR-310 no fixture contained a phrase the shipped word lists match, and `medium` produced 0 `.pf-style-hit` elements. The harness was measuring the matcher's traversal of prose that matches nothing, and never the decoration build, which is the half that scales with how much a document actually trips. A green gate over that fixture set was evidence of non-interference, not of coverage. `code-heavy`, `math`, `link-heavy` and `html-heavy` stay unseeded: they exist to isolate the highlighter, the KaTeX path, the embed recognizer and the html NodeView, and prose seeded into them would blur what they isolate. That set is derived from `FIXTURES` in `fixtures.test.mjs` rather than listed, so a fixture added later cannot skip the bar.
 
 MAR-367 is the same shape one construct over, and it is why `html-heavy` exists: no fixture produced a single `html` node, so the gate could not see any cost in the html NodeView's mount path, which is per atom and runs a sibling walk, a sanitize and a focusable sweep for each one. A grep cannot answer whether a fixture carries the construct, because a raw tag inside a fenced code block is a code block and a tag inside a mermaid label is a diagram; `webview/__tests__/perfFixtureConstructs.test.ts` counts `html` nodes through the real parser instead, and enumerates every fixture so the blind spot is visible rather than inferred. `html-heavy` is deliberately NOT gated. The A/B already measures every fixture and reports the ungated ones, so gating costs no runner time on a green run (a gated regression does buy a second confirming pass); what it costs is a blocking verdict on a fixture built to isolate one NodeView, and whether that path should be able to fail a PR on its own is a call about what the gate is for rather than a detail to slip into an unrelated change. `realistic` carries a smaller seed of the same two branches, so the gate does see the path.

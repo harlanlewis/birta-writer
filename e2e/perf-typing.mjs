@@ -43,7 +43,7 @@
  */
 import { stat, readFile, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
-import { TYPING_FIXTURES } from "./perf/fixtures.mjs";
+import { TYPING_FIXTURES, HEAVY_FIXTURES } from "./perf/fixtures.mjs";
 import { serve, serveAB, repoRoot } from "./perf/server.mjs";
 // The pure gate logic lives in verdict.mjs so the check that blocks every PR is
 // unit-testable (this file runs Playwright/process.exit on import and can't be).
@@ -413,7 +413,16 @@ async function measureMode(only, keys, jsonOut, flags = null) {
         console.error("dist/webview.js not found — run `pnpm build` first.");
         process.exit(2);
     }
-    const names = Object.keys(TYPING_FIXTURES).filter((n) => !only || n === only);
+    // A NAMED fixture may be a heavy one. The default sweep stays exactly what
+    // it was: `xlarge` is a member of TYPING_FIXTURES and is swept as always,
+    // `huge-outline` is reachable only by name. AB_FIXTURES is untouched.
+    // See HEAVY_FIXTURES in perf/fixtures.mjs.
+    //
+    // `Object.hasOwn`, never `in`: `in` walks the prototype chain, so a fixture
+    // named `constructor` or `toString` would resolve to a function and be
+    // measured as a document. The filter this replaced was safe by accident.
+    const pool = { ...TYPING_FIXTURES, ...HEAVY_FIXTURES };
+    const names = only ? (Object.hasOwn(pool, only) ? [only] : []) : Object.keys(TYPING_FIXTURES);
     if (names.length === 0) {
         console.error(only ? `no typing fixture named "${only}"` : "no fixtures");
         process.exit(2);
@@ -426,8 +435,8 @@ async function measureMode(only, keys, jsonOut, flags = null) {
     const report = { fixtures: {} };
     const rows = [];
     for (const name of names) {
-        const agg = await measureFixture(chromium, baseUrl, TYPING_FIXTURES[name], keys, name);
-        const kb = round(TYPING_FIXTURES[name].length / 1024);
+        const agg = await measureFixture(chromium, baseUrl, pool[name], keys, name);
+        const kb = round(pool[name].length / 1024);
         report.fixtures[name] = { ...agg, kb };
         rows.push([name, `${kb} KB`, String(agg.median), String(agg.p95), String(agg.max), String(agg.caretMedian ?? "n/a"), String(agg.rescanMs ?? "n/a"), String(agg.blockMs ?? "n/a"), String(agg.blockTasks ?? "n/a"), String(agg.keystrokes)]);
     }
