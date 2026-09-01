@@ -16,6 +16,7 @@ import {
     type RoundTripProtection,
 } from "@birta/minimal-diff";
 import { mergeVerified } from "./utils/verifiedMerge";
+import { configureHeadingIds } from "./plugins/headingIdSync";
 import { markdownFormat } from "./format/markdown";
 import type { FormatModule } from "./format/types";
 import { guardNodeViewFactory } from "./nodeViewBoundary";
@@ -677,6 +678,10 @@ export async function createEditor(
                 ...prev,
                 editable: () => !isReadOnly(),
             }));
+            // Heading ids onto the parsed document before the state is built,
+            // so the view never has to redraw every heading to receive them.
+            // See plugins/headingIdSync.
+            configureHeadingIds(ctx);
             // Format-supplied stringify options that keep serializer output
             // close to the original file formatting (bullets, rules, table
             // widths).

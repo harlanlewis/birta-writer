@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Opening a large document is faster, and most noticeably on a long outline. Every heading carries an `id` so it can be linked to, and the editor assigned those ids after the document was already on screen: one transaction step per heading, which rebuilt the document and made the editor redraw every heading it had just finished drawing. The ids are now placed on the document before it is first rendered, so the work happens once instead of twice. The saving scales with how many headings a document has, so a deeply structured file gains most and a flat one gains little.
+
 ### Removed
 
 - Pinch-to-zoom on a diagram's inline preview, so that scrolling past a diagram no longer feels like the page is refusing to move. Intercepting a pinch means cancelling the gesture, and a handler that can cancel takes every scroll over that pane off the fast path and onto the main thread, whether or not it turns out to be a pinch. A diagram sitting in the middle of a document is something you scroll past far more often than you zoom, so the pane no longer answers the wheel at all. Zoom is still on the pane's own buttons and its reset control, and the fullscreen view keeps pinch, wheel zoom and wheel pan, because there is no document behind it to scroll.

@@ -9,10 +9,13 @@
  * is covered by parity, not by a copy of the expected slug.
  */
 import { describe, it, expect, afterEach } from "vitest";
-import { Editor, rootCtx, defaultValueCtx, editorViewCtx } from "@milkdown/core";
+import * as fs from "fs";
+import * as path from "path";
+import { Editor, rootCtx, defaultValueCtx, editorViewCtx, editorStateOptionsCtx } from "@milkdown/core";
 import { commonmark } from "@milkdown/preset-commonmark";
 import type { EditorView, Node as PmNode } from "../pm";
 import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
+import { configureHeadingIds } from "../plugins/headingIdSync";
 
 let editors: Editor[] = [];
 
@@ -23,6 +26,7 @@ async function makeOurs(markdown: string): Promise<EditorView> {
         .config((ctx) => {
             ctx.set(rootCtx, root);
             ctx.set(defaultValueCtx, markdown);
+            configureHeadingIds(ctx);
             configureSerialization(ctx);
         })
         .use(pureCommonmark)
@@ -54,9 +58,10 @@ afterEach(async () => {
     document.body.innerHTML = "";
 });
 
-function headingIds(view: EditorView): unknown[] {
+function headingIds(source: EditorView | PmNode): unknown[] {
     const ids: unknown[] = [];
-    view.state.doc.descendants((node) => {
+    const doc = "state" in source ? source.state.doc : source;
+    doc.descendants((node) => {
         if (node.type.name === "heading") {
             ids.push(node.attrs["id"]);
             return false;
@@ -91,6 +96,112 @@ describe("headingIdSync parity with the stock plugin", () => {
         expect(headingIds(ours)).toEqual(headingIds(stock));
         // Not merely "both empty": the dedup suffix scheme really fired.
         expect(headingIds(ours)).toContain("beta-#2");
+    });
+
+    /**
+     * The ids are seeded onto the parsed document before the state is built,
+     * so the mount pass has nothing left to do and the view never redraws a
+     * heading to receive one. DOC IDENTITY is the assertion that can tell the
+     * difference: a transaction, however tagged, replaces `state.doc` with a
+     * new node, so `toBe` on the seeded document fails the moment the seed
+     * stops working and the mount pass starts dispatching again. Asserting the
+     * ids alone cannot see that, because both routes arrive at the same ids.
+     */
+    it("seeding should leave the mount pass nothing to dispatch", async () => {
+        const root = document.createElement("div");
+        document.body.appendChild(root);
+        let seeded: PmNode | undefined;
+        const editor = await Editor.make()
+            .config((ctx) => {
+                ctx.set(rootCtx, root);
+                ctx.set(defaultValueCtx, DOC);
+                configureHeadingIds(ctx);
+                // Runs after the seed, so `doc` here is what the seed produced.
+                ctx.update(editorStateOptionsCtx, (prev) => (options) => {
+                    const out = prev(options);
+                    seeded = out.doc;
+                    return out;
+                });
+                configureSerialization(ctx);
+            })
+            .use(pureCommonmark)
+            .use(gfmFidelity)
+            .create();
+        editors.push(editor);
+        const view = editor.action((ctx) => ctx.get(editorViewCtx)) as EditorView;
+
+        // The seed ran, and ran on a document that actually has headings.
+        expect(seeded).toBeDefined();
+        expect(headingIds(seeded!)).toContain("beta-#2");
+
+        // Nothing replaced it: the document the view holds IS the seeded one.
+        expect(view.state.doc).toBe(seeded);
+    });
+
+    /**
+     * The control arm for the case above. Without the seed the mount pass has
+     * work to do and dispatches, so `state.doc` is NOT the parsed document.
+     * Without this, the identity assertion could be passing because nothing
+     * ever dispatches at mount for some unrelated reason, and it would go on
+     * passing if the seed were deleted.
+     */
+    it("without the seed, the mount pass should replace the document instead", async () => {
+        const root = document.createElement("div");
+        document.body.appendChild(root);
+        let parsed: PmNode | undefined;
+        const editor = await Editor.make()
+            .config((ctx) => {
+                ctx.set(rootCtx, root);
+                ctx.set(defaultValueCtx, DOC);
+                // configureHeadingIds deliberately NOT called.
+                ctx.update(editorStateOptionsCtx, (prev) => (options) => {
+                    const out = prev(options);
+                    parsed = out.doc;
+                    return out;
+                });
+                configureSerialization(ctx);
+            })
+            .use(pureCommonmark)
+            .use(gfmFidelity)
+            .create();
+        editors.push(editor);
+        const view = editor.action((ctx) => ctx.get(editorViewCtx)) as EditorView;
+
+        expect(parsed).toBeDefined();
+        // The parsed document carries no ids, which is what makes the pass work.
+        expect(headingIds(parsed!).every((id) => !id)).toBe(true);
+        // And the pass dispatched, so the view holds a different document.
+        expect(view.state.doc).not.toBe(parsed);
+        expect(headingIds(view)).toContain("beta-#2");
+    });
+
+    /**
+     * Nothing about the IDS can tell you whether the seed is still wired up.
+     * Delete `configureHeadingIds(ctx)` from the composition root and every
+     * behavioural case in this file still passes, because the mount pass
+     * assigns the same ids a moment later; what is lost is only the second
+     * whole-document render, and no assertion about ids can see a render.
+     *
+     * The launch gate would eventually notice, since its heading-bearing
+     * fixtures would slow down, but a delta gate reports that something got
+     * slower and this names which thing. Source-level for the same reason
+     * pmFunnel and hostProfile are: the property is about a call site, not
+     * about a value any test can read back.
+     */
+    it("the editor's composition root should wire the seed", () => {
+        const root = fs.readFileSync(path.resolve(__dirname, "..", "editor.ts"), "utf8");
+        expect(root).toContain("configureHeadingIds(ctx)");
+    });
+
+    it("a seeded document should still take id maintenance when a heading is edited", async () => {
+        const ours = await makeOurs(DOC);
+        const before = ours.state.doc;
+
+        const { pos } = findTextblock(ours, "Gamma");
+        ours.dispatch(ours.state.tr.insertText("Delta ", pos + 1));
+
+        expect(ours.state.doc).not.toBe(before);      // the edit landed
+        expect(headingIds(ours)).toContain("delta-gamma");
     });
 
     it("editing a heading's text should update its id exactly as the stock plugin does", async () => {
