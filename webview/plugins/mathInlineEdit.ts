@@ -58,14 +58,6 @@ export function revealDecorations(state: EditorState): DecorationSet {
 
 const key = new PluginKey("MDW_MATH_INLINE_EDIT");
 
-/**
- * The math node a selection was last inside, or null.
- *
- * Module-scoped rather than plugin state: it is a scheduling detail of the
- * emptied-formula net below, read and written only there, and putting it in
- * plugin state would make it part of every `EditorState` for no reader.
- */
-let lastInside: { pos: number; end: number } | null = null;
 
 export const mathInlineEditPlugin = $prose(
     () =>
@@ -227,23 +219,10 @@ export const mathInlineEditPlugin = $prose(
             },
 
             // Delete a formula whose source was emptied, once the caret leaves it
-            // (kept while inside so the user can retype). O(1): the only node
-            // that can have just been left is the one a selection was last
-            // inside, which is what `lastInside` remembers.
-            //
-            // Remembered rather than read from `oldState`, because the two
-            // events do not arrive in the same order in every engine. Deleting
-            // the last character of a source produces, in Chromium, one
-            // transaction whose old selection is still inside the formula. In
-            // WebKit the caret leaves FIRST, in its own transaction, and the
-            // delete arrives after it with an old selection that is already
-            // outside; keyed on `oldState` alone, this net then never fires and
-            // an emptied formula stays in the document forever. That is the
-            // engine Birta Writer for Mac renders in, so the ordering is not
-            // hypothetical. Pinned by `e2e/mathInline`.
+            // (kept while inside so the user can retype). O(1): only the node
+            // the PREVIOUS selection was in can have just been left.
             appendTransaction(trs, oldState, newState) {
-                const prev = mathAroundSelection(oldState) ?? lastInside;
-                lastInside = mathAroundSelection(newState);
+                const prev = mathAroundSelection(oldState);
                 if (!prev) {
                     return null;
                 }
