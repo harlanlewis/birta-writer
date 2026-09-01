@@ -78,6 +78,22 @@ export async function run({ page, check, baseUrl }) {
         return { ligatures: cs.fontVariantLigatures, trim: cs.textSpacingTrim, kerning: cs.fontKerning };
     });
     check("body ligatures are common+contextual", body.ligatures === "common-ligatures contextual", body.ligatures);
-    check("body CJK punctuation trims at line start", body.trim === "trim-start", body.trim);
+    // `text-spacing-trim` is not implemented everywhere, and an engine that
+    // does not implement it computes no value at all, so asserting the computed
+    // string flatly is asserting the engine rather than the declaration. Feature
+    // detected instead, and the branch is reported: where the property exists
+    // the value has to be ours, and where it does not the check records the gap
+    // rather than passing quietly. The day the engine ships it, the first branch
+    // takes over and can fail, which is what keeps this from being decoration.
+    const trimSupported = await page.evaluate(() =>
+        CSS.supports("text-spacing-trim", "trim-start"));
+    check("body CJK punctuation trims at line start, where the engine can",
+        trimSupported
+            ? body.trim === "trim-start"
+            // Not merely "some other value": an engine without the property
+            // reports nothing for it at all, and anything else would mean a
+            // partial implementation this branch has no business passing.
+            : (body.trim === undefined || body.trim === ""),
+        `supported=${trimSupported} computed=${JSON.stringify(body.trim)}`);
     check("body kerning asserted", body.kerning === "normal", body.kerning);
 }

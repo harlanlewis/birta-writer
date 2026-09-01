@@ -24,6 +24,7 @@ import { applyExternalSync } from "./externalSync";
 import { instrumentTransactions, mark, measure } from "./perf";
 import { createSyncScheduler } from "./syncScheduler";
 import { isReadOnly } from "./readOnly";
+import { requestIdle } from "./utils/idle";
 import {
     anchorSyncPlugin,
     backtickWrapPlugin,
@@ -194,13 +195,20 @@ function getProtection(): RoundTripProtection | null {
     return _protection;
 }
 
-/** Precompute the deferred protection during idle, off the launch path. */
+/**
+ * Precompute the deferred protection during idle, off the launch path.
+ *
+ * Through `requestIdle` rather than a local scheduler, which is what makes the
+ * deferral hold in every engine: WebKit implements no `requestIdleCallback`, so
+ * the fallback is the real path on the surface Birta Writer for Mac renders in,
+ * and a bare timeout scheduled during mount fires before the first paint. The
+ * O(document) re-serialization this defers was being paid on the launch path in
+ * exactly the engine nobody was measuring. `utils/idle.ts` holds the reason the
+ * fallback clears two animation frames; `e2e/perf` asserts `rtp-start` against
+ * the paint mark, and is the only place the ordering can fail.
+ */
 function scheduleProtection(): void {
-    const ric = (globalThis as {
-        requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => void;
-    }).requestIdleCallback;
-    if (ric) ric(() => getProtection(), { timeout: 2000 });
-    else setTimeout(() => getProtection(), 0);
+    requestIdle(() => getProtection(), 2000);
 }
 
 // Whether the user has interacted with the editor yet (keyboard/mouse/paste/...)

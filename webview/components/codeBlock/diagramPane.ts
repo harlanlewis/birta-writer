@@ -3,8 +3,10 @@
  *
  * The INLINE diagram preview, shared by every diagram engine: the surface plus
  * everything that moves it — the zoom overlay, the pan pad, drag-to-pan,
- * pinch-to-zoom, fit-to-view, the adaptive container height, and the
- * single-flight render.
+ * fit-to-view, the adaptive container height, and the single-flight render.
+ *
+ * It handles no wheel event, and that is a decision rather than a gap; the
+ * reason is beside the overlay buttons below.
  *
  * These belong in one module because they are one state machine: pan/zoom, the
  * SVG's natural size, "has the user moved this by hand", and the (code, theme)
@@ -434,28 +436,27 @@ export function createDiagramPane(opts: {
         document.addEventListener("mouseup", onUp);
     });
 
-    // ── Trackpad/wheel events ──────────────────────────────
-    // The inline preview only responds to ctrlKey=true (Mac pinch-to-zoom); normal scrolling passes through to the page.
-    // The fullscreen preview (openDiagramLightbox) still keeps wheel pan + zoom.
-    const onPreviewWheel = (e: WheelEvent) => {
-        if (!e.ctrlKey) return; // don't intercept normal scrolling, let the page scroll
-        e.preventDefault();
-        e.stopPropagation();
-        // Pinch: exponential smooth zoom, no jumps
-        const factor = Math.pow(0.98, e.deltaY);
-        const newZoom = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, zoomLevel * factor));
-        // Use the mouse/finger position as the zoom center
-        const rect = preview.getBoundingClientRect();
-        const mx = e.clientX - rect.left - rect.width / 2;
-        const my = e.clientY - rect.top - rect.height / 2;
-        const r = newZoom / zoomLevel;
-        panX = mx + (panX - mx) * r;
-        panY = my + (panY - my) * r;
-        zoomLevel = newZoom;
-        hasManualTransform = true;
-        applyTransform();
-    };
-    preview.addEventListener("wheel", onPreviewWheel, { passive: false });
+    // ── No wheel handler here, deliberately ────────────────
+    //
+    // The inline pane registers NO `wheel` listener, and must not gain one. A
+    // pane sitting in the middle of a document is something you scroll PAST far
+    // more often than you zoom, and a listener that has to be `{ passive: false }`
+    // to call preventDefault takes every gesture over the pane off the
+    // compositor and onto the main thread, whether or not it turns out to want
+    // the event. On a busy document that is felt as the page refusing to move
+    // under the pointer, which is what the pane costs the reader for a zoom the
+    // overlay buttons and the pan pad already offer.
+    //
+    // Passive is not an escape: a passive listener cannot preventDefault, and
+    // preventDefault is the whole of what intercepting a pinch means. The
+    // choice is the gesture or the scroll, and on this surface the scroll wins.
+    //
+    // The fullscreen surface keeps its wheel pan and zoom (`lightbox.ts`), and
+    // the asymmetry is the point rather than an oversight: there is no document
+    // behind that surface to scroll, so nothing is being taken away there.
+    //
+    // Pinned by `e2e/diagramScroll`, which drives a real wheel through the
+    // browser's input pipeline rather than dispatching a synthetic event.
 
     // ── Overlay zoom buttons ──────────────────────────────
     overlayZoomOut.addEventListener("mousedown", (e) => {
@@ -487,7 +488,6 @@ export function createDiagramPane(opts: {
         destroy() {
             unregister();
             previewResizeObserver?.disconnect();
-            preview.removeEventListener("wheel", onPreviewWheel);
         },
     };
 }

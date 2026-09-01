@@ -58,6 +58,15 @@ export function revealDecorations(state: EditorState): DecorationSet {
 
 const key = new PluginKey("MDW_MATH_INLINE_EDIT");
 
+/**
+ * The math node a selection was last inside, or null.
+ *
+ * Module-scoped rather than plugin state: it is a scheduling detail of the
+ * emptied-formula net below, read and written only there, and putting it in
+ * plugin state would make it part of every `EditorState` for no reader.
+ */
+let lastInside: { pos: number; end: number } | null = null;
+
 export const mathInlineEditPlugin = $prose(
     () =>
         new Plugin({
@@ -143,6 +152,31 @@ export const mathInlineEditPlugin = $prose(
                     if (event.key === "ArrowRight" && atEnd) {
                         return caretTo($from.after());
                     }
+                    // The LAST character of a source is deleted explicitly, not
+                    // natively. Emptying an inline node leaves the caret with no
+                    // content to sit in, and WebKit resolves that by moving the
+                    // caret out of the node instead of performing the deletion:
+                    // the character survives, the formula is never emptied, and
+                    // the net below has nothing to collect. Chromium empties it
+                    // and keeps the caret, which is why this only ever showed on
+                    // the engine Birta Writer for Mac renders in. Dispatching the
+                    // delete makes the outcome the editor's rather than the
+                    // engine's, and leaves the node empty with the caret inside
+                    // so it can still be retyped. Pinned by `e2e/mathInline`.
+                    const lastChar = selection.empty
+                        && $from.parent.content.size === 1
+                        && (event.key === "Backspace" ? $from.parentOffset === 1 : $from.parentOffset === 0);
+                    if (lastChar && (event.key === "Backspace" || event.key === "Delete")) {
+                        const start = $from.start();
+                        // One transaction, held in a local: `state.tr` is a
+                        // getter that mints a FRESH transaction on every access,
+                        // so reading it twice builds the selection against a
+                        // document the delete never touched.
+                        const tr = state.tr.delete(start, start + 1);
+                        tr.setSelection(TextSelection.create(tr.doc, start));
+                        view.dispatch(tr);
+                        return true;
+                    }
                     return false;
                 },
 
@@ -193,10 +227,23 @@ export const mathInlineEditPlugin = $prose(
             },
 
             // Delete a formula whose source was emptied, once the caret leaves it
-            // (kept while inside so the user can retype). O(1): only the node the
-            // PREVIOUS selection was in can have just been left.
+            // (kept while inside so the user can retype). O(1): the only node
+            // that can have just been left is the one a selection was last
+            // inside, which is what `lastInside` remembers.
+            //
+            // Remembered rather than read from `oldState`, because the two
+            // events do not arrive in the same order in every engine. Deleting
+            // the last character of a source produces, in Chromium, one
+            // transaction whose old selection is still inside the formula. In
+            // WebKit the caret leaves FIRST, in its own transaction, and the
+            // delete arrives after it with an old selection that is already
+            // outside; keyed on `oldState` alone, this net then never fires and
+            // an emptied formula stays in the document forever. That is the
+            // engine Birta Writer for Mac renders in, so the ordering is not
+            // hypothetical. Pinned by `e2e/mathInline`.
             appendTransaction(trs, oldState, newState) {
-                const prev = mathAroundSelection(oldState);
+                const prev = mathAroundSelection(oldState) ?? lastInside;
+                lastInside = mathAroundSelection(newState);
                 if (!prev) {
                     return null;
                 }

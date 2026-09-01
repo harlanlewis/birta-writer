@@ -110,6 +110,7 @@ if (suites.length === 0) {
 acquireHarnessLock(only ? `e2e ${only}` : "e2e sweep");
 
 let failedTotal = 0;
+const skippedSuites = [];
 const timings = [];
 const sweepStart = Date.now();
 for (const suite of suites) {
@@ -121,10 +122,78 @@ for (const suite of suites) {
 
     const browser = await browserType.launch();
     const page = await browser.newPage({ viewport: { width: 1000, height: 900 } });
+
+    // Backspace on a document that is not editable is still "go back" in
+    // WebKit, and Playwright's first navigation leaves an `about:blank` behind
+    // it, so a suite that presses Backspace outside an editable region loses
+    // the whole page mid-run and everything after it times out on a selector
+    // that will never return.
+    //
+    // No host of ours can do that. A WKWebView reports `history.length` 1 after
+    // loading the app's page, because its first load IS the first entry and
+    // there is no `about:blank` before it, and the extension's webview is the
+    // same shape. So the browser here has a back entry the product never has,
+    // and modelling the host is this page's job, exactly as stubbing
+    // `acquireVsCodeApi` is.
+    //
+    // Unconditional rather than WebKit-only, so both engines run the same
+    // harness and a cross-engine difference is never this. In Chromium, which
+    // dropped Backspace navigation years ago, it changes nothing.
+    //
+    // Scoped to targets that cannot consume the key themselves: where the
+    // target IS editable the engine will not navigate anyway, and cancelling
+    // there would break every suite that types.
+    await page.addInitScript(() => {
+        addEventListener("keydown", (e) => {
+            if (e.key !== "Backspace") return;
+            const t = e.target;
+            const editable = t instanceof Element
+                && (t.isContentEditable || t.closest("input, textarea") !== null);
+            if (!editable) e.preventDefault();
+        }, true);
+    });
+
+    // Console output an ENGINE emits about itself, which no product change can
+    // stop and no user is affected by. Filtered so "no page errors" keeps
+    // meaning "the product logged an error", and printed rather than dropped,
+    // because a filter that hides things silently is how a real error joins the
+    // list nobody reads.
+    //
+    // Each entry carries what was checked, not just what was seen:
+    //
+    //  * The sandbox flag. `allow-presentation` is a valid HTML token that
+    //    WebKit does not implement, so it complains once per embedded player.
+    //    The containment question that actually matters was measured rather
+    //    than assumed: WebKit keeps all four tokens in the iframe's sandbox
+    //    list and applies the three it supports, so removing the flag to
+    //    silence this would cost Chromium a capability and buy nothing.
+    //  * The ResizeObserver notice. Not an exception: it is the spec's way of
+    //    saying a resize callback queued more work than one frame could
+    //    deliver, and both engines emit it under load.
+    const ENGINE_NOISE = [
+        /invalid sandbox flag/i,
+        /ResizeObserver loop (limit exceeded|completed with undelivered notifications)/i,
+    ];
     const pageErrors = [];
-    page.on("pageerror", (e) => pageErrors.push(String(e)));
+    const noteError = (text) => {
+        if (ENGINE_NOISE.some((re) => re.test(text))) {
+            console.log(`NOTE [${suite}] engine noise, not counted: ${text.slice(0, 120)}`);
+            return;
+        }
+        pageErrors.push(text);
+    };
+    page.on("pageerror", (e) => noteError(String(e)));
     page.on("console", (m) => {
-        if (m.type() === "error") pageErrors.push(m.text());
+        if (m.type() === "error") noteError(m.text());
+    });
+    // A console "Failed to load resource: … 404" names no URL, which makes it
+    // the least actionable line a suite can fail on. The response is where the
+    // URL exists, so it is printed beside it; the console error is still what
+    // counts, so this adds a name rather than a second failure.
+    page.on("response", (r) => {
+        if (!r.ok() && !r.request().isNavigationRequest()) {
+            console.log(`NOTE [${suite}] ${r.status()} for ${r.url()}`);
+        }
     });
     // A suite serves its OWN directory as `/`, so `page.goto` takes
     // `${baseUrl}/index.html` — a repo-relative `${baseUrl}/e2e/<suite>/…` 404s.
@@ -147,11 +216,27 @@ for (const suite of suites) {
         results.push({ name, ok });
         console.log(`${ok ? "PASS" : "FAIL"} [${suite}] ${name}${detail ? ` — ${detail}` : ""}`);
     };
+    // A suite that CANNOT run in this engine is not a suite that failed, and
+    // the two must not read alike: a red count that mixes them measures the
+    // harness's portability rather than the product's behaviour. The touch
+    // suites are the case this exists for, since touch emulation is driven
+    // through a CDP session and CDP is Chromium-only.
+    //
+    // Deliberately not a pass. A skip is printed, counted, and reported in the
+    // suite's line, so a suite that quietly stopped running anywhere is visible
+    // rather than being a green row.
+    let skipped = null;
+    const skip = (reason) => {
+        skipped = reason;
+        console.log(`SKIP [${suite}] ${reason}`);
+    };
 
     try {
         const { run } = await import(join(suiteDir, "checks.mjs"));
-        await run({ page, check, baseUrl });
-        check("no page errors", pageErrors.length === 0, pageErrors.slice(0, 3).join(" | "));
+        await run({ page, check, baseUrl, skip, browserName: BROWSER });
+        if (!skipped) {
+            check("no page errors", pageErrors.length === 0, pageErrors.slice(0, 3).join(" | "));
+        }
     } catch (e) {
         check("suite completed", false, String(e));
         const shot = join(tmpdir(), `e2e-${suite}-failure.png`);
@@ -164,9 +249,12 @@ for (const suite of suites) {
 
     const failed = results.filter((r) => !r.ok).length;
     failedTotal += failed;
+    if (skipped) skippedSuites.push(suite);
     const elapsed = Date.now() - suiteStart;
     timings.push({ suite, ms: elapsed });
-    console.log(`${suite}: ${results.length - failed}/${results.length} checks passed (${(elapsed / 1000).toFixed(1)}s)\n`);
+    console.log(skipped
+        ? `${suite}: SKIPPED in ${BROWSER} (${skipped})\n`
+        : `${suite}: ${results.length - failed}/${results.length} checks passed (${(elapsed / 1000).toFixed(1)}s)\n`);
 }
 
 // Where the sweep's time actually goes. Printed every run, because a suite
@@ -176,7 +264,8 @@ timings.sort((a, b) => b.ms - a.ms);
 const slowest = timings.slice(0, 8)
     .map((t) => `${t.suite} ${(t.ms / 1000).toFixed(1)}s`)
     .join(", ");
-console.log(`sweep: ${suites.length} suites in ${(sweepMs / 1000).toFixed(1)}s`);
+console.log(`sweep: ${suites.length} suites in ${(sweepMs / 1000).toFixed(1)}s`
+    + (skippedSuites.length ? `, ${skippedSuites.length} skipped in ${BROWSER}: ${skippedSuites.join(", ")}` : ""));
 console.log(`slowest: ${slowest}`);
 
 process.exit(failedTotal ? 1 : 0);

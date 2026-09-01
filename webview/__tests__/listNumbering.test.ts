@@ -97,10 +97,22 @@ async function setNumbering(v: EditorView, style: string | null): Promise<void> 
  * Let a deferred reconcile run. An INCIDENTAL document edit schedules the bag
  * write on an idle window instead of doing it inline, because the reconcile's
  * cost scales with the document (plugins/listNumbering.ts), and in jsdom
- * `requestIdle` degrades to `setTimeout(0)`. An explicit numbering choice needs
+ * `requestIdle` clears two animation frames and then yields. An explicit numbering choice needs
  * none of this: it reconciles synchronously.
  */
-const flushIdle = (): Promise<void> => new Promise((resolve) => { setTimeout(resolve, 0); });
+/**
+ * Let a `requestIdle` callback arrive.
+ *
+ * It clears two animation frames and then yields (utils/idle.ts), so a single
+ * timeout is no longer enough on its own: jsdom schedules frames on a timer, and
+ * the flush has to outlast two of them.
+ */
+const flushIdle = async (): Promise<void> => {
+    for (let i = 0; i < 3; i++) {
+        await new Promise((resolve) => { requestAnimationFrame(() => resolve(undefined)); });
+    }
+    await new Promise((resolve) => { setTimeout(resolve, 0); });
+};
 
 const LIST = "1. one\n2. two\n3. three\n";
 

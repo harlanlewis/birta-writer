@@ -273,7 +273,17 @@ async function revealEverything(page, collect) {
     return built;
 }
 
-export async function run({ page, check, baseUrl }) {
+export async function run({ page, check, baseUrl, skip, browserName }) {
+    // Touch emulation is driven through a CDP session, and CDP is Chromium's
+    // protocol: there is no WebKit equivalent Playwright exposes. So this suite
+    // cannot run here at all, which is a different thing from failing, and the
+    // runner prints it as a skip so a WebKit red count stays a statement about
+    // the product rather than about the harness's portability.
+    if (browserName !== "chromium") {
+        skip("touch emulation needs a CDP session, which is Chromium-only");
+        return;
+    }
+
     const touch = await touchOn(page);
     await page.goto(`${baseUrl}/index.html`);
     await page.waitForSelector(".milkdown .ProseMirror", { timeout: 15000 });

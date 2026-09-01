@@ -10,6 +10,30 @@
  * baseline, and whether it takes width that shoves the rest of the line
  * along. jsdom has no layout engine and reports both as zero.
  */
+/**
+ * Collapse the caret to the first character of `el`.
+ *
+ * Not `Home`. Playwright's WebKit uses macOS key semantics, where Home scrolls
+ * the view and leaves the caret where it was, so "/query" was typed wherever
+ * the click had landed and the menu never opened. Chromium's Home does move the
+ * caret, which is why this only ever failed in one engine. Caret placement is
+ * setup here, not the subject, so it is set from a Range rather than through a
+ * key whose meaning belongs to the platform.
+ */
+async function caretToStart(page, locator) {
+    await locator.evaluate((el) => {
+        const walk = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+        const first = walk.nextNode() ?? el;
+        const range = document.createRange();
+        range.setStart(first, 0);
+        range.collapse(true);
+        const selection = window.getSelection();
+        selection.removeAllRanges();
+        selection.addRange(range);
+    });
+    await page.waitForTimeout(50);
+}
+
 export async function run({ page, check, baseUrl }) {
     const SLASH = "#md-slash-menu";
 
@@ -24,11 +48,11 @@ export async function run({ page, check, baseUrl }) {
             { timeout: 10000 },
         );
         await page.waitForTimeout(300);
-        // Deterministic caret: click the paragraph and Home to its start (arrow/
-        // Enter caret moves are unreliable headless). "/query" then sits at
-        // block start, so slashContext matches regardless of trailing text.
-        await page.locator(".milkdown .ProseMirror p").first().click();
-        await page.keyboard.press("Home");
+        // Deterministic caret at the paragraph's start, so "/query" sits at
+        // block start and slashContext matches regardless of trailing text.
+        const target = page.locator(".milkdown .ProseMirror p").first();
+        await target.click();
+        await caretToStart(page, target);
         await page.keyboard.type(`/${query}`, { delay: 60 });
         await page.waitForSelector(SLASH, { state: "visible", timeout: 10000 });
         await page.waitForTimeout(200);
@@ -114,8 +138,9 @@ export async function run({ page, check, baseUrl }) {
                 .find((el) => el.textContent.includes("callout body here"));
             par.scrollIntoView({ block: "center" });
         });
-        await page.locator(".ProseMirror .callout p", { hasText: "callout body here" }).click();
-        await page.keyboard.press("Home");
+        const target = page.locator(".ProseMirror .callout p", { hasText: "callout body here" });
+        await target.click();
+        await caretToStart(page, target);
         await page.keyboard.type(`/${query}`, { delay: 60 });
         await page.waitForSelector(SLASH, { state: "visible", timeout: 10000 });
         await page.waitForTimeout(200);
@@ -215,13 +240,22 @@ export async function run({ page, check, baseUrl }) {
     // A second request, typed on a fresh empty line below the paragraph (the
     // common gesture): its marker sits beside THAT line, not the one above.
     // Then cancelled from its marker, then reported failed.
-    // Home is the one caret key that is reliable headless (see open()), so
-    // the fresh line is made ABOVE the paragraph: Enter at its start, then
-    // ArrowUp into the empty paragraph that split off.
-    await page.locator(".milkdown .ProseMirror p").first().click();
-    await page.keyboard.press("Home");
+    // The fresh line is made ABOVE the paragraph: caret to its start, Enter,
+    // then ArrowUp into the empty paragraph that split off. The caret is placed
+    // from a Range for the same reason `caretToStart` exists: Home does not
+    // move it under WebKit's macOS key semantics.
+    const secondTarget = page.locator(".milkdown .ProseMirror p").first();
+    await secondTarget.click();
+    await caretToStart(page, secondTarget);
     await page.keyboard.press("Enter");
-    await page.keyboard.press("ArrowUp");
+    // Into the empty paragraph the split left above, by Range rather than by
+    // ArrowUp. An empty textblock holds nothing but widget decorations, and
+    // WebKit will not keep an insertion point in front of a
+    // `contenteditable=false` widget with no content before it (AGENTS.md, the
+    // `e2e/enterCaret` class): the caret re-anchors to the previous block and
+    // "/ai" is then typed somewhere that is not a block start, so the menu
+    // never opens.
+    await caretToStart(page, page.locator(".milkdown .ProseMirror p").first());
     await page.keyboard.type("/ai", { delay: 60 });
     await page.waitForSelector(SLASH, { state: "visible", timeout: 10000 });
     await page.keyboard.press("Space");
@@ -252,8 +286,9 @@ export async function run({ page, check, baseUrl }) {
     // thing in a heading's gutter: a third request on the H1 (the second
     // stays live for the cancel checks below), hover the heading (the
     // chevron shows on hover) and compare rects.
-    await page.locator(".milkdown .ProseMirror h1").first().click();
-    await page.keyboard.press("Home");
+    const headingTarget = page.locator(".milkdown .ProseMirror h1").first();
+    await headingTarget.click();
+    await caretToStart(page, headingTarget);
     await page.keyboard.type("/ai", { delay: 60 });
     await page.waitForSelector(SLASH, { state: "visible", timeout: 10000 });
     await page.keyboard.press("Space");

@@ -77,6 +77,11 @@ function settle(): void {
 beforeEach(() => {
     vi.clearAllMocks();
     vi.useFakeTimers();
+    // `requestIdle` clears two animation frames before its timeout, so the
+    // reporter's work never arrives under faked timers alone (utils/idle.ts
+    // has the reason it waits for frames at all). Run each frame immediately,
+    // which leaves the debounce this file is about as the only delay left.
+    vi.stubGlobal("requestAnimationFrame", (cb: FrameRequestCallback) => { cb(0); return 0; });
     resetWordCountReporter();
 });
 

@@ -187,6 +187,23 @@ export function openFullscreenSurface(opts: {
     overlay.append(content, title, actions, nav);
     document.body.appendChild(overlay);
     overlay.focus();
+    // Taking focus is not enough on its own. WebKit goes on routing keystrokes
+    // to a selection inside a contenteditable after its host has stopped being
+    // the active element, so the caret left behind in the document is still an
+    // edit target and typing over an open lightbox edits the note underneath
+    // it. Chromium drops the selection's editing privileges along with the
+    // focus, which is why `overlay.focus()` alone read as sufficient (MAR-267).
+    //
+    // Scoped by containment rather than by naming the editor: a modal surface
+    // owns the selection while it is open, and this file deliberately knows
+    // nothing about what it was opened over. A selection the surface's OWN
+    // content holds is left alone, which is what keeps the fullscreen code
+    // editor's textarea and any text a reader has selected inside the surface
+    // working.
+    const stale = window.getSelection();
+    if (stale && stale.anchorNode && !overlay.contains(stale.anchorNode)) {
+        stale.removeAllRanges();
+    }
     lockBodyScroll();
 
     const surface: FullscreenSurface = {
