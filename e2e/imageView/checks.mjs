@@ -300,6 +300,16 @@ export async function run({ page, check, baseUrl }) {
     // the bottom edge, where the pre-MAR-220 dropdown rendered off-screen.
     await page.setViewportSize({ width: 1000, height: 320 });
     await page.waitForTimeout(200);
+    // Then PUT it near the bottom edge rather than hoping the layout does.
+    // Where the second image lands after a viewport change is a function of
+    // everything above it, and the two engines do not agree: measured at this
+    // point, the field sat at y=171 in Chromium and y=340 in WebKit, which is
+    // past the 320px viewport entirely. The precondition below caught that as a
+    // red, but what it was really reporting is that the suite had stopped
+    // exercising the case it describes. Scrolling the image to the bottom of
+    // the viewport makes the geometry the suite's rather than the engine's.
+    await second.locator("img").evaluate((el) => el.scrollIntoView({ block: "end" }));
+    await page.waitForTimeout(200);
     await second.locator("img").click();
     await second.locator(".image-toolbar").waitFor({ state: "visible", timeout: 3000 });
     await second
@@ -307,6 +317,23 @@ export async function run({ page, check, baseUrl }) {
         .dispatchEvent("mousedown");
     const lowInput = second.locator(".img-path-input");
     await lowInput.waitFor({ state: "visible", timeout: 3000 });
+    // Put the field just under the fixed chrome, BEFORE the menu opens.
+    //
+    // The case this section is about is a field with too little room above it
+    // to hold the dropdown, and where the field lands is a function of every
+    // block above it, which the two engines do not lay out identically: at this
+    // point the field sat 70px lower in WebKit than in Chromium, which was
+    // enough for the menu to flip above and the section to stop testing what it
+    // describes. Scrolling by the measured difference makes the geometry the
+    // suite's own. Done while only the field is on screen, because scrolling
+    // after the menu opens would move the thing being measured.
+    await page.evaluate(async (targetTop) => {
+        const field = document.querySelector(".img-path-input");
+        const delta = field.getBoundingClientRect().y - targetTop;
+        window.scrollBy(0, delta);
+        await new Promise((r) => requestAnimationFrame(r));
+    }, 150);
+    await page.waitForTimeout(200);
     await lowInput.fill("img/");
     await suggestMenu.waitFor({ state: "visible", timeout: 3000 });
 
@@ -331,7 +358,7 @@ export async function run({ page, check, baseUrl }) {
     check(
         "the short pane genuinely cannot fit the dropdown above the field",
         fieldBox.y - safeTop < menuBox.height,
-        `room above ${fieldBox.y - safeTop}, menu ${menuBox.height}`,
+        `room above ${fieldBox.y - safeTop}, menu ${menuBox.height} (vh=${vh} fieldY=${fieldBox.y} safeTop=${safeTop})`,
     );
     // It does NOT flip above here, and that is correct: with a topbar and a
     // sticky heading title stacked above, the space that looks free from y=0

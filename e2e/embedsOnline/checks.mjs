@@ -466,6 +466,28 @@ export async function run({ page, check, baseUrl }) {
     // paint (it used to pin itself to the viewport's top edge over unrelated
     // text). So first the off-screen state, then the card is brought into
     // view and the palette must show.
+    // Put the card below the fold rather than assuming it already is.
+    //
+    // Where the page happens to be scrolled by this point is a function of
+    // every step before it, and the engines do not agree: measured here, the
+    // document sat at scrollY 35 in Chromium and 1582 in WebKit, which put the
+    // same card 1986px down in one and 439px down in the other. The check under
+    // this is about a palette whose card is wholly off screen, so a card that is
+    // on screen does not make it fail so much as make it meaningless.
+    //
+    // `scrollTo(0, 0)` rather than a relative scroll: the card is about 2000px
+    // into a 900px viewport in both engines, so the top of the document is
+    // reliably clear of it, whereas scrolling BY the card's own height runs past
+    // the end of a short document and clamps.
+    // Saved and restored around the measurement, so nothing downstream sees a
+    // page scrolled somewhere it did not put it.
+    const scrollBefore = await page.evaluate(async () => {
+        const was = window.scrollY;
+        window.scrollTo(0, 0);
+        await new Promise((r) => requestAnimationFrame(r));
+        return was;
+    });
+    await page.waitForTimeout(200);
     const offscreen = await page.evaluate(() => {
         const p = document.querySelector(".embed-palette");
         const sel = document.querySelector(".embed-host--selected .embed-card__frame");
@@ -475,6 +497,11 @@ export async function run({ page, check, baseUrl }) {
             hidden: !!p && getComputedStyle(p).visibility === "hidden",
         };
     });
+    await page.evaluate(async (y) => {
+        window.scrollTo(0, y);
+        await new Promise((r) => requestAnimationFrame(r));
+    }, scrollBefore);
+    await page.waitForTimeout(200);
     check("a palette whose card is off screen does not paint",
         offscreen.cardOff && offscreen.hidden, JSON.stringify(offscreen));
     await page.evaluate(() => document.querySelector(".embed-host--selected")?.scrollIntoView({ block: "center" }));
@@ -606,7 +633,15 @@ export async function run({ page, check, baseUrl }) {
     });
     check("the link popup offers Show as embed for a whole-paragraph provider link", embedBtnVisible);
     if (embedBtnVisible) {
-        await page.locator(".lp-root .lp-btn-embed").click();
+        // Bounded, and it reports. Playwright's default actionability wait is
+        // 30s, so a popup button that is momentarily uncoverable turns one
+        // fragile click into a dead suite whose only output is a timeout naming
+        // no element. Two seconds is far past the popup's own settle, and a
+        // failure here becomes a check with the reason attached.
+        const lpClick = await page.locator(".lp-root .lp-btn-embed").click({ timeout: 2000 })
+            .then(() => null)
+            .catch((e) => String(e).replace(/\u001b\[[0-9;]*m/g, " ").slice(0, 200));
+        check("the Show as embed control is clickable", lpClick === null, String(lpClick));
         const cardBack = await page
             .waitForFunction((n) => document.querySelectorAll(".embed-card").length === n,
                 cardsBeforeConvert, { timeout: 5000 })

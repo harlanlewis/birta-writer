@@ -12,6 +12,10 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ## [Unreleased]
 
+### Fixed
+
+- Birta Writer for Mac draws a fullscreen diagram's name clear of the window buttons. A fullscreen surface covers the whole window, titlebar included, and puts the diagram's name in the top-left corner, which on this app is the corner the traffic lights occupy, so the two were drawn on top of each other. The name now starts after them, on the axis the rest of that band already lines up on.
+
 ---
 
 ## [2026.901.0] - 2026, September 1

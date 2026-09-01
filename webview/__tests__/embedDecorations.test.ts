@@ -794,7 +794,19 @@ describe("embed selection + keyboard model (MAR-187)", () => {
         return view.state.doc.child(0).nodeSize;
     }
 
-    const flushPalette = () => new Promise((r) => setTimeout(r, 20));
+    /**
+     * Let the palette's `requestIdle` work arrive.
+     *
+     * It clears two animation frames before yielding (utils/idle.ts), so a
+     * timeout on its own is no longer enough: jsdom schedules frames on a timer,
+     * and this has to outlast two of them.
+     */
+    const flushPalette = async (): Promise<void> => {
+        for (let i = 0; i < 3; i++) {
+            await new Promise((r) => { requestAnimationFrame(() => r(undefined)); });
+        }
+        await new Promise((r) => { setTimeout(r, 20); });
+    };
 
     afterEach(async () => {
         // The palette is a body-level singleton; close it between tests. (The

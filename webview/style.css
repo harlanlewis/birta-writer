@@ -1124,6 +1124,33 @@ body.editor-width-auto :is(.code-width-toggle-btn, .mw-bc-width) {
             position: relative;
         }
 
+        /* ...but not inside a diagram. Mermaid draws every label as HTML in an
+           `<svg><foreignObject>`, down to a `<p>` per label, and that markup
+           lands in this subtree, so the rule above reaches it. Both of its
+           declarations are wrong there, and the anchor is the one that breaks
+           the picture: a positioned element inside a foreignObject gets its own
+           rendering layer, and WebKit paints such a layer against the SVG's
+           origin rather than the foreignObject's, so every label piles up in
+           the diagram's top-left corner instead of sitting in its node. Only
+           WebKit, so only Birta Writer for Mac shows it, and there it is every
+           diagram at any position, first screen included. The fullscreen
+           lightbox is the one surface that escapes, and only because it hangs
+           off `<body>` where this rule cannot reach it.
+
+           The flow gap is the quieter half: Mermaid measures each label in a
+           host attached to `<body>`, outside this subtree, so the padding is
+           absent while it lays the diagram out and present once the SVG is on
+           screen. Every label box is then taller than the space it was given.
+
+           `foreignObject` rather than a pane class, because what makes the
+           markup foreign is the construct, not which engine emitted it. Pinned
+           by `e2e/mermaidLabelPaint`, which reads pixels: the boxes are in the
+           right place in both engines, so no rect can tell the two apart. */
+        foreignObject p {
+            padding-bottom: 0;
+            position: static;
+        }
+
         /* Headings: use padding instead of margin so the click area includes the visual spacing */
         h1,
         h2,

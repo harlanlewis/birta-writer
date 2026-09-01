@@ -4,6 +4,20 @@
 
 ## [Unreleased]
 
+### Removed
+
+- Pinch-to-zoom on a diagram's inline preview, so that scrolling past a diagram no longer feels like the page is refusing to move. Intercepting a pinch means cancelling the gesture, and a handler that can cancel takes every scroll over that pane off the fast path and onto the main thread, whether or not it turns out to be a pinch. A diagram sitting in the middle of a document is something you scroll past far more often than you zoom, so the pane no longer answers the wheel at all. Zoom is still on the pane's own buttons and its reset control, and the fullscreen view keeps pinch, wheel zoom and wheel pan, because there is no document behind it to scroll.
+
+### Fixed
+
+- Typing after clicking a diagram no longer edits somewhere else in the document, in Birta Writer for Mac. A click on a diagram's preview, or on any of a code block's controls, is supposed to leave the editor inert until you click back into text. It did stop the editor being focused, but the caret you had before the click was still a live target, so the next Return split a paragraph you were not looking at and the next characters were typed into it. The same thing happened over an open fullscreen diagram or image: keystrokes reached the note behind it. Birta Writer for VS Code renders in a different engine, which drops a selection along with the focus, and was not affected.
+
+- Deleting the last character of an inline formula removes the formula, in Birta Writer for Mac. Backspacing through `$x^2$` cleared it down to one character and then stopped: the last character survived, the empty formula stayed in the document, and the caret jumped out to the text beside it. Emptying a formula and then moving the caret away has always been the way to delete one, and it works again.
+
+- Opening a document is faster in Birta Writer for Mac. Two pieces of work that are meant to run only after the document is on screen, the save-protection precompute and the first proofreading pass, were running before it instead, so their cost was paid before anything was drawn. It is proportional to document size, so the longer the note the more of the wait was this. Birta Writer for VS Code already deferred both and is unchanged.
+
+- Mermaid diagrams draw each label inside its own shape in Birta Writer for Mac. Every label in every diagram was painted in the diagram's top-left corner instead of in its node, so the shapes came out empty and the words arrived in one unreadable pile on top of each other. Opening the same diagram fullscreen has always drawn it correctly, which is the workaround anyone who hit this will have found. A diagram draws its labels as HTML inside the picture, the editor's own paragraph styling was reaching into that markup, and WebKit paints the result in the wrong place; the fullscreen view escapes because it is the one surface that styling does not reach. Birta Writer for VS Code renders in a different engine and was never affected, and no other diagram type was: PlantUML and Graphviz draw their labels as SVG text rather than HTML, and an `svg` fence cannot carry the construct at all.
+
 ---
 
 ## [2026.901.0] - 2026, September 1

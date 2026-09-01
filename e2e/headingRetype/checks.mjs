@@ -30,9 +30,31 @@ export async function run({ page, check, baseUrl }) {
         return updates[updates.length - 1] ?? null;
     };
 
+    /**
+     * Put the caret at the block's first character, then type.
+     *
+     * Not `Home`. Playwright's WebKit uses macOS key semantics, where Home
+     * scrolls the view and leaves the caret alone, so the text landed wherever
+     * the click had put it: `### Heading 3## ` instead of a retyped heading.
+     * Chromium's Home does move the caret, which is the whole reason this went
+     * unnoticed. The caret position is this helper's SETUP, not its subject, so
+     * it is set from a Range rather than through a key whose meaning is the
+     * platform's to decide.
+     */
     const typeAtBlockStart = async (selector, text) => {
         await page.click(selector);
-        await page.keyboard.press("Home");
+        await page.evaluate((sel) => {
+            const block = document.querySelector(sel);
+            const walk = document.createTreeWalker(block, NodeFilter.SHOW_TEXT);
+            const first = walk.nextNode() ?? block;
+            const range = document.createRange();
+            range.setStart(first, 0);
+            range.collapse(true);
+            const selection = window.getSelection();
+            selection.removeAllRanges();
+            selection.addRange(range);
+        }, selector);
+        await page.waitForTimeout(50);
         await page.keyboard.type(text, { delay: 20 });
     };
 

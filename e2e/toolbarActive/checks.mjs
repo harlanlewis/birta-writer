@@ -165,8 +165,14 @@ export async function run({ page, check, baseUrl }) {
     check("code block → format —", (await fmtLabel()) === "—");
 
     // ── 10. Selected image: Image button active + format N/A ──
-    // The external src can't load headless, so click the image wrapper by
-    // coordinates (its error placeholder still gives it a clickable box).
+    // The src is `pic.png`, a real file the suite's own server hands back. It
+    // used to be an unreachable https URL, which made the page log a failed
+    // request that "no page errors" counted, and which no product change could
+    // prevent. A data: URI fixes the 404 and breaks this check instead: the
+    // wrapper is then only as big as the image, and the click has to land on a
+    // box worth clicking. So the image is served, and sized, rather than faked.
+    // Clicked by the wrapper rather than the <img>, because the wrapper is what
+    // carries the selection.
     const imgBox = await page.$eval(".ProseMirror .image-wrapper", (el) => {
         const r = el.getBoundingClientRect();
         return { x: r.x + r.width / 2, y: r.y + r.height / 2 };

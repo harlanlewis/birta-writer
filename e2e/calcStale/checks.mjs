@@ -34,6 +34,25 @@ const SNAPSHOT = `(() => {
 })()`;
 
 /**
+ * Close an open suggestion menu before reaching for a cue.
+ *
+ * The calc suggestion list is a floating menu that can sit over the gutter, and
+ * a click on a cue underneath it is intercepted rather than missed: Playwright
+ * reports the `<li class="fm-suggest-item">` as the element that would receive
+ * the event. Whether the menu is still open at that moment is an engine
+ * difference in what dismisses it, so the suite closes it explicitly rather than
+ * relying on either engine's answer. Escape is the menu's own dismiss gesture,
+ * and it is a no-op when nothing is open.
+ */
+async function dismissSuggestions(page) {
+    const open = await page.evaluate(() => !!document.querySelector(".fm-suggest-item"));
+    if (!open) return;
+    await page.keyboard.press("Escape");
+    await page.waitForFunction(() => !document.querySelector(".fm-suggest-item"), undefined, { timeout: 1000 })
+        .catch(() => {});
+}
+
+/**
  * Click the cue carrying `text` and return a snapshot of the popup it opens,
  * or null. Retries the whole gesture, because the popup does not reliably
  * survive being opened: `proofread/popup.ts` closes it on ANY scroll (a
@@ -55,7 +74,21 @@ async function openCuePopup(page, text, tries = 4) {
             await page.waitForTimeout(150);
             continue;
         }
-        await cue.click();
+        // Scrolled into view and given a SHORT timeout, then retried.
+        //
+        // The cue is a decoration in a document that keeps scrolling for its
+        // own reasons, which is what this whole loop is for, and Playwright's
+        // actionability wait is 30s by default. So a cue that is present but
+        // not yet clickable did not feed the retry above, it consumed the
+        // suite's entire budget on one attempt and killed the run. A click that
+        // cannot land is exactly the case the loop was written to survive.
+        await dismissSuggestions(page);
+        await cue.scrollIntoViewIfNeeded({ timeout: 1500 }).catch(() => {});
+        const clicked = await cue.click({ timeout: 2000 }).then(() => true).catch(() => false);
+        if (!clicked) {
+            await page.waitForTimeout(150);
+            continue;
+        }
         const snapshot = await page
             .waitForFunction(SNAPSHOT, undefined, { timeout: 1500 })
             .then((handle) => handle.jsonValue())
@@ -79,7 +112,16 @@ async function actOnCue(page, text, label, tries = 4) {
             await page.waitForTimeout(150);
             continue;
         }
-        await cue.click();
+        // Same bounded click as `openCuePopup`, for the same reason: the
+        // default actionability wait is 30s, which turns a cue that is present
+        // but not clickable into a dead run instead of another attempt.
+        await dismissSuggestions(page);
+        await cue.scrollIntoViewIfNeeded({ timeout: 1500 }).catch(() => {});
+        const opened = await cue.click({ timeout: 2000 }).then(() => true).catch(() => false);
+        if (!opened) {
+            await page.waitForTimeout(150);
+            continue;
+        }
         const clicked = await page
             .waitForFunction((l) => {
                 const btn = [...document.querySelectorAll(".pf-popup-item")]

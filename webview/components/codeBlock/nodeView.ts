@@ -483,6 +483,31 @@ export function createCodeBlockView(
         if (sel && chromeRanges.length > 0) {
             sel.removeAllRanges();
             for (const range of chromeRanges) { sel.addRange(range); }
+        } else if (sel && sel.anchorNode && view.dom.contains(sel.anchorNode)) {
+            // Blurring the host is not enough on its own. WebKit goes on
+            // routing keystrokes to a selection inside a contenteditable after
+            // its host has stopped being the active element, so the caret this
+            // gesture was supposed to retire is still an edit target: Enter
+            // splits a paragraph the user is not looking at, which is the whole
+            // of MAR-200 arriving again on the surface that renders in WebKit.
+            // Chromium drops the selection's editing privileges along with the
+            // focus, which is why the blur alone read as sufficient.
+            //
+            // Only when there is no chrome selection to put back. A drag inside
+            // the chrome is a selection the user made and can still copy, and
+            // the branch above is what preserves it; this one runs when the only
+            // selection in play is the stale caret itself.
+            //
+            // Moved OUT of the editor rather than removed outright. A document
+            // with no selection at all is a state the rest of the editor does
+            // not expect, and emptying it here broke an unrelated link-popup
+            // flow; a collapsed range on `<body>` is inert for editing and
+            // still a selection for anything that reads one.
+            sel.removeAllRanges();
+            const parked = document.createRange();
+            parked.setStart(document.body, 0);
+            parked.collapse(true);
+            sel.addRange(parked);
         }
     };
 
