@@ -88,6 +88,45 @@ function findTextblock(view: EditorView, text: string): { node: PmNode; pos: num
 /** The same duplicate-heavy outline both editors open on. */
 const DOC = "# Alpha\n\nbody text\n\n## Beta\n\nmore body\n\n## Beta\n\n## Gamma\n";
 
+/**
+ * Headings that are NOT direct children of the document, which is the branch
+ * `DOC` cannot reach. The two collide on purpose: the quoted one comes first in
+ * document order and takes `quoted`, so the top-level one must take
+ * `quoted-#2`. That pins the walk ORDER across nesting as well as the walk
+ * itself, and it is what would break if the seed visited containers in an order
+ * the mount pass does not.
+ */
+const NESTED_DOC = "# Alpha\n\n> ## Quoted\n>\n> quoted body\n\n- ### Listed\n- plain item\n\n## Quoted\n";
+
+/** Build one of our editors, keeping the document the seed handed to the state. */
+async function makeSeeded(markdown: string): Promise<{ view: EditorView; seeded: PmNode }> {
+    const root = document.createElement("div");
+    document.body.appendChild(root);
+    let seeded: PmNode | undefined;
+    const editor = await Editor.make()
+        .config((ctx) => {
+            ctx.set(rootCtx, root);
+            ctx.set(defaultValueCtx, markdown);
+            configureHeadingIds(ctx);
+            // Runs after the seed, so `doc` here is what the seed produced.
+            ctx.update(editorStateOptionsCtx, (prev) => (options) => {
+                const out = prev(options);
+                seeded = out.doc;
+                return out;
+            });
+            configureSerialization(ctx);
+        })
+        .use(pureCommonmark)
+        .use(gfmFidelity)
+        .create();
+    editors.push(editor);
+    return {
+        view: editor.action((ctx) => ctx.get(editorViewCtx)) as EditorView,
+        seeded: seeded!,
+    };
+}
+
+
 describe("headingIdSync parity with the stock plugin", () => {
     it("initial documents should carry identical ids, duplicate suffixes included", async () => {
         const ours = await makeOurs(DOC);
@@ -191,6 +230,33 @@ describe("headingIdSync parity with the stock plugin", () => {
     it("the editor's composition root should wire the seed", () => {
         const root = fs.readFileSync(path.resolve(__dirname, "..", "editor.ts"), "utf8");
         expect(root).toContain("configureHeadingIds(ctx)");
+    });
+
+
+    /**
+     * Every heading in `DOC` is a direct child of the document, so the seed's
+     * recursion into a CONTAINER is reached by nothing above it. A
+     * `withHeadingIds` that returned containers untouched would seed the flat
+     * document perfectly, skip every nested heading, and let the mount pass
+     * assign those a moment later with the right ids: every other case in this
+     * file would still pass, and the second whole-document render the seed
+     * exists to remove would be back for any document with a heading in a
+     * quote or a list. That is absence rather than wrongness, which no green
+     * run reports, so the case has to be written deliberately.
+     */
+    it("a heading inside a container should be seeded too, not left to the mount pass", async () => {
+        const { view, seeded } = await makeSeeded(NESTED_DOC);
+        const stock = await makeStock(NESTED_DOC);
+
+        // Parity rather than a copy of the slugs (see this file's header): the
+        // seed must reach every heading the stock plugin's own walk reaches,
+        // nested ones included, and number them in the same document order.
+        expect(headingIds(seeded)).toEqual(headingIds(stock));
+        expect(headingIds(seeded).length, "headings reached").toBe(4);
+        // Not merely "both agree on nothing": the collision across nesting fired.
+        expect(headingIds(seeded), "dedup across nesting").toContain("quoted-#2");
+        // And nothing dispatched afterwards to put them there.
+        expect(view.state.doc).toBe(seeded);
     });
 
     it("a seeded document should still take id maintenance when a heading is edited", async () => {
