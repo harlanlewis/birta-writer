@@ -78,6 +78,10 @@ Which record matters, and getting it wrong is how such a menu lies. The menu bar
 
 When proofreading is gated off there are simply no underlines, which is indistinguishable from clean text, so the toolbar button dims to say "off". Any feature whose off state looks like a passing all-clear owes the user a visible cue.
 
+### A decoration never imposes on the interaction thread
+
+Proofreading is a decoration, and so is anything drawn over the document rather than written into it. Its work is proportional to what is on screen, not to the document, and none of it lands on the frames the user is typing into. The fold gutter is the worked example. (See "Launch performance" in `AGENTS.md`.)
+
 ### A disabled feature costs nothing
 
 No scan, no decoration pass, no lazy dependency loaded. (See "Launch performance" in `AGENTS.md`.)
