@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Mermaid diagrams draw each label inside its own shape in Birta Writer for Mac. Every label in every diagram was painted in the diagram's top-left corner instead of in its node, so the shapes came out empty and the words arrived in one unreadable pile on top of each other. Opening the same diagram fullscreen has always drawn it correctly, which is the workaround anyone who hit this will have found. A diagram draws its labels as HTML inside the picture, the editor's own paragraph styling was reaching into that markup, and WebKit paints the result in the wrong place; the fullscreen view escapes because it is the one surface that styling does not reach. Birta Writer for VS Code renders in a different engine and was never affected, and no other diagram type was: PlantUML and Graphviz draw their labels as SVG text rather than HTML, and an `svg` fence cannot carry the construct at all.
+
 ---
 
 ## [2026.901.0] - 2026, September 1

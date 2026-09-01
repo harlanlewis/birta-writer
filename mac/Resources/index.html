@@ -42,6 +42,15 @@
     border-bottom: none;
   }
 
+  /* Where the window's own furniture ends, and so the leading floor for
+     anything the PAGE draws in that band. Named once because it has two
+     claimants, the toolbar's first row and a fullscreen surface's title, and a
+     second copy of the number is a second thing to get wrong. The reasoning
+     for the number itself is on the toolbar rule below. */
+  :root {
+    --mac-titlebar-leading: 78px;
+  }
+
   /* The inset belongs to the FIRST row, not to the bar. That row sits under a
      transparent full-height titlebar, and that band is the WINDOW'S: the
      traffic lights and, after them, the native title accessory naming the file
@@ -56,7 +65,7 @@
      with nothing to clear: its controls would start three quarters of an inch
      in, lined up against nothing, with the window's own left edge empty. */
   .editor-topbar .toolbar {
-    padding-left: 78px;
+    padding-left: var(--mac-titlebar-leading);
     /* The first row IS the titlebar band, so it takes the band's height and
        centres its controls in it (`.toolbar` is already `align-items:
        center`), instead of padding its own way to a height of its own.
@@ -79,6 +88,21 @@
     min-height: var(--mac-titlebar-height, 34px);
     padding-top: 0;
     padding-bottom: 0;
+  }
+
+  /* A fullscreen surface covers the whole window, the titlebar band included,
+     and the window draws its buttons OVER the page rather than beside it. The
+     bundle puts that surface's name in the top-left corner, which is the one
+     corner this host does not have, so on this host alone the name is drawn
+     under the traffic lights.
+
+     Moved clear rather than moved down. Past the buttons it keeps the axis the
+     band lines everything else up on, and it stays a corner label; pushed below
+     the band it would be a label floating in the picture, which is what the
+     corner placement exists to avoid. The trailing cluster needs nothing: the
+     window's furniture is all at the leading edge. */
+  .fs-title {
+    left: var(--mac-titlebar-leading);
   }
 
   /* At rest the panel is a page and a cursor.
