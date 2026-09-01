@@ -16,7 +16,7 @@
  */
 import { readFile, stat, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
-import { FIXTURES } from "./perf/fixtures.mjs";
+import { FIXTURES, HEAVY_FIXTURES } from "./perf/fixtures.mjs";
 import { serve, serveAB, repoRoot } from "./perf/server.mjs";
 // The pure gate logic lives in verdict.mjs so it can be unit-tested (this file
 // runs Playwright/process.exit on import and can't be).
@@ -174,10 +174,21 @@ async function measureMode(only, runs, jsonOut) {
         console.error("dist/webview.js not found — run `pnpm build` first.");
         process.exit(2);
     }
-    const names = Object.keys(FIXTURES).filter((n) => !only || n === only);
+    // A NAMED fixture may be a heavy one; the default sweep never is. Without
+    // this the launch harness could not open any document larger than `large`
+    // (96 KB), because it resolved a name against FIXTURES alone — and both
+    // defects #421 fixes scale with document size. See HEAVY_FIXTURES.
+    const pool = { ...FIXTURES, ...HEAVY_FIXTURES };
+    // `Object.hasOwn`, never `in`: `in` walks the prototype chain, so a fixture
+    // named `constructor` or `toString` would resolve to a function and be
+    // measured as a document. The filter this replaced was safe by accident.
+    const names = only ? (Object.hasOwn(pool, only) ? [only] : []) : Object.keys(FIXTURES);
     if (names.length === 0) {
         console.error(only ? `no fixture named "${only}"` : "no fixtures");
         process.exit(2);
+    }
+    if (only && Object.hasOwn(HEAVY_FIXTURES, only)) {
+        console.log(`\n  ${only} is a HEAVY fixture (${Math.round(pool[only].length / 1024)} KB): on demand only, never gated.`);
     }
     const { chromium } = await loadPlaywright();
     const server = serve();
@@ -188,7 +199,7 @@ async function measureMode(only, runs, jsonOut) {
     const header = ["fixture", ...SPANS.map(([l]) => l)];
     const rows = [];
     for (const name of names) {
-        const agg = await measureFixture(chromium, baseUrl, FIXTURES[name], runs, name);
+        const agg = await measureFixture(chromium, baseUrl, pool[name], runs, name);
         report.fixtures[name] = agg;
         rows.push([name, ...SPANS.map(([l]) => (agg.median[l] == null ? "–" : String(agg.median[l])))]);
     }

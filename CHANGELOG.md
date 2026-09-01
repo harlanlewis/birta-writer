@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Opening a large document is faster, and most noticeably on a long outline. Every heading carries an `id` so it can be linked to, and the editor assigned those ids after the document was already on screen: one transaction step per heading, which rebuilt the document and made the editor redraw every heading it had just finished drawing. The ids are now placed on the document before it is first rendered, so the work happens once instead of twice. The saving scales with how many headings a document has, so a deeply structured file gains most and a flat one gains little.
+
 ### Removed
 
 - Pinch-to-zoom on a diagram's inline preview, so that scrolling past a diagram no longer feels like the page is refusing to move. Intercepting a pinch means cancelling the gesture, and a handler that can cancel takes every scroll over that pane off the fast path and onto the main thread, whether or not it turns out to be a pinch. A diagram sitting in the middle of a document is something you scroll past far more often than you zoom, so the pane no longer answers the wheel at all. Zoom is still on the pane's own buttons and its reset control, and the fullscreen view keeps pinch, wheel zoom and wheel pan, because there is no document behind it to scroll.
@@ -17,6 +21,8 @@
 - Opening a document is faster in Birta Writer for Mac. Two pieces of work that are meant to run only after the document is on screen, the save-protection precompute and the first proofreading pass, were running before it instead, so their cost was paid before anything was drawn. It is proportional to document size, so the longer the note the more of the wait was this. Birta Writer for VS Code already deferred both and is unchanged.
 
 - Mermaid diagrams draw each label inside its own shape in Birta Writer for Mac. Every label in every diagram was painted in the diagram's top-left corner instead of in its node, so the shapes came out empty and the words arrived in one unreadable pile on top of each other. Opening the same diagram fullscreen has always drawn it correctly, which is the workaround anyone who hit this will have found. A diagram draws its labels as HTML inside the picture, the editor's own paragraph styling was reaching into that markup, and WebKit paints the result in the wrong place; the fullscreen view escapes because it is the one surface that styling does not reach. Birta Writer for VS Code renders in a different engine and was never affected, and no other diagram type was: PlantUML and Graphviz draw their labels as SVG text rather than HTML, and an `svg` fence cannot carry the construct at all.
+
+- Typing in a large document was slowed by the editor's own save pipeline. The editor copies your text into the file's backing document when you pause typing, and it judged whether you had paused by measuring from the moment the previous copy began rather than from the moment it finished. Once a document was big enough that one copy outlasted the pause it was being timed against, every keystroke looked like the first one after a lull and bought another whole-document copy, so the editor got slower the slower it already was. The pause is now measured from the end of the previous copy, which is what it was always meant to describe, so a continuous burst of typing triggers the periodic copy rather than one per keystroke. Saving is unaffected: Cmd+S and autosave still write what the editor holds at the moment you save. A plain outline is as exposed as a document full of tables, because the cost is the document's size rather than what is in it. If you upgraded for the spelling and grammar fix in 2026.827.0 and a large file was still slow to type in, this is the other half of it.
 
 ---
 

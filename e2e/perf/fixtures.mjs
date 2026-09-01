@@ -17,6 +17,13 @@
  *                seed of the same branches, so the launch gate sees it too
  *                (MAR-367)
  *
+ * Two more are exported separately as HEAVY_FIXTURES, reachable by name from
+ * either runner and never part of a default sweep or a gate, because they are
+ * too expensive to measure on every run:
+ *   xlarge       — ~300 KB of `richSection`, the typing-lag tail
+ *   huge-outline — ~765 KB deep outline over unwrapped prose, no tables, code
+ *                  or images; the shape a long working file actually takes
+ *
  * The three PROSE fixtures (tiny/medium/large, and xlarge below, which is built
  * from the same sections) deliberately trip the style check — see
  * STYLE_SENTENCES. The non-prose fixtures do not: code-heavy, math and
@@ -360,3 +367,143 @@ const xlarge = (() => {
 // it would be the cost decision documented beside `AB_FIXTURES`, and is not
 // taken here.
 export const TYPING_FIXTURES = { tiny, medium, large, xlarge, "link-heavy": linkHeavy, realistic };
+
+// ── huge-outline (HEAVY) ────────────────────────────────────────────────────
+// The shape of the document that motivated the two fixes in #421: ~765 KB,
+// ~7200 lines, ~440 headings, ~3000 list items, and NO tables, code blocks,
+// images, raw HTML, math or diagrams. A deep outline over unwrapped prose, the
+// shape a long working file actually takes.
+//
+// It is a SHAPE, not just a size, and scaling an existing fixture up would not
+// produce it. Every sized fixture here (`medium`, `large`, `xlarge`) is built
+// from `richSection`, which carries a table and a fenced code block in every
+// section. At this size that fixture would hold ~800 tables and ~800 code
+// blocks, so its cost would be dominated by two NodeViews and by the
+// highlighter, and the thing the document is actually made of — headings,
+// bullets and long paragraphs — would be a rounding error inside it. The
+// motivating file contains none of those three constructs, and it was still
+// seconds to open and seconds per keystroke.
+//
+// Two properties are load-bearing and easy to lose in a rewrite:
+//
+//   • HEADING DENSITY, ~1 per 1.7 KB, across three levels. Heading count is
+//     what the mount-time id pass costs scale with, and no other fixture
+//     carries enough of them for that cost to be legible: `large` has 108 in
+//     96 KB and is the biggest the launch harness could reach at all.
+//   • REPEATED HEADING TEXT. `headingIdAssigner`'s `-#N` dedup counter only
+//     runs when two headings slug the same, and a working document repeats
+//     section titles constantly ("Notes", "Open questions"). Roughly two in
+//     three headings here collide, which drives the counter into the tens.
+//     A fixture of unique headings exercises the seed and never the dedup.
+
+/** Section titles a working document repeats, so the `-#N` dedup path runs. */
+const OUTLINE_TITLES = [
+    "Notes", "Open questions", "Next steps", "What changed", "Risks",
+    "Decisions", "Follow-ups", "Background", "Measurements", "Rejected options",
+];
+
+/** Clauses rotated by index into unwrapped paragraphs. No Date, no random. */
+const OUTLINE_CLAUSES = [
+    "the reading was taken twice on the same build before anyone was told about it",
+    "the number that moved is not the number that is gated, which is the whole difficulty",
+    "nobody could say afterwards whether the configuration had changed or the machine had",
+    "the check passed for a reason unrelated to the thing it was written to watch",
+    "a control arm was run first, because a broken instrument reads like a broken subject",
+    "the cost was removed rather than moved, which is why the later spans did not shift",
+    "what was measured was the traversal, never the work the traversal leads to",
+    "the guard still passed, over a corpus that no longer held the case it was written for",
+];
+
+/**
+ * One unwrapped paragraph on ONE line, opening with a style-check sentence.
+ *
+ * Seeded INSIDE the prose rather than as a block of its own, which is both more
+ * like real writing and what holds this fixture at the same phrase density as
+ * the rest of the set (see MAX_CHARS_PER_HIT in fixtures.test.mjs). A fixture
+ * that trips nothing measures the matcher's traversal and never the decoration
+ * build, which is the half that scales (MAR-310).
+ */
+function outlineParagraph(i, k, targetLen) {
+    let line = `${STYLE_SENTENCES[(i + k) % STYLE_SENTENCES.length]} Entry ${i}.${k} was written up the same afternoon rather than reconstructed later, and `;
+    let n = 0;
+    while (line.length < targetLen) {
+        line += OUTLINE_CLAUSES[(i + k + n) % OUTLINE_CLAUSES.length] + ", and ";
+        n++;
+    }
+    return line + `which is where the note for ${i}.${k} stops.`;
+}
+
+/** Seven bullets, the density the motivating file carries per heading. */
+function outlineBullets(i) {
+    const out = [];
+    for (let j = 1; j <= 7; j++) {
+        const clause = OUTLINE_CLAUSES[(i + j) % OUTLINE_CLAUSES.length];
+        out.push(
+            j === 3
+                ? `- Item ${i}.${j}: ${clause}, per [the standing note](https://example.com/note/${i}/${j}).`
+                : j === 5
+                    ? `- Item ${i}.${j}: **${clause}**, which is the part that gets forgotten.`
+                    : `- Item ${i}.${j}: ${clause}.`,
+        );
+    }
+    return out.join("\n");
+}
+
+function outlineHeading(i) {
+    const level = i % 7 === 1 ? 2 : i % 3 === 0 ? 4 : 3;
+    const text = i % 3 === 0
+        ? `Day ${i}: field notes`
+        : OUTLINE_TITLES[i % OUTLINE_TITLES.length];
+    return `${"#".repeat(level)} ${text}`;
+}
+
+function outlineSection(i) {
+    return `${outlineHeading(i)}
+
+${outlineParagraph(i, 1, 405)}
+
+${outlineBullets(i)}
+
+${stylePara(i)}
+
+${outlineParagraph(i, 2, )}
+`;
+}
+
+const hugeOutline = (() => {
+    // A FIXTURE'S IDENTITY IS ITS SIZE (see the medium/large note above): 443
+    // sections holds this at ~765 KB with ~440 headings, which are the two
+    // figures that make it the document it is meant to stand in for.
+    // Re-derive the count if a section's content changes; `fixtures.test.mjs`
+    // asserts the size band and the heading and list counts so a drift is a
+    // red rather than a silently different document.
+    let out = "# Huge outline\n\nA long working file: a deep outline over unwrapped prose, no tables, code or images.\n\n";
+    for (let i = 1; i <= 443; i++) out += outlineSection(i) + "\n";
+    return out;
+})();
+
+/**
+ * The BY-NAME pool: documents either runner can be pointed at explicitly,
+ * whatever its own default sweep holds. Neither is in `FIXTURES`, so neither is
+ * ever measured by `pnpm perf` or by the `launch-perf` gate. `xlarge` remains a
+ * member of `TYPING_FIXTURES` exactly as it was, so `pnpm perf:typing` still
+ * sweeps it; what is new is that the LAUNCH runner can now open it.
+ *
+ * The gap this closes: `e2e/perf.mjs` resolved a fixture name against
+ * `FIXTURES` alone, so the largest document whose cold start anything here
+ * could read was `large`, at 96 KB, and `xlarge` had sat in `TYPING_FIXTURES`
+ * for a long time with no way to launch it. Both defects #421 fixes scale with
+ * document size, and neither was found by an instrument in this repository;
+ * they were found by hand, on a file eight times larger than anything the
+ * harnesses could open.
+ *
+ * `huge-outline` stays out of every default sweep on purpose. `launch-perf` is
+ * a required, blocking check that measures every entry of `FIXTURES` on both
+ * sides of the A/B, twice when a regression has to be confirmed, and
+ * `perf:typing` is the most expensive check in the repo and is dominated by its
+ * largest fixture. A 765 KB document in either would spend minutes of every
+ * PR's critical path to cover a size no gate was asked to cover. Report-only
+ * avoids the verdict and not the cost, which is why this is a third set rather
+ * than an ungated eighth fixture.
+ */
+export const HEAVY_FIXTURES = { xlarge, "huge-outline": hugeOutline };
