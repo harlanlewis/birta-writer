@@ -1,0 +1,86 @@
+<!doctype html>
+<!-- e2e harness: MAR-425's style-pass scroll window. A document long enough
+     that the window covers only part of it, with a style hit in every
+     paragraph, so "decorations appear as you scroll", "the pass costs the
+     screen" and "the sidebar lists the document" are real, observable
+     behaviors. Mirrors the provider template with acquireVsCodeApi stubbed;
+     spelling and grammar are off (they need the extension host), so every
+     finding here is the webview's own style check. -->
+<meta charset="utf-8">
+<style>
+  :root {
+    --vscode-editor-background: #1e1e1e; --vscode-editor-foreground: #d4d4d4;
+    --vscode-foreground: #cccccc; --vscode-descriptionForeground: #999999;
+    --vscode-editor-font-family: monospace; --vscode-font-family: -apple-system, sans-serif; --vscode-font-size: 13px;
+    --vscode-editorHoverWidget-background: #252526; --vscode-editorHoverWidget-foreground: #cccccc;
+    --vscode-editorHoverWidget-border: #454545; --vscode-focusBorder: #007fd4;
+    --vscode-editorWidget-background: #252526; --vscode-editorWidget-foreground: #cccccc;
+    --vscode-editorWidget-border: #454545; --vscode-widget-border: rgba(128, 128, 128, 0.25);
+    --vscode-toolbar-hoverBackground: rgba(90,93,94,0.31); --vscode-list-hoverBackground: #2a2d2e;
+    --vscode-editor-selectionBackground: #264f78;
+    --vscode-editorWarning-foreground: #cca700; --vscode-editorInfo-foreground: #3794ff;
+    --vscode-badge-background: #4d4d4d; --vscode-badge-foreground: #ffffff;
+    --vscode-button-background: #0e639c; --vscode-button-foreground: #ffffff; --vscode-button-hoverBackground: #1177bb;
+    --vscode-button-secondaryBackground: #3a3d41; --vscode-panel-border: #454545;
+  }
+  body { background: var(--vscode-editor-background); color: var(--vscode-editor-foreground); }
+  .editor-topbar { height: 40px; box-sizing: border-box; }
+</style>
+<script>
+  // Capture how many style decorations exist at the EXACT moment the bundle
+  // stamps its first-paint mark (the gutterWindow harness's technique): the
+  // first pass is deferred past paint, and a window must not move it forward.
+  (() => {
+    const origMark = performance.mark.bind(performance);
+    performance.mark = (name, ...rest) => {
+      if (name === "mdw:editor-painted" && window.__atPaint === undefined) {
+        window.__atPaint = {
+          hits: document.querySelectorAll(".pf-style-hit").length,
+          blocks: document.querySelectorAll(".milkdown .ProseMirror > *").length,
+        };
+      }
+      return origMark(name, ...rest);
+    };
+  })();
+  // The panel auto-opens above tocAutoHideThreshold headings, which the sidebar
+  // check relies on; every other check ignores it.
+  window.__i18n = {
+    translations: {}, isMac: true, toolbar: { placements: {}, order: [] },
+    tocAutoHideThreshold: 3,
+    proofread: { grammarCheck: false, spellCheck: false },
+  };
+  window.__posted = [];
+  // The full config shape the host sends, for the toggle check. Style on,
+  // the host-side checks off (no host here), and the master gate as given.
+  window.__proofreadConfig = (proofreadingEnabled) => ({
+    proofreadingEnabled, styleCheck: true,
+    fillers: true, redundancies: true, cliches: true, wordiness: true,
+    aiVocabulary: true, aiArtifacts: true, passive: true, negativeParallelism: true,
+    longSentences: true, ruleOfThree: true, emDash: true, nonAsciiPunct: true,
+    absolutePerf: true, rhythm: true, styleExceptions: [],
+    spellCheck: false, grammarCheck: false, userWords: [],
+  });
+  const LINES = ["# Windowed style pass", ""];
+  // One filler per paragraph, two paragraphs per section: every section
+  // carries hits, so "hits < paragraphs with hits" is the window and nothing
+  // else. Short sentences, so no long-sentence or rhythm flag joins in.
+  for (let i = 1; i <= 150; i++) {
+    LINES.push(`## Section ${i}`, "",
+               `Section ${i} is really the one with the note.`, "",
+               `The note for ${i} is actually short.`, "");
+  }
+  LINES.push("Final paragraph, basically.", "");
+  const DOC = LINES.join("\n");
+  window.acquireVsCodeApi = () => ({
+    postMessage: (msg) => {
+      window.__posted.push(msg);
+      if (msg.type === "ready")
+        window.postMessage({ type: "init", content: DOC, syncVersion: 1 }, "*");
+    },
+    getState: () => undefined, setState: () => {},
+  });
+</script>
+<link rel="stylesheet" href="dist/webview.css">
+<div class="editor-topbar"></div>
+<div id="editor"></div>
+<script type="module" src="dist/webview.js"></script>

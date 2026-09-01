@@ -10,8 +10,14 @@
  *   Harper over the messaging channel; findings come back with spans,
  *   messages, and suggestions and render as underlines.
  *
- * The whole document is rescanned on a debounce after edits. Code blocks,
- * inline code, and tech-like tokens are excluded.
+ * The style pass is windowed (MAR-425): it runs over the textblocks near the
+ * viewport (plugins/visibleRange.ts, the same scroll window the fold gutter
+ * reads), on a debounce after edits and synchronously on the frame the window
+ * moves, so its cost is the screen and not the document. Everything that is
+ * STATE stays document-wide: the config, the suppressions, the lint set (whose
+ * request still walks the document, MAR-426), and the review sidebar's list,
+ * which is answered from a whole-document walk of its own rather than from the
+ * windowed set. Code blocks, inline code, and tech-like tokens are excluded.
  */
 import type { EditorView } from "../pm";
 import { isReadOnly } from "../readOnly";
@@ -22,7 +28,8 @@ import { $prose } from "@milkdown/utils";
 import type { HarperLint, LintBlock, LintBlockResult, ProofreadConfig } from "../../shared/messages";
 import { INLINE_PLACEHOLDER } from "../../shared/proofreadFilter";
 import { hostHas } from "../../shared/hostProfile";
-import { compileStyleMatcher, isPhraseCategory, type StyleCategory, type StyleMatcher } from "../utils/styleMatcher";
+import { compileStyleMatcher, isPhraseCategory, type StyleCategory, type StyleMatch, type StyleMatcher } from "../utils/styleMatcher";
+import { observeVisibleWindow, type VisibleWindow } from "./visibleRange";
 import { styleCategoryLabel } from "../utils/styleCategories";
 import {
     AI_ARTIFACTS,
@@ -93,12 +100,35 @@ type ProofreadState = {
     styleSet: DecorationSet;
     lintSet: DecorationSet;
     combined: DecorationSet;
+    /**
+     * MAR-425: the scroll window `styleSet` was built for, in document
+     * positions and position-mapped through edits. Null means the whole
+     * document, which is the answer with no layout engine (jsdom) and the
+     * pre-windowing behavior. It is the ONE range declaration a proofreading
+     * walk reads, so a second windowed walk (the lint request, MAR-426) reads
+     * this field rather than measuring a window of its own.
+     */
+    window: VisibleWindow | null;
+    /**
+     * The document `styleSet` was last computed against, or null before the
+     * first pass. A window commit that lands before the first pass only records
+     * the window, and the pass then builds once, for it; a commit after the
+     * first pass IS the build for the blocks that arrived.
+     */
+    styleDoc: ProseNode | null;
+    /**
+     * Bumped when the FINDINGS change (a style or lint set arrives), never
+     * when the window moves: the window changes which findings are drawn, and
+     * the surfaces that list them (the review sidebar) list the whole document.
+     */
+    revision: number;
 };
 
 type ProofreadMeta =
     | { type: "config"; config: ProofreadConfig }
     | { type: "style"; decorations: DecorationSet }
-    | { type: "lints"; decorations: DecorationSet };
+    | { type: "lints"; decorations: DecorationSet }
+    | { type: "window"; window: VisibleWindow | null };
 
 export const proofreadPluginKey = new PluginKey<ProofreadState>("proofread");
 
@@ -252,6 +282,28 @@ export function setProofreadConfig(view: EditorView, config: ProofreadConfig): v
 
 let cachedMatcher: { key: string; matcher: StyleMatcher } | null = null;
 
+/**
+ * The matcher's answer per block TEXT: the style twin of proofread/lintCache,
+ * for the same reason. One keystroke changes one block, and the matcher, which
+ * is the expensive half of the pass, has no reason to run again over the rest;
+ * with this, what a pass regexes is what it has not seen, so a rescan behind
+ * typing costs the edit and a whole-document listing (the review sidebar's)
+ * costs a walk of string lookups rather than a walk of regexes.
+ *
+ * Keyed by the text and nothing else, so a moved paragraph keeps its answer.
+ * Cleared when the MATCHER changes (styleMatcherFor recompiles on a category
+ * toggle or a new exception), because the answer is the matcher's. Suppression
+ * is applied downstream, over what this returns, so an ignore or a kept phrase
+ * invalidates nothing here. FIFO at the lint cache's bound, for its reasons.
+ */
+const STYLE_CACHE_MAX = 4096;
+const styleCache = new Map<string, StyleMatch[]>();
+
+/** Forget every remembered match. Tests, and the matcher recompile. */
+export function clearStyleCache(): void {
+    styleCache.clear();
+}
+
 function styleMatcherFor(config: ProofreadConfig): StyleMatcher {
     const enabled = enabledMap(config);
     const key = `${JSON.stringify(enabled)}|${config.styleExceptions.join(" ")}`;
@@ -260,6 +312,7 @@ function styleMatcherFor(config: ProofreadConfig): StyleMatcher {
             key,
             matcher: compileStyleMatcher(PHRASE_LISTS, enabled, config.styleExceptions),
         };
+        clearStyleCache();
     }
     return cachedMatcher.matcher;
 }
@@ -402,54 +455,131 @@ export function blockPlainText(block: ProseNode): string {
     return text;
 }
 
-/** Walk every textblock outside code blocks. */
-function forEachTextblock(doc: ProseNode, cb: (node: ProseNode, pos: number) => void): void {
-    doc.descendants((node, pos) => {
+/**
+ * Walk every textblock outside code blocks that overlaps `range`, or every one
+ * in the document when `range` is null. A block is visited WHOLE when any part
+ * of it overlaps, so what a block yields never depends on where a window edge
+ * fell across it: a windowed pass is the whole-document pass restricted to the
+ * blocks it visits, byte for byte (proofreadWindow.test.ts holds that as a
+ * differential). The callback may return false to stop.
+ */
+function forEachTextblockIn(
+    doc: ProseNode,
+    range: VisibleWindow | null,
+    cb: (node: ProseNode, pos: number) => void | false,
+): void {
+    let stopped = false;
+    const visit = (node: ProseNode, pos: number): boolean => {
+        if (stopped) { return false; }
         if (node.type.name === "code_block") { return false; }
         if (!node.isTextblock) { return true; }
-        cb(node, pos);
+        if (cb(node, pos) === false) { stopped = true; }
         return false; // textblocks contain no further textblocks
-    });
+    };
+    if (range === null) {
+        doc.descendants(visit);
+    } else {
+        doc.nodesBetween(range.from, range.to, visit);
+    }
 }
 
-/** Style-check decorations (instant, synchronous). Exported for unit testing. */
-export function computeDecorations(doc: ProseNode, config: ProofreadConfig): DecorationSet {
+/**
+ * Run the style matcher over the textblocks in `range` and hand every
+ * unsuppressed match to `cb` with its block's plain text (an offset maps to
+ * the position base + offset). `cb` returns false to stop.
+ *
+ * The one place the matcher runs, so its work is counted once, here.
+ * `style-scan` {blocks, chars} is how many textblocks and characters the
+ * matcher RAN ON in this pass: the blocks whose text the cache had not seen,
+ * the way `lint-request` counts what is asked and not what is collected. On a
+ * fresh document under a window that is the window's blocks; behind a
+ * keystroke it is the edited block. Neither may grow with the document, which
+ * `perKeystrokeWork.test.ts` holds per keystroke and `e2e/proofreadWindow`
+ * holds against the document's own block count in a real browser.
+ */
+function forEachStyleMatch(
+    doc: ProseNode,
+    config: ProofreadConfig,
+    range: VisibleWindow | null,
+    cb: (base: number, text: string, match: StyleMatch, flagged: string) => void | false,
+): void {
+    const matcher = styleMatcherFor(config);
+    let blocks = 0;
+    let chars = 0;
+    forEachTextblockIn(doc, range, (node, pos) => {
+        const text = blockPlainText(node);
+        let matches = styleCache.get(text);
+        if (matches === undefined) {
+            matches = matcher(text);
+            styleCache.set(text, matches);
+            while (styleCache.size > STYLE_CACHE_MAX) {
+                const oldest = styleCache.keys().next();
+                if (oldest.done) { break; }
+                styleCache.delete(oldest.value);
+            }
+            blocks++;
+            chars += text.length;
+        }
+        const base = pos + 1;
+        for (const match of matches) {
+            const flagged = text.slice(match.start, match.end);
+            if (isStyleSuppressed(match.category, flagged)) { continue; }
+            if (cb(base, text, match, flagged) === false) { return false; }
+        }
+    });
+    countWork("style-scan", { blocks, chars });
+}
+
+/**
+ * Style-check decorations (instant, synchronous) for the textblocks in
+ * `window`, or the whole document when it is null. Exported for unit testing.
+ */
+export function computeDecorations(
+    doc: ProseNode,
+    config: ProofreadConfig,
+    window: VisibleWindow | null = null,
+): DecorationSet {
     // Gate: nothing renders unless the master proofreading switch is on and the
     // style master is on. The repeated-word check rides on the style master, so
     // style check is meaningful even with all phrase categories turned off.
     if (!config.proofreadingEnabled || !config.styleCheck) { return DecorationSet.empty; }
-    const matcher = styleMatcherFor(config);
     const decorations: Decoration[] = [];
 
-    forEachTextblock(doc, (node, pos) => {
-        const text = blockPlainText(node);
-        const base = pos + 1;
-        for (const match of matcher(text)) {
-            const flagged = text.slice(match.start, match.end);
-            if (isStyleSuppressed(match.category, flagged)) { continue; }
-            const cls = "pf-style-hit"
-                + (FLAG_CATEGORIES.has(match.category) ? " pf-style-hit--flag" : "");
-            const suggestion = match.category === "emDash"
-                ? emDashReplacement(text, match.start, match.end)
-                : styleSuggestion(match.category, flagged);
-            const spec: StyleSpec = {
-                class: cls,
-                // Popup body = advice only (the chip names the category); the
-                // hover title keeps the full "category — advice" hint.
-                style: { category: match.category, message: styleAdvice(match.category), suggestion },
-            };
-            decorations.push(Decoration.inline(base + match.start, base + match.end,
-                { class: cls, title: styleHitTitle(match.category) }, spec));
-        }
+    forEachStyleMatch(doc, config, window, (base, text, match, flagged) => {
+        const cls = "pf-style-hit"
+            + (FLAG_CATEGORIES.has(match.category) ? " pf-style-hit--flag" : "");
+        const suggestion = match.category === "emDash"
+            ? emDashReplacement(text, match.start, match.end)
+            : styleSuggestion(match.category, flagged);
+        const spec: StyleSpec = {
+            class: cls,
+            // Popup body = advice only (the chip names the category); the
+            // hover title keeps the full "category — advice" hint.
+            style: { category: match.category, message: styleAdvice(match.category), suggestion },
+        };
+        decorations.push(Decoration.inline(base + match.start, base + match.end,
+            { class: cls, title: styleHitTitle(match.category) }, spec));
     });
 
     return DecorationSet.create(doc, decorations);
 }
 
+/**
+ * Whether the document holds any unsuppressed style hit, stopping at the
+ * first. The review sidebar's tab-visibility question, answered without
+ * building a set for a document that has a hit near its top.
+ */
+function hasStyleHit(doc: ProseNode, config: ProofreadConfig): boolean {
+    if (!config.proofreadingEnabled || !config.styleCheck) { return false; }
+    let found = false;
+    forEachStyleMatch(doc, config, null, () => { found = true; return false; });
+    return found;
+}
+
 /** Collect the block texts Harper should lint. */
 function collectLintBlocks(doc: ProseNode): LintBlock[] {
     const blocks: LintBlock[] = [];
-    forEachTextblock(doc, (node, pos) => {
+    forEachTextblockIn(doc, null, (node, pos) => {
         const text = blockPlainText(node);
         if (/\p{L}/u.test(text)) { blocks.push({ key: pos, text }); }
     });
@@ -682,26 +812,52 @@ export const proofreadPlugin = $prose(() => {
                     styleSet: DecorationSet.empty,
                     lintSet: DecorationSet.empty,
                     combined: DecorationSet.empty,
+                    window: null,
+                    styleDoc: null,
+                    revision: 0,
                 };
             },
             apply(tr, value) {
-                let { config, styleSet, lintSet, combined } = value;
+                let { config, styleSet, lintSet, combined, window, styleDoc, revision } = value;
                 if (tr.docChanged) {
                     styleSet = styleSet.map(tr.mapping, tr.doc);
                     lintSet = lintSet.map(tr.mapping, tr.doc);
                     combined = combined.map(tr.mapping, tr.doc);
+                    // The window is measured in layout coordinates but held in
+                    // document positions, so it rides the edit the way the sets
+                    // do (the fold plugin's convention): an insertion above the
+                    // viewport would otherwise slide the decorated band off the
+                    // reader's screen until the next scroll recommit.
+                    if (window) {
+                        window = { from: tr.mapping.map(window.from, -1), to: tr.mapping.map(window.to, 1) };
+                    }
                 }
                 const meta = tr.getMeta(proofreadPluginKey) as ProofreadMeta | undefined;
                 if (meta?.type === "config") {
                     config = meta.config;
                 } else if (meta?.type === "style") {
                     styleSet = meta.decorations;
+                    styleDoc = tr.doc;
                     combined = combine(tr.doc, styleSet, lintSet);
+                    revision++;
                 } else if (meta?.type === "lints") {
                     lintSet = meta.decorations;
                     combined = combine(tr.doc, styleSet, lintSet);
+                    revision++;
+                } else if (meta?.type === "window") {
+                    window = meta.window;
+                    // After the first pass the commit IS the build for the blocks
+                    // that arrived, synchronously, so a block scrolled into view
+                    // is decorated on the frame the window moved. Before it, the
+                    // window is only recorded and the pass builds once, for it.
+                    // The findings did not change, so `revision` does not move.
+                    if (styleDoc !== null) {
+                        styleSet = computeDecorations(tr.doc, config, window);
+                        styleDoc = tr.doc;
+                        combined = combine(tr.doc, styleSet, lintSet);
+                    }
                 }
-                return { config, styleSet, lintSet, combined };
+                return { config, styleSet, lintSet, combined, window, styleDoc, revision };
             },
         },
         props: {
@@ -811,34 +967,59 @@ export const proofreadPlugin = $prose(() => {
                 view.dispatch(view.state.tr.setMeta(proofreadPluginKey, meta));
             };
 
+            // MAR-425: the style decorations are built for the scroll window,
+            // measured by the same observer the fold gutter and the line numbers
+            // each hold an instance of (plugins/visibleRange.ts). Inert until
+            // start(), which the first pass calls rather than view(): a window
+            // arriving before first paint would pull the decorations' DOM in
+            // front of the paint mark, and the pass already sits in the
+            // post-paint idle window. Starting it from the pass is also what
+            // keeps a disabled feature at zero cost: no listener and no
+            // measurement until a check is on and a pass runs.
+            const visibleWindow = observeVisibleWindow(view, (next) => {
+                if (destroyed || view.isDestroyed) { return; }
+                const meta: ProofreadMeta = { type: "window", window: next };
+                view.dispatch(view.state.tr.setMeta(proofreadPluginKey, meta).setMeta("addToHistory", false));
+            });
+
             const scan = () => {
                 scanTimer = null;
                 if (destroyed || view.isDestroyed) { return; }
                 if (!firstPassReady) { return; } // gated until the idle arm (or a config toggle)
                 if (view.composing) { schedule(); return; } // don't disturb IME composition
-                const state = proofreadPluginKey.getState(view.state);
-                if (!state) { return; }
+                if (!proofreadPluginKey.getState(view.state)) { return; }
+                // The trackers first, so the window commit's own transaction
+                // (dispatched synchronously by start() on the first call) is not
+                // read by maybeSchedule as a config change still to be scanned.
                 lastDoc = view.state.doc;
-                lastConfig = state.config;
+                lastConfig = proofreadPluginKey.getState(view.state)!.config;
 
-                // The FIRST completed scan is the launch-time cost: a whole-document
-                // walk plus the decoration build and its dispatch, landing on the
-                // frames just after first paint where no launch span reaches. Marked
-                // once so `pnpm perf` can attribute it — but the span only means
-                // anything if the harness's fixtures actually trip checks
-                // (MAR-310); a pass that finds nothing measures the cheap half.
+                // The FIRST completed scan is the launch-time cost: the windowed
+                // style walk, the whole-document lint collection, the decoration
+                // build and its dispatch, landing on the frames just after first
+                // paint where no launch span reaches. Marked once so `pnpm perf`
+                // can attribute it — but the span only means anything if the
+                // harness's fixtures actually trip checks (MAR-310); a pass that
+                // finds nothing measures the cheap half.
                 const firstPass = !firstScanMarked;
                 if (firstPass) { firstScanMarked = true; mark("proofread-start"); }
                 // Every LATER completed scan stamps `proofread-rescan` instead:
-                // the debounced whole-document rescan behind typing. It sits
-                // outside `tx-apply` (it is not a keystroke's dispatch), so
-                // without its own span the only instrument that sees it is
-                // `block`, which is reported and never gated (MAR-314). A
-                // separate name keeps the launch-time `proofread` measure
-                // meaning exactly "the first pass" for `pnpm perf`.
+                // the debounced rescan behind typing. It sits outside `tx-apply`
+                // (it is not a keystroke's dispatch), so without its own span
+                // the only instrument that sees it is `block`, which is reported
+                // and never gated (MAR-314). A separate name keeps the
+                // launch-time `proofread` measure meaning exactly "the first
+                // pass" for `pnpm perf`.
                 const scanStart = performance.now();
 
-                const styleDecos = computeDecorations(view.state.doc, state.config);
+                // Synchronous on the first call, inside the span above so the
+                // window's own measurement is part of the first pass's cost, and
+                // the state read next already holds the window: the pass builds
+                // once, for it. A no-op on every later call.
+                visibleWindow.start();
+                const state = proofreadPluginKey.getState(view.state)!;
+
+                const styleDecos = computeDecorations(view.state.doc, state.config, state.window);
                 if (styleDecos !== DecorationSet.empty || state.styleSet !== DecorationSet.empty) {
                     const meta: ProofreadMeta = { type: "style", decorations: styleDecos };
                     view.dispatch(view.state.tr.setMeta(proofreadPluginKey, meta));
@@ -934,25 +1115,23 @@ export const proofreadPlugin = $prose(() => {
             // O(findings) re-read grows with the document). It must therefore
             // fire whenever the findings actually change — async Harper results,
             // style rescans, ignore/learn rebuilds — all of which land as meta
-            // transactions that change `combined` WITHOUT changing the document.
-            // Gating on `doc === lastEmitDoc` keeps plain typing (which only
-            // remaps `combined`) off this path, so there's no per-keystroke work.
-            let lastCombined = proofreadPluginKey.getState(view.state)?.combined ?? null;
-            let lastEmitDoc: ProseNode = view.state.doc;
+            // transactions that bump `revision` WITHOUT changing the document.
+            // Plain typing only remaps the sets and a scroll only moves the
+            // window; neither moves `revision`, so neither reaches this path.
+            let lastRevision = proofreadPluginKey.getState(view.state)?.revision ?? 0;
             return {
                 update() {
                     maybeSchedule();
-                    const combined = proofreadPluginKey.getState(view.state)?.combined ?? null;
-                    const doc = view.state.doc;
-                    if (combined !== lastCombined && doc === lastEmitDoc) {
+                    const revision = proofreadPluginKey.getState(view.state)?.revision ?? 0;
+                    if (revision !== lastRevision) {
                         window.dispatchEvent(new CustomEvent(PROOFREAD_FINDINGS_CHANGED));
                     }
-                    lastCombined = combined;
-                    lastEmitDoc = doc;
+                    lastRevision = revision;
                 },
                 destroy() {
                     destroyed = true;
                     currentApplier = null;
+                    visibleWindow.destroy();
                     firstPassIdle?.cancel();
                     hideLintPopup();
                     if (scanTimer !== null) { clearTimeout(scanTimer); }
@@ -1048,29 +1227,80 @@ export function describeFindings(
 }
 
 /**
- * Whether any proofreading finding is live — the review sidebar's tab-visibility
- * check. Deliberately cheaper than listProofreadFindings: one decoration-set
- * enumeration with an early exit, no text reads, no row building.
+ * The style set for the WHOLE document, for the surfaces that list findings
+ * rather than draw them: the review sidebar's Proofreading tab, and whether
+ * that tab is shown at all. The plugin's own set is windowed (MAR-425), and a
+ * list that shrank as the reader scrolled would be a defect, so those two read
+ * this instead. Memoized on the document, the config and the suppression
+ * epoch, so a sidebar that is open costs one walk per edit pause rather than
+ * one per event; it is computed only when a sidebar asks, never on the mount
+ * path, a keystroke or a scroll. The walk itself is over every block, but the
+ * matcher runs only on the blocks the style cache has not seen, so behind an
+ * edit it regexes the edited block and looks the rest up.
  */
-export function hasProofreadFindings(view: EditorView): boolean {
-    const state = proofreadPluginKey.getState(view.state);
-    if (!state) { return false; }
-    return state.combined.find().some((h) => {
+let documentStyle: {
+    doc: ProseNode;
+    config: ProofreadConfig;
+    epoch: number;
+    set: DecorationSet;
+} | null = null;
+
+/** Bumped by every suppression change (ignore, keep, learn): part of the memo's key. */
+let suppressionEpoch = 0;
+
+function documentStyleMemo(view: EditorView, config: ProofreadConfig): DecorationSet | null {
+    const memo = documentStyle;
+    return memo && memo.doc === view.state.doc && memo.config === config && memo.epoch === suppressionEpoch
+        ? memo.set
+        : null;
+}
+
+function documentStyleSet(view: EditorView, config: ProofreadConfig): DecorationSet {
+    const memoized = documentStyleMemo(view, config);
+    if (memoized) { return memoized; }
+    const set = computeDecorations(view.state.doc, config, null);
+    documentStyle = { doc: view.state.doc, config, epoch: suppressionEpoch, set };
+    return set;
+}
+
+function anyFinding(set: DecorationSet): boolean {
+    return set.find().some((h) => {
         const s = h.spec as DecoSpec;
         return Boolean(s.lint || s.style);
     });
 }
 
 /**
- * Every live proofreading finding (style + Harper spelling/grammar), document
- * -ordered, resolved to what the review sidebar needs plus the same Ignore/Learn
- * actions the in-text popup offers. Reads the plugin's `combined` decoration
- * set; computes nothing new (the pure core is describeFindings).
+ * Whether any proofreading finding is live in the DOCUMENT — the review
+ * sidebar's tab-visibility check. Cheapest answer first: a finding already
+ * built (a lint anywhere, a style hit in the window) says yes without a walk,
+ * and the memo answers when it is fresh. Only a document with no built finding
+ * is walked, stopping at the first hit; one with none has then been walked
+ * whole, which is the empty set, so the memo is filled from it.
+ */
+export function hasProofreadFindings(view: EditorView): boolean {
+    const state = proofreadPluginKey.getState(view.state);
+    if (!state) { return false; }
+    if (anyFinding(state.lintSet) || anyFinding(state.styleSet)) { return true; }
+    const memoized = documentStyleMemo(view, state.config);
+    if (memoized) { return anyFinding(memoized); }
+    if (hasStyleHit(view.state.doc, state.config)) { return true; }
+    documentStyle = { doc: view.state.doc, config: state.config, epoch: suppressionEpoch, set: DecorationSet.empty };
+    return false;
+}
+
+/**
+ * Every live proofreading finding (style + Harper spelling/grammar) in the
+ * whole document, document-ordered, resolved to what the review sidebar needs
+ * plus the same Ignore/Learn actions the in-text popup offers. The style half
+ * is the whole-document memo above rather than the plugin's windowed set (the
+ * pure core is describeFindings).
  */
 export function listProofreadFindings(view: EditorView): ProofreadFindingRow[] {
     const state = proofreadPluginKey.getState(view.state);
     if (!state) { return []; }
-    return describeFindings(state.combined, (from, to) => view.state.doc.textBetween(from, to)).map((f) => ({
+    const combined = combine(view.state.doc, documentStyleSet(view, state.config), state.lintSet);
+    return describeFindings(combined, (from, to) => view.state.doc.textBetween(from, to)).map((f) => ({
         ...f,
         ignore: () => {
             if (f.domain === "style") { ignoreStyleSession(f.kind as StyleCategory, f.text); }
@@ -1093,9 +1323,10 @@ export function applyLintResults(id: number, results: LintBlockResult[]): void {
 export function refreshProofread(view: EditorView): void {
     const state = proofreadPluginKey.getState(view.state);
     if (!state) { return; }
+    suppressionEpoch++;
     const meta: ProofreadMeta = {
         type: "style",
-        decorations: computeDecorations(view.state.doc, state.config),
+        decorations: computeDecorations(view.state.doc, state.config, state.window),
     };
     view.dispatch(view.state.tr.setMeta(proofreadPluginKey, meta));
     // Drop suppressed lints immediately by rebuilding from the current set
