@@ -22,7 +22,7 @@ import type { FormatModule } from "./format/types";
 import { guardNodeViewFactory } from "./nodeViewBoundary";
 import { refractor, ensureGrammars } from "./highlighter";
 import { applyExternalSync } from "./externalSync";
-import { instrumentTransactions, mark, measure } from "./perf";
+import { countWork, instrumentTransactions, mark, measure } from "./perf";
 import { createSyncScheduler } from "./syncScheduler";
 import { isReadOnly } from "./readOnly";
 import { requestIdle } from "./utils/idle";
@@ -305,16 +305,29 @@ let _onDocChange: (() => void) | null = null;
  * The parser comes from the editor's own context, so this stays on the
  * FormatModule seam: the verifier is handed a parse function and a profile
  * rather than knowing markdown exists.
+ *
+ * Every pass stamps a `merge` work count: one pass, and how many times the
+ * verifier reparsed the merged bytes (zero for a file already in the
+ * serializer's spelling, one or two otherwise). Each is a whole-document
+ * walk, so how many of them a burst pays is what the nightly heavy-fixture
+ * gate holds (`e2e/perf-counts.mjs`); a scheduler that fires too often, the
+ * defect #421 found, moves this count and no gated duration.
  */
 function mergeForSave(editor: Editor, markdown: string): { text: string; canonical: boolean } {
-    return mergeVerified(
+    let reparses = 0;
+    const result = mergeVerified(
         _savedMarkdown,
         markdown,
         format.formatProfile,
         getProtection(),
         editor.action((ctx) => getState(ctx).doc),
-        (text) => editor.action((ctx) => ctx.get(parserCtx)(text)) as ProseNode | null,
+        (text) => {
+            reparses++;
+            return editor.action((ctx) => ctx.get(parserCtx)(text)) as ProseNode | null;
+        },
     );
+    countWork("merge", { passes: 1, reparses });
+    return result;
 }
 
 /**

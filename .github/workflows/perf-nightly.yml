@@ -1,0 +1,122 @@
+name: Nightly Heavy Perf
+
+# The heavy fixtures (`xlarge`, `huge-outline`; see HEAVY_FIXTURES in
+# e2e/perf/fixtures.mjs) sit outside every per-PR gate on purpose: `launch-perf`
+# is required and measures every gated fixture on both sides of an A/B, and
+# `typing-perf` is the most expensive check in the repo, so a document this size
+# on either would spend minutes of every PR's critical path. The cost of that
+# decision is that the documents users actually complain about are the ones
+# nothing measures, and a win landed on them can be given back silently
+# (MAR-424). This job is what holds those wins.
+#
+# It GATES ON COUNTS AND REPORTS DURATIONS. A nightly has no sibling build to
+# interleave against, so a duration here is a bare absolute read on a shared
+# runner, which AGENTS.md ("CI perf gates") says cannot be gated: `block`
+# inflates super-linearly under load. A work count (`countWork` in
+# webview/perf.ts) reads the same on a loaded runner and an idle laptop, so it
+# is held hard against the ceilings in e2e/perf/heavy-budget.json. The
+# durations go into the run summary for a human to read.
+#
+# It runs on `main`, never on PRs, and it is not a required check. A failure
+# is the signal: GitHub emails the maintainer when a scheduled workflow fails,
+# and the summary below says what to run. Tracked work lives in Linear, so
+# nothing here opens a GitHub issue.
+on:
+  schedule:
+    - cron: '0 9 * * *' # 09:00 UTC daily; between the fidelity sweep and the release cut
+  workflow_dispatch: # so a suspicion can be chased immediately
+
+permissions:
+  contents: read
+
+jobs:
+  heavy-fixtures:
+    name: Heavy fixtures (counts gated, durations reported)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Uncached, for the reason ci.yml's launch-perf job gives: the apt half
+      # of `--with-deps` runs either way and is the half that stalls.
+      - name: Install Chromium for Playwright
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Build the production bundle
+        run: node esbuild.mjs --production --metafile
+
+      # One harness at a time (e2e/harnessLock.mjs): these run in sequence on
+      # purpose, and each takes the lock the previous one released.
+      - name: Launch spans on the heavy fixtures
+        run: |
+          node e2e/perf.mjs huge-outline --json launch-huge-outline.json | tee launch-huge-outline.txt
+          node e2e/perf.mjs xlarge --json launch-xlarge.json | tee launch-xlarge.txt
+
+      - name: Typing burst on huge-outline
+        run: node e2e/perf-typing.mjs huge-outline --json typing-huge-outline.json | tee typing-huge-outline.txt
+
+      - name: Gate the work counts
+        id: counts
+        run: node e2e/perf-counts.mjs --check typing-huge-outline.json | tee counts.md
+
+      - name: Write the run summary
+        if: always()
+        run: |
+          {
+            echo "## Heavy fixtures — $(git rev-parse --short HEAD)"
+            echo
+            echo "### Work counts (gated)"
+            echo
+            if [ -f counts.md ]; then cat counts.md; else echo "_the count gate did not run_"; fi
+            echo
+            echo "### Durations (reported, never gated: a bare read on a shared runner)"
+            echo
+            for f in launch-huge-outline.txt launch-xlarge.txt typing-huge-outline.txt; do
+              if [ -f "$f" ]; then echo '```'; cat "$f"; echo '```'; echo; fi
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Explain the failure in the run summary
+        if: failure()
+        run: |
+          {
+            echo "## The heavy-fixture gate failed"
+            echo
+            echo "A count moved on a document the per-PR gates never open, so this is most likely"
+            echo "a pass that has become proportional to the document again (AGENTS.md,"
+            echo "\"Launch performance\"), landed by a recent commit on \`main\`. \`git log\` since the"
+            echo "last green run names the candidates."
+            echo
+            echo '**Reproduce exactly:**'
+            echo
+            echo '```bash'
+            echo 'node esbuild.mjs --production --metafile'
+            echo 'node e2e/perf-typing.mjs huge-outline --json typing.json'
+            echo 'node e2e/perf-counts.mjs --check typing.json'
+            echo '```'
+            echo
+            echo "If the new count is the intended one, record it with \`--set-budget\` and commit"
+            echo "\`e2e/perf/heavy-budget.json\` saying why. File anything else in **Linear** (team"
+            echo "Birta Writer, \`phase-1-performance\`) after reproducing it locally."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload the reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: heavy-perf-${{ github.run_number }}
+          path: |
+            launch-*.json
+            typing-*.json
+          retention-days: 30
