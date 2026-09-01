@@ -287,6 +287,13 @@ public enum HostMessage: Equatable {
     /// makes the three, and the whole of why the split is the host's job.
     case initDoc(content: String, frontmatter: String, lineOffset: Int, syncVersion: Int, viewStateJSON: String?)
     case externalUpdate(content: String, frontmatter: String, lineOffset: Int, syncVersion: Int)
+    /// A new `lineOffset` with the document left where it is: what a panel edit
+    /// amounts to, since it changes how far the body is pushed down and nothing
+    /// about the body. No `lineMap` travels with it, because the map describes
+    /// the body and the body did not move; the page keeps the one it computed.
+    /// Sending the document instead would be an `externalUpdate`, which redraws
+    /// the panel out from under the person typing in it.
+    case lineOffsetUpdate(lineOffset: Int)
     case flushSave(id: String)
     case flushAck(id: String, applied: Bool)
     /// Reply to `uploadImage`: `url` is what goes INTO the document, so it is
@@ -394,6 +401,8 @@ public enum HostMessage: Equatable {
         case let .externalUpdate(content, frontmatter, lineOffset, syncVersion):
             return ["type": "externalUpdate", "content": content, "frontmatter": frontmatter,
                     "lineOffset": lineOffset, "syncVersion": syncVersion]
+        case let .lineOffsetUpdate(lineOffset):
+            return ["type": "lineMapUpdate", "lineOffset": lineOffset]
         case let .agentRun(requestId, status, harness, text, message):
             var o: [String: Any] = ["type": "agentRun", "requestId": requestId, "status": status]
             if let harness { o["harness"] = harness }

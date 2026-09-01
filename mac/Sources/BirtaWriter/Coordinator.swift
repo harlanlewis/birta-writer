@@ -1119,6 +1119,13 @@ final class Coordinator {
             latest = updated
             isEdited = true
             write(.edit)
+            // A block that gained or lost lines pushes the body down by a
+            // different amount, and the page is drawing gutter numbers and
+            // naming lines to an agent off the offset it was last told. The
+            // extension sends the same message here for the same reason; the
+            // document is deliberately NOT re-sent, which would redraw the
+            // panel out from under the person who just typed in it.
+            host.send(.lineOffsetUpdate(lineOffset: split.lineOffset))
         case let .viewState(json):
             Prefs.setViewStateJSON(json, for: boundURL)
         case let .openUrl(url):

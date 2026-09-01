@@ -232,6 +232,11 @@ final class BridgeTests: XCTestCase {
         XCTAssertEqual(HostMessage.externalUpdate(content: "# a", frontmatter: "+++\ntitle = \"A\"\n+++\n",
                                                   lineOffset: 3, syncVersion: 4).jsonString(),
                        ##"{"content":"# a","frontmatter":"+++\ntitle = \"A\"\n+++\n","lineOffset":3,"syncVersion":4,"type":"externalUpdate"}"##)
+        // A panel edit's whole wire footprint: the page's `lineMapUpdate` with
+        // no map on it. The map describes the body, the body did not move, and
+        // sending the document instead would redraw the panel being typed in.
+        XCTAssertEqual(HostMessage.lineOffsetUpdate(lineOffset: 5).jsonString(),
+                       #"{"lineOffset":5,"type":"lineMapUpdate"}"#)
         XCTAssertEqual(HostMessage.flushSave(id: "f").jsonString(), #"{"id":"f","type":"flushSave"}"#)
         XCTAssertEqual(HostMessage.flushAck(id: "f", applied: true).jsonString(), #"{"applied":true,"id":"f","type":"flushAck"}"#)
         XCTAssertEqual(HostMessage.imageUploadError(id: "u", error: "no").jsonString(),

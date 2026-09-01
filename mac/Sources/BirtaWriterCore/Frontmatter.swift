@@ -8,13 +8,19 @@ import Foundation
 /// document is fed a body with that block already removed, so a host that
 /// sends the whole file as `content` sends the panel nothing and hands the
 /// block to the Markdown parser instead, which reads `---` as a rule and the
-/// lines under it as a setext heading.
+/// keys under it as body: a block of plain keys becomes a setext heading, one
+/// holding a YAML list becomes a paragraph, a list and a second rule. The shape
+/// depends on what the block contains, so the contract is not that any one of
+/// them is avoided but that no part of the block reaches the parser.
 ///
 /// A literal port of `extractFrontmatter` (shared/contentTransform.ts) and
 /// `sourceLineCount` (shared/lineMap.ts), down to the pattern string, and
 /// `FrontmatterTests` mirrors `contentTransform.test.ts` case for case. The two
 /// surfaces read the same files, so a file the extension calls frontmatter and
-/// this side does not is a file whose bytes move when it is opened here.
+/// this side does not is a file whose bytes move when it is opened here. The
+/// mirrored cases catch a difference somebody thought of;
+/// `shared/__tests__/frontmatterPort.test.ts` compares the two pattern strings
+/// themselves, which is what makes "down to the pattern string" a contract.
 public enum Frontmatter {
     /// A document's two halves.
     public struct Split: Equatable {
@@ -55,9 +61,12 @@ public enum Frontmatter {
             return Split(frontmatter: "", body: content)
         }
         let ns = content as NSString
-        // The location is checked rather than assumed: everything below reads
-        // the match as a PREFIX, and a match found anywhere else would be
-        // silently cut from the front of the document instead.
+        // `^` binds to the start of the STRING here, not of a line, because
+        // `.anchorsMatchLines` is not set, so a match can only be at 0. The
+        // check restates that where the substring arithmetic below depends on
+        // it: everything after this reads the match as a prefix, and the option
+        // that would break the assumption is set on the pattern, out of sight
+        // of this line. No test can redden it while the anchor stands.
         guard let match = block.firstMatch(in: content, range: NSRange(location: 0, length: ns.length)),
               match.range.location == 0 else {
             return Split(frontmatter: "", body: content)
@@ -90,15 +99,26 @@ public enum Frontmatter {
 /// A mirror rather than a re-read of the buffer, and that is the load-bearing
 /// choice. The document after an `update` is `frontmatter + body`, so
 /// re-deriving the block from the rebuilt document would agree with the mirror
-/// in every case but one, and that one loses bytes: with no frontmatter at all,
-/// a body whose own first lines happen to form a block (`---`, a line, `---`,
-/// which is a rule and a setext heading and something a person can type) would
-/// be read as one and prepended to itself on the next update.
+/// in every case but one, and that one loses bytes: a buffer the panel holds
+/// nothing of whose own first lines form a block (`---`, a line, `---`, which
+/// is a rule and a setext heading and something a person can type) would be
+/// read as one and prepended to itself on the next update.
+///
+/// Not a state a file is opened in, which is why it is easy to argue away: at
+/// open, the same pattern decides both, so the first block IS the panel's.
+/// Clearing the panel on a document that opened with two blocks is what leaves
+/// the buffer starting with one the panel does not hold, and
+/// `testABodyThatLooksLikeABlockIsNotTakenForOne` walks exactly that.
 public struct DocumentSplit: Equatable {
     /// The block the panel currently holds; empty when the document has none.
     public private(set) var frontmatter = ""
 
     public init() {}
+
+    /// How far the block the panel holds pushes the body down. The page adds it
+    /// to every document line it draws or reports, so a panel edit that changes
+    /// the block's height has to send the new one.
+    public var lineOffset: Int { Frontmatter.sourceLineCount(frontmatter) }
 
     /// Split `content` for the page, recording the block the panel is given.
     ///
@@ -108,7 +128,7 @@ public struct DocumentSplit: Equatable {
     public mutating func forPage(_ content: String) -> (body: String, frontmatter: String, lineOffset: Int) {
         let split = Frontmatter.split(content)
         frontmatter = split.frontmatter
-        return (split.body, split.frontmatter, Frontmatter.sourceLineCount(split.frontmatter))
+        return (split.body, split.frontmatter, lineOffset)
     }
 
     /// The document an editor `update` amounts to. The page serializes the body

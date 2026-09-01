@@ -24,6 +24,8 @@
  * Frontmatter.swift), pattern string included, with the cases below mirrored
  * there. Splitting is the host's job on every surface, so a change here needs
  * the same change there or the two disagree about the same file's bytes.
+ * `shared/__tests__/frontmatterPort.test.ts` compares the two pattern strings,
+ * so that is a check rather than a request.
  */
 export function extractFrontmatter(content: string): { frontmatter: string; body: string } {
     const match = content.match(/^(---|\+\+\+)\r?\n[\s\S]*?\r?\n\1(?:\r?\n|$)/);

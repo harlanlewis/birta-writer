@@ -637,7 +637,11 @@ export type ToWebviewMessage =
     // carry the raw editor's selection anchor so the WYSIWYG editor restores
     // the whole selection rather than a bare caret (MAR-23).
     | { type: "scrollToLine"; line: number; column?: number; anchorLine?: number; anchorColumn?: number }
-    | { type: "lineMapUpdate"; lineMap: number[]; lineOffset?: number }
+    // A fresh line map, a fresh `lineOffset`, or both. `lineMap` is optional
+    // because a frontmatter-only edit moves the offset and leaves the body's
+    // map exactly as it was: a host with nothing new to say about the map omits
+    // it and the webview keeps the one it has. The extension always sends both.
+    | { type: "lineMapUpdate"; lineMap?: number[]; lineOffset?: number }
     | { type: "setDebugMode"; enabled: boolean }
     // A tooltip for chrome the HOST draws, which this page cannot see and does
     // not own. Birta Writer for Mac's titlebar band is half AppKit views and

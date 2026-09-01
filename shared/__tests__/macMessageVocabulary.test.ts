@@ -257,9 +257,9 @@ describe("the Mac app's parse table against the page's outbound vocabulary", () 
      * table, so a message the Mac app SENDS with a field missing is invisible to all
      * of them: the type is right, the JSON is valid, and the page reads the
      * absent field as its documented default. That is how the app shipped
-     * without `frontmatter`, which put the metadata block into the editor as
-     * a rule and a setext heading, and without `lineOffset`, which left every
-     * document line the page reports short by the block.
+     * without `frontmatter`, which put the metadata block into the editor to be
+     * parsed as body, and without `lineOffset`, which left every document line
+     * the page reports short by the block.
      *
      * Both fields are optional in `ToWebviewMessage`, so no type-level check
      * can ask for them: a host that splits the document must say so, and only

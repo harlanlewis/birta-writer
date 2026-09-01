@@ -138,6 +138,18 @@ final class FrontmatterTests: XCTestCase {
         XCTAssertEqual(out.body, "# Body")
     }
 
+    func testATomlBlockNotAtTheStartIsNotFrontmatter() {
+        let content = "Some text\n+++\ntitle = \"Test\"\n+++\n"
+        XCTAssertEqual(split(content).frontmatter, "")
+        XCTAssertEqual(split(content).body, content)
+    }
+
+    func testAnUnclosedTomlOpenerIsAllBody() {
+        let content = "+++\ntitle = \"A\"\n# Body"
+        XCTAssertEqual(split(content).frontmatter, "")
+        XCTAssertEqual(split(content).body, content)
+    }
+
     func testTomlCrlfAndEndOfFileFences() {
         XCTAssertEqual(split("+++\r\ntitle = \"Test\"\r\n+++\r\n# Body").frontmatter,
                        "+++\r\ntitle = \"Test\"\r\n+++\r\n")
@@ -217,19 +229,58 @@ final class FrontmatterTests: XCTestCase {
     /// person can type). Re-reading the buffer to find the block would call
     /// that body frontmatter and prepend it to itself; the mirror says the
     /// panel is holding nothing, so nothing is prepended.
+    /// Reached by CLEARING the panel, which is the only way a buffer whose own
+    /// first lines form a block can be one the panel holds nothing of. A
+    /// document opening with two blocks: the first is frontmatter, the second
+    /// is body a person typed (a rule, a line, a setext heading). Clear the
+    /// panel and the buffer now opens with the second one.
     func testABodyThatLooksLikeABlockIsNotTakenForOne() {
-        let content = "---\nA heading\n---\n\nmore\n"
         var doc = DocumentSplit()
-        let page = doc.forPage(content)
-        // Only the SPLIT reads it as a block, because it is one by the pattern;
-        // what matters is that the page is then told so, and the panel holds it.
-        XCTAssertEqual(page.frontmatter, "---\nA heading\n---\n")
+        _ = doc.forPage("---\ntitle: A\n---\n---\nA heading\n---\n\nmore\n")
 
-        // A document the page holds entirely: nothing was put in the panel, so
-        // an update carrying the whole body is the whole document.
-        var plain = DocumentSplit()
-        let body = plain.forPage("Some text.\n\n---\nA heading\n---\n").body
-        XCTAssertEqual(plain.frontmatter, "")
-        XCTAssertEqual(plain.document(body: body), "Some text.\n\n---\nA heading\n---\n")
+        let cleared = doc.document("---\ntitle: A\n---\n---\nA heading\n---\n\nmore\n",
+                                   replacingFrontmatterWith: "")
+        XCTAssertEqual(cleared, "---\nA heading\n---\n\nmore\n")
+        XCTAssertEqual(doc.frontmatter, "")
+
+        // The discriminating half: re-reading the buffer here finds the body's
+        // own block and replaces it, losing "A heading" and its fences. The
+        // mirror says the panel holds nothing, so the whole buffer is body.
+        XCTAssertEqual(doc.document(cleared, replacingFrontmatterWith: "---\ntitle: B\n---\n"),
+                       "---\ntitle: B\n---\n---\nA heading\n---\n\nmore\n")
+        // Same for the body-only path, which rejoins against the same mirror.
+        XCTAssertEqual(Frontmatter.split(cleared).frontmatter, "---\nA heading\n---\n",
+                       "the case is only reachable while the pattern reads the body's opening as a block")
+    }
+
+    /// The mirror does not paper over a buffer the host replaced behind it: a
+    /// block that is no longer a prefix falls back to a re-split, which is what
+    /// stops a stale mirror being prepended to a document it was never in.
+    func testABlockThatIsNoLongerAPrefixIsReSplit() {
+        var doc = DocumentSplit()
+        _ = doc.forPage("---\ntitle: A\n---\n# Body\n")
+
+        XCTAssertEqual(doc.document("---\ntitle: Z\n---\n# Other\n",
+                                    replacingFrontmatterWith: "---\ntitle: B\n---\n"),
+                       "---\ntitle: B\n---\n# Other\n")
+    }
+
+    // MARK: what a panel edit tells the page about its own line numbers
+
+    /// The page draws gutter numbers and names lines to an agent by adding this
+    /// to every document line, so a panel edit that changes the block's height
+    /// has a new one to send.
+    func testTheOffsetFollowsTheBlockThePanelHolds() {
+        var doc = DocumentSplit()
+        _ = doc.forPage("---\ntitle: A\n---\n# Body\n")
+        XCTAssertEqual(doc.lineOffset, 3)
+
+        _ = doc.document("---\ntitle: A\n---\n# Body\n",
+                         replacingFrontmatterWith: "---\ntitle: A\ntags: [x]\ndraft: true\n---\n")
+        XCTAssertEqual(doc.lineOffset, 5)
+
+        _ = doc.document("---\ntitle: A\ntags: [x]\ndraft: true\n---\n# Body\n",
+                         replacingFrontmatterWith: "")
+        XCTAssertEqual(doc.lineOffset, 0)
     }
 }

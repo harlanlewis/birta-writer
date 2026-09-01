@@ -18,7 +18,7 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ### Fixed
 
-- A note's frontmatter is shown in the metadata panel, the way it is in Birta Writer for VS Code, and it is editable there. Birta Writer for Mac handed the whole file to the editor, so the block reached the Markdown parser instead of the panel: the opening `---` drew a horizontal rule, the keys under it became a paragraph and a list, and there was nowhere to read or change the values as fields.
+- A note's frontmatter is shown in the metadata panel, the way it is in Birta Writer for VS Code, and it is editable there. Birta Writer for Mac handed the whole file to the editor, so the block reached the Markdown parser instead of the panel: the opening `---` drew a horizontal rule and the keys under it were rendered as body text, most often as one large heading, and there was nowhere to read or change the values as fields.
 
 - Editing a note that has frontmatter no longer damages the block. Because the block was in the document rather than the panel, the editor wrote it back as what it had parsed, and the closing `---` was not part of that: the first edit to such a note turned its metadata into ordinary body text, saved. Notes already damaged this way are not repaired, and the fence has to be typed back by hand.
 
