@@ -139,6 +139,42 @@ describe("createSyncScheduler", () => {
         expect(calls).toBeLessThan(KEYS / 10);
     });
 
+    /**
+     * A request raised from INSIDE a sync is the one case a timestamp cannot
+     * cover, and it is the same defect one level down. The leading edge's
+     * reference is not advanced until the sync returns, so a plugin that
+     * dispatches in response to the doc change reads a gap equal to the running
+     * sync's own duration. On a document where that duration exceeds idleMs,
+     * which is the whole subject of the case above, it reads as a fresh lull
+     * and arms a second whole-document sync at delay 0, inside the one already
+     * running. Nothing in the editor dispatches from `syncNow` today; this is
+     * the guard that keeps the next plugin that does from reopening the loop.
+     */
+    it("a request raised from inside a slow sync should not arm a second leading edge", () => {
+        const SYNC_MS = 500; // > idleMs, which is what makes the stale gap look like a lull
+        let reentered = false;
+        onSync.mockImplementation(() => {
+            clock.spend(SYNC_MS);
+            if (!reentered) { reentered = true; scheduler.request(); }
+        });
+
+        scheduler.request();
+        clock.advance(1);
+        expect(onSync).toHaveBeenCalledTimes(1);
+        // The arm this case is about was actually raised. Without this the test
+        // passes when the reentrant request never happens, which is a test that
+        // measured nothing reporting success.
+        expect(reentered, "the reentrant request ran").toBe(true);
+
+        // A leading edge is armed at delay 0, so it would fire on the next tick.
+        clock.advance(1);
+        expect(onSync, "a second leading edge fired inside the first sync").toHaveBeenCalledTimes(1);
+
+        // It takes the trailing path instead, like any other mid-burst edit.
+        clock.advance(300);
+        expect(onSync).toHaveBeenCalledTimes(2);
+    });
+
     it("edits while composing should not sync until compositionEnded()", () => {
         composing = true;
         scheduler.request();
