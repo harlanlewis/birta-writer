@@ -327,7 +327,11 @@ export function createMessageHandlers(
             tryScrollNow();
         },
         lineMapUpdate(msg) {
-            setLineMap(msg.lineMap);
+            // A map only when one was sent. A frontmatter-only edit changes how
+            // far the body is pushed down and nothing about the body itself, so
+            // a host with no map of its own sends the offset alone rather than
+            // a map it would have to recompute to keep the one it has.
+            if (msg.lineMap) { setLineMap(msg.lineMap); }
             setLineOffset(msg.lineOffset ?? 0);
         },
         flushSave(msg) {

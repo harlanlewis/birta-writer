@@ -278,6 +278,30 @@ describe("line-offset plumbing", () => {
         expect(setLineOffset).toHaveBeenCalledWith(4);
     });
 
+    it("a lineMapUpdate carrying only an offset should keep the map it already has", () => {
+        const deps = stubDeps();
+        const setLineOffset = vi.fn();
+        const setLineMap = vi.fn();
+        deps.actions.setLineOffset = setLineOffset;
+        deps.state.setLineMap = setLineMap;
+        const handlers = createMessageHandlers(deps);
+
+        // The control first: this spy DOES reach the handler, so the negative
+        // below is a decision the handler made rather than a mock nothing was
+        // wired to. `setLineMap` lives on `state`, not `actions`.
+        handlers.lineMapUpdate?.({ type: "lineMapUpdate", lineMap: [1, 5], lineOffset: 4 }, container);
+        expect(setLineMap).toHaveBeenCalledWith([1, 5]);
+        setLineMap.mockClear();
+
+        // What a frontmatter panel edit sends from a host with no line map of
+        // its own: the block's height changed, the body did not. Overwriting
+        // the map here would need a map, and the only one to hand is stale.
+        handlers.lineMapUpdate?.({ type: "lineMapUpdate", lineOffset: 5 }, container);
+
+        expect(setLineOffset).toHaveBeenCalledWith(5);
+        expect(setLineMap).not.toHaveBeenCalled();
+    });
+
     it("a lineMapUpdate without an offset should reset it to zero", () => {
         const deps = stubDeps();
         const setLineOffset = vi.fn();

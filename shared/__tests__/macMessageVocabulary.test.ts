@@ -147,7 +147,6 @@ const DELIBERATELY_UNPARSED: Record<string, string> = {
     setPasteUnfurlAutoApply: "editor state the Mac app does not persist",
     setNetworkEnabled: "the Mac app owns the network switch in its own Settings, not from the page",
     reviewGroupByType: "editor state the Mac app does not persist",
-    frontmatterUpdate: "the extension mirrors frontmatter into its own state; the Mac app has no mirror",
     wordCount: "the extension's status bar; the Mac app has no status bar to put it in",
     fatalParse: "the extension's error sink; the Mac app reports a crash through its own path",
 };
@@ -249,6 +248,36 @@ describe("the Mac app's parse table against the page's outbound vocabulary", () 
         const gapGhosts = Object.keys(KNOWN_GAPS).filter((t) => !toHost.includes(t));
 
         expect([...declinedGhosts, ...gapGhosts]).toEqual([]);
+    });
+
+    /**
+     * THE OUTBOUND HALF, for the one pair of messages that carries a document.
+     *
+     * Every other check here reads the page's vocabulary against the Mac app's parse
+     * table, so a message the Mac app SENDS with a field missing is invisible to all
+     * of them: the type is right, the JSON is valid, and the page reads the
+     * absent field as its documented default. That is how the app shipped
+     * without `frontmatter`, which put the metadata block into the editor to be
+     * parsed as body, and without `lineOffset`, which left every document line
+     * the page reports short by the block.
+     *
+     * Both fields are optional in `ToWebviewMessage`, so no type-level check
+     * can ask for them: a host that splits the document must say so, and only
+     * a host that does not split it may leave them out.
+     */
+    it("the Mac app's document messages should carry the frontmatter contract's fields", () => {
+        const swift = readFileSync(bridgePath, "utf8");
+        const arms = swift.split("case let .").filter((arm) => arm.includes('"type": "'));
+
+        for (const wire of ["init", "externalUpdate"]) {
+            const arm = arms.find((a) => a.includes(`"type": "${wire}"`));
+            expect(arm, `Bridge.swift no longer encodes a ${wire} message; this guard must follow it`)
+                .toBeDefined();
+            for (const field of ["frontmatter", "lineOffset"]) {
+                expect(arm, `the Mac app's ${wire} omits ${field}, so the page falls back to its no-host default`)
+                    .toContain(`"${field}"`);
+            }
+        }
     });
 
     /** A type cannot be both parsed and declined; that is an unread reason. */

@@ -15,6 +15,12 @@
  * or without the trailing newline a file that ends there would lack, so counting
  * line terminators is exactly the number of lines the BODY is pushed down by.
  * The count is delimiter-agnostic, so no dialect needs a case here.
+ *
+ * Ported into Swift as `Frontmatter.sourceLineCount` (mac/Sources/
+ * BirtaWriterCore/Frontmatter.swift), which every host must send with the split
+ * it makes, so a change here needs the same change there. That side counts
+ * unicode scalars rather than characters, because Swift makes `\r\n` one
+ * Character and a CRLF block counted the obvious way reports zero.
  */
 export function sourceLineCount(text: string): number {
     let count = 0;
