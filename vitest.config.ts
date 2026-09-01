@@ -56,45 +56,22 @@ export default defineConfig({
                 extends: "./vitest.config.ts",
                 test: {
                     name: "webview",
-                    // happy-dom, not jsdom: constructing a jsdom window cost
-                    // ~0.44s in every isolated worker, which across 300+
-                    // webview files dominated the suite's wall clock. Files
-                    // that need real jsdom behavior pin it back per-file with
-                    // `@vitest-environment jsdom` (grep for it); each pin
-                    // names the incompatibility that earned it. setup.ts
-                    // needs no fork: its DOM shims are `??=`/`typeof` guards,
-                    // so whichever environment is live keeps its own
-                    // implementations and only the true gaps are filled.
+                    // ONE environment for every file in this project, and that
+                    // is the constraint rather than a default nobody revisited.
+                    // A per-file `@vitest-environment` pin makes a green result
+                    // a claim about whichever DOM that particular file was
+                    // pinned to, and nobody reads a pin when they read a
+                    // result. A faster environment that some files cannot run
+                    // buys wall clock with that ambiguity, and the price is
+                    // paid by whoever later trusts a pass.
                     //
-                    // The sanitizer pins are the ones to know about, because
-                    // DOMPurify does not merely differ here, it stops working
-                    // while still reporting `isSupported`.
-                    // `webview/__tests__/sanitizeEnvironment.test.ts` holds
-                    // that as a check, says what a static guard on those pins
-                    // would have to key on and why no such signal exists, and
-                    // fails the day the gap closes so the pins can go.
-                    environment: "happy-dom",
-                    // happy-dom, unlike jsdom, really performs the loads a
-                    // document asks for: it fetches `<link rel=stylesheet>`
-                    // hrefs (katexLoader's `<link>` surfaced as a file:-URL
-                    // fetch error in every worker) and follows link-click
-                    // navigations onto the actual network (a click test was
-                    // observed opening a TLS connection to example.com).
-                    // A unit suite must never touch the network, so both are
-                    // off; navigation falls back to setting the URL, which is
-                    // the jsdom behavior the tests were written against.
-                    environmentOptions: {
-                        happyDOM: {
-                            settings: {
-                                disableCSSFileLoading: true,
-                                navigation: {
-                                    disableMainFrameNavigation: true,
-                                    disableChildFrameNavigation: true,
-                                    disableChildPageNavigation: true,
-                                },
-                            },
-                        },
-                    },
+                    // So a second environment needs an argument this note does
+                    // not have, and speed is not it: `pnpm test:changed` is
+                    // where the inner loop is won, on the run repeated all day
+                    // rather than the one before a push. A library that cannot
+                    // run every file here belongs behind that reasoning, not in
+                    // front of it.
+                    environment: "jsdom",
                     include: ["webview/__tests__/**/*.test.ts"],
                     setupFiles: ["./webview/__tests__/setup.ts"],
                 },

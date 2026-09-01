@@ -1,14 +1,4 @@
 /**
- * @vitest-environment jsdom
- *
- * Drives the production editor, so a document with inline HTML in it reaches
- * the real sanitizer, and DOMPurify does not work under happy-dom (see
- * `sanitizeEnvironment.test.ts`). The save invariant here is about bytes rather
- * than about rendering, so it passed either way; pinned because a round trip
- * measured through a sanitizer that is not the product's is measuring the wrong
- * document.
- */
-/**
  * MAR-344: round-trip protection describes the CURRENT saved baseline.
  *
  * Protection is computed once from the file as loaded and pins each construct
