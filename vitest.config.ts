@@ -65,6 +65,14 @@ export default defineConfig({
                     // needs no fork: its DOM shims are `??=`/`typeof` guards,
                     // so whichever environment is live keeps its own
                     // implementations and only the true gaps are filled.
+                    //
+                    // The sanitizer pins are the ones to know about, because
+                    // DOMPurify does not merely differ here, it stops working
+                    // while still reporting `isSupported`.
+                    // `webview/__tests__/sanitizeEnvironment.test.ts` holds
+                    // that as a check, says what a static guard on those pins
+                    // would have to key on and why no such signal exists, and
+                    // fails the day the gap closes so the pins can go.
                     environment: "happy-dom",
                     // happy-dom, unlike jsdom, really performs the loads a
                     // document asks for: it fetches `<link rel=stylesheet>`

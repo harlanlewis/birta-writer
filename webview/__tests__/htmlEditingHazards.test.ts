@@ -1,4 +1,14 @@
 /**
+ * @vitest-environment jsdom
+ *
+ * Reaches the real sanitizer: `createHtmlView` renders through `sanitizeInto`,
+ * and DOMPurify does not work under happy-dom (see
+ * `sanitizeEnvironment.test.ts` for what it does there instead). Nothing here
+ * asserts on sanitized output, so this ran green on markup DOMPurify had left
+ * untouched. Pinned so the rendered face these seams are exercised through is
+ * the one the product has.
+ */
+/**
  * The hazard seams of editable HTML (MAR-14), found by adversarial review of
  * the first cut and each reproduced before being fixed:
  *
