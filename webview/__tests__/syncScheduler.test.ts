@@ -22,6 +22,9 @@ function makeClock(startMs = 1000) {
             return id;
         },
         clearTimer: (h: unknown) => { timers.delete(h as number); },
+        /** Consume wall-clock time WITHOUT firing timers: what an expensive
+         *  onSync does to the clock the scheduler reads. */
+        spend: (ms: number) => { now += ms; },
         advance: (ms: number) => {
             const target = now + ms;
             for (;;) {
@@ -36,7 +39,8 @@ function makeClock(startMs = 1000) {
                 now = pick.at;
                 pick.cb();
             }
-            now = target;
+            // A callback may have spent time of its own; never rewind past it.
+            now = Math.max(now, target);
         },
     };
 }
@@ -96,6 +100,43 @@ describe("createSyncScheduler", () => {
         // Type every 100ms for 2.5s with no idle pause; max-wait (2000ms) must fire.
         for (let i = 0; i < 25; i++) { scheduler.request(); clock.advance(100); }
         expect(onSync.mock.calls.length).toBeGreaterThanOrEqual(2);
+    });
+
+    /**
+     * The leading edge asks "has it been quiet for idleMs", and the reference it
+     * measures from must be when the last sync ENDED. Stamped at the START, a
+     * sync that itself costs more than idleMs makes the very next keystroke look
+     * like a fresh lull: every edit re-fires a leading edge, the trailing
+     * debounce and the max-wait cap are never reached, and the cost per
+     * keystroke becomes the cost of a whole sync. The loop is self-sustaining,
+     * and it tightens as the document grows — measured on a 765 KB file, 30
+     * keystrokes produced 29 whole-document syncs.
+     */
+    it("a sync costing longer than idleMs should not make the next edit a fresh leading edge", () => {
+        const SYNC_MS = 500; // > idleMs
+        onSync.mockImplementation(() => { clock.spend(SYNC_MS); });
+
+        scheduler.request();      // leading edge
+        clock.advance(1);
+        expect(onSync).toHaveBeenCalledTimes(1);
+
+        // Continuous typing at 30 ms/key, run well past maxWaitMs so the cap
+        // has to engage. Every one of these lands after a sync that took
+        // longer than idleMs.
+        const KEYS = 167;         // ~5 s of typing, > 2 max-wait windows
+        for (let i = 0; i < KEYS; i++) {
+            scheduler.request();
+            clock.advance(30);
+        }
+
+        // Two-sided on purpose. The ceiling is the defect: one sync per
+        // keystroke. The floor is the failure the ceiling alone would wave
+        // through, a scheduler that answers the leading edge and then never
+        // syncs again, which is the same starvation MAR-145 is about.
+        const calls = onSync.mock.calls.length;
+        expect(calls).toBeGreaterThan(1);
+        expect(calls).toBeLessThanOrEqual(5);
+        expect(calls).toBeLessThan(KEYS / 10);
     });
 
     it("edits while composing should not sync until compositionEnded()", () => {

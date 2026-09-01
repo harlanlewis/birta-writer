@@ -8,9 +8,11 @@
  *
  * Policy (see the "View→document sync invariant" in AGENTS.md):
  *   • Leading edge — the first edit after a quiet period (≥ idleMs since the last
- *     sync) fires ASAP (delay 0, async) so the document dirties before the user
- *     can reach Cmd+S. A leading-edge fire in flight is never pushed out by a
- *     fast follow-up edit — that is its whole job.
+ *     sync ENDED) fires ASAP (delay 0, async) so the document dirties before the
+ *     user can reach Cmd+S. A leading-edge fire in flight is never pushed out by
+ *     a fast follow-up edit — that is its whole job. Measuring the lull from the
+ *     sync's end rather than its start is load-bearing on a large document,
+ *     where one sync outlasts idleMs; see the stamp in `arm`.
  *   • Trailing debounce — during a burst, the sync is deferred until typing
  *     pauses (idleMs), so a large document is not re-serialized mid-burst.
  *   • Max-wait cap — during genuinely continuous typing (never an idleMs pause)
@@ -53,7 +55,7 @@ export function createSyncScheduler(deps: SyncSchedulerDeps): SyncScheduler {
     const maxWaitMs = deps.maxWaitMs ?? 2000;
 
     let timer: TimerHandle | null = null;
-    let lastSyncMs = 0;      // when the last sync fired (leading-edge reference)
+    let lastSyncMs = 0;      // when the last sync ENDED (leading-edge reference)
     let burstStartMs = 0;    // when the current un-synced burst began (max-wait reference)
     let pendingSync = false; // an edit is waiting to be synced
     let leadingPending = false; // the armed timer is a leading-edge (dirty-ASAP) one
@@ -73,8 +75,25 @@ export function createSyncScheduler(deps: SyncSchedulerDeps): SyncScheduler {
             timer = null;
             leadingPending = false;
             burstStartMs = 0;
+            // Fresh BEFORE the sync as well, so a request raised reentrantly
+            // from inside it (a plugin dispatching in response to the doc
+            // change) cannot read a stale reference and arm a second leading
+            // edge inside the sync already running.
             lastSyncMs = deps.now();
-            fire();
+            try {
+                fire();
+            } finally {
+                // Stamped again AFTER it, and this is the one that matters:
+                // the lull the leading edge tests for is time since the last
+                // sync ENDED. Stamped only before, a sync costing more than
+                // idleMs makes the next keystroke look like a fresh lull, so
+                // every edit re-fires a leading edge and neither the trailing
+                // debounce nor the max-wait cap is ever reached. That loop
+                // tightens as the document grows, which is the opposite of what
+                // the debounce exists to do. `finally` so a throwing sync still
+                // advances the reference rather than arming it.
+                lastSyncMs = deps.now();
+            }
         }, delay);
     };
 
