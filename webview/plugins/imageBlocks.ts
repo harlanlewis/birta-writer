@@ -19,8 +19,10 @@
  * first pass is armed on idle after first paint so an image-heavy document
  * never pays decoration work on the mount path.
  */
-import type { EditorState, Node as ProseNode } from "../pm";
+import type { EditorState, Node as ProseNode, Transaction } from "../pm";
 import { Decoration, DecorationSet, Plugin, PluginKey } from "../pm";
+import { countWork } from "../perf";
+import { forEachTouchedTopLevel, touchedRanges } from "./editRanges";
 import { $prose } from "@milkdown/utils";
 import { requestIdle } from "../utils/idle";
 
@@ -47,7 +49,7 @@ function visualBlockClass(node: ProseNode): string | null {
     return allHtml ? "html-block" : null;
 }
 
-/** Exported for unit testing; the plugin runs it on doc changes + the arm. */
+/** Exported for unit testing; the plugin runs it once, on the idle arm. */
 export function computeImageBlockDecorations(state: EditorState): DecorationSet {
     const decorations: Decoration[] = [];
     state.doc.forEach((node, pos) => {
@@ -58,9 +60,32 @@ export function computeImageBlockDecorations(state: EditorState): DecorationSet 
             );
         }
     });
+    countWork("image-blocks", { blocks: state.doc.childCount });
     return decorations.length > 0
         ? DecorationSet.create(state.doc, decorations)
         : DecorationSet.empty;
+}
+
+/**
+ * The set after a doc-changing transaction: every untouched block's class
+ * mapped to where the edit put it, and only the touched top-level blocks
+ * decided again. A class depends on one block's own children, so this is the
+ * whole of what an edit owes (MAR-431). Exported for unit testing.
+ */
+export function updateImageBlockDecorations(deco: DecorationSet, tr: Transaction): DecorationSet {
+    let mapped = deco.map(tr.mapping, tr.doc);
+    const blocks = forEachTouchedTopLevel(tr.doc, touchedRanges(tr), (node, pos) => {
+        const end = pos + node.nodeSize;
+        // Inset by one so a neighbour's decoration, which ends where this
+        // block starts, is not swept up with it.
+        mapped = mapped.remove(mapped.find(pos + 1, end - 1));
+        const cls = visualBlockClass(node);
+        if (cls) {
+            mapped = mapped.add(tr.doc, [Decoration.node(pos, end, { class: cls })]);
+        }
+    });
+    countWork("image-blocks", { blocks });
+    return mapped;
 }
 
 type ImageBlocksState = { armed: boolean; deco: DecorationSet };
@@ -82,8 +107,10 @@ export const imageBlocksPlugin = $prose(() =>
                 if (!armed) {
                     return { armed, deco: DecorationSet.empty };
                 }
-                if (tr.docChanged || meta?.type === "arm") {
+                if (meta?.type === "arm") {
                     deco = computeImageBlockDecorations(newState);
+                } else if (tr.docChanged) {
+                    deco = updateImageBlockDecorations(deco, tr);
                 } else {
                     // Selection-only transactions can't change which
                     // paragraphs are image-only; the class is selection-free.

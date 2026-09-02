@@ -25,7 +25,7 @@ import {
 } from "./foldGutter";
 import {
     blockFoldExtent,
-    computeFoldRanges,
+    cachedFoldRanges,
     getHeadingLevel,
     isContainerNode,
     isFirstLineContainerNode,
@@ -35,6 +35,7 @@ import {
     listItemHasDescendants,
     type HeadingFoldRange,
 } from "./foldModel";
+import { countWork } from "../../perf";
 
 /**
  * Marker for ONE block nested inside a container or a list item, recursively
@@ -373,6 +374,10 @@ export function structureFingerprint(
     const foldCtx = { folded, enabled };
     const parts: string[] = [enabled ? "E" : "D"];
     const hasFold = foldCursor(folded, enabled);
+    // Every top-level block is visited, window or not: the window decides
+    // what is EMITTED, not what is walked. Counted so the per-keystroke and
+    // nightly gates see this pass whenever a transaction reaches it.
+    countWork("fold-structure", { blocks: doc.childCount });
     doc.forEach((node: any, offset: number) => {
         const end = offset + node.nodeSize;
         const folds = hasFold(offset, end);
@@ -405,10 +410,14 @@ export function buildHeadingFoldDecorations(
 ): DecorationSet {
     const decorations: Decoration[] = [];
     const collapsedSections: { pos: number; node: any; range: HeadingFoldRange }[] = [];
-    const ranges = computeFoldRanges(doc);
+    const ranges = cachedFoldRanges(doc);
     const foldCtx = { folded, enabled };
     const hasFold = foldCursor(folded, enabled);
 
+    // Every top-level block is visited, window or not; the window decides
+    // what is emitted. Counted beside the fingerprint's pass so a transaction
+    // that reaches a rebuild is visible to the gates as growth.
+    countWork("fold-build", { blocks: doc.childCount });
     doc.forEach((node: any, offset: number) => {
         const end = offset + node.nodeSize;
         // Out-of-window blocks get no gutter chrome (MAR-215). Blocks that own
@@ -418,6 +427,62 @@ export function buildHeadingFoldDecorations(
         if (!hasFold(offset, end) && !inWindows(windows, offset, end)) {
             return;
         }
+        const section = blockChrome(node, offset, decorations, folded, enabled, ranges);
+        if (section) {
+            collapsedSections.push(section);
+        }
+    });
+
+    if (collapsedSections.length > 0) {
+        // A collapsed heading hides its section's blocks and says so with its
+        // gutter chevron alone. It used to also trail the shared `…` chip; the
+        // chip was removed because beside heading type it read as content
+        // rather than as chrome, and the chevron it sat next to was already
+        // saying the same thing more quietly. The chevron takes a resident,
+        // filled treatment while collapsed (style.css) so it carries the state
+        // on its own.
+        //
+        // Scope, deliberately: this is the HEADING chip only. createStubEllipsis
+        // still serves list items, blockquotes and asides, and the code block,
+        // table, callout and directive NodeViews mount their own - for several
+        // of those the chip is the only collapsed affordance there is, since
+        // they have no gutter chevron to promote.
+        doc.forEach((node: any, offset: number) => {
+            for (const section of collapsedSections) {
+                if (offset >= section.range.from && offset < section.range.to) {
+                    decorations.push(
+                        Decoration.node(offset, offset + node.nodeSize, {
+                            class: "heading-fold-hidden",
+                        }),
+                    );
+                    return;
+                }
+            }
+        });
+    }
+
+    return decorations.length > 0 ? DecorationSet.create(doc, decorations) : DecorationSet.empty;
+}
+
+/**
+ * The gutter chrome of ONE top-level block, pushed onto `decorations`: a
+ * heading's fold gutter, a list's per-item markers, or the block marker plus
+ * a container's child gutters. Returns the section a COLLAPSED heading owns,
+ * which the whole-document builder above turns into content-hiding
+ * decorations; a single-block rebuild (the fold plugin's leaf-edit path) never
+ * needs that, because it runs only for a block that is not folded. Exported
+ * for that rebuild, so the two can never emit different chrome for a block.
+ */
+export function blockChrome(
+    node: any,
+    offset: number,
+    decorations: Decoration[],
+    folded: ReadonlySet<number>,
+    enabled: boolean,
+    ranges: Map<number, HeadingFoldRange | null>,
+): { pos: number; node: any; range: HeadingFoldRange } | null {
+    const foldCtx = { folded, enabled };
+    {
         if (!isHeadingNode(node)) {
             // Lists get per-item markers (each item is the grabbable unit,
             // MAR-86); every other non-heading block with a glyph gets the
@@ -425,7 +490,7 @@ export function buildHeadingFoldDecorations(
             // host class that carries the shared positioning/hover CSS.
             if (isListNode(node)) {
                 emitItemGutters(node, offset, decorations, null, foldCtx);
-                return;
+                return null;
             }
             const spec = blockMarkerSpec(node);
             const fold = blockFoldInfo(node, offset, foldCtx, false);
@@ -464,7 +529,7 @@ export function buildHeadingFoldDecorations(
             if (isContainerNode(node)) {
                 emitContainerChildGutters(node, offset, decorations, null, foldCtx);
             }
-            return;
+            return null;
         }
 
         const level = getHeadingLevel(node);
@@ -487,38 +552,6 @@ export function buildHeadingFoldDecorations(
             ),
         );
 
-        if (collapsed && range) {
-            collapsedSections.push({ pos: offset, node, range });
-        }
-    });
-
-    if (collapsedSections.length > 0) {
-        // A collapsed heading hides its section's blocks and says so with its
-        // gutter chevron alone. It used to also trail the shared `…` chip; the
-        // chip was removed because beside heading type it read as content
-        // rather than as chrome, and the chevron it sat next to was already
-        // saying the same thing more quietly. The chevron takes a resident,
-        // filled treatment while collapsed (style.css) so it carries the state
-        // on its own.
-        //
-        // Scope, deliberately: this is the HEADING chip only. createStubEllipsis
-        // still serves list items, blockquotes and asides, and the code block,
-        // table, callout and directive NodeViews mount their own - for several
-        // of those the chip is the only collapsed affordance there is, since
-        // they have no gutter chevron to promote.
-        doc.forEach((node: any, offset: number) => {
-            for (const section of collapsedSections) {
-                if (offset >= section.range.from && offset < section.range.to) {
-                    decorations.push(
-                        Decoration.node(offset, offset + node.nodeSize, {
-                            class: "heading-fold-hidden",
-                        }),
-                    );
-                    return;
-                }
-            }
-        });
+        return collapsed && range ? { pos: offset, node, range } : null;
     }
-
-    return decorations.length > 0 ? DecorationSet.create(doc, decorations) : DecorationSet.empty;
 }

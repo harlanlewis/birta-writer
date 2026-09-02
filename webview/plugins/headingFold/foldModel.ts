@@ -808,12 +808,10 @@ export function selectionCoverRange(view: EditorView): { from: number; to: numbe
     const $to = doc.resolve(sel.to);
     const from = $from.depth >= 1 ? $from.before(1) : sel.from;
     const to = $to.depth >= 1 ? $to.after(1) : sel.to;
-    let blocks = 0;
-    doc.forEach((_node: ProseMirrorNode, offset: number) => {
-        if (offset >= from && offset < to) {
-            blocks++;
-        }
-    });
+    // How many top-level blocks the selection spans, from the two resolved
+    // ends alone: a selection-only transaction must never walk the document
+    // (MAR-431), and a shift+arrow is one of those on every press.
+    const blocks = ($to.depth >= 1 ? $to.index(0) + 1 : $to.index(0)) - $from.index(0);
     return blocks > 1 ? expandCoverOverFolds(view.state, { from, to }) : null;
 }
 

@@ -711,9 +711,18 @@ export async function run({ page, check, baseUrl }) {
     await typeInHeading("x");
     const beforeRoster = await countByKind();
 
+    // The roster changes the way the host changes it: the config message the
+    // extension posts on a settings edit, which regates the plugin (a full
+    // re-walk). A keystroke is deliberately NOT the trigger, because a doc
+    // edit re-recognizes only the blocks it touched (MAR-431); the keystroke
+    // after the message is there to show an edit does not bring a card back.
     await page.evaluate((off) => {
-        window.__i18n.embedProviders = Object.fromEntries(off.map((k) => [k, false]));
+        window.postMessage(
+            { type: "embedProvidersChanged", providers: Object.fromEntries(off.map((k) => [k, false])) },
+            "*",
+        );
     }, ROSTER_OFF);
+    await page.waitForTimeout(400);
     await typeInHeading("y");
 
     const afterRoster = await countByKind();

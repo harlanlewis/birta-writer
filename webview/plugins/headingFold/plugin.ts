@@ -9,8 +9,8 @@
  * ./foldModel, persistence in ./foldAnchors, rendering in ./foldDecorations —
  * this module wires them to ProseMirror.
  */
-import type { EditorView } from "../../pm";
-import { DecorationSet } from "../../pm";
+import type { EditorView, Node as ProseNode } from "../../pm";
+import { DecorationSet, type Decoration } from "../../pm";
 import { Plugin, Selection } from "../../pm";
 import { $prose } from "@milkdown/utils";
 import { foldingEnabled } from "../../utils/foldingControls";
@@ -25,7 +25,6 @@ import { foldPluginKey, type FoldMeta, type FoldPluginState } from "../foldState
 import {
     allFoldablePositions,
     cleanFoldedPositions,
-    computeFoldRanges,
     findSectionHeadingPosAt,
     foldHiddenRange,
     foldedHiddenRanges,
@@ -36,13 +35,52 @@ import {
     selectionCoverRange,
     swallowedVisibleContent,
 } from "./foldModel";
+import { cachedFoldRanges } from "./foldModel";
+import { countWork } from "../../perf";
+import { singleTopLevelBlockEdit, type TopLevelBlockEdit } from "../../utils/textblockEdit";
+
+/** The fold set is rebuilt as a new object on every doc change, so equality is by members. */
+function sameFoldSet(a: ReadonlySet<number>, b: ReadonlySet<number>): boolean {
+    if (a === b) return true;
+    if (a.size !== b.size) return false;
+    for (const pos of a) {
+        if (!b.has(pos)) return false;
+    }
+    return true;
+}
+
+/**
+ * Whether the change between two docs is confined to one top-level LEAF
+ * block (a heading or a paragraph, never a list or a container whose inner
+ * blocks carry gutters of their own) that keeps its type and heading level.
+ * Typing, deleting characters, marks, and the heading-id restamp that
+ * follows a keystroke in a heading are all this shape, and none of them can
+ * change a block boundary, a heading level or a fold range, so the structure
+ * fingerprint is the old one by construction and need not be computed.
+ */
+function leafBlockEditKeepsStructure(prev: ProseNode, next: ProseNode): TopLevelBlockEdit | null {
+    const edit = singleTopLevelBlockEdit(prev, next);
+    if (!edit) return null;
+    const { prevBlock, nextBlock } = edit;
+    const keeps =
+        prevBlock.isTextblock && nextBlock.isTextblock &&
+        prevBlock.type === nextBlock.type &&
+        prevBlock.attrs["level"] === nextBlock.attrs["level"];
+    return keeps ? edit : null;
+}
+
+/** Whether a block span is inside the chrome windows (null means everywhere). */
+function inChromeWindows(windows: ChromeWindows, from: number, to: number): boolean {
+    if (windows === null) return true;
+    return windows.some((w) => to > w.from && from < w.to);
+}
 import {
     persistFoldAnchors,
     readPersistedFoldAnchors,
     resolveFoldAnchors,
     seedSyntaxFolds,
 } from "./foldAnchors";
-import { buildHeadingFoldDecorations, structureFingerprint } from "./foldDecorations";
+import { blockChrome, buildHeadingFoldDecorations, structureFingerprint, type ChromeWindows } from "./foldDecorations";
 import { blockMarkerElements } from "./foldGutter";
 import { requestIdle } from "../../utils/idle";
 import { observeVisibleWindow } from "../visibleRange";
@@ -151,7 +189,7 @@ export const headingFoldPlugin = $prose(() =>
                     decorations: deferAffordance
                         ? DecorationSet.empty
                         : buildHeadingFoldDecorations(state.doc, folded, enabled),
-                    fingerprint: structureFingerprint(state.doc, folded, computeFoldRanges(state.doc), enabled),
+                    fingerprint: structureFingerprint(state.doc, folded, cachedFoldRanges(state.doc), enabled),
                 };
             },
             apply(tr, value, oldState, newState) {
@@ -174,7 +212,7 @@ export const headingFoldPlugin = $prose(() =>
                         pinned,
                         decorations: buildHeadingFoldDecorations(newState.doc, value.folded, value.enabled, windows),
                         fingerprint: structureFingerprint(
-                            newState.doc, value.folded, computeFoldRanges(newState.doc), value.enabled, windows,
+                            newState.doc, value.folded, cachedFoldRanges(newState.doc), value.enabled, windows,
                         ),
                     };
                 }
@@ -191,7 +229,7 @@ export const headingFoldPlugin = $prose(() =>
                             newState.doc, value.folded, value.enabled, windows,
                         ),
                         fingerprint: structureFingerprint(
-                            newState.doc, value.folded, computeFoldRanges(newState.doc), value.enabled, windows,
+                            newState.doc, value.folded, cachedFoldRanges(newState.doc), value.enabled, windows,
                         ),
                     };
                 }
@@ -318,10 +356,48 @@ export const headingFoldPlugin = $prose(() =>
                 }
 
                 const windows = chromeWindows(scrollWindow, pinned);
+                // An edit confined to one textblock's inline content (typing,
+                // deleting characters, marks) changes no block boundary, no
+                // heading level and no fold range, so the fingerprint is the
+                // old one by construction and computing it would walk every
+                // top-level block for a known answer (MAR-431). The mapped set
+                // stands, under the same count check the equal-fingerprint
+                // path below applies; a mapping that lost a decoration falls
+                // through to the rebuild.
+                const leafEdit = tr.docChanged && enabled === value.enabled && sameSpan(pinned, value.pinned) &&
+                    value.fingerprint !== "" && sameFoldSet(folded, value.folded)
+                    ? leafBlockEditKeepsStructure(oldState.doc, newState.doc)
+                    : null;
+                if (leafEdit) {
+                    const mapped = value.decorations.map(tr.mapping, newState.doc);
+                    if (mapped.find().length === value.decorations.find().length) {
+                        return { ...value, window: scrollWindow, pinned, decorations: mapped };
+                    }
+                    // The mapping caveat below, for the one block this edit
+                    // replaced (the heading-id restamp is the everyday case):
+                    // its chrome is rebuilt alone into the mapped set. Only
+                    // for a block that is not folded and is in the window,
+                    // so the chrome it gets is exactly what the full build
+                    // would give it; anything else falls through to that.
+                    const { nextBlockPos: pos, nextBlock: node } = leafEdit;
+                    const end = pos + node.nodeSize;
+                    if (!folded.has(pos) && inChromeWindows(windows, pos, end)) {
+                        const cleaned = mapped.remove(mapped.find(pos + 1, end - 1));
+                        const fresh: Decoration[] = [];
+                        blockChrome(node, pos, fresh, folded, enabled, cachedFoldRanges(newState.doc));
+                        countWork("fold-build", { blocks: 1 });
+                        return {
+                            ...value,
+                            window: scrollWindow,
+                            pinned,
+                            decorations: fresh.length ? cleaned.add(newState.doc, fresh) : cleaned,
+                        };
+                    }
+                }
                 const fingerprint = structureFingerprint(
                     newState.doc,
                     folded,
-                    computeFoldRanges(newState.doc),
+                    cachedFoldRanges(newState.doc),
                     enabled,
                     windows,
                 );
@@ -569,11 +645,18 @@ export const headingFoldPlugin = $prose(() =>
                     }
                 }
                 // Blocks that entered it; the held ones cost no DOM read.
-                doc.forEach((_node: unknown, offset: number) => {
-                    if (offset >= cover.from && offset < cover.to && !coveredByBlock.has(offset)) {
+                // Walked from the cover's own start, never from the top of
+                // the document: this runs on every selection change.
+                let { index, offset } = doc.childAfter(Math.min(cover.from, doc.content.size));
+                let blocks = 0;
+                for (; index < doc.childCount && offset < cover.to; index++) {
+                    blocks++;
+                    if (offset >= cover.from && !coveredByBlock.has(offset)) {
                         coverBlock(offset);
                     }
-                });
+                    offset += doc.child(index).nodeSize;
+                }
+                countWork("fold-cover", { blocks });
             };
 
             const clearHoveredGutter = () => {
