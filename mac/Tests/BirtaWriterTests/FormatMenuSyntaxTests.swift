@@ -14,6 +14,7 @@ import BirtaWriterCore
 /// equivalent before the page ever sees the keystroke, so a row left on this
 /// menu is not merely a row, it is a working chord for a tool every other
 /// surface in the same window has stopped offering.
+@MainActor
 final class FormatMenuSyntaxTests: XCTestCase {
     private func formatMenu() -> NSMenu {
         let menu = NSMenu(title: "Format")

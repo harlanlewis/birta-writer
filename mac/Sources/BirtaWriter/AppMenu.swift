@@ -716,7 +716,7 @@ enum AppMenu {
             // must never disagree about whether the tool exists, and AppKit
             // takes that chord before the page can be asked.
             let gatesOn = row.needs.allSatisfy { state.isOn($0) }
-            let spelled = row.commandId.map { SyntaxScope.allows(command: $0, in: syntaxSets) } ?? true
+            let spelled = row.action.commandId.map { SyntaxScope.allows(command: $0, in: syntaxSets) } ?? true
             item.isHidden = !(gatesOn && spelled)
             guard let rowState = row.state else { continue }
             let on = state.isOn(rowState.toggle)
