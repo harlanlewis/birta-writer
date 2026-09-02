@@ -96,7 +96,7 @@ async function loadPlaywright() {
 // pass it; the A/B narrows the list per side after its warmup pair so a bundle
 // predating a mark pays the timeout once per fixture rather than once per
 // sample. A caller passing `[]` reads whatever has been stamped by paint time.
-async function sampleOnce(browser, url, content, fixture = "?", side = "", settleMarks = []) {
+async function sampleOnce(browser, url, content, fixture = "?", side = "", settleMarks = [], probeSplit = false) {
     const page = await browser.newPage({ viewport: { width: 1000, height: 900 } });
     const errors = [];
     page.on("pageerror", (e) => errors.push(`pageerror: ${e}`));
@@ -129,6 +129,13 @@ async function sampleOnce(browser, url, content, fixture = "?", side = "", settl
         }
         return m;
     });
+    // The create split probe (MAR-434): the bundle installs it only under the
+    // harness's init marker, and only measure mode asks for it, after every
+    // mark is in, so it can never sit inside a span and never costs the A/B a
+    // parse per sample. Null on a bundle that predates it.
+    const split = probeSplit
+        ? await page.evaluate(() => globalThis.__birtaPerf?.parseSplit?.() ?? null)
+        : null;
     await page.close();
     if (errors.length) {
         const where = side ? `${side} bundle, fixture "${fixture}"` : `fixture "${fixture}"`;
@@ -139,6 +146,7 @@ async function sampleOnce(browser, url, content, fixture = "?", side = "", settl
     }
     const out = spans(marks);
     if (missingSettle.length) { out.__missingSettle = missingSettle; }
+    if (split) { out.__split = split; }
     return out;
 }
 
@@ -150,7 +158,7 @@ async function measureFixture(chromium, baseUrl, content, runs, fixture = "?") {
     try {
         for (let i = 0; i < runs; i++) {
             try {
-                const s = await sampleOnce(browser, baseUrl, content, fixture, "", SETTLE_MARKS);
+                const s = await sampleOnce(browser, baseUrl, content, fixture, "", SETTLE_MARKS, true);
                 for (const m of s.__missingSettle ?? []) { missing.add(m); }
                 samples.push(s);
             } catch (e) {
@@ -164,6 +172,13 @@ async function measureFixture(chromium, baseUrl, content, runs, fixture = "?") {
     // Discard the first run (cold caches / JIT warmup); aggregate the rest.
     const agg = aggregate(samples.slice(1));
     if (missing.size) { agg.missingSettle = [...missing]; }
+    const splits = samples.slice(1).map((s) => s.__split).filter(Boolean);
+    if (splits.length) {
+        agg.split = {
+            mdast: round(median(splits.map((s) => s.mdast))),
+            pm: round(median(splits.map((s) => s.pm))),
+        };
+    }
     return agg;
 }
 
@@ -219,6 +234,15 @@ async function measureMode(only, runs, jsonOut) {
     for (const [name, agg] of Object.entries(report.fixtures)) {
         if (agg.missingSettle) {
             console.log(`  ⚠ ${name}: no ${agg.missingSettle.join(", ")} mark within ${SETTLE_TIMEOUT_MS} ms of paint — that span is unmeasured, not zero.`);
+        }
+    }
+    // The create split probe, warm (see README, "The create split"): which
+    // half of the parse dominates, never how long either takes cold.
+    const withSplit = Object.entries(report.fixtures).filter(([, agg]) => agg.split);
+    if (withSplit.length) {
+        console.log("\ncreate split, warm probe after settle (ms): markdown parse and run / ProseMirror construction\n");
+        for (const [name, agg] of withSplit) {
+            console.log(`  ${name.padEnd(12)} mdast ${agg.split.mdast}  pm ${agg.split.pm}`);
         }
     }
     console.log("");

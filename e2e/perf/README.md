@@ -34,6 +34,10 @@ pnpm perf:bundle                           # zero-variance eager-bytes metric
 
 `paint` (`create-end` → `editor-painted`) is the easiest span to overlook. It is ProseMirror's first DOM build plus style/layout/paint, *including any work a plugin schedules from its `view()` onto the frames before that paint*. Work moved in front of first paint is invisible to every other span, so if a plugin schedules its own rAF at mount, suspect this one.
 
+### The create split (a probe, not a span)
+
+`create` is one `parserCtx` call: the markdown half (remark parse and run, where the callout and directive tree transforms live) and the ProseMirror construction from mdast, and no mark can sit between them without reaching into Milkdown. So the runner asks the page after the settle marks: the bundle installs `__birtaPerf.parseSplit()` only when the harness's init marker is on the window (`installParseSplitProbe` in `webview/editor.ts`), and it re-parses the document twice, once through the remark processor alone and once whole, so construction is the difference. `pnpm perf` prints the two under the table as `create split` and carries them in its JSON as `split`. It is a WARM reading, the parser having already run once on that text, so the cold `create` span is larger than the two halves' sum; what it answers is which half dominates (MAR-434), never how long either takes cold.
+
 ### The post-paint spans (`POST_PAINT_SPANS`)
 
 `rtp` and `proofread` fall after `editor-painted`, so they are not part of `launch` and a move in one can never explain a launch delta. They are measured anyway, because deferring work past the last mark does not make it free: on the big fixtures both block the main thread shortly after first paint, squarely the window a user's first keystroke or scroll lands in. `pnpm perf large` prints what they currently cost, which is the only honest way to state it here.
