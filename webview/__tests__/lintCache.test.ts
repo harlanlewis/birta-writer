@@ -1,8 +1,9 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { clearLintCache, lintCacheSize, lookupLints, rememberLints } from "../proofread/lintCache";
+import { clearLintCache, LINT_CACHE_MAX, lintCacheGeneration, lintCacheSize, lookupLints, rememberLints } from "../proofread/lintCache";
 import { lintBlocksToAsk, resolveLintResults } from "../plugins/proofread";
 import { setUserWords } from "../proofread/engine";
 import type { HarperLint, LintBlock } from "../../shared/messages";
+import { HEAVY_FIXTURES } from "../../e2e/perf/fixtures.mjs";
 
 /**
  * The rescan asks the host about the whole document after every edit, and the
@@ -178,10 +179,34 @@ describe("the cache itself", () => {
     it("a session longer than the bound should evict oldest-first and stay bounded", () => {
         // The bound has to hold, or a long editing session grows without limit;
         // and it has to evict the OLDEST, or the document being edited is the
-        // thing that falls out. 5000 exceeds MAX_ENTRIES (4096).
-        for (let i = 0; i < 5000; i++) { rememberLints(`block ${i}`, []); }
-        expect(lintCacheSize()).toBeLessThanOrEqual(4096);
+        // thing that falls out.
+        const beyond = LINT_CACHE_MAX + 1000;
+        for (let i = 0; i < beyond; i++) { rememberLints(`block ${i}`, []); }
+        expect(lintCacheSize()).toBeLessThanOrEqual(LINT_CACHE_MAX);
         expect(lookupLints("block 0")).toBeUndefined();
-        expect(lookupLints("block 4999")).toEqual([]);
+        expect(lookupLints(`block ${beyond - 1}`)).toEqual([]);
+    });
+
+    it("the bound should hold the largest document the heavy perf fixtures stand in for", () => {
+        // A FIFO smaller than the document evicts every entry before the next
+        // pass reads it, which is no cache at all on exactly the document it is
+        // for. `huge-outline` is the fixture that found this for the style
+        // cache (MAR-425); its textblock count is the floor here, read off the
+        // fixture rather than restated.
+        // An outline over unwrapped prose with no tables, code or images, so a
+        // non-blank line is a textblock and the count is a floor on the real one.
+        const textblocks = HEAVY_FIXTURES["huge-outline"].split(/\n/).filter((line) => /\S/.test(line)).length;
+        expect(textblocks).toBeGreaterThan(4000);
+        expect(LINT_CACHE_MAX).toBeGreaterThan(textblocks);
+    });
+
+    it("every write should move the generation, and a lookup should not", () => {
+        const before = lintCacheGeneration();
+        lookupLints("nothing");
+        expect(lintCacheGeneration()).toBe(before);
+        rememberLints("something", []);
+        expect(lintCacheGeneration()).toBe(before + 1);
+        clearLintCache();
+        expect(lintCacheGeneration()).toBe(before + 2);
     });
 });
