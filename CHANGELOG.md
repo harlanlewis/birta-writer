@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+---
+
+## [2026.902.0] - 2026, September 2
+
 ### Changed
 
 - A large document opens on its first screen and is ready to type in almost at once. Above a size where building the whole document takes a visible moment, the editor is built on the first screen's blocks alone and the rest of the document streams in behind it, so you can read and edit the top while the bottom is still arriving. Everything about the file is decided exactly as before once the document is whole: a save asked for while it is still arriving writes the file as it was rather than a partial one, an edit made in the meantime is kept and saved once the rest has landed, and the outline fills in as the document does.
