@@ -82,4 +82,16 @@ export interface FormatModule {
      * getProtection).
      */
     readonly formatProfile: FormatProfile;
+
+    /**
+     * Where a text of this format may be cut so that each piece parses on its
+     * own to the blocks it contributes to the whole: the line indexes a new
+     * chunk may start at (utils/blockSegmenter.ts holds the contract and the
+     * markdown implementation). Absent means the format has no proven cut
+     * points and every consumer treats the text as one chunk, which is the
+     * conservative answer and today's behaviour. MDX omits it on purpose: a
+     * JSX block may span blank lines, and nothing here has argued where its
+     * boundaries are.
+     */
+    readonly findSafeCuts?: (lines: readonly string[]) => number[];
 }
