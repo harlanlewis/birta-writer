@@ -407,6 +407,23 @@ final class WindowSet {
         windows.forEach { $0.finalWrite() }
     }
 
+    /// Take a settings change to EVERY window rather than to the front one.
+    ///
+    /// The Settings window's ordinary `onChange` reaches `front` alone, which
+    /// is right for a setting whose only surface is the window it changes. The
+    /// publishing targets are not one of those: the Format menu belongs to the
+    /// application and repaints from `Prefs` on every opening, so a change that
+    /// reached one window would leave a back window's toolbar and slash menu
+    /// offering tools the menu bar above them had already withdrawn. That
+    /// disagreement between a row and its chord is the thing the whole gate
+    /// exists to stop (`BirtaWriterCore/SyntaxSets.swift`).
+    ///
+    /// Each window flushes before it reloads, which is `preferencesChanged`'s
+    /// own contract, so a background window with unwritten bytes keeps them.
+    func preferencesChangedEverywhere() {
+        windows.forEach { $0.preferencesChanged() }
+    }
+
     /// Nobody is there to answer a sheet, so every window writes instead of
     /// asking. On all of them: a sheet on the second window would wait just as
     /// forever as one on the first.

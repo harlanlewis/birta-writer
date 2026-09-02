@@ -56,9 +56,28 @@ final class SettingsFormTests: XCTestCase {
     func testTheReadingOrderShouldBeThePanesInTabOrder() {
         XCTAssertEqual(SettingsForm.allRows,
                        SettingsForm.rows(of: SettingsForm.general)
+                           + SettingsForm.rows(of: SettingsForm.markdown)
                            + SettingsForm.rows(of: SettingsForm.aiAgent)
                            + SettingsForm.rows(of: SettingsForm.advanced(showsWelcomeScreen: true)))
         XCTAssertEqual(SettingsForm.allRows.count, SettingsRow.allCases.count)
+    }
+
+    /// Every publishing target has a row, and no row names a target that is
+    /// gone.
+    ///
+    /// `SettingsRow` is a hand-written enum, so its cases are exactly the list
+    /// a fifth target would never join; the vocabulary is `CaseIterable`, so
+    /// comparing the two is what turns "remember to add a switch" into a red
+    /// test. Both directions, because a target with no switch cannot be turned
+    /// off and a row for a target that no longer exists is a switch that
+    /// writes nothing.
+    func testEveryPublishingTargetShouldHaveItsOwnSettingsRow() {
+        let rows = SyntaxSet.allCases.map(SettingsForm.row(for:))
+        XCTAssertEqual(Set(rows).count, rows.count, "two targets share a row")
+        XCTAssertEqual(rows, SettingsForm.rows(of: SettingsForm.markdown),
+                       "the Markdown pane is not the targets, in vocabulary order")
+        // The label a reader sees is the target's own, spelled once.
+        XCTAssertEqual(rows.map(\.rawValue), SyntaxSet.allCases.map(\.label))
     }
 
     func testEveryFirstRunRowShouldBeOnTheFirstRunScreen() {

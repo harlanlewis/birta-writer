@@ -39,7 +39,8 @@ import { registerEscapeLayer } from "@/ui/escapeLayers";
 import { onOutsideClick } from "@/ui/outsideClick";
 import { claimDock, releaseDock } from "@/ui/dockExclusive";
 import { notifyOpenKeybindings } from "@/messaging";
-import { hostHasCommand, hostShortcuts } from "../../../shared/hostProfile";
+import { hostShortcuts } from "../../../shared/hostProfile";
+import { commandAvailable } from "../../../shared/commandAvailability";
 
 /**
  * kbd() output post-processing: kbd() upper-cases the final key segment
@@ -130,6 +131,30 @@ function close(via?: MouseEvent): void {
 }
 
 /** Open the shortcuts-help overlay; invoking it while open closes it. */
+/**
+ * Discard the built panel, so the next open reads the gate again.
+ *
+ * The panel is a singleton built once, which is right for a surface whose
+ * content is otherwise fixed for the life of the page. The syntax target is
+ * the one input to it that is not: a narrowed target withdraws a row here
+ * (`commandAvailable`, above), and a panel built before the change would go on
+ * printing a chord for a tool every other surface has stopped offering, which
+ * is the disagreement this whole gate exists to stop.
+ *
+ * Discard rather than repaint, because everything the panel holds is derived:
+ * rebuilding is the same work as walking it, and there is no state in it to
+ * preserve. An OPEN panel is rebuilt in place, so a reader watching it sees the
+ * change rather than a stale sheet that corrects itself when they look away.
+ */
+export function refreshShortcutsHelp(): void {
+    if (!panel) { return; }
+    const wasVisible = visible;
+    if (wasVisible) { close(); }
+    panel.remove();
+    panel = null;
+    if (wasVisible) { openShortcutsHelp(); }
+}
+
 export function openShortcutsHelp(): void {
     if (visible) {
         close();
@@ -277,7 +302,14 @@ function buildPanel(): HTMLDivElement {
     addRow([[keys("Mod-b")]], t("Bold"));
     addRow([[keys("Mod-i")]], t("Italic"));
     addRow([[keys("Mod-e")]], t("Inline Code"));
-    addRow([[keys("Mod-Shift-x")]], t("Strikethrough"));
+    // The one row in this section a publishing target can withdraw. Every
+    // other chord here writes CommonMark, which no target takes away; this one
+    // is bound by the same keymap and gated by the same predicate
+    // (webview/plugins/formatKeymap.ts), so printing it unconditionally would
+    // name a key that no longer does anything.
+    if (commandAvailable("toggleStrikethrough")) {
+        addRow([[keys("Mod-Shift-x")]], t("Strikethrough"));
+    }
     addRow([[keys("Mod-z")]], t("Undo"));
     // Redo's two chords are independent alternatives, so they are separate
     // (single-chip) pairs and may wrap apart.
@@ -296,8 +328,18 @@ function buildPanel(): HTMLDivElement {
     // section in the panel with no organising idea. A key that names no section
     // still prints, under the generic heading, so a host that declares less is
     // not a host whose keys disappear.
+    // Filtered before the sections are opened, not inside the loop: a heading
+    // is emitted when the section changes, so dropping rows as they arrive
+    // would leave a heading over a section a narrowed target had emptied.
+    //
+    // A row naming no command is kept whatever the target says. It is a key
+    // the host binds to something that is not an editor command (a window
+    // gesture, a native panel), so there is nothing for a target to withdraw.
+    const printableShortcuts = hostShortcuts().filter(
+        (shortcut) => shortcut.command === undefined || commandAvailable(shortcut.command),
+    );
     let openSection: string | null = null;
-    for (const shortcut of hostShortcuts()) {
+    for (const shortcut of printableShortcuts) {
         const section = shortcut.section ?? t("This app");
         if (section !== openSection) {
             addSection(section);
@@ -312,7 +354,7 @@ function buildPanel(): HTMLDivElement {
     // one accurate inventory of everything rebindable. It is the same action
     // as the `openKeyboardShortcuts` command, so it goes with that command on
     // a host that has no keybindings UI (shared/hostProfile.ts).
-    if (hostHasCommand("openKeyboardShortcuts")) {
+    if (commandAvailable("openKeyboardShortcuts")) {
         const footer = document.createElement("div");
         footer.className = "shortcuts-help__footer";
         const btnCustomize = createButton({

@@ -12,7 +12,8 @@ import { appendRowChord, createMenuTrigger, makeSep } from "./menuPrimitives";
 import type { EditorCommandId } from "../../../shared/editorCommands";
 import { wireHoverMenu } from "./hoverMenu";
 import { TOOLBAR_MENU_COMMANDS, settingsMenuTitle } from "../../../shared/editorCommands";
-import { hostArranges, hostHasCommand } from "../../../shared/hostProfile";
+import { hostArranges } from "../../../shared/hostProfile";
+import { commandAvailable } from "../../../shared/commandAvailability";
 import { RELEASES_URL } from "../../../shared/product";
 
 /**
@@ -124,7 +125,7 @@ export function createSettingsMenu({ startCustomize, setToolbarVisible, typograp
             // A row the host cannot answer (its settings UI, its keybindings
             // UI, our release page) or an arrangement withdraws (the layout
             // rows, where the layout is not the user's) is not offered.
-            if (!action || !hostHasCommand(meta.id)) { continue; }
+            if (!action || !commandAvailable(meta.id)) { continue; }
             if (prevGroup !== undefined && meta.menuGroup !== prevGroup) {
                 menu.appendChild(makeSep());
             }

@@ -20,12 +20,29 @@ import {
     settingsMenuTitle,
 } from "../editorCommands";
 import { MAC_APP_NAME, PRODUCT_NAME } from "../product";
+import { syntaxContextKey, type SyntaxFeature } from "../syntaxSets";
 
 const root = path.resolve(__dirname, "../..");
 const pkg = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
 const nls = JSON.parse(fs.readFileSync(path.join(root, "package.nls.json"), "utf8"));
 
 const PALETTE_WHEN = "activeCustomEditorId == 'birta.editor'";
+
+/**
+ * The syntax suffix a contribution carries when its command writes beyond
+ * CommonMark (shared/syntaxSets.ts). The extension publishes one context key
+ * per feature, and it is the only way to withdraw a palette row or a chord that
+ * the workbench, not the page, resolves.
+ *
+ * Appended here rather than allowed as a free-form extra clause, so the exact
+ * equality below keeps doing its job: it still states the whole clause, and it
+ * states it derived from the command table rather than from a second list.
+ * `shared/__tests__/syntaxContributions.test.ts` is the other half, and asks the
+ * same question from the manifest's side.
+ */
+function syntaxSuffix(meta: { readonly syntax?: string }): string {
+    return meta.syntax ? ` && ${syntaxContextKey(meta.syntax as SyntaxFeature)}` : "";
+}
 
 interface Contribution { command: string; title?: string; when?: string; group?: string }
 
@@ -64,7 +81,9 @@ describe("editor command contributions", () => {
             const name = editorCommandName(meta.id);
             const entry = commandPalette.find((c) => c.command === name);
             expect(entry, `missing commandPalette entry for ${name}`).toBeDefined();
-            expect(entry!.when).toBe(meta.palette ? PALETTE_WHEN : "false");
+            expect(entry!.when).toBe(
+                meta.palette ? PALETTE_WHEN + syntaxSuffix(meta) : "false",
+            );
         }
     });
 
@@ -407,7 +426,10 @@ describe("editor command keybinding contributions", () => {
 
     it("every editor keybinding should be scoped to the active custom editor", () => {
         for (const kb of editorKeybindings) {
-            const expected = FOCUS_GATED.has(kb.command) ? FOCUS_WHEN : PALETTE_WHEN;
+            const id = kb.command.slice(EDITOR_COMMAND_PREFIX.length);
+            const meta = EDITOR_COMMANDS.find((m) => m.id === id);
+            const base = FOCUS_GATED.has(kb.command) ? FOCUS_WHEN : PALETTE_WHEN;
+            const expected = base + (meta ? syntaxSuffix(meta) : "");
             expect(kb.when, `keybinding for ${kb.command} must be scoped`).toBe(expected);
         }
     });

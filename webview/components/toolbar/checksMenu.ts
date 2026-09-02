@@ -18,7 +18,7 @@ import { notifySetProofreadOption } from "@/messaging";
 import { NOTE_HIGHLIGHT_EVENT, noteMarkersEnabled, setNoteMarkersEnabled } from "@/plugins/noteMarkers";
 import { createMenuTrigger, createSwitchItem, makeSep, type CheckItem } from "./menuPrimitives";
 import { wireHoverMenu } from "./hoverMenu";
-import { hostHasCommand } from "../../../shared/hostProfile";
+import { commandAvailable } from "../../../shared/commandAvailability";
 import type { ProofreadConfig, ProofreadOptionKey } from "../../../shared/messages";
 
 export interface ChecksControl {
@@ -249,8 +249,8 @@ export function createChecksMenu(onShowProofreading?: () => void): ChecksControl
         // the host answers, so on a host with no engine the row would be a
         // switch with nothing behind it. Style check is computed here, so it is
         // unconditional and so is everything indented under it.
-        if (hostHasCommand("toggleSpellCheck")) { addRow(body, "spellCheck", t("Check spelling")); }
-        if (hostHasCommand("toggleGrammarCheck")) { addRow(body, "grammarCheck", t("Check grammar")); }
+        if (commandAvailable("toggleSpellCheck")) { addRow(body, "spellCheck", t("Check spelling")); }
+        if (commandAvailable("toggleGrammarCheck")) { addRow(body, "grammarCheck", t("Check grammar")); }
         addRow(body, "styleCheck", t("Check style"));
 
         // Style sub-checks live in their own indented container (a left rail ties

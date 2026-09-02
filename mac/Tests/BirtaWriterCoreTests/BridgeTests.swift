@@ -308,6 +308,18 @@ final class BridgeTests: XCTestCase {
         XCTAssertEqual((i18n["proofread"] as? [String: [String]])?["styleExceptions"], [])
     }
 
+    func testANarrowedTargetListReachesThePageRatherThanTheDefault() {
+        // The discriminating half of the `syntaxSets` assertion below: a key
+        // wired to `SyntaxScope.all` rather than to what it was given would
+        // satisfy that one and lose every narrowing a reader ever makes.
+        let cfg = BootConfig(syntaxSets: ["gfm", "pandoc"])
+        XCTAssertEqual(cfg.i18nObject()["syntaxSets"] as? [String], ["gfm", "pandoc"])
+
+        // And the CommonMark-only target, which is an empty list rather than a
+        // missing one and must not be read as "say nothing".
+        XCTAssertEqual(BootConfig(syntaxSets: []).i18nObject()["syntaxSets"] as? [String], [])
+    }
+
     func testBootConfigCarriesTheAppsDecisionsAndTheShim() {
         let cfg = BootConfig(toolbarJSON: #"{"placements":{"bold":"hidden"},"order":[],"visible":true}"#,
                              networkEnabled: false, hostCapabilities: [], viewStateJSON: #"{"scrollY":1}"#)
@@ -317,6 +329,11 @@ final class BridgeTests: XCTestCase {
         XCTAssertEqual(i18n["embedsEnabled"] as? Bool, false)
         XCTAssertEqual(i18n["calcEnabled"] as? Bool, true)
         XCTAssertEqual(i18n["tocVisibility"] as? String, "hidden")
+        // The publishing targets. Load-bearing rather than a convenience: the
+        // page reads "absent means every target", so a dropped key does not
+        // fail, it switches the page-side gate off while the Format menu goes
+        // on withdrawing rows, and the two surfaces disagree at every load.
+        XCTAssertEqual(i18n["syntaxSets"] as? [String], SyntaxScope.stored(SyntaxScope.all))
         // The proofread blob carries the kept phrases and NOTHING about which
         // checks can run: that is decided by the page from the capabilities
         // above. A computed config here would be a second declarer of it, which

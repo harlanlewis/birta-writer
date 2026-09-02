@@ -30,7 +30,7 @@ final class SettingsPaneTests: XCTestCase {
     /// arm here measured before the flavour was injectable and what most of
     /// them still want. The ones that care say which.
     private func makeController(_ flavour: AppFlavor = .release) -> SettingsWindowController {
-        SettingsWindowController(flavour: flavour, onHotkeyChange: { 0 }, onChange: { _ in },
+        SettingsWindowController(flavour: flavour, onHotkeyChange: { 0 }, onChange: { _ in }, onChangeEverywhere: {},
                                  onShowWelcome: {}, onCheckForUpdates: {})
     }
 
@@ -385,6 +385,55 @@ final class SettingsPaneTests: XCTestCase {
     }
 
     /// The AI Agent pane, built and laid out, with its three agent controls.
+    /// Every switch on the Markdown pane, in the order the form places them.
+    private func syntaxSwitches(of controller: SettingsWindowController) -> [NSSwitch] {
+        controller.selectTabForTesting("markdown")
+        guard let content = controller.window?.contentView else { return [] }
+        content.layoutSubtreeIfNeeded()
+        var found: [NSSwitch] = []
+        func walk(_ view: NSView) {
+            if let sw = view as? NSSwitch { found.append(sw) }
+            view.subviews.forEach(walk)
+        }
+        walk(content)
+        return found
+    }
+
+    /// A publishing target reaches EVERY window, not the front one.
+    ///
+    /// The Format menu belongs to the application and repaints from `Prefs` on
+    /// every opening, so a back window left on the old target would offer tools
+    /// the menu bar above it had already withdrawn. Both counters are watched,
+    /// because the failure is not "nothing happened", it is "the wrong one of
+    /// the two happened", and a test counting only the right one would pass on
+    /// a toggle that did both.
+    func testTogglingAPublishingTargetShouldReachEveryWindow() {
+        let sets = Prefs.syntaxSets
+        defer { Prefs.syntaxSets = sets }
+        Prefs.syntaxSets = SyntaxScope.all
+
+        var frontOnly = 0
+        var everywhere = 0
+        let controller = SettingsWindowController(
+            flavour: .release, onHotkeyChange: { 0 },
+            onChange: { _ in frontOnly += 1 }, onChangeEverywhere: { everywhere += 1 },
+            onShowWelcome: {}, onCheckForUpdates: {})
+        defer { controller.window?.close() }
+
+        let switches = syntaxSwitches(of: controller)
+        XCTAssertEqual(switches.count, SyntaxSet.allCases.count,
+                       "the Markdown pane did not draw one switch per target")
+        guard let first = switches.first else { return }
+
+        first.state = .off
+        _ = NSApp.sendAction(first.action!, to: first.target, from: first)
+
+        XCTAssertLessThan(Prefs.syntaxSets.count, SyntaxSet.allCases.count,
+                          "the switch did not write the setting, so this checked nothing")
+        XCTAssertEqual(everywhere, 1, "the change did not reach every window")
+        XCTAssertEqual(frontOnly, 0, "the change went to the front window instead")
+    }
+
     private func agentPane(of controller: SettingsWindowController)
         -> (field: NSTextField, popup: NSPopUpButton, link: LinkButton)? {
         controller.selectTabForTesting("aiAgent")
@@ -473,7 +522,7 @@ final class SettingsPaneTests: XCTestCase {
         Prefs.agentCommand = AgentPreset.codex.template
         var reloads = 0
         let controller = SettingsWindowController(flavour: .release, onHotkeyChange: { 0 },
-                                                  onChange: { _ in reloads += 1 },
+                                                  onChange: { _ in reloads += 1 }, onChangeEverywhere: {},
                                                   onShowWelcome: {}, onCheckForUpdates: {})
         defer { controller.window?.close() }
         guard let pane = agentPane(of: controller) else {
@@ -506,7 +555,7 @@ final class SettingsPaneTests: XCTestCase {
         Prefs.agentCommand = AgentPreset.codex.template
         var reloads = 0
         let controller = SettingsWindowController(flavour: .release, onHotkeyChange: { 0 },
-                                                  onChange: { _ in reloads += 1 },
+                                                  onChange: { _ in reloads += 1 }, onChangeEverywhere: {},
                                                   onShowWelcome: {}, onCheckForUpdates: {})
         defer { controller.window?.close() }
         guard let pane = agentPane(of: controller) else {

@@ -62,6 +62,20 @@ declare global {
             notesHighlightMarkers?: boolean;
             /** Review sidebar By-type/In-order mode (birta.review.groupByType); default grouped. */
             reviewGroupByType?: boolean;
+            /**
+             * The publishing targets whose syntax the editor OFFERS to write
+             * (birta.syntax.sets). Read fresh on every gate check through
+             * `enabledSyntaxSets()` rather than cached anywhere, and the live
+             * `syntaxSetsChanged` message writes the new list back HERE, so
+             * this stays the one copy. Absent means every target, which is what
+             * keeps a page that says nothing (the unit tests, the e2e harness)
+             * on the full toolbar.
+             *
+             * The list governs the tools and nothing else: the parser and the
+             * serializer never read it, so a document renders whatever it
+             * contains under every value. See shared/syntaxSets.ts.
+             */
+            syntaxSets?: readonly import("../../shared/syntaxSets").SyntaxSet[];
             codeBlockWordWrap?: boolean;
             tocAutoHideThreshold?: number;
             /** ToC show/hide preference (birta.tocVisibility); "auto" (or absent) uses the heading-count heuristic. */

@@ -20,7 +20,8 @@ import {
     SLASH_MENU_ITEMS,
     type SlashMenuItem,
 } from "./registry";
-import { hostHasCommand } from "../../../shared/hostProfile";
+import { commandAvailable } from "../../../shared/commandAvailability";
+import { syntaxAllows } from "../../../shared/syntaxSets";
 
 /** Viewport anchor, in the shape createLinkSuggestMenu uses. */
 export interface SlashMenuAnchor {
@@ -90,14 +91,27 @@ export function slashRowDomId(itemId: string): string {
 }
 
 export function createSlashMenu(opts: SlashMenuOptions): SlashMenuHandle {
-    // Feature-gated rows drop out entirely at build (visibleWhen), so a
-    // disabled feature's command is unreachable even by search. So does a row
-    // whose command needs a host capability this host does not declare
-    // (shared/hostProfile.ts): the same predicate the gear menu and
-    // runEditorCommand read.
-    const items = (opts.items ?? SLASH_MENU_ITEMS).filter(
-        (item) => (item.visibleWhen?.() ?? true) && hostHasCommand(item.commandId),
-    );
+    /**
+     * The rows this menu may offer, recomputed on every render.
+     *
+     * Three reasons a row drops out, filtered in one place: its feature is
+     * switched off (`visibleWhen`), the host cannot honour its command, or no
+     * enabled syntax set spells what it writes. The last two are one question
+     * (`commandAvailable`, shared/commandAvailability.ts) and the row's own
+     * `syntax` answers for the four rows whose command is shared.
+     *
+     * Evaluated per render rather than once at build, because two of the three
+     * change while the menu exists: the syntax target and the calc gate are
+     * both settings the user can flip with the editor open, and a list built
+     * at construction would go on offering a tool the target no longer spells
+     * until the document was reopened.
+     */
+    const offeredItems = (): readonly SlashMenuItem[] =>
+        (opts.items ?? SLASH_MENU_ITEMS).filter(
+            (item) => (item.visibleWhen?.() ?? true)
+                && commandAvailable(item.commandId)
+                && syntaxAllows(item.syntax),
+        );
 
     const root = document.createElement("div");
     root.className = "slash-menu";
@@ -262,6 +276,7 @@ export function createSlashMenu(opts: SlashMenuOptions): SlashMenuHandle {
         // ranked list (Notion behavior — ranking beats grouping). "Show all"
         // widens the unfiltered view to include the search-only rows.
         const grouped = query.trim() === "";
+        const items = offeredItems();
         if (grouped) {
             visible = showAll ? [...items] : items.filter((it) => !it.searchOnly);
         } else {

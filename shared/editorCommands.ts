@@ -15,6 +15,7 @@
  */
 
 import type { HostArrangement, HostCapability } from "./hostProfile";
+import type { SyntaxFeature } from "./syntaxSets";
 
 export type WebviewSection = "editor" | "table" | "link" | "toolbar" | "toolbarTab";
 
@@ -66,6 +67,26 @@ export interface EditorCommandMeta {
      * doing the work (`hostProfile.test.ts`).
      */
     readonly absentUnder?: HostArrangement;
+    /**
+     * The syntax this command WRITES, where it writes something CommonMark
+     * cannot spell (shared/syntaxSets.ts). Absent on every command whose
+     * output is CommonMark, which is most of them, and absent on every command
+     * that only reads or that acts on a construct already in the document.
+     *
+     * That last exclusion is the one to get right, and it is what keeps this
+     * from becoming a gate on reading. `insertTable` writes a table, so it
+     * carries `table` and goes away under a target with no tables. `Insert Row
+     * Above` does not: it is offered on a table that is already there, in a
+     * document that renders it whatever the target says, and withdrawing it
+     * would leave the user looking at a construct they can see and cannot
+     * edit. The test is whether running the command can introduce the syntax
+     * to a document that did not have it.
+     *
+     * Read by `commandAvailable` (shared/commandAvailability.ts), never here:
+     * the surfaces ask one predicate, and this is one of the three things it
+     * answers with.
+     */
+    readonly syntax?: SyntaxFeature;
 }
 
 /**
@@ -86,8 +107,8 @@ export interface EditorCommandMeta {
 export const EDITOR_COMMANDS = [
     { id: "toggleBold", title: "Bold", palette: true, sections: [] },
     { id: "toggleItalic", title: "Italic", palette: true, sections: [] },
-    { id: "toggleStrikethrough", title: "Strikethrough", palette: true, sections: [] },
-    { id: "toggleHighlight", title: "Highlight", palette: true, sections: [] },
+    { id: "toggleStrikethrough", title: "Strikethrough", palette: true, sections: [], syntax: "strikethrough" },
+    { id: "toggleHighlight", title: "Highlight", palette: true, sections: [], syntax: "highlight" },
     { id: "toggleInlineCode", title: "Inline Code", palette: true, sections: [] },
     { id: "clearFormatting", title: "Clear Formatting", palette: true, sections: [] },
     { id: "setParagraph", title: "Paragraph", palette: true, sections: [] },
@@ -99,7 +120,7 @@ export const EDITOR_COMMANDS = [
     { id: "setHeading6", title: "Heading 6", palette: true, sections: [] },
     { id: "toggleBulletList", title: "Bullet List", palette: true, sections: [] },
     { id: "toggleOrderedList", title: "Ordered List", palette: true, sections: [] },
-    { id: "toggleTaskList", title: "Task List", palette: true, sections: [] },
+    { id: "toggleTaskList", title: "Task List", palette: true, sections: [], syntax: "taskList" },
     // Ticking the task the caret is in, which the checkbox and the `[x] `
     // marker could already do with a pointer or a fresh line and neither could
     // do from inside the text.
@@ -107,7 +128,7 @@ export const EDITOR_COMMANDS = [
     { id: "toggleBlockquote", title: "Blockquote", palette: true, sections: [] },
     { id: "insertCodeBlock", title: "Code Block", palette: true, sections: [] },
     { id: "insertHorizontalRule", title: "Horizontal Rule", palette: true, sections: [] },
-    { id: "insertTable", title: "Insert Table", palette: true, sections: [] },
+    { id: "insertTable", title: "Insert Table", palette: true, sections: [], syntax: "table" },
     { id: "insertLink", title: "Insert/Edit Link", palette: true, sections: ["link"] },
     // In-note anchor link (MAR-176): pick a heading, insert `[text](#slug)`.
     // Palette-only (no right-click section) — the discoverable surfaces are the
@@ -134,8 +155,8 @@ export const EDITOR_COMMANDS = [
     { id: "askAgentAdvanced", title: "Ask Agent (advanced)", palette: true, sections: [], hostCapability: "agent" },
     { id: "editBlockSource", title: "Edit Block as Markdown", palette: true, sections: [] },
     { id: "insertImage", title: "Insert Image", palette: true, sections: [], hostCapability: "imageUpload" },
-    { id: "insertMath", title: "Insert Math", palette: true, sections: [] },
-    { id: "insertFootnote", title: "Insert Footnote", palette: true, sections: [] },
+    { id: "insertMath", title: "Insert Math", palette: true, sections: [], syntax: "math" },
+    { id: "insertFootnote", title: "Insert Footnote", palette: true, sections: [], syntax: "footnote" },
     // Dates. Four ids rather than one taking an offset, for the reason the
     // seven `foldLevel*` entries give: a palette row carries no argument, so
     // an id per answer is the only shape the palette can reach. `insertDate`
@@ -148,11 +169,11 @@ export const EDITOR_COMMANDS = [
     { id: "insertToday", title: "Insert Today's Date", palette: true, sections: [] },
     { id: "insertTomorrow", title: "Insert Tomorrow's Date", palette: true, sections: [] },
     { id: "insertYesterday", title: "Insert Yesterday's Date", palette: true, sections: [] },
-    { id: "insertCallout", title: "Insert Callout", palette: true, sections: [] },
+    { id: "insertCallout", title: "Insert Callout", palette: true, sections: [], syntax: "calloutAlert" },
     // Toolbar Quote-dropdown semantics (menuitemcheckbox rows): same-kind
     // lifts out, different-kind retypes in place, outside wraps. Not in the
     // palette — insertCallout is the plain insert everywhere else.
-    { id: "toggleCallout", title: "Toggle Callout", palette: false, sections: [] },
+    { id: "toggleCallout", title: "Toggle Callout", palette: false, sections: [], syntax: "calloutAlert" },
     // `/help` (MAR-395): the Send Feedback questions, put from inside the
     // document rather than from a palette the editor's own surfaces cannot
     // reach. Ungated, because what it needs is a host that can draw a prompt

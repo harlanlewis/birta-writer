@@ -8,6 +8,7 @@ import { toggleStrikethroughCommand } from "@milkdown/preset-gfm";
 import { getView, keymap } from "../pm";
 import { TextSelection } from "../pm";
 import { $prose } from "@milkdown/utils";
+import { commandAvailable } from "../../shared/commandAvailability";
 
 // Formatting shortcuts: Mod-b bold, Mod-i italic, Mod-Shift-x strikethrough,
 // Mod-e inline code.
@@ -26,8 +27,27 @@ export const formatKeymapPlugin = $prose((ctx) =>
             ctx.get(commandsCtx).call(toggleEmphasisCommand.key);
             return true;
         },
+        // The one chord here that writes beyond CommonMark, so the one that a
+        // publishing target can withdraw (shared/syntaxSets.ts). Asked here
+        // rather than left to the surfaces, because this keymap is the only
+        // path to strikethrough that does not go through `runEditorCommand`:
+        // withdrawing the button, the slash row and the palette entry while
+        // this went on applying the mark would be the toolbar and its key
+        // disagreeing, which is the divergence the predicate exists to stop.
+        //
+        // Consumed either way. The chord is claimed document-wide by the
+        // key-leak guard (webview/keyboardShortcuts.ts) whatever this returns,
+        // so returning false would not hand it to the workbench; it would only
+        // let the keystroke fall through to whatever binds it next, and there
+        // is nothing sensible for it to reach.
+        //
+        // Typing `~~text~~` is untouched, and that is the line: the input rule
+        // is the writer spelling the syntax, and a chord is the editor
+        // offering a tool.
         "Mod-Shift-x": () => {
-            ctx.get(commandsCtx).call(toggleStrikethroughCommand.key);
+            if (commandAvailable("toggleStrikethrough")) {
+                ctx.get(commandsCtx).call(toggleStrikethroughCommand.key);
+            }
             return true;
         },
         "Mod-e": () => {

@@ -285,7 +285,7 @@ final class NoteLocationChangeTests: XCTestCase {
     /// suite fails when it stops being drawn.
     func testTheLocationRowShouldSayThatAFolderInICloudDriveSyncs() throws {
         let controller = SettingsWindowController(flavour: .release, onHotkeyChange: { 0 },
-                                                  onChange: { _ in },
+                                                  onChange: { _ in }, onChangeEverywhere: {},
                                                   onShowWelcome: {}, onCheckForUpdates: {})
         defer { controller.window?.close() }
         controller.selectTabForTesting("general")

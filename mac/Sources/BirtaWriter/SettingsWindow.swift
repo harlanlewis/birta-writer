@@ -78,11 +78,12 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     ///
     /// Which rows are on which pane is `SettingsForm`'s and not this enum's.
     private enum Tab: String, CaseIterable {
-        case general, aiAgent, advanced
+        case general, markdown, aiAgent, advanced
 
         var title: String {
             switch self {
             case .general: return "General"
+            case .markdown: return "Markdown"
             case .aiAgent: return "AI Agent"
             case .advanced: return "Advanced"
             }
@@ -91,6 +92,10 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         var symbol: String {
             switch self {
             case .general: return "gearshape"
+            // The pane is about which formatting the editor offers, so the
+            // glyph is the one the system uses for text formatting rather than
+            // a document or a pencil: neither of those is about the marks.
+            case .markdown: return "textformat"
             // Not a robot and not a brain: the pane is about handing a request
             // to something that answers, which is what this glyph is for
             // everywhere else on the system.
@@ -178,6 +183,15 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     private let updateButton = NSButton(title: "Check Now", target: nil, action: nil)
     private let resetButton = NSButton(title: "Reset to defaults", target: nil, action: nil)
     private let welcomeButton = NSButton(title: "Show Welcome", target: nil, action: nil)
+    /// One switch per publishing target, keyed by the target itself.
+    ///
+    /// A dictionary built from `SyntaxSet.allCases` rather than four named
+    /// properties, so a fifth target gets a control without this file being
+    /// edited; what it still needs is a row in `SettingsForm`, which the
+    /// exhaustive `SettingsForm.row(for:)` makes a compile error rather than
+    /// an omission.
+    private let syntaxSwitches: [SyntaxSet: NSSwitch] =
+        Dictionary(uniqueKeysWithValues: SyntaxSet.allCases.map { ($0, NSSwitch()) })
     private let loginSwitch = NSSwitch()
     private let loginCaption = Caption(LoginItemState.off.caption)
     private let loginSettingsButton = NSButton(title: "Open System Settings…", target: nil, action: nil)
@@ -213,6 +227,14 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     /// Re-read the preferences. The argument is work to run between the
     /// buffer's flush and the page's reload; only a location change uses it.
     private let onChange: (BeforeReload?) -> Void
+    /// Re-read the preferences in EVERY window, not the front one.
+    ///
+    /// A second closure rather than a flag on `onChange`, because the two are
+    /// different claims about a setting rather than two ways of doing one
+    /// thing: `onChange` is for a setting whose only surface is the window it
+    /// changes, and this is for one with a surface the application owns. The
+    /// publishing targets are the first of those, and `WindowSet` holds why.
+    private let onChangeEverywhere: () -> Void
     /// Show the welcome window. Injected rather than built here: the window is
     /// the app delegate's, so it survives this one being closed.
     private let onShowWelcome: () -> Void
@@ -223,11 +245,13 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     init(flavour: AppFlavor,
          onHotkeyChange: @escaping () -> OSStatus,
          onChange: @escaping (BeforeReload?) -> Void,
+         onChangeEverywhere: @escaping () -> Void,
          onShowWelcome: @escaping () -> Void,
          onCheckForUpdates: @escaping () -> Void) {
         self.flavour = flavour
         self.onHotkeyChange = onHotkeyChange
         self.onChange = onChange
+        self.onChangeEverywhere = onChangeEverywhere
         self.onShowWelcome = onShowWelcome
         self.onCheckForUpdates = onCheckForUpdates
         let window = NSWindow(
@@ -424,6 +448,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         guard let tab = Tab(rawValue: name) else { return nil }
         switch tab {
         case .general: return SettingsForm.rows(of: SettingsForm.general)
+        case .markdown: return SettingsForm.rows(of: SettingsForm.markdown)
         case .aiAgent: return SettingsForm.rows(of: SettingsForm.aiAgent)
         case .advanced: return SettingsForm.rows(of: advancedPane)
         }
@@ -589,6 +614,15 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
             control.target = self
             control.action = action
         }
+        // The target switches are wired from the vocabulary rather than from
+        // the tuple list above, because each of them writes a MEMBER of one
+        // stored set rather than a setting of its own, so they share one action
+        // that asks the sender which target it is.
+        for (_, control) in syntaxSwitches {
+            control.controlSize = .small
+            control.target = self
+            control.action = #selector(toggleSyntaxSet(_:))
+        }
         syncControlsFromPrefs()
     }
 
@@ -616,6 +650,10 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         agentField.stringValue = Prefs.agentCommand
         newNoteField.stringValue = Prefs.newNoteNameTemplate
         agentEnabledSwitch.state = Prefs.agentEnabled ? .on : .off
+        let sets = Prefs.syntaxSets
+        for (set, control) in syntaxSwitches {
+            control.state = sets.contains(set) ? .on : .off
+        }
         // The two callers of this both leave the page holding whatever
         // `Prefs` says: the build, which runs before anything is offered, and
         // Reset, which reloads unconditionally afterwards. Either way the
@@ -870,6 +908,16 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
             return (Self.trailingControls([agentTestButton, agentPresetPopup]),
                     [agentField, link],
                     Caption("Terminal command executed by /ai in Birta Writer."))
+        case .syntaxGfm, .syntaxObsidian, .syntaxPandoc, .syntaxBirta:
+            // The switch is found by the target rather than by the row, which
+            // is the direction that stays derived: `SettingsForm.row(for:)` is
+            // exhaustive over the vocabulary, so the lookup below can only miss
+            // for a row this switch statement should not have reached.
+            guard let set = SyntaxSet.allCases.first(where: { SettingsForm.row(for: $0) == row }),
+                  let control = syntaxSwitches[set] else {
+                return (NSView(), [], nil)
+            }
+            return (control, [], Caption(set.caption))
         case .resetSettings:
             return (resetButton, [],
                     Caption("Revert \(flavour.displayName) to default settings. Will not "
@@ -889,6 +937,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         let sections: [NSView]
         switch tab {
         case .general: sections = render(SettingsForm.general)
+        case .markdown: sections = render(SettingsForm.markdown)
         case .aiAgent: sections = render(SettingsForm.aiAgent)
         case .advanced: sections = render(advancedPane)
         }
@@ -1604,6 +1653,29 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     @objc private func toggleNetwork() {
         Prefs.networkEnabled = networkSwitch.state == .on
         onChange(nil)
+    }
+
+    /// Add or remove one publishing target.
+    ///
+    /// The whole set is read, edited and written back rather than each switch
+    /// owning a key, because what is stored IS the set: four independent keys
+    /// would have to agree on what "never opened this pane" means, and that
+    /// answer (every target) belongs to `Prefs.syntaxSets` alone.
+    ///
+    /// The reload is what re-reads the boot config and re-places the toolbar,
+    /// and it has to reach every window rather than the front one.
+    @objc private func toggleSyntaxSet(_ sender: NSSwitch) {
+        guard let set = syntaxSwitches.first(where: { $0.value === sender })?.key else { return }
+        var sets = Prefs.syntaxSets
+        if sender.state == .on { sets.insert(set) } else { sets.remove(set) }
+        Prefs.syntaxSets = sets
+        // EVERY window, not the front one, which is what `onChange` reaches.
+        // The Format menu is the application's and repaints from `Prefs` on
+        // every opening, so a back window left on the old target would offer
+        // tools the menu bar above it had already withdrawn. `WindowSet`
+        // explains it where the broadcast lives. The menu bar needs no
+        // telling: it reads `Prefs` at the moment it opens.
+        onChangeEverywhere()
     }
 }
 

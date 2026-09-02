@@ -69,6 +69,7 @@ export type TocPosition = "left" | "right";
 // the mermaid/blockHandles enum modules); re-exported here for message typing.
 export type { TocVisibility } from "./tocVisibility";
 import type { TocVisibility } from "./tocVisibility";
+import type { SyntaxSet } from "./syntaxSets";
 
 /** One text block sent for grammar/spell linting (key = block position). */
 export type LintBlock = { key: number; text: string };
@@ -728,6 +729,12 @@ export type ToWebviewMessage =
     | { type: "copyFormatChanged"; format: "markdown" | "richText" }
     // Live update for birta.pasteFormat (a string gate, read at paste time).
     | { type: "pasteFormatChanged"; format: "markdown" | "plainText" }
+    // Live update for birta.syntax.sets: which publishing targets' syntax the
+    // editor offers to write. The page writes the list back to its own boot
+    // blob and re-gates every surface that offers a tool; nothing about the
+    // document changes, because a target governs the tools and never the
+    // parser (shared/syntaxSets.ts).
+    | { type: "syntaxSetsChanged"; sets: readonly SyntaxSet[] }
     | { type: "fmSuggestions"; key: string; values: string[] }
     | { type: "proofreadConfig"; config: ProofreadConfig }
     // Live update of the Notes-tab custom markers (birta.notes.customMarkers changed).

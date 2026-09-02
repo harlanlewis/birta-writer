@@ -32,7 +32,7 @@ final class SettingsWindowSizeTests: XCTestCase {
     /// The RELEASE window unless a test says otherwise, which is what every
     /// arm here measured before the flavour was injectable.
     private func makeController(_ flavour: AppFlavor = .release) -> SettingsWindowController {
-        SettingsWindowController(flavour: flavour, onHotkeyChange: { 0 }, onChange: { _ in },
+        SettingsWindowController(flavour: flavour, onHotkeyChange: { 0 }, onChange: { _ in }, onChangeEverywhere: {},
                                  onShowWelcome: {}, onCheckForUpdates: {})
     }
 

@@ -88,7 +88,7 @@ import { commandMutates, isReadOnly, setReadOnly } from "@/readOnly";
 import { canRetypeSelectionInPlace } from "@/blockPlacement";
 import { RELEASES_URL } from "../shared/product";
 import { STYLE_CATEGORIES } from "@/utils/styleCategories";
-import { hostHasCommand } from "../shared/hostProfile";
+import { commandAvailable } from "../shared/commandAvailability";
 import { exportHtmlLazy } from "@/export/loader";
 import { insertDateAtCaret, openDateChooser } from "@/dateInsert";
 import { type RelativeDay, relativeCalendarDate, toCalendarDate } from "@/utils/dateFormat";
@@ -1084,7 +1084,7 @@ export const editorCommands: Record<EditorCommandId, EditorCommandFn> = {
  * so nothing ever posts to a host that cannot answer.
  */
 export function runEditorCommand(id: string, getEditor: GetEditor, args?: unknown): void {
-    if (!hostHasCommand(id)) { return; }
+    if (!commandAvailable(id)) { return; }
     if (isReadOnly() && commandMutates(id)) { return; }
     const fn = (editorCommands as Record<string, EditorCommandFn | undefined>)[id];
     fn?.(getEditor, args);

@@ -12,6 +12,12 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ## [Unreleased]
 
+### Added
+
+- A Markdown pane in Settings, holding the syntax targets Birta Writer for Mac writes for: GitHub, Obsidian, Pandoc, and Birta Writer's own. All four ship on. Turning one off withdraws the rows that write its syntax from the Format menu, with their keyboard shortcuts, and from the toolbar and menus in every open note, so the menu bar and the windows under it offer one answer rather than two. CommonMark is always available and is not in the list, because every target includes it; turn all four off to write CommonMark alone.
+
+  Nothing about a note changes. Every file opens with everything it contains drawn in full whatever is selected, and the rows that edit what is already there stay: a table keeps its row and column controls, and a task list keeps Toggle Task Done and Uncheck All Tasks even where Task List has gone. See [`../CHANGELOG.md`](../CHANGELOG.md) for what the setting does inside the editor itself.
+
 ---
 
 ## [2026.902.0] - 2026, September 2

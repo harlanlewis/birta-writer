@@ -306,11 +306,17 @@ export function setupSelectionToolbar(
     openLinkPrompt: () => void,
     items?: FloatingToolbarItems,
 ): { onSelectionChange(view: EditorView): void; hide(): void } {
-    // Per-item visibility for the inline (text-mode) buttons. Resolved once at
-    // setup from the birta.floatingToolbar.items.* settings; a missing flag
-    // defaults to visible. Table-mode and block-mode buttons are contextual
+    // Per-item visibility for the inline (text-mode) buttons: the
+    // birta.floatingToolbar.items.* settings (a missing flag defaults to
+    // visible), minus what the reader's syntax target does not spell
+    // (shared/syntaxSets.ts). Table-mode and block-mode buttons are contextual
     // and not user-gated here.
-    const visible = resolveVisible(items);
+    //
+    // Recomputed on every show rather than resolved once at setup, because the
+    // target is a setting the reader changes with the editor open and this
+    // surface is rebuilt on no other signal. The cost is one pass over eleven
+    // ids per selection change.
+    let visible = resolveVisible(items);
     let lastView: EditorView | null = null;
     let isDragging = false;
     /** Hidden for being off screen rather than dismissed — see hideOffScreen. */
@@ -1071,6 +1077,7 @@ export function setupSelectionToolbar(
             hideToolbar();
             return;
         }
+        visible = resolveVisible(items);
         lastView = view;
         // Start tracking scroll/reflow on first show (view.dom is live by now),
         // re-running showAndPosition so the bar follows its selection.

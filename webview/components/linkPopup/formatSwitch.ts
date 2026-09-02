@@ -11,6 +11,7 @@
  */
 import "./formatSwitch.css";
 import { t } from "@/i18n";
+import { syntaxAllows } from "../../../shared/syntaxSets";
 
 export type LinkFormat = "markdown" | "wikilink";
 
@@ -85,11 +86,23 @@ export function createLinkFormatSwitch(
             select.value = format;
         },
         setWikiAllowed(allowed: boolean): void {
-            // When a wikilink is impossible (external URL / #anchor) there is no
-            // real choice to offer — hide the whole Format row rather than show a
-            // greyed-out option, and force markdown.
-            root.style.display = allowed ? "" : "none";
-            if (!allowed && select.value === "wikilink") {
+            // Two reasons there may be no choice to offer, and one treatment.
+            // The target can be one (an external URL, a #anchor), or the
+            // reader's syntax sets do not spell wikilinks at all
+            // (shared/syntaxSets.ts). Either way, hide the whole Format row
+            // rather than show a greyed-out option, and force markdown.
+            //
+            // A link that IS already a wikilink keeps the control whatever the
+            // target says, and that carve-out is what stops this from
+            // rewriting the document: forcing markdown on an existing wikilink
+            // would convert a link the author typed, on a target change they
+            // made for the links they are about to write. Converting it is
+            // still one pick away, which is the direction a narrowed target
+            // wants to be easy.
+            const isWiki = select.value === "wikilink";
+            const offer = allowed && (isWiki || syntaxAllows("wikiLink"));
+            root.style.display = offer ? "" : "none";
+            if (!offer && isWiki) {
                 select.value = "markdown";
             }
         },

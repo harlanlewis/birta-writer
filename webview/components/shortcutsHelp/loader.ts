@@ -31,3 +31,19 @@ export function openShortcutsHelpLazy(): Promise<void> {
         .then((m) => m.openShortcutsHelp())
         .catch((e: unknown) => console.error("[birta] shortcuts overlay failed to load", e));
 }
+
+/**
+ * Discard an already-built overlay so its next open reads the syntax gate
+ * again (`refreshShortcutsHelp` in `./index` says why it has to).
+ *
+ * A no-op when the chunk was never loaded, which is the point of putting it
+ * here rather than importing `./index`: a reader who has never opened the
+ * cheatsheet must not pay for the chunk because they changed a setting, and a
+ * panel that does not exist has nothing stale in it.
+ */
+export function refreshShortcutsHelpIfLoaded(): void {
+    if (!modulePromise) { return; }
+    void modulePromise
+        .then((m) => { m.refreshShortcutsHelp(); })
+        .catch((e: unknown) => console.error("[birta] shortcuts overlay failed to load", e));
+}
