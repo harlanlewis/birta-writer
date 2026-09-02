@@ -294,9 +294,13 @@ let cachedMatcher: { key: string; matcher: StyleMatcher } | null = null;
  * Cleared when the MATCHER changes (styleMatcherFor recompiles on a category
  * toggle or a new exception), because the answer is the matcher's. Suppression
  * is applied downstream, over what this returns, so an ignore or a kept phrase
- * invalidates nothing here. FIFO at the lint cache's bound, for its reasons.
+ * invalidates nothing here. FIFO for the lint cache's reasons, but sized above
+ * the largest document the heavy perf fixtures stand in for: a FIFO smaller
+ * than the document evicts every entry before the next pass reads it, which is
+ * no cache at all on exactly the document it is for. (The lint cache carries
+ * the smaller bound and the same hazard; MAR-426 is where it is read.)
  */
-const STYLE_CACHE_MAX = 4096;
+const STYLE_CACHE_MAX = 16384;
 const styleCache = new Map<string, StyleMatch[]>();
 
 /** Forget every remembered match. Tests, and the matcher recompile. */
