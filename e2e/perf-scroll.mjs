@@ -261,7 +261,7 @@ async function measure(browserType, url) {
 try {
     await stat(join(repoRoot, "dist", "webview.js"));
 } catch {
-    console.error("dist/webview.js not found — run `pnpm build` first.");
+    console.error("dist/webview.js not found; run `pnpm build` first.");
     process.exit(2);
 }
 const browserType = await loadPlaywright();
@@ -281,7 +281,7 @@ const sorted = [...result.gaps].sort((a, b) => a - b);
 const slow = result.gaps.filter((g) => g > SLOW_FRAME_MS);
 const stallMs = slow.reduce((s, g) => s + g - FRAME_BUDGET_MS, 0);
 const rootWriteCount = Object.values(result.rootWrites).reduce((s, n) => s + n, 0);
-console.log(`\nscroll perf — ${fixture} (${Math.round(content.length / 1024)} KB), ${BROWSER}, ${screens} screens at ${stepPx}px per frame\n`);
+console.log(`\nscroll perf: ${fixture} (${Math.round(content.length / 1024)} KB), ${BROWSER}, ${screens} screens at ${stepPx}px per frame\n`);
 console.log(`  frames ${result.gaps.length}, ${result.elapsed.toFixed(0)} ms, ${result.scrolled}px of ${result.docHeight}px`);
 console.log(`  gap median ${round(quantile(sorted, 0.5))}  p95 ${round(quantile(sorted, 0.95))}  max ${round(sorted[sorted.length - 1])} ms`);
 console.log(`  frames>33 ${slow.length}  stall ${stallMs.toFixed(0)} ms`);

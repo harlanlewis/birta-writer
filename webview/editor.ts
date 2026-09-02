@@ -889,6 +889,12 @@ function _applyExternalNow(newMarkdown: string): boolean {
     // is recomputed because a different file may have different round-trip
     // trouble spots (reference links, setext headings, ...).
     _savedMarkdown = newMarkdown;
+    // The host's document now holds exactly this content, which is the clean
+    // posture a save flush leaves: the next user edit is a leading edge again
+    // (webview/syncScheduler.ts), so it dirties the document before a Cmd+S
+    // can reach it. A sync still pending from before the apply is cancelled
+    // with it; it would serialize the applied content and post nothing.
+    _scheduler.reset();
     // An authoritative re-base supersedes any flush still awaiting its ack.
     _flushCandidate = null;
     // Recompute eagerly here (not a launch path) and drop any deferred load

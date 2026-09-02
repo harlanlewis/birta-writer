@@ -356,8 +356,8 @@ export const headingStickyPlugin = $prose(() =>
             let rafId: number | null = null;
             let activeHeading: HTMLElement | null = null;
             let activeHeadingPos: number | null = null;
-            // The bar's box height as last measured, on the frame its content
-            // was set; read on every frame after that without touching layout.
+            // The bar's box height as last read: with the frame's other reads
+            // while layout is clean, and again after a content change.
             let stickyHeight = 0;
 
             /**
@@ -543,10 +543,15 @@ export const headingStickyPlugin = $prose(() =>
                 const rect = heading.getBoundingClientRect();
                 const nextHeading = headings[activeIndex + 1] ?? null;
                 // Every read the frame needs, taken before its first write:
-                // the panel's box for the clip and the next heading's top for
-                // the slide. A read after the writes below forces a second
-                // layout on every frame of a scroll.
+                // the panel's box for the clip, the next heading's top for
+                // the slide, and the bar's own box, which a font-size change
+                // or a resize can move with no change of content. Layout is
+                // clean here, so these cost nothing; a read after the writes
+                // below forces a second layout on every frame of a scroll.
                 const nextTop = nextHeading?.getBoundingClientRect().top ?? Number.POSITIVE_INFINITY;
+                if (!sticky.hidden) {
+                    stickyHeight = sticky.getBoundingClientRect().height;
+                }
                 const clip = stickyClip(rect);
                 sticky.hidden = false;
                 sticky.dataset["headingPos"] = String(headingPos);
@@ -569,11 +574,10 @@ export const headingStickyPlugin = $prose(() =>
                     sticky.dataset["trail"] = trail;
                     syncStickyTypography(sticky, heading);
                     setStickyContent(sticky, view, heading, headingPos, collapsed, foldable, ancestors);
-                    // The bar's height depends on its content and typography
-                    // alone, both set just above, so this is the one frame it
-                    // has to be measured on. The read follows a write and
-                    // forces a layout; on every other frame the remembered
-                    // value stands and the frame ends with writes only.
+                    // The content and typography just changed under the
+                    // value read above, so it is read again: the one read
+                    // that follows a write, on the one frame per heading
+                    // change that has to pay the layout it forces.
                     stickyHeight = sticky.getBoundingClientRect().height;
                 }
 

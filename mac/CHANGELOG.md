@@ -40,7 +40,7 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ### Fixed
 
-- Birta Writer for Mac writes an autosave beside your typing rather than in front of it. The write to disk ran on the thread your keystrokes arrive through and held it until the bytes were on disk, a whole-file copy and a flush, so on a large note every half-second pause in typing ended with the next key waiting for the disk. The write now runs on its own thread and the keystroke goes through; what is written, and when, is unchanged, and hiding the window, quitting and Cmd+S still wait for the file as they did.
+- Birta Writer for Mac writes an autosave beside your typing rather than in front of it. The write to disk ran on the thread your keystrokes arrive through and held it until the bytes were on disk, a whole-file copy and a flush, so on a large note a key arriving as a half-second pause ended waited for the disk. The write now runs on its own thread and the keystroke goes through; what is written, and when, is unchanged, and hiding the window, quitting and Cmd+S still wait for the file as they did.
 
 - The label under a titlebar button in Birta Writer for Mac goes away when a menu opens from it. The label was left on screen underneath the open menu, naming the control the menu had just come from, because a menu takes the pointer for as long as it is open and the button was never told it had left.
 

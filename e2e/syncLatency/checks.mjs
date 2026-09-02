@@ -67,7 +67,7 @@ export async function run({ page, check, baseUrl }) {
     // trailing debounce instead: past idleMs (300 ms), inside the max-wait.
     const second = await measureFirstEditLatency(page);
     check(`a lull on a dirty document takes the trailing path (${second.toFixed(0)}ms)`,
-        second >= 250 && second < 1200, `${second.toFixed(0)}ms — expected 250–1200ms (idleMs 300, not a leading edge)`);
+        second >= 250 && second < 1200, `${second.toFixed(0)}ms, expected 250 to 1200ms (idleMs 300, not a leading edge)`);
 
     // ── A save flush restores the leading edge ──
     // The flush is what a save runs through the webview, and its reply is
@@ -75,13 +75,13 @@ export async function run({ page, check, baseUrl }) {
     // after it must dirty the document within an IPC hop again.
     await page.evaluate(() => { window.postMessage({ type: "flushSave", id: "after-second" }, "*"); });
     await page.waitForFunction(
-        () => window.__posted.some((m) => m.type === "flushResult" || m.type === "saveFlushed" || m.type === "flushSaveResult"),
+        () => window.__posted.some((m) => m.type === "flushResult" && m.id === "after-second"),
         undefined,
         { timeout: 5000 },
-    ).catch(() => {});
+    );
     const third = await measureFirstEditLatency(page);
     check(`the first edit after a save flush is a leading edge again (${third.toFixed(0)}ms)`,
-        third < 50, `${third.toFixed(0)}ms — expected < 50ms`);
+        third < 50, `${third.toFixed(0)}ms, expected < 50ms`);
 
     // ── Invariant #3: continuous typing keeps syncing, bounded by maxWaitMs ──
     // The crash-safety window: during genuinely continuous typing (never an

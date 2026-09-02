@@ -27,7 +27,7 @@ export async function run({ page, check, baseUrl }) {
             els.map((e) => (e.querySelector(".tb-fmt-fill-glyph") ?? e).textContent.trim()),
         );
     // The markdown the page has shipped to the host, which is what a save would
-    // write — the outcome, not the editor's opinion of itself. Waited for,
+    // write, the outcome and not the editor's opinion of itself. Waited for,
     // never read off the last post: once the document is dirty an edit ships
     // on the sync scheduler's trailing edge (webview/syncScheduler.ts), so the
     // post on the wire right after a gesture is the previous gesture's.

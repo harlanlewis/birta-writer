@@ -136,14 +136,14 @@ function countSerializations(ed: Editor): () => number {
  * assertion passed alone on a cold, slow serializer and failed in-file on a warm
  * one — same code, opposite results.)
  *
- * The wind-forward is load-bearing. Faked performance.now() always starts at 0
- * (sinon measures it from clock start; the `now` option shifts only Date), and
- * reset() parks lastSyncMs at 0 to mean "long ago" — so at t=0 the leading-edge
- * test `now - lastSyncMs >= idleMs` reads `0 - 0 >= 300` and is FALSE. That is
- * an artifact of a clock booted at zero, not a product bug: in a real webview
- * performance.now() is far past idleMs by the time a user can type. Winding past
- * idleMs restores the production posture. mark/measure survive the fake, so
- * webview/perf.ts still works.
+ * The wind-forward guards the clock's zero. Faked performance.now() always
+ * starts at 0 (sinon measures it from clock start; the `now` option shifts
+ * only Date), and a scheduler window measured from a mark parked at 0 to mean
+ * "long ago" reads as not yet elapsed at t=0. The leading edge no longer reads
+ * the clock at all (it is spent by a fire and restored by a save flush), so
+ * that exact trap is closed; the max-wait window is still `now() - mark`, and
+ * a clock booted at zero is a state no real webview is ever in, so the wind
+ * stays. mark/measure survive the fake, so webview/perf.ts still works.
  *
  * WHY IT IS NOW THE FILE-WIDE DEFAULT (Vitest 3): this helper used to be opt-in,
  * on the reasoning that "the rest are fine on the default, where a large REAL
@@ -360,6 +360,29 @@ describe("webview save pipeline (edit → doc change → minimal diff → bytes)
 
         expect(serializations() - afterApply).toBe(0);
         expect(postedUpdates()).toEqual([]);
+    });
+
+    it("after an inbound external change, the next user edit should sync on the leading edge", async () => {
+        // The applied content is what the host holds, the clean posture a save
+        // flush leaves; the first edit after it has to dirty the document
+        // within an IPC hop, not a trailing window later. The leading edge is
+        // spent by any fire and restored only by a reset, so the apply has to
+        // reset the scheduler as a flush does.
+        const v = view(editor);
+        v.dispatch(v.state.tr.insertText("a", posAfterText(v, "Some paragraph.")));
+        await vi.advanceTimersByTimeAsync(1000); // the open's own leading edge, spent
+        expect(postedUpdates().length).toBe(1);
+
+        expect(syncExternalContent("# Doc\n\nExternally rewritten.\n")).toBe(true);
+        await vi.advanceTimersByTimeAsync(1000);
+        const before = postedUpdates().length;
+
+        const after = view(editor);
+        after.dispatch(after.state.tr.insertText("b", posAfterText(after, "Externally rewritten.")));
+        await vi.advanceTimersByTimeAsync(1);
+        // Without the reset this is a trailing sync, idleMs away, and reads 0 here.
+        expect(postedUpdates().length).toBe(before + 1);
+        expect(postedUpdates()[before]).toContain("Externally rewritten.b");
     });
 
     it("before any user interaction the pipeline must not post an update", async () => {
