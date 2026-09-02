@@ -22,9 +22,25 @@ import CryptoKit
 /// scripted run gets a throwaway domain where this would otherwise be on, and
 /// an app being driven by synthesized events cannot answer a modal.
 ///
-/// It never installs on its own. The check is automatic and the replacement is
-/// a click, because swapping the app somebody is typing into is not something
-/// to do behind them.
+/// ## Three steps, and only the last one is ever in front of anybody
+///
+/// CHECK asks what the newest release is. STAGE fetches it, verifies the
+/// published checksum, unpacks it and leaves it in the temporary directory.
+/// ARM hands a swap to a script that runs once this process is gone.
+///
+/// With automatic updates on, check and stage both happen on their own, and
+/// the download starts the moment a check finds something rather than waiting
+/// for an answer to a sheet. Not over a connection somebody pays for by the
+/// byte: that is the one thing here that spends money unasked, and
+/// `NetworkPath` holds why the offer is not held to the same rule. That is what makes the two ways in cheap: the
+/// offer, when somebody is here to answer it, restarts into bytes that have
+/// already arrived, and `App.applyStagedUpdateIfUnattended` puts the same
+/// bytes in with nobody asked when `UpdatePolicy.isUnattended` can prove there
+/// is nobody to interrupt.
+///
+/// Nothing is staged for a version somebody declined, and declining discards
+/// what was staged. A no is an answer about the version, and it is honoured by
+/// both ways in.
 @MainActor
 final class Updater {
     /// What a check found. Every outcome is named, so a caller cannot mistake
@@ -42,20 +58,52 @@ final class Updater {
         case refused
     }
 
+    /// An update that has arrived, been checked and been unpacked, waiting for
+    /// a moment to go in.
+    ///
+    /// It lives in the temporary directory, which is the right place for it:
+    /// nothing here survives a restart of the machine, and nothing should. A
+    /// staged update that is a week old is a version the app would find again
+    /// in one request.
+    struct Staged: Equatable {
+        /// The release it came from, as the offer and the notice both name it.
+        let tag: String
+        /// The unpacked `.app`, ready to be moved into place.
+        let bundle: URL
+        /// The directory holding it, removed when the swap runs or the version
+        /// is declined.
+        let work: URL
+    }
+
     /// Something newer exists, with the tag to name it.
     var onUpdateAvailable: ((String) -> Void)?
     /// Progress and outcome, for the status line.
     var onStatus: ((String) -> Void)?
 
     private(set) var available: ReleaseFeed.Release?
-    private var checking = false
-    /// A swap is being fetched or is already armed.
+    /// The update that has been fetched and checked, if there is one.
+    private(set) var staged: Staged?
+    /// A swap script is running and this process is about to go.
     ///
     /// The app stays responsive through a download, so without this a second
     /// trip through Settings arms a second script, and the two wake on the
     /// same pid and race each other over one destination. That is the hazard
     /// `install-app.sh` flavours its staging paths to avoid, one layer up.
-    private var installing = false
+    private(set) var armed = false
+
+    private var checking = false
+    /// A fetch-verify-unpack run is in flight.
+    private var staging = false
+    /// Callers waiting on that run. More than one, because the offer can be
+    /// confirmed while the background staging it did not start is still going.
+    private var waiting: [(Staged?) -> Void] = []
+    /// Whether the run in flight is one somebody is watching for an answer to.
+    ///
+    /// Owned entirely by `install`, which sets it before staging and clears it
+    /// in the completion, so every path out restores it. A background run says
+    /// nothing: it was not asked for, and a person who did nothing cannot act
+    /// on "could not download the update".
+    private var announcing = false
 
     /// The repository releases are fetched from, which must be the one the
     /// About window sends bug reports to: `AboutInfo.repository` is that one
@@ -63,7 +111,7 @@ final class Updater {
     /// against another would be wrong in a way nobody would notice.
     private let repo = ProcessInfo.processInfo.environment["BIRTA_MAC_REPO"] ?? AboutInfo.repository
 
-    /// Everything `check` needs that is not this type's own state.
+    /// Everything the work below needs that is not this type's own state.
     ///
     /// A seam, and it exists because the two gates below both read TRUE in an
     /// xctest process: `AppFlavor.forBundle` answers `.release` for any bundle
@@ -73,9 +121,18 @@ final class Updater {
     /// `.refused` was untestable and the status strings behind them were
     /// unasserted. Injecting the gate and the transport makes the whole
     /// outcome table reachable without a network.
+    ///
+    /// Staging is behind the same seam and for a sharper reason than
+    /// testability: a check that finds something now DOWNLOADS on its own, so
+    /// a test that did not inject `download` would reach the release host for
+    /// real without ever calling the method that does it.
     struct Environment {
         var mayCheck: () -> Bool = { AppFlavor.current.updatesItself && Prefs.isUserStore }
         var autoUpdate: () -> Bool = { Prefs.autoUpdate }
+        /// The version already answered no to, which is neither offered nor
+        /// staged. Read here rather than only at the offer, because the
+        /// bandwidth is spent before the offer is built.
+        var declined: () -> String? = { Prefs.updateDeclinedTag }
         var now: () -> Date = Date.init
         var lastCheck: () -> Date? = { Prefs.lastUpdateCheck }
         var recordCheck: (Date) -> Void = { Prefs.lastUpdateCheck = $0 }
@@ -94,6 +151,34 @@ final class Updater {
                 done(data, (response as? HTTPURLResponse)?.statusCode ?? 0)
             }.resume()
         }
+        /// The archive and the checksum beside it. Separate from `fetch`,
+        /// which reports a status code because a check has to tell a 500 from
+        /// a 200; a download either arrived or it did not, and a body that
+        /// came with an error status is not an archive.
+        var download: (URL, @escaping (Data?) -> Void) -> Void = { url, done in
+            URLSession.shared.dataTask(with: url) { data, response, error in
+                let code = (response as? HTTPURLResponse)?.statusCode ?? 0
+                done(error == nil && (200..<300).contains(code) ? data : nil)
+            }.resume()
+        }
+        /// Whether the only network this Mac has is one somebody pays for by
+        /// the byte, or has asked macOS to go easy on. `NetworkPath` is where
+        /// the argument lives, including why the offer is not gated on it.
+        var onMeteredNetwork: () -> Bool = { NetworkPath.shared.isMetered }
+        /// Whether this Mac can launch the bundle that was downloaded.
+        ///
+        /// The two defaults below are `nonisolated` statics. `Environment` is
+        /// a nested type and so inherits none of this class's isolation, and a
+        /// main-actor function stored in one of its plain closure fields is an
+        /// error under the Swift 6 language mode. Neither reaches any state
+        /// that needs the actor: one reads a downloaded bundle, the other
+        /// spawns a process.
+        var compatibility: (URL) -> SystemRequirements.Verdict = Updater.compatibility(of:)
+        /// Hand the swap to a process that outlives this one, and say whether
+        /// it started. Injected because the real one waits for this pid: run
+        /// from a test it would wait for the test process and then move a
+        /// bundle nobody asked it to.
+        var armSwap: (Staged, Bool) -> Bool = Updater.runSwap
     }
 
     var environment = Environment()
@@ -109,10 +194,11 @@ final class Updater {
     /// and it is here for a sharper reason: `measure.sh` drives the RELEASE
     /// bundle under a throwaway domain, where `autoUpdate` defaults on and the
     /// checkout's `0.0.0` is older than every release. Without this, every
-    /// scripted run would reach the network and then raise a modal into an app
-    /// being driven by synthesized keystrokes, which blocks the run loop and
-    /// fails every check in a way that looks like an editor bug.
+    /// scripted run would reach the network, download a release and replace
+    /// the app being measured.
     private var mayCheck: Bool { environment.mayCheck() }
+
+    // MARK: checking
 
     /// Ask, and say what came back.
     ///
@@ -149,6 +235,16 @@ final class Updater {
                     return
                 }
                 self.available = release
+                // Fetched before anybody is asked, which is the whole of what
+                // the automatic setting now buys: by the time the offer is
+                // answered, or the machine goes quiet, there is nothing left
+                // to wait for. Not for a version already declined, which would
+                // be spending somebody's bandwidth on an answer they gave.
+                if self.environment.autoUpdate(),
+                   !self.environment.onMeteredNetwork(),
+                   UpdatePolicy.shouldOffer(tag: release.tag, declined: self.environment.declined()) {
+                    self.stage(release)
+                }
                 self.onUpdateAvailable?(release.tag)
                 done?(.found(release.tag))
             }
@@ -201,19 +297,37 @@ final class Updater {
         }
     }
 
-    /// Download the release, check it, and stage the swap.
+    // MARK: staging
+
+    /// Download the release, check it, and unpack it. Nothing is replaced.
     ///
-    /// The steps and their reasons are `mac/scripts/update.sh`'s, done here
-    /// so somebody with no checkout can take an update: fetch, verify the
-    /// published checksum, unpack, clear the download quarantine, then hand a
-    /// swap to a script that runs after this process is gone.
+    /// The steps and their reasons are `mac/scripts/update.sh`'s, done here so
+    /// somebody with no checkout can take an update: fetch, verify the
+    /// published checksum, unpack, ask whether this Mac can launch what
+    /// arrived, then clear the download quarantine.
     ///
-    /// `done(true)` means the swap is armed, NOT that it has happened. The
-    /// caller has to quit for it to run.
-    func install(_ release: ReleaseFeed.Release, then done: @escaping (Bool) -> Void) {
-        guard !installing else { return done(false) }
-        installing = true
-        onStatus?("Downloading \(release.tag)…")
+    /// Callers pile up rather than starting a second run: a background stage
+    /// and a confirmed offer are two callers wanting the same bytes, and two
+    /// downloads of the same archive would be the ordinary case rather than
+    /// the rare one.
+    func stage(_ release: ReleaseFeed.Release, then done: ((Staged?) -> Void)? = nil) {
+        if let ready = staged, ready.tag == release.tag {
+            done?(ready)
+            return
+        }
+        // Answered rather than queued. A completion appended to `waiting` when
+        // nothing will ever fire it is a caller that hangs: `install` would
+        // leave its status line owned and never arm or report. Nothing can
+        // reach this today, because every caller checks `armed` first and the
+        // path between is synchronous, but the shape is a trap rather than a
+        // bug and it is cheaper to close than to keep true.
+        guard !armed else {
+            done?(nil)
+            return
+        }
+        if let done { waiting.append(done) }
+        guard !staging else { return }
+        staging = true
         // A release with no checksum is REFUSED rather than installed
         // unverified. The checksum proves the archive arrived intact and
         // nothing about who built it, since both files come from the same
@@ -221,125 +335,295 @@ final class Updater {
         // `docs/NETWORK_POSTURE.md` true as written. The release job attaches
         // it in a step that can fail on its own, so this state is reachable.
         guard let checksumURL = release.checksumURL else {
-            onStatus?("That release published no checksum, so it was not installed.")
-            installing = false
-            return done(false)
+            finish(nil, saying: "That release published no checksum, so it was not installed.")
+            return
         }
-        let session = URLSession.shared
-        session.dataTask(with: release.appURL) { [weak self] data, _, error in
+        say("Downloading \(release.tag)…")
+        environment.download(release.appURL) { [weak self] archive in
             Task { @MainActor in
                 guard let self else { return }
-                guard let data, error == nil else {
-                    self.onStatus?("Could not download the update.")
-                    self.installing = false
-                    return done(false)
+                guard let archive else {
+                    self.finish(nil, saying: "Could not download the update.")
+                    return
                 }
-                session.dataTask(with: checksumURL) { sumData, _, _ in
+                self.environment.download(checksumURL) { sums in
                     Task { @MainActor in
-                        let expected = (String(data: sumData ?? Data(), encoding: .utf8) ?? "")
+                        let expected = (String(data: sums ?? Data(), encoding: .utf8) ?? "")
                             .split(separator: " ").first.map(String.init) ?? ""
-                        let actual = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+                        let actual = SHA256.hash(data: archive).map { String(format: "%02x", $0) }.joined()
                         guard !expected.isEmpty, expected == actual else {
                             // Nothing is written. A mismatch is a download that
                             // did not arrive whole, and installing it anyway is
                             // the one failure worth refusing loudly.
-                            self.onStatus?("The update did not arrive intact. Nothing was installed.")
-                            self.installing = false
-                            return done(false)
+                            self.finish(nil, saying: "The update did not arrive intact. Nothing was installed.")
+                            return
                         }
-                        self.stageSwap(archive: data, release: release, then: done)
+                        self.unpack(archive, release: release)
                     }
-                }.resume()
+                }
             }
-        }.resume()
+        }
     }
 
-    private func stageSwap(archive: Data, release: ReleaseFeed.Release, then done: @escaping (Bool) -> Void) {
-        do {
-            let work = URL(fileURLWithPath: NSTemporaryDirectory())
-                .appendingPathComponent("mac-update-\(UUID().uuidString)")
-            try FileManager.default.createDirectory(at: work, withIntermediateDirectories: true)
-            let zip = work.appendingPathComponent("update.zip")
-            try archive.write(to: zip)
-            let unpacked = work.appendingPathComponent("unpacked")
-            try shell("/usr/bin/ditto", ["-x", "-k", zip.path, unpacked.path])
+    /// Throw away a staged update, and its bytes with it.
+    ///
+    /// Called when the version is declined. A no is an answer about that
+    /// version, so holding its unpacked bundle in the temporary directory is
+    /// keeping tens of megabytes against a question that has been settled.
+    func discardStaged() {
+        guard let spent = staged, !armed else { return }
+        staged = nil
+        try? FileManager.default.removeItem(at: spent.work)
+    }
 
+    /// Unpack the verified archive and take what is in it, or nothing.
+    ///
+    /// `ditto` and `xattr` are run WITHOUT waiting on the thread that called
+    /// this. Blocking was tolerable when the whole path only ran after
+    /// somebody had pressed Restart and the app was about to quit anyway;
+    /// staging now happens on its own while a person may be typing, and an
+    /// unpack that holds the main thread is a freeze they did not ask for.
+    private func unpack(_ archive: Data, release: ReleaseFeed.Release) {
+        let work = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("mac-update-\(UUID().uuidString)")
+        let zip = work.appendingPathComponent("update.zip")
+        let unpacked = work.appendingPathComponent("unpacked")
+        do {
+            try FileManager.default.createDirectory(at: work, withIntermediateDirectories: true)
+            try archive.write(to: zip)
+        } catch {
+            NSLog("Birta Writer: could not write the downloaded update: \(error)")
+            try? FileManager.default.removeItem(at: work)
+            finish(nil, saying: "Could not install the update.")
+            return
+        }
+        run("/usr/bin/ditto", ["-x", "-k", zip.path, unpacked.path]) { [weak self] _ in
+            guard let self else { return }
             let name = "\(AppFlavor.current.displayName).app"
-            let staged = unpacked.appendingPathComponent(name)
-            guard FileManager.default.fileExists(atPath: staged.path) else {
-                onStatus?("The update did not contain \(name).")
-                installing = false
-                return done(false)
+            let bundle = unpacked.appendingPathComponent(name)
+            // The exit status of `ditto` is not what is asked: what matters is
+            // whether the thing being installed is there, and an archive that
+            // unpacked cleanly without it is the same refusal as one that did
+            // not unpack.
+            guard FileManager.default.fileExists(atPath: bundle.path) else {
+                self.abandon(work, saying: "The update did not contain \(name).")
+                return
             }
             // Ask the downloaded bundle whether this Mac can launch it, before
-            // anything replaces the copy that is running. The swap below is
-            // built so a failure never leaves somebody with no app; an update
-            // the machine refuses defeats that from outside, because the move
+            // anything replaces the copy that is running. The swap is built so
+            // a failure never leaves somebody with no app; an update the
+            // machine refuses defeats that from outside, because the move
             // succeeds and macOS only says no afterwards, with the working
             // copy already gone. This is the one place the question can be
             // asked, and the bundle is what answers it, so a release that
             // raises the floor is judged against its own number.
-            let verdict = compatibility(of: staged)
-            if let refusal = SystemRequirements.refusal(verdict, productName: AppFlavor.current.displayName) {
-                onStatus?(refusal)
-                installing = false
-                return done(false)
+            let verdict = self.environment.compatibility(bundle)
+            if let refusal = SystemRequirements.refusal(
+                verdict, productName: AppFlavor.current.displayName) {
+                self.abandon(work, saying: refusal)
+                return
             }
             // Ad-hoc signed, so Gatekeeper cannot attribute it to anyone and
             // would refuse to open it at all. Same trade `update.sh` makes,
             // and its header is where the argument lives.
-            _ = try? shell("/usr/bin/xattr", ["-dr", "com.apple.quarantine", staged.path])
-
-            // The swap happens AFTER this process is gone: an app cannot
-            // reliably replace the bundle it is executing out of. A small
-            // script waits for the pid, then does the move `install-app.sh`
-            // argues for: stage beside the destination, keep the old one until
-            // the new one is in place, and put it back if the move fails.
-            // Deleting first leaves a window where a failure means no app at
-            // all, which is worse than either version of it.
-            //
-            // The paths are ARGUMENTS, not interpolated text. A bundle is
-            // user-renameable, and `$(…)` still expands inside double quotes
-            // in a `sh -c` string.
-            let script = """
-            while kill -0 \(getpid()) 2>/dev/null; do sleep 0.2; done
-            staged="$1"; dest="$2"; work="$3"
-            # Refuse rather than build a path out of nothing. Every `rm -rf`
-            # below is rooted at "$dest", so an empty one turns them into
-            # relative deletes in whatever directory this happens to inherit.
-            [ -n "$staged" ] && [ -n "$dest" ] && [ -n "$work" ] || exit 1
-            [ -d "$staged" ] || exit 1
-            # Every failure below puts the app back on screen and takes its
-            # own litter with it. This runs AFTER the app has quit, so a bare
-            # exit leaves the user with no app, no message, and a part-written
-            # bundle beside the one that should be there.
-            give_up() {
-                rm -rf "$dest.incoming" "$work"
-                [ -d "$dest" ] || { [ -d "$dest.previous" ] && mv "$dest.previous" "$dest"; }
-                rm -rf "$dest.previous"
-                [ -d "$dest" ] && /usr/bin/open "$dest"
-                exit 1
+            self.run("/usr/bin/xattr", ["-dr", "com.apple.quarantine", bundle.path]) { _ in
+                self.finish(Staged(tag: release.tag, bundle: bundle, work: work), saying: nil)
             }
-            rm -rf "$dest.incoming" "$dest.previous"
-            /usr/bin/ditto "$staged" "$dest.incoming" || give_up
-            if [ -d "$dest" ]; then mv "$dest" "$dest.previous" || give_up; fi
-            mv "$dest.incoming" "$dest" || give_up
-            rm -rf "$dest.previous" "$work"
-            /usr/bin/open "$dest"
-            """
-            let swap = Process()
-            swap.executableURL = URL(fileURLWithPath: "/bin/sh")
-            swap.arguments = ["-c", script, "--", staged.path, Bundle.main.bundleURL.path, work.path]
-            try swap.run()
-            onStatus?("Installing \(release.tag)…")
-            done(true)
-        } catch {
-            NSLog("Birta Writer: update failed: \(error)")
-            onStatus?("Could not install the update.")
-            installing = false
-            done(false)
         }
     }
+
+    /// Give up on a staging run and take its litter with it.
+    private func abandon(_ work: URL, saying message: String) {
+        try? FileManager.default.removeItem(at: work)
+        finish(nil, saying: message)
+    }
+
+    /// End the run in flight and answer everybody waiting on it.
+    ///
+    /// A run REPLACES whatever was staged before it, and takes the superseded
+    /// bundle's bytes with it. Without that, a release that lands while an
+    /// older one is staged leaves the older one unpacked in the temporary
+    /// directory with nothing pointing at it, and a run that fails after one
+    /// succeeded does the same. It never runs after the swap is armed, because
+    /// nothing can start a run then: the staged bundle is what the script
+    /// waiting on this pid is about to move.
+    private func finish(_ result: Staged?, saying message: String?) {
+        staging = false
+        if let previous = staged, previous != result {
+            try? FileManager.default.removeItem(at: previous.work)
+        }
+        staged = result
+        if let message { say(message) }
+        let waiters = waiting
+        waiting = []
+        waiters.forEach { $0(result) }
+    }
+
+    /// Say something, but only where somebody is watching for it.
+    ///
+    /// The log is not a lesser channel here, it is the right one: a background
+    /// run was not asked for, and its failures are for whoever is reading a
+    /// log rather than for a person who did nothing and can do nothing about
+    /// it. The same run announces the moment somebody confirms the offer,
+    /// because then every line of it is the answer to a button they pressed.
+    private func say(_ message: String) {
+        guard announcing else {
+            NSLog("Birta Writer: \(message)")
+            return
+        }
+        onStatus?(message)
+    }
+
+    // MARK: installing
+
+    /// Stage if it is not staged already, then arm the swap.
+    ///
+    /// `done(true)` means the swap is armed, NOT that it has happened. The
+    /// caller has to quit for it to run.
+    func install(_ release: ReleaseFeed.Release, then done: @escaping (Bool) -> Void) {
+        guard !armed else { return done(false) }
+        // Somebody pressed a button, so the status line is theirs to be
+        // answered on, including for a background run that was already going
+        // when they pressed it. Cleared on every way out of the completion
+        // below, which is the only place that can restore it: a run started
+        // here may finish long after this method has returned.
+        announcing = true
+        stage(release) { [weak self] staged in
+            guard let self else { return done(false) }
+            defer { self.announcing = false }
+            guard staged != nil else { return done(false) }
+            done(self.armStagedSwap(inBackground: false))
+        }
+    }
+
+    /// Hand the staged swap to a process that outlives this one.
+    ///
+    /// Answers whether the script STARTED, never whether the swap worked: it
+    /// waits for this process to go, so by the time it does anything there is
+    /// nobody here to be told. What the caller owes a true is a quit.
+    ///
+    /// `inBackground` is how the app comes back afterwards. A swap somebody
+    /// asked for reopens in front of them, which is where they were looking. A
+    /// swap that went in because nobody was there must not take the front from
+    /// whatever they left running, so it reopens without activating: the whole
+    /// claim of the unattended path is that a person who walks away and comes
+    /// back finds their machine as they left it.
+    @discardableResult
+    func armStagedSwap(inBackground: Bool) -> Bool {
+        guard !armed, let staged else { return false }
+        guard environment.armSwap(staged, inBackground) else {
+            say("Could not install the update.")
+            return false
+        }
+        armed = true
+        if !inBackground { onStatus?("Installing \(staged.tag)…") }
+        return true
+    }
+
+    /// The swap itself: a script that waits for this pid, then replaces the
+    /// bundle this process is running out of.
+    ///
+    /// A static rather than a method because it is the injectable half of
+    /// `Environment.armSwap` and reaches none of this type's state.
+    private nonisolated static func runSwap(_ staged: Staged, inBackground: Bool) -> Bool {
+        // The swap happens AFTER this process is gone: an app cannot
+        // reliably replace the bundle it is executing out of. A small
+        // script waits for the pid, then does the move `install-app.sh`
+        // argues for: stage beside the destination, keep the old one until
+        // the new one is in place, and put it back if the move fails.
+        // Deleting first leaves a window where a failure means no app at
+        // all, which is worse than either version of it.
+        //
+        // The paths are ARGUMENTS, not interpolated text. A bundle is
+        // user-renameable, and `$(…)` still expands inside double quotes
+        // in a `sh -c` string.
+        let script = """
+        while kill -0 \(getpid()) 2>/dev/null; do sleep 0.2; done
+        staged="$1"; dest="$2"; work="$3"; background="$4"
+        # Refuse rather than build a path out of nothing. Every `rm -rf`
+        # below is rooted at "$dest", so an empty one turns them into
+        # relative deletes in whatever directory this happens to inherit.
+        [ -n "$staged" ] && [ -n "$dest" ] && [ -n "$work" ] || exit 1
+        [ -d "$staged" ] || exit 1
+        # An unattended swap reopens WITHOUT taking the front. The person is
+        # somewhere else, or away from the machine entirely, and an app that
+        # activates itself while nobody asked is exactly the interruption the
+        # unattended path exists not to be.
+        reopen() {
+            [ -d "$dest" ] || return 0
+            if [ "$background" = "background" ]; then
+                /usr/bin/open -g "$dest"
+            else
+                /usr/bin/open "$dest"
+            fi
+        }
+        # Every failure below puts the app back on screen and takes its
+        # own litter with it. This runs AFTER the app has quit, so a bare
+        # exit leaves the user with no app, no message, and a part-written
+        # bundle beside the one that should be there.
+        give_up() {
+            rm -rf "$dest.incoming" "$work"
+            [ -d "$dest" ] || { [ -d "$dest.previous" ] && mv "$dest.previous" "$dest"; }
+            rm -rf "$dest.previous"
+            reopen
+            exit 1
+        }
+        rm -rf "$dest.incoming" "$dest.previous"
+        /usr/bin/ditto "$staged" "$dest.incoming" || give_up
+        if [ -d "$dest" ]; then mv "$dest" "$dest.previous" || give_up; fi
+        mv "$dest.incoming" "$dest" || give_up
+        rm -rf "$dest.previous" "$work"
+        reopen
+        """
+        let swap = Process()
+        swap.executableURL = URL(fileURLWithPath: "/bin/sh")
+        swap.arguments = ["-c", script, "--",
+                          staged.bundle.path,
+                          Bundle.main.bundleURL.path,
+                          staged.work.path,
+                          inBackground ? "background" : "front"]
+        do {
+            try swap.run()
+            return true
+        } catch {
+            NSLog("Birta Writer: could not arm the update swap: \(error)")
+            return false
+        }
+    }
+
+    // MARK: reading the machine
+
+    /// How long since this Mac last saw any input at all.
+    ///
+    /// Asked of the window server rather than of this app, and that is the
+    /// whole point: the app is a menu-bar scratchpad that spends most of its
+    /// life hidden, so its own idea of idleness would report nearly every
+    /// session as unattended. `combinedSessionState` counts the login
+    /// session's own events, so a second person on a fast-user-switched
+    /// account is not idleness here.
+    ///
+    /// Answers zero when the source cannot be read, which reads as "somebody
+    /// just touched it" and refuses the swap. Every unreadable answer on this
+    /// path is biased the same way: a refusal costs a day, and a wrong go
+    /// ahead costs somebody the app they were typing into.
+    static func systemIdleSeconds() -> TimeInterval {
+        guard let any = anyInputEvent else { return 0 }
+        let idle = CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: any)
+        return idle.isFinite && idle > 0 ? idle : 0
+    }
+
+    /// The event type the read above asks about: `kCGAnyInputEventType`, which
+    /// is a key, a click, a scroll or the pointer moving at all.
+    ///
+    /// Its own constant because the whole unattended path hangs on it
+    /// resolving and a nil here would be INVISIBLE. `CGEventType` is a C enum,
+    /// `init?(rawValue:)` on one answers nil for a value it does not declare,
+    /// and this value is deliberately outside the declared set. Were it to
+    /// answer nil, `systemIdleSeconds` would report zero forever, no swap
+    /// would ever go in, and every test in the suite would stay green.
+    /// `UpdaterTests` asserts it resolves, which is the only thing that can
+    /// tell that state from a machine somebody is using.
+    static let anyInputEvent = CGEventType(rawValue: ~0)
 
     /// What a downloaded bundle says about the machines it can run on.
     ///
@@ -352,7 +636,7 @@ final class Updater {
     /// `.unreadable`, which refuses. That is the same bias as the rest of this
     /// path: a refusal costs a version, and an install that will not open
     /// costs the app.
-    private func compatibility(of bundle: URL) -> SystemRequirements.Verdict {
+    private nonisolated static func compatibility(of bundle: URL) -> SystemRequirements.Verdict {
         let plist = bundle.appendingPathComponent("Contents/Info.plist")
         var declaredMinimum: String?
         var executable: String?
@@ -378,7 +662,7 @@ final class Updater {
             declaredMinimum: declaredMinimum,
             builtFor: built,
             running: running,
-            machine: Self.machineName())
+            machine: machineName())
     }
 
     /// What this Mac calls its own architecture, as `uname -m` reports it.
@@ -387,7 +671,7 @@ final class Updater {
     /// over a rebound pointer: `machine` is a fixed 256-byte tuple, and
     /// rebinding it while also asking its size is two accesses to the same
     /// storage in one expression.
-    private static func machineName() -> String {
+    private nonisolated static func machineName() -> String {
         var info = utsname()
         guard uname(&info) == 0 else { return "" }
         let bytes = withUnsafeBytes(of: &info.machine) { raw in
@@ -396,13 +680,24 @@ final class Updater {
         return String(decoding: bytes, as: UTF8.self)
     }
 
-    @discardableResult
-    private func shell(_ tool: String, _ arguments: [String]) throws -> Int32 {
+    /// Run a tool and call back when it exits, without holding the thread.
+    ///
+    /// The callback lands on the main actor, which is where every caller here
+    /// lives; `terminationHandler` fires on a queue of Foundation's choosing.
+    private func run(_ tool: String, _ arguments: [String],
+                     then done: @escaping (Bool) -> Void) {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: tool)
         process.arguments = arguments
-        try process.run()
-        process.waitUntilExit()
-        return process.terminationStatus
+        process.terminationHandler = { finished in
+            let ok = finished.terminationStatus == 0
+            Task { @MainActor in done(ok) }
+        }
+        do {
+            try process.run()
+        } catch {
+            NSLog("Birta Writer: could not run \(tool): \(error)")
+            done(false)
+        }
     }
 }

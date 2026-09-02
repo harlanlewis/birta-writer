@@ -15,8 +15,8 @@ import XCTest
 final class UpdatePromptTests: XCTestCase {
     override func setUp() { super.setUp(); _ = NSApplication.shared }
 
-    private func offer(hasUnwrittenBytes: Bool = false) -> UpdatePrompt.Offer {
-        UpdatePrompt.build(tag: "v2026.826.0", hasUnwrittenBytes: hasUnwrittenBytes)
+    private func offer(hasUnwrittenBytes: Bool = false, staged: Bool = false) -> UpdatePrompt.Offer {
+        UpdatePrompt.build(tag: "v2026.826.0", hasUnwrittenBytes: hasUnwrittenBytes, staged: staged)
     }
 
     func testAFreshOfferShouldHaveNeitherButtonLiveAndNeitherKeyBound() {
@@ -138,7 +138,8 @@ final class UpdatePromptTests: XCTestCase {
         let built = offer(hasUnwrittenBytes: true)
 
         let said = built.alert.informativeText
-        XCTAssertTrue(said.contains(UpdatePolicy.detail(hasUnwrittenBytes: true)), said)
+        XCTAssertTrue(said.contains(UpdatePolicy.detail(hasUnwrittenBytes: true, staged: false)),
+                      said)
         XCTAssertTrue(said.contains(UpdatePolicy.armingNote), said)
         XCTAssertTrue(said.hasSuffix(UpdatePolicy.armingNote),
                       "the reason for the wait comes after what the update does")
@@ -148,5 +149,18 @@ final class UpdatePromptTests: XCTestCase {
         XCTAssertEqual(offer().alert.messageText,
                        UpdatePolicy.title(appName: AppFlavor.current.displayName,
                                           tag: "v2026.826.0"))
+    }
+
+    /// The sheet carries what was true when it was BUILT, and the two builds
+    /// have to differ. With automatic updates on, the download is already
+    /// running by the time this appears, so a sheet that could only say one of
+    /// the two things would be wrong for whichever case it was not written
+    /// for.
+    func testTheOfferShouldSayWhetherTheUpdateHasAlreadyArrived() {
+        let coming = offer(staged: false).alert.informativeText
+        let here = offer(staged: true).alert.informativeText
+        XCTAssertNotEqual(coming, here)
+        XCTAssertTrue(here.contains(UpdatePolicy.detail(hasUnwrittenBytes: false, staged: true)),
+                      here)
     }
 }

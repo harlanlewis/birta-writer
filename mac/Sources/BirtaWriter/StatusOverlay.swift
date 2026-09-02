@@ -18,6 +18,11 @@ import AppKit
 /// message says what just happened, waits, and goes. Anything the user might
 /// want to ACT on belongs in the menu bar, where a person looks for it.
 ///
+/// The one message that cannot live under that rule has its own view rather
+/// than a mode of this one. `UpdateNotice` reports a swap that happened while
+/// the person was elsewhere, so it has to survive not being read at the moment
+/// it appeared; its header is where the contrast is argued.
+///
 /// ## Legible without a frame
 ///
 /// The message has no card, no border and no pill, and it must stay that way:

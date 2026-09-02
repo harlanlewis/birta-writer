@@ -79,8 +79,9 @@ public struct RowAvailability: Sendable, Equatable {
     /// that means something is withheld.
     public static func autoUpdate(updatesItself: Bool) -> RowAvailability {
         updatesItself
-            ? .available("Asks the project's own release page what the newest version is. "
-                         + "Installing is always a click.")
+            ? .available("Asks the project's own release page what the newest version is, "
+                         + "downloads it in the background, and puts it in while you are away "
+                         + "from the app. If you are using it, it asks first.")
             : .blocked("A development build does not replace itself.")
     }
 

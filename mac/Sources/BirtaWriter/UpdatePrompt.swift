@@ -122,10 +122,17 @@ enum UpdatePrompt {
     }
 
     /// The offer itself, built rather than presented.
-    static func build(tag: String, hasUnwrittenBytes: Bool) -> Offer {
+    ///
+    /// `staged` is asked at BUILD time and not stored anywhere, because with
+    /// automatic updates on the download is already running when this is put
+    /// up and may finish while it is on screen. Read once, here, the sentence
+    /// is true when it is written; carried as state it would be a claim the
+    /// sheet keeps making after it stopped holding.
+    static func build(tag: String, hasUnwrittenBytes: Bool, staged: Bool) -> Offer {
         let alert = NSAlert()
         alert.messageText = UpdatePolicy.title(appName: AppFlavor.current.displayName, tag: tag)
-        alert.informativeText = UpdatePolicy.detail(hasUnwrittenBytes: hasUnwrittenBytes)
+        alert.informativeText = UpdatePolicy.detail(hasUnwrittenBytes: hasUnwrittenBytes,
+                                                    staged: staged)
             + "\n\n" + UpdatePolicy.armingNote
         alert.alertStyle = .informational
         let confirm = alert.addButton(
@@ -142,10 +149,11 @@ enum UpdatePrompt {
     /// about what is going to happen rather than a difference in what happens.
     static func present(tag: String,
                         hasUnwrittenBytes: Bool,
+                        staged: Bool,
                         on window: NSWindow,
                         armAfter delay: TimeInterval = UpdatePolicy.armingDelay,
                         then answer: @escaping (Answer) -> Void) {
-        let offer = build(tag: tag, hasUnwrittenBytes: hasUnwrittenBytes)
+        let offer = build(tag: tag, hasUnwrittenBytes: hasUnwrittenBytes, staged: staged)
         // The whole count goes on the button BEFORE the sheet is laid out, so
         // the widest title it will ever hold is the one it is sized for and
         // every later one fits the frame it was given.

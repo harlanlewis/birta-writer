@@ -12,7 +12,17 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ## [Unreleased]
 
+### Changed
+
+- With Automatically update on, Birta Writer for Mac now takes an update on its own. It downloads and checks the new version as soon as it finds one, instead of waiting for you to confirm a sheet, and it puts it in while nobody is using the app: no window on screen, nothing unsaved, no `/ai` run going, and no input on the machine for five minutes. The app reopens without taking the front, so coming back to your Mac finds the application you left in front of you still there.
+
+  It does not download over a connection you pay for by the byte: cellular, a personal hotspot, or Low Data Mode all hold the background download off, while the check still runs and the offer still appears. Pressing Restart in that offer downloads whatever the connection is, because that is you asking.
+
+  When you are using the app the offer still asks, and it now restarts into a version that has already arrived. Declining one still means that version is not raised again until a newer one exists, and now also means it is not put in behind you and its download is thrown away. Turning Automatically update off leaves nothing checked and nothing downloaded, with Check Now the only way in.
+
 ### Added
+
+- A notice in the panel after an update went in on its own, naming the version. It stays until you close it, rather than fading like the app's other messages: the panel is hidden most of the time, so a message that faded would be spent on a screen nobody was looking at.
 
 - A Markdown pane in Settings, holding the syntax targets Birta Writer for Mac writes for: GitHub, Obsidian, Pandoc, and Birta Writer's own. All four ship on. Turning one off withdraws the rows that write its syntax from the Format menu, with their keyboard shortcuts, and from the toolbar and menus in every open note, so the menu bar and the windows under it offer one answer rather than two. CommonMark is always available and is not in the list, because every target includes it; turn all four off to write CommonMark alone.
 
