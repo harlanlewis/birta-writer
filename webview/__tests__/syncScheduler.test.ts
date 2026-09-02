@@ -66,11 +66,30 @@ describe("createSyncScheduler", () => {
         });
     });
 
-    it("the first edit after a lull should sync on the leading edge (delay ~0)", () => {
+    it("the first edit on a clean document should sync on the leading edge (delay ~0)", () => {
         scheduler.request();
         expect(onSync).not.toHaveBeenCalled(); // async, even at delay 0
         clock.advance(1);
         expect(onSync).toHaveBeenCalledTimes(1);
+    });
+
+    it("the first edit after a lull on an already-dirty document should take the trailing path, not a leading edge", () => {
+        // Dirty the document: one leading sync, long since ended.
+        scheduler.request();
+        clock.advance(1);
+        expect(onSync).toHaveBeenCalledTimes(1);
+        clock.advance(5000); // a lull far past idleMs, and nothing was saved
+
+        scheduler.request();
+        clock.advance(1);
+        // A leading edge here would serialize the whole document on the frame
+        // of the keystroke that ends every pause; the document is already
+        // dirty, so a save can see the edit without it.
+        expect(onSync).toHaveBeenCalledTimes(1);
+        clock.advance(298);
+        expect(onSync).toHaveBeenCalledTimes(1);
+        clock.advance(1);
+        expect(onSync).toHaveBeenCalledTimes(2); // the trailing debounce, at idleMs
     });
 
     it("a fast follow-up edit must NOT push out the pending leading-edge sync", () => {
@@ -103,14 +122,14 @@ describe("createSyncScheduler", () => {
     });
 
     /**
-     * The leading edge asks "has it been quiet for idleMs", and the reference it
-     * measures from must be when the last sync ENDED. Stamped at the START, a
-     * sync that itself costs more than idleMs makes the very next keystroke look
-     * like a fresh lull: every edit re-fires a leading edge, the trailing
-     * debounce and the max-wait cap are never reached, and the cost per
-     * keystroke becomes the cost of a whole sync. The loop is self-sustaining,
-     * and it tightens as the document grows — measured on a 765 KB file, 30
-     * keystrokes produced 29 whole-document syncs.
+     * The leading edge is spent by a fire and restored by a save, never by the
+     * clock. A scheduler that re-arms it from a timestamp gets this wrong the
+     * moment one sync costs more than idleMs: every keystroke then reads as a
+     * fresh lull, every edit re-fires a whole-document sync, and the trailing
+     * debounce and the max-wait cap are never reached. That loop is
+     * self-sustaining and tightens as the document grows; on a heavy fixture
+     * it once produced a sync per keystroke. A slow sync is the input that
+     * tells a clock-driven leading edge from the contract.
      */
     it("a sync costing longer than idleMs should not make the next edit a fresh leading edge", () => {
         const SYNC_MS = 500; // > idleMs
@@ -140,15 +159,12 @@ describe("createSyncScheduler", () => {
     });
 
     /**
-     * A request raised from INSIDE a sync is the one case a timestamp cannot
-     * cover, and it is the same defect one level down. The leading edge's
-     * reference is not advanced until the sync returns, so a plugin that
-     * dispatches in response to the doc change reads a gap equal to the running
-     * sync's own duration. On a document where that duration exceeds idleMs,
-     * which is the whole subject of the case above, it reads as a fresh lull
-     * and arms a second whole-document sync at delay 0, inside the one already
-     * running. Nothing in the editor dispatches from `syncNow` today; this is
-     * the guard that keeps the next plugin that does from reopening the loop.
+     * A request raised from INSIDE a sync must find the leading edge already
+     * spent: a plugin that dispatches in response to the doc change would
+     * otherwise arm a second whole-document sync at delay 0, inside the one
+     * already running. That is why the edge is spent before the fire and not
+     * after it. Nothing in the editor dispatches from `syncNow` today; this is
+     * the guard that keeps the next plugin that does from opening the loop.
      */
     it("a request raised from inside a slow sync should not arm a second leading edge", () => {
         const SYNC_MS = 500; // > idleMs, which is what makes the stale gap look like a lull
@@ -194,7 +210,7 @@ describe("createSyncScheduler", () => {
     });
 
     it("after reset() (a save flush), the very next edit should sync on the leading edge again", () => {
-        // Prior activity leaves lastSyncMs set to ~now.
+        // Prior activity spends the leading edge.
         scheduler.request();
         clock.advance(1);
         expect(onSync).toHaveBeenCalledTimes(1);

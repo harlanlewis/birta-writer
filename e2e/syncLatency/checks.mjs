@@ -59,10 +59,29 @@ export async function run({ page, check, baseUrl }) {
     check("the first update carries the typed character",
         shipped.includes("X"), JSON.stringify(shipped));
 
-    // ── A second lull → the leading edge re-arms (not stuck in trailing) ──
+    // ── A second lull on the now-dirty document → the trailing path ──
+    // The leading edge is for a CLEAN document. Once dirty, a save flushes the
+    // live editor whatever the document holds, so an immediate sync buys
+    // nothing a save can see and costs a whole-document serialize on the
+    // frame of the keystroke that ends every pause. The edit lands on the
+    // trailing debounce instead: past idleMs (300 ms), inside the max-wait.
     const second = await measureFirstEditLatency(page);
-    check(`leading edge re-arms after a lull (${second.toFixed(0)}ms)`,
-        second < 50, `${second.toFixed(0)}ms — expected < 50ms`);
+    check(`a lull on a dirty document takes the trailing path (${second.toFixed(0)}ms)`,
+        second >= 250 && second < 1200, `${second.toFixed(0)}ms — expected 250–1200ms (idleMs 300, not a leading edge)`);
+
+    // ── A save flush restores the leading edge ──
+    // The flush is what a save runs through the webview, and its reply is
+    // what returns the scheduler to the leading-ready posture; the next edit
+    // after it must dirty the document within an IPC hop again.
+    await page.evaluate(() => { window.postMessage({ type: "flushSave", id: "after-second" }, "*"); });
+    await page.waitForFunction(
+        () => window.__posted.some((m) => m.type === "flushResult" || m.type === "saveFlushed" || m.type === "flushSaveResult"),
+        undefined,
+        { timeout: 5000 },
+    ).catch(() => {});
+    const third = await measureFirstEditLatency(page);
+    check(`the first edit after a save flush is a leading edge again (${third.toFixed(0)}ms)`,
+        third < 50, `${third.toFixed(0)}ms — expected < 50ms`);
 
     // ── Invariant #3: continuous typing keeps syncing, bounded by maxWaitMs ──
     // The crash-safety window: during genuinely continuous typing (never an
@@ -71,11 +90,13 @@ export async function run({ page, check, baseUrl }) {
     // debounce upstream of the scheduler starved this completely: it reset on
     // every keystroke, so request() was never called and the cap never engaged.
     //
-    // The assertion must be on the SECOND update. The first is the leading edge
-    // firing at burst start (~2ms), which says nothing about max-wait — an
-    // earlier version of this check asserted `first < 2500ms` and passed with
-    // maxWaitMs set to infinity. Real keystrokes (not execCommand) so the burst
-    // sets _hasUserInteracted itself rather than depending on a prior check.
+    // The document is dirty by now, so the burst's FIRST update is the max-wait
+    // sync: there is no leading edge at burst start to mistake for it. The
+    // window is two-sided on purpose; an earlier version asserted only an
+    // upper bound and passed with maxWaitMs set to infinity, because the
+    // leading edge of the day satisfied it. Real keystrokes (not execCommand)
+    // so the burst sets _hasUserInteracted itself rather than depending on a
+    // prior check.
     await page.evaluate(() => { window.__posted.length = 0; });
     await page.waitForTimeout(400);
     await page.evaluate(() => { window.__burstStart = performance.now(); });
@@ -87,9 +108,9 @@ export async function run({ page, check, baseUrl }) {
             .map((m) => m.__t - window.__burstStart));
 
     check("continuous typing keeps syncing — the max-wait cap fires mid-burst",
-        times.length >= 2,
+        times.length >= 1,
         `${times.length} update(s) across a 3s burst: [${times.map((t) => t.toFixed(0)).join(", ")}]`);
-    check(`the max-wait sync lands within the cap (${times[1]?.toFixed(0) ?? "n/a"}ms)`,
-        times[1] !== undefined && times[1] > 1000 && times[1] < 2600,
-        `expected the 2nd update in 1000–2600ms (maxWaitMs=2000), got ${times[1]?.toFixed(0) ?? "none"}`);
+    check(`the max-wait sync lands within the cap (${times[0]?.toFixed(0) ?? "n/a"}ms)`,
+        times[0] !== undefined && times[0] > 1000 && times[0] < 2600,
+        `expected the first update in 1000–2600ms (maxWaitMs=2000, no leading edge on a dirty document), got ${times[0]?.toFixed(0) ?? "none"}`);
 }

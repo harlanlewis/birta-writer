@@ -19,6 +19,7 @@ import {
     getHeadingText,
     findHeadingPos,
     SAFE_AREA_CHANGE_EVENT,
+    setStickyReservedHeight,
 } from "../utils/headingUtils";
 
 const HEADING_STICKY_ACTIVE_CHANGE_EVENT = "heading-sticky-active-change";
@@ -355,19 +356,34 @@ export const headingStickyPlugin = $prose(() =>
             let rafId: number | null = null;
             let activeHeading: HTMLElement | null = null;
             let activeHeadingPos: number | null = null;
+            // The bar's box height as last measured, on the frame its content
+            // was set; read on every frame after that without touching layout.
+            let stickyHeight = 0;
 
             /**
-             * Publish how much the bar actually covers, so CSS can reserve it.
+             * Publish how much the bar covers, so CSS can reserve it.
              *
              * The bar is fixed and opaque and paints OVER the content column,
              * so any chrome that can pin itself inside that column has to
              * clear it as well as the topbar — a code block's language pill
              * (codeBlock.css) and the block control strip's pinned stack
              * (blockControls.css: nesting in a quote/callout insets the strip
-             * into the column) both reserve it. What is published is the PAINTED
-             * extent below the topbar, not the box height: the bar slides up
-             * under the next heading, and a reservation that ignored that would
-             * push chrome down to clear a band nothing is drawn in.
+             * into the column) both reserve it.
+             *
+             * What is published is the TALLEST bar shown since it last hid,
+             * and 0 while it is hidden; neither the slide under the next
+             * heading nor the box of the bar on screen. A custom property on
+             * <html> inherits everywhere, so every publish that changes the
+             * value restyles the whole document, a cost that scales with the
+             * document and lands on the frame that wrote it. The slide changes
+             * on every frame for a bar's height of scroll under every heading
+             * passed, and the box changes with the level of every heading the
+             * bar mirrors; published exactly, either put that restyle on the
+             * scroll at every heading of a long document, which is the stall
+             * `pnpm perf:scroll` counts. What the reservation loses is a
+             * strip of slack under a shorter heading's bar, and a few frames
+             * per heading in which pinned chrome clears a band the bar has
+             * already slid out of.
              *
              * Guarded so scroll frames that change nothing write nothing, and
              * a change is announced on `window`: chrome that MEASURES the safe
@@ -387,11 +403,14 @@ export const headingStickyPlugin = $prose(() =>
              */
             let publishedHeight = 0;
             const publishHeight = (px: number): void => {
-                const height = Math.max(0, px);
+                // 0 is a hide and resets the high-water mark; anything else
+                // only ever raises it.
+                const height = px <= 0 ? 0 : Math.max(px, publishedHeight);
                 if (height === publishedHeight) {
                     return;
                 }
                 publishedHeight = height;
+                setStickyReservedHeight(height);
                 document.documentElement.style.setProperty(
                     "--editor-sticky-heading-height",
                     `${height}px`,
@@ -522,10 +541,12 @@ export const headingStickyPlugin = $prose(() =>
                 const foldable = stickyHeadingFoldable(view.state, headingPos);
                 const collapsed = foldState?.folded.has(headingPos) ?? false;
                 const rect = heading.getBoundingClientRect();
-                // Measured with the reads above and applied with the writes
-                // below: it asks the panel for its box, so taken after the
-                // writes it would force a second layout on every frame of a
-                // scroll.
+                const nextHeading = headings[activeIndex + 1] ?? null;
+                // Every read the frame needs, taken before its first write:
+                // the panel's box for the clip and the next heading's top for
+                // the slide. A read after the writes below forces a second
+                // layout on every frame of a scroll.
+                const nextTop = nextHeading?.getBoundingClientRect().top ?? Number.POSITIVE_INFINITY;
                 const clip = stickyClip(rect);
                 sticky.hidden = false;
                 sticky.dataset["headingPos"] = String(headingPos);
@@ -548,19 +569,24 @@ export const headingStickyPlugin = $prose(() =>
                     sticky.dataset["trail"] = trail;
                     syncStickyTypography(sticky, heading);
                     setStickyContent(sticky, view, heading, headingPos, collapsed, foldable, ancestors);
+                    // The bar's height depends on its content and typography
+                    // alone, both set just above, so this is the one frame it
+                    // has to be measured on. The read follows a write and
+                    // forces a layout; on every other frame the remembered
+                    // value stands and the frame ends with writes only.
+                    stickyHeight = sticky.getBoundingClientRect().height;
                 }
 
-                const nextHeading = headings[activeIndex + 1] ?? null;
-                const stickyHeight = sticky.getBoundingClientRect().height;
-                const nextTop = nextHeading?.getBoundingClientRect().top ?? Number.POSITIVE_INFINITY;
                 const offset = Math.min(0, nextTop - top - stickyHeight);
                 sticky.style.transform = `translateY(${offset}px)`;
-                // Publish ONCE, after the slide offset is known: the published
-                // value is the painted extent, and each publish that changes
-                // it is a root-level write that restyles the whole document,
-                // so an intermediate pre-offset publish would double that cost
-                // on every frame of the slide-under transition.
-                publishHeight(stickyHeight + offset);
+                // The RESTING extent, never the slid one. Each publish that
+                // changes the value restyles the whole document (the note on
+                // `publishHeight`), and the slide changes every frame for a
+                // bar's height of scroll under every heading passed, so
+                // publishing it put that restyle on every one of those frames.
+                // What the reservation loses is a few frames per heading in
+                // which pinned chrome clears a band the bar has already left.
+                publishHeight(stickyHeight);
             };
 
             const scheduleUpdate = () => {

@@ -25,10 +25,24 @@
  * cost the full timeout on that side (the same ADR that keeps the launch A/B
  * from waiting on post-paint marks).
  *
+ * The `stall` column is the engine-neutral twin of `block`: a rAF loop runs
+ * through the burst and sums every frame gap of 50 ms or more, so a main
+ * thread held past that reads the same whether or not the engine reports
+ * long tasks. WebKit reports none, and the Mac app renders in WebKit
+ * (`BIRTA_E2E_BROWSER=webkit`, as for the e2e sweep), so on that engine
+ * `block` is `n/a` and `stall` is the reading.
+ *
+ * `--key-delay` sets the burst's cadence. The default is fast enough that the
+ * sync scheduler's trailing window never opens mid-burst, which measures the
+ * keystroke alone; a cadence past the scheduler's idle window measures the
+ * keystroke that follows a pause, which is what a writer types most of.
+ *
  * Usage:
  *   pnpm build && pnpm perf:typing               # all fixtures, table output
  *   node e2e/perf-typing.mjs large               # one fixture
  *   node e2e/perf-typing.mjs --keys 120 --json after.json
+ *   node e2e/perf-typing.mjs huge-outline --key-delay 400 --keys 30
+ *   BIRTA_E2E_BROWSER=webkit node e2e/perf-typing.mjs huge-outline
  *   node e2e/perf-typing.mjs --compare before.json after.json  # A/B, no browser
  *   node e2e/perf-typing.mjs --ab dist-base dist-head           # interleaved A/B
  *
@@ -58,6 +72,24 @@ acquireHarnessLock("perf:typing");
 // Plain prose, no characters that trigger input rules ([, ^, #, *, `, $...),
 // so every keystroke measures the same "insert one character" transaction.
 const TYPING_TEXT = "The quick brown fox jumps over the lazy dog and keeps going ";
+
+// The default cadence, in ms between keystrokes. Below the sync scheduler's
+// idle window on purpose (webview/syncScheduler.ts), so the burst measures
+// the keystroke and not the sync a pause buys.
+const KEY_DELAY_DEFAULT = 30;
+
+// A frame gap this long or longer counts toward `stall`: the same floor the
+// longtask observer uses for `block`, so the two read alike where both exist.
+const STALL_FRAME_MS = 50;
+
+// The engine. The gates run Chromium; the Mac app renders in WebKit, and a
+// per-keystroke cost can differ by engine (forced layout above all), so the
+// same env the e2e sweep reads selects it here.
+const BROWSER = process.env.BIRTA_E2E_BROWSER || "chromium";
+if (BROWSER !== "chromium" && BROWSER !== "webkit") {
+    console.error(`BIRTA_E2E_BROWSER must be "chromium" or "webkit", got "${BROWSER}".`);
+    process.exit(2);
+}
 
 // Caret moves per sample. Small on purpose: a selection transaction is far
 // cheaper than a keystroke, so the median settles quickly, and every one of
@@ -193,9 +225,10 @@ async function compareMode(beforePath, afterPath) {
 // ── measure mode ────────────────────────────────────────────
 async function loadPlaywright() {
     try {
-        return await import("playwright");
+        const pw = await import("playwright");
+        return pw[BROWSER];
     } catch {
-        console.error("playwright is not installed. Run: pnpm install && npx playwright install chromium");
+        console.error(`playwright is not installed. Run: pnpm install && npx playwright install ${BROWSER}`);
         process.exit(2);
     }
 }
@@ -208,7 +241,7 @@ async function loadPlaywright() {
  * the harness must not silently average over. `side` labels which bundle
  * aborted so an A/B failure is diagnosable without a second script.
  */
-async function sampleTyping(browser, url, content, keys, fixture = "?", side = "", collectRescan = false) {
+async function sampleTyping(browser, url, content, keys, fixture = "?", side = "", collectRescan = false, keyDelay = KEY_DELAY_DEFAULT) {
     const page = await browser.newPage({ viewport: { width: 1000, height: 900 } });
     const errors = [];
     // Same strict posture as the launch harness: any page error aborts the
@@ -231,6 +264,14 @@ async function sampleTyping(browser, url, content, keys, fixture = "?", side = "
     await page.addInitScript(() => {
         window.__longtasks = [];
         try {
+            // Asked, not tried: WebKit accepts the observe() call and never
+            // delivers an entry, so a try/catch alone reads its silence as a
+            // clean zero. Null is what makes `block` print n/a there and
+            // compare mode skip the block gate; `stall` is the reading on
+            // that engine.
+            if (!PerformanceObserver.supportedEntryTypes?.includes("longtask")) {
+                throw new Error("longtask unsupported");
+            }
             window.__longtaskObs = new PerformanceObserver((list) => {
                 for (const e of list.getEntries()) window.__longtasks.push(e.duration);
             });
@@ -275,11 +316,33 @@ async function sampleTyping(browser, url, content, keys, fixture = "?", side = "
             window.__longtaskObs.takeRecords();
             window.__longtasks.length = 0;
         }
+        // The frame-gap loop behind `stall`, started with the burst and read
+        // after its settle. A rAF is the one clock every engine here shares.
+        window.__frameGaps = [];
+        window.__frameGapsStop = false;
+        let last = performance.now();
+        const tick = (ts) => {
+            window.__frameGaps.push(ts - last);
+            last = ts;
+            if (!window.__frameGapsStop) requestAnimationFrame(tick);
+        };
+        requestAnimationFrame(tick);
+        // Behind `paint`: keydown to the first frame after it, per keystroke.
+        // The dispatch span ends when the DOM is updated; the character is on
+        // screen only at the next frame, and any task the keystroke scheduled
+        // ahead of that frame (a whole-document sync at delay 0) lands in this
+        // number and in nothing else here.
+        window.__keyToFrame = [];
+        window.__keyListener = () => {
+            const at = performance.now();
+            requestAnimationFrame(() => { window.__keyToFrame.push(performance.now() - at); });
+        };
+        document.addEventListener("keydown", window.__keyListener, true);
     });
 
     let typed = "";
     while (typed.length < keys) typed += TYPING_TEXT;
-    await page.keyboard.type(typed.slice(0, keys), { delay: 30 });
+    await page.keyboard.type(typed.slice(0, keys), { delay: keyDelay });
     // Drop rescan entries HERE, not with the tx-apply clear above, and the
     // ordering is the whole guard. The warmup's own rescan is still pending at
     // that earlier point (350 ms debounce against a 300 ms settle) and the
@@ -297,6 +360,13 @@ async function sampleTyping(browser, url, content, keys, fixture = "?", side = "
     await page.evaluate(() => performance.clearMeasures("mdw:proofread-rescan"));
     // Let the last keystroke's transaction land before reading.
     await page.waitForTimeout(200);
+    // The stall window closes with the block window, 200 ms after the last
+    // keystroke, so the two count the same span.
+    const { frameGaps, keyToFrame } = await page.evaluate(() => {
+        window.__frameGapsStop = true;
+        document.removeEventListener("keydown", window.__keyListener, true);
+        return { frameGaps: window.__frameGaps.slice(1), keyToFrame: window.__keyToFrame };
+    });
 
     // ── Proofread rescan (MAR-314) ──────────────────────────────────────
     // The burst's debounced whole-document rescan fires ~350 ms after the
@@ -375,6 +445,7 @@ async function sampleTyping(browser, url, content, keys, fixture = "?", side = "
             "instrumentation missing from the bundle? (rebuild with pnpm build)",
         );
     }
+    const stalls = frameGaps.filter((g) => g >= STALL_FRAME_MS);
     return {
         durations,
         caret,
@@ -382,14 +453,18 @@ async function sampleTyping(browser, url, content, keys, fixture = "?", side = "
         work,
         blockMs: longtasks ? round(longtasks.reduce((s, d) => s + d, 0)) : null,
         blockTasks: longtasks ? longtasks.length : null,
+        stallMs: round(stalls.reduce((s, g) => s + g, 0)),
+        stallFrames: stalls.length,
+        frames: frameGaps.length,
+        keyToFrame,
     };
 }
 
-async function measureFixture(chromium, baseUrl, content, keys, fixture) {
-    const browser = await chromium.launch();
+async function measureFixture(browserType, baseUrl, content, keys, fixture, keyDelay) {
+    const browser = await browserType.launch();
     let s;
     try {
-        s = await sampleTyping(browser, baseUrl, content, keys, fixture, "", true);
+        s = await sampleTyping(browser, baseUrl, content, keys, fixture, "", true, keyDelay);
     } catch (e) {
         console.error(`\n  ${e.message}`);
         process.exit(3);
@@ -401,6 +476,16 @@ async function measureFixture(chromium, baseUrl, content, keys, fixture) {
         ...stats(s.durations),
         blockMs: s.blockMs,
         blockTasks: s.blockTasks,
+        // Frame gaps of STALL_FRAME_MS or more over the burst, summed: what
+        // `block` reads, from a clock WebKit has too.
+        stallMs: s.stallMs,
+        stallFrames: s.stallFrames,
+        // Keydown to the first frame after it. The p95 is the column, because
+        // the keystroke this exists to see is the one after a pause, a
+        // minority of any burst; the median would read as the keystroke's
+        // own dispatch plus half a frame whatever that one cost.
+        paintP95: s.keyToFrame.length ? stats(s.keyToFrame).p95 : null,
+        paintMax: s.keyToFrame.length ? stats(s.keyToFrame).max : null,
         // Selection-only dispatch: reported next to typing, and gated the same
         // way, because nothing else in the repo can see this cost (MAR-137).
         caretMedian: caret ? caret.median : null,
@@ -416,7 +501,7 @@ async function measureFixture(chromium, baseUrl, content, keys, fixture) {
     };
 }
 
-async function measureMode(only, keys, jsonOut, flags = null) {
+async function measureMode(only, keys, jsonOut, flags = null, keyDelay = KEY_DELAY_DEFAULT) {
     try {
         await stat(join(repoRoot, "dist", "webview.js"));
     } catch {
@@ -437,25 +522,26 @@ async function measureMode(only, keys, jsonOut, flags = null) {
         console.error(only ? `no typing fixture named "${only}"` : "no fixtures");
         process.exit(2);
     }
-    const { chromium } = await loadPlaywright();
+    const browserType = await loadPlaywright();
     const server = serve();
     await new Promise((r) => server.listen(0, "127.0.0.1", r));
     const baseUrl = `http://127.0.0.1:${server.address().port}${flags ? `/?${flags}` : ""}`;
 
-    const report = { fixtures: {} };
+    const report = { browser: BROWSER, keyDelay, fixtures: {} };
     const rows = [];
     for (const name of names) {
-        const agg = await measureFixture(chromium, baseUrl, pool[name], keys, name);
+        const agg = await measureFixture(browserType, baseUrl, pool[name], keys, name, keyDelay);
         const kb = round(pool[name].length / 1024);
         report.fixtures[name] = { ...agg, kb };
-        rows.push([name, `${kb} KB`, String(agg.median), String(agg.p95), String(agg.max), String(agg.caretMedian ?? "n/a"), String(agg.rescanMs ?? "n/a"), String(agg.blockMs ?? "n/a"), String(agg.blockTasks ?? "n/a"), String(agg.keystrokes)]);
+        rows.push([name, `${kb} KB`, String(agg.median), String(agg.p95), String(agg.max), String(agg.caretMedian ?? "n/a"), String(agg.rescanMs ?? "n/a"), String(agg.blockMs ?? "n/a"), String(agg.blockTasks ?? "n/a"), String(agg.stallMs), String(agg.stallFrames), String(agg.paintP95 ?? "n/a"), String(agg.paintMax ?? "n/a"), String(agg.keystrokes)]);
     }
     server.close();
 
-    const header = ["fixture", "size", "median", "p95", "max", "caret", "rescan", "block", "tasks", "keystrokes"];
+    const header = ["fixture", "size", "median", "p95", "max", "caret", "rescan", "block", "tasks", "stall", "frames", "paint p95", "paint max", "keystrokes"];
     const widths = header.map((h, i) => Math.max(h.length, ...rows.map((r) => String(r[i]).length)));
     const fmt = (cells) => cells.map((c, i) => String(c).padEnd(widths[i])).join("  ");
-    console.log(`\ntyping perf — per-keystroke dispatch, ms (mdw:tx-apply) + the burst's debounced proofread rescan (rescan) + total longtask block over the burst (block)\n`);
+    console.log(`\ntyping perf — per-keystroke dispatch, ms (mdw:tx-apply) + the burst's debounced proofread rescan (rescan) + total longtask block over the burst (block) + frame gaps of ${STALL_FRAME_MS} ms or more over the burst (stall) + keydown to the next frame (paint)\n`);
+    console.log(`engine ${BROWSER}, ${keyDelay} ms between keystrokes\n`);
     console.log(fmt(header));
     console.log(widths.map((w) => "─".repeat(w)).join("  "));
     for (const r of rows) console.log(fmt(r));
@@ -491,11 +577,11 @@ async function measureMode(only, keys, jsonOut, flags = null) {
 // as warmup. Durations are POOLED across pairs before taking the median — each
 // burst is ~`keys` samples of the same operation, so the pool is the honest
 // population; a median-of-medians would throw away most of it.
-async function measureFixtureTypingAB(chromium, serverBase, content, keys, runs, fixture) {
+async function measureFixtureTypingAB(browserType, serverBase, content, keys, runs, fixture) {
     const base = [], head = [];
     const baseBlock = [], headBlock = [];
     const baseCaret = [], headCaret = [];
-    const browser = await chromium.launch();
+    const browser = await browserType.launch();
     try {
         for (let i = 0; i < runs; i++) {
             let h, b;
@@ -599,7 +685,7 @@ async function abMode(baseDirArg, headDirArg, keys, runs, jsonOut, accept) {
         console.error(`AB_FIXTURES names a fixture that no longer exists in TYPING_FIXTURES: ${missing.join(", ")}`);
         process.exit(2);
     }
-    const { chromium } = await loadPlaywright();
+    const browserType = await loadPlaywright();
     const server = serveAB({ base: baseDir, head: headDir });
     await new Promise((r) => server.listen(0, "127.0.0.1", r));
     const serverBase = `http://127.0.0.1:${server.address().port}`;
@@ -607,7 +693,7 @@ async function abMode(baseDirArg, headDirArg, keys, runs, jsonOut, accept) {
     const runPass = async () => {
         const pass = {};
         for (const name of AB_FIXTURES) {
-            pass[name] = await measureFixtureTypingAB(chromium, serverBase, TYPING_FIXTURES[name], keys, runs, name);
+            pass[name] = await measureFixtureTypingAB(browserType, serverBase, TYPING_FIXTURES[name], keys, runs, name);
         }
         return pass;
     };
@@ -681,6 +767,15 @@ const keysOf = () => {
     }
     return keys;
 };
+const keyDelayOf = () => {
+    const i = argv.indexOf("--key-delay");
+    const delay = i !== -1 ? Number(argv[i + 1]) : KEY_DELAY_DEFAULT;
+    if (!Number.isInteger(delay) || delay < 0) {
+        console.error(`--key-delay must be a non-negative integer of ms, got "${argv[i + 1]}"`);
+        process.exit(2);
+    }
+    return delay;
+};
 if (compareIdx !== -1) {
     await compareMode(argv[compareIdx + 1], argv[compareIdx + 2]);
 } else if (abIdx !== -1) {
@@ -705,12 +800,12 @@ if (compareIdx !== -1) {
 } else {
     const jsonIdx = argv.indexOf("--json");
     const jsonOut = jsonIdx !== -1 ? argv[jsonIdx + 1] : null;
-    const only = argv.find((a, i) => !a.startsWith("--") && argv[i - 1] !== "--keys" && argv[i - 1] !== "--json" && argv[i - 1] !== "--flags");
+    const only = argv.find((a, i) => !a.startsWith("--") && argv[i - 1] !== "--keys" && argv[i - 1] !== "--key-delay" && argv[i - 1] !== "--json" && argv[i - 1] !== "--flags");
     // `--flags` is appended to the page URL, which is how a DEFAULT-OFF feature
     // gets measured at all: no fixture in `main` ever enables one, so the A/B
     // gate is structurally blind to it (see e2e/perf/index.html). Measure-only —
     // the gate compares two bundles under identical flags or not at all.
     const flagsIdx = argv.indexOf("--flags");
     const flags = flagsIdx !== -1 ? argv[flagsIdx + 1] : null;
-    await measureMode(only, keysOf(), jsonOut, flags);
+    await measureMode(only, keysOf(), jsonOut, flags, keyDelayOf());
 }

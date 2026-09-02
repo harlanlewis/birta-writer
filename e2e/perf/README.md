@@ -165,9 +165,15 @@ pnpm build && pnpm perf:typing            # all typing fixtures
 node e2e/perf-typing.mjs xlarge           # one fixture
 node e2e/perf-typing.mjs --keys 150 --json after.json
 node e2e/perf-typing.mjs --compare before.json after.json
+node e2e/perf-typing.mjs huge-outline --key-delay 400 --keys 30   # a writer's cadence
+BIRTA_E2E_BROWSER=webkit node e2e/perf-typing.mjs huge-outline    # the Mac app's engine
 ```
 
 The same marks work in the webview devtools against any real document (Performance panel → User Timing), which is how to profile a user-reported slow file.
+
+The engine is the same switch the e2e sweep reads. The gates run Chromium, which is VS Code; the Mac app renders in WebKit, and a per-keystroke cost can differ by engine, forced layout above all. `block` is `n/a` there, because WebKit accepts a longtask observer and never delivers an entry; `stall` is the reading on that engine.
+
+The cadence is `--key-delay`, in ms between keystrokes. The default sits under the sync scheduler's idle window (`webview/syncScheduler.ts`), so a burst never opens the trailing window and measures the keystroke alone. A cadence past that window measures the keystroke that ends a pause, which is most of what a writer types, and it is where a sync landing on the frame after a keystroke shows: in `stall` if it held the thread, in `paint` if it held the character back.
 
 ## The columns, and which of them decide
 
@@ -177,6 +183,12 @@ The same marks work in the webview devtools against any real document (Performan
 | `caret` | `mdw:tx-select`: a selection-only transaction | ✅ same floors |
 | `rescan` | `mdw:proofread-rescan`: the burst's debounced proofread rescan | ❌ reported only |
 | `block` | buffered longtasks summed over the burst | ❌ reported only |
+| `stall` / `frames` | frame gaps of 50 ms or more over the burst, summed, and how many | ❌ reported only |
+| `paint p95` / `paint max` | keydown to the first frame after it, per keystroke | ❌ reported only |
+
+`stall` is `block`'s engine-neutral twin: a rAF loop runs through the burst and the same 50 ms floor applies, so the two read alike where both exist and `stall` still reads where `block` cannot. It shares `block`'s reason for never deciding.
+
+`paint` is the half of a keystroke's latency the dispatch span cannot see. The span ends when the DOM is updated; the character is on screen at the next frame, and a task the keystroke scheduled at delay 0 can run before that frame. Read the p95 and not the median: the keystroke this column exists for is the one after a pause, a minority of any burst, and the median is the keystroke's own dispatch plus half a frame whatever that one cost. Measured on both engines, a whole-document sync scheduled at delay 0 did NOT delay the paint (both put the frame first), which is the kind of question this column answers and a profile only suggests.
 
 `caret` exists because selection-only transactions were once dispatched unmeasured, on the reasoning that they were "not the cost being tracked". That left caret movement as the one class of transaction nothing in the repo measured (no harness, no CI gate, not `block`), and a plugin doing whole-document work on every arrow key sat there unnoticed as long as that held. A cost no instrument reports is a cost that regresses freely. It is a separate span so the headline typing median still means exactly what it did and is never diluted by caret moves.
 
@@ -226,6 +238,23 @@ Three rules about its cost, each learned by getting it wrong first:
 ### What a green `typing-perf` does and does not prove
 
 The gate is percentage-based with an absolute floor, which makes it less sensitive in absolute terms on the slower machine, and means a uniform per-keystroke regression below the floor passes silently. Adding a flat cost to every keystroke is a real regression this gate cannot see. It catches *scaling* regressions (work proportional to document size), not small constant ones. Don't read a green `typing-perf` as "no cost was added".
+
+# Scroll-cost harness (`e2e/perf-scroll.mjs`)
+
+Scrolling is the one gesture no other runner makes: `pnpm perf` reads open, `pnpm perf:typing` reads the keystroke, and the nightly count gate reads a mount plus a burst. A cost that lands only while the viewport moves is invisible to all three, and it is a class of its own: a custom property written on `<html>` restyles every element in the document, a scroll-window commit that walks the whole document, a forced layout per heading per frame. The reader feels each as the page going blank mid-flick and catching up when the finger stops, and none of them moves an open or a keystroke by a millisecond.
+
+```bash
+pnpm build && pnpm perf:scroll                  # huge-outline, 40 screens
+node e2e/perf-scroll.mjs xlarge --screens 20
+BIRTA_E2E_BROWSER=webkit node e2e/perf-scroll.mjs
+node e2e/perf-scroll.mjs --profile --json scroll.json
+```
+
+It scrolls the fixture one step per animation frame from inside the page, after the progressive open has streamed the whole document, and reports the frame gaps (median, p95, max), the frames over two budgets and the time past one budget they held (`stall`), the long tasks (Chromium), the custom-property writes made on `<html>` during the scroll by name, and every `countWork` counter the scroll stamped. `--profile` (Chromium) takes a CPU profile across the scroll and prints self time by function with the call stacks under the hottest, which is how a stall gets a name rather than a theory: the bundle is minified, so a function's chunk and line locate it in `dist/`.
+
+The scroll is driven from the page rather than through the input path on purpose. `scrollBy` per rAF measures the main thread's frame cadence directly, in both engines, and does not depend on how a headless build turns wheel deltas into scroll. What it does not measure is compositor checkerboarding, which is what a real flick shows in WebKit when this thread is held; a frame gap here is the cause of that, read one level down.
+
+The root-write count is on the list because it was the whole of the first finding. An inherited custom property written on `<html>` invalidates every element's style, so the restyle is proportional to the document and lands on the frame that wrote it; on `huge-outline` a single write cost a whole-document restyle in either engine, WebKit's roughly twice Chromium's. Two such writes per heading passed (the sticky bar's published height and the caret insets that follow it) were the scroll jank, and the fix was to publish less and to register the root-only variables as non-inherited (`@property` in `style.css`). Off every gate, by name, like the other heavy readings: the number to hold it to is the count of root writes over a scroll, which is a count and reads the same on any machine.
 
 # Methodology rules
 

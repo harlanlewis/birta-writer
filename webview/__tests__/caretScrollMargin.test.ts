@@ -19,6 +19,7 @@ import {
     measureStickyHeadingHeight,
     syncScrollPaddingVars,
 } from "../plugins/caretScrollMargin";
+import { setStickyReservedHeight } from "../utils/headingUtils";
 
 function mountRect(element: HTMLElement, rect: Partial<DOMRect>): void {
     element.getBoundingClientRect = () =>
@@ -59,6 +60,7 @@ describe("caretScrollMargin insets", () => {
         document.body.innerHTML = "";
         document.documentElement.style.removeProperty("--caret-scroll-top-inset");
         document.documentElement.style.removeProperty("--caret-scroll-bottom-inset");
+        setStickyReservedHeight(0);
     });
 
     afterEach(() => {
@@ -72,9 +74,20 @@ describe("caretScrollMargin insets", () => {
         expect(Number.isFinite(px)).toBe(true);
     });
 
-    it("measureStickyHeadingHeight with a visible sticky title should return its measured height", () => {
+    it("measureStickyHeadingHeight with a visible sticky title and nothing published should return its measured height", () => {
         addSticky(42);
         expect(measureStickyHeadingHeight()).toBe(42);
+    });
+
+    it("measureStickyHeadingHeight with a visible sticky title should return the published reservation over the box", () => {
+        // The bar mirrors each heading's level, so its box changes at every
+        // level change; the band is written to root variables and must follow
+        // the reservation, which only ever rises, or it restyles the whole
+        // document on every heading a scroll passes.
+        addSticky(30);
+        setStickyReservedHeight(42);
+        expect(measureStickyHeadingHeight()).toBe(42);
+        expect(computeInsets().top).toBe(Math.round(40 + 42 + bodyLineHeightPx()));
     });
 
     it("measureStickyHeadingHeight with the sticky hidden should reserve an estimated line instead of 0", () => {
@@ -158,6 +171,7 @@ describe("caretScrollMargin plugin wiring", () => {
         document.body.innerHTML = "";
         document.documentElement.style.removeProperty("--caret-scroll-top-inset");
         document.documentElement.style.removeProperty("--caret-scroll-bottom-inset");
+        setStickyReservedHeight(0);
     });
 
     it("plugin props should expose the live insets as both scrollThreshold and scrollMargin", () => {

@@ -27,12 +27,24 @@ export async function run({ page, check, baseUrl }) {
             els.map((e) => (e.querySelector(".tb-fmt-fill-glyph") ?? e).textContent.trim()),
         );
     // The markdown the page has shipped to the host, which is what a save would
-    // write — the outcome, not the editor's opinion of itself.
-    const lastUpdate = () =>
-        page.evaluate(() => {
+    // write — the outcome, not the editor's opinion of itself. Waited for,
+    // never read off the last post: once the document is dirty an edit ships
+    // on the sync scheduler's trailing edge (webview/syncScheduler.ts), so the
+    // post on the wire right after a gesture is the previous gesture's.
+    let seenUpdates = 0;
+    const lastUpdate = async () => {
+        await page.waitForFunction(
+            (seen) => window.__posted.filter((m) => m.type === "update").length > seen,
+            seenUpdates,
+            { timeout: 3000 },
+        ).catch(() => {});
+        const { count, content } = await page.evaluate(() => {
             const ups = window.__posted.filter((m) => m.type === "update");
-            return ups.length ? ups[ups.length - 1].content : null;
+            return { count: ups.length, content: ups.length ? ups[ups.length - 1].content : null };
         });
+        seenUpdates = count;
+        return content;
+    };
 
     async function clickText(needle) {
         const box = await page.evaluate((needle) => {

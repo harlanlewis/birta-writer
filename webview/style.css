@@ -473,7 +473,29 @@ body {
 /* Browser-native scroll-into-view (initial focus, find-in-page, …) must not
    park the caret under the fixed topbar/sticky heading. ProseMirror-driven
    scrolls are handled by plugins/caretScrollMargin.ts, which also keeps
-   these vars in sync with the measured header stack. */
+   these vars in sync with the measured header stack.
+
+   Registered as NON-inherited: the two are read on `html` alone, and an
+   inherited custom property written on the root restyles every element in
+   the document, whether or not any of them references it. That restyle
+   scales with the document, and it landed on the frame of every scroll that
+   changed the header stack. A non-inherited property changes the root's own
+   style and nothing below it; `pnpm perf:scroll` counts the root writes a
+   scroll makes and what each frame cost. An engine without @property keeps
+   the inherited behaviour, which is what shipped before. The initial value
+   is the fallback the var() carried. */
+@property --caret-scroll-top-inset {
+    syntax: "<length>";
+    inherits: false;
+    initial-value: 104px;
+}
+
+@property --caret-scroll-bottom-inset {
+    syntax: "<length>";
+    inherits: false;
+    initial-value: 56px;
+}
+
 html {
     scroll-padding-top: var(--caret-scroll-top-inset, 104px);
     scroll-padding-bottom: var(--caret-scroll-bottom-inset, 56px);
