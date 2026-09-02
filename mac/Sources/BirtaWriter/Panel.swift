@@ -46,7 +46,14 @@ final class AppPanel: NSPanel {
         self.remembersFrame = remembersFrame
         // All three window buttons, and the style mask each one needs: a panel
         // showing a lone close button reads as a window with something missing.
-        super.init(contentRect: NSRect(x: 0, y: 0, width: 640, height: 480),
+        // A placeholder rather than the opening size. What the window opens at
+        // is decided against the screen it opens ON (`placeIfUnplaced`), and
+        // no screen is known here: `NSScreen.main` before the window exists is
+        // the screen with the keyboard focus, which is not where this window
+        // is about to be centred. `PanelSize.preferred` is the size it wants,
+        // so a window that somehow never reaches placement is at least the
+        // right shape rather than the historic 640 by 480.
+        super.init(contentRect: NSRect(origin: .zero, size: PanelSize.preferred),
                    styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
                    backing: .buffered, defer: false)
         title = AppFlavor.current.displayName
@@ -65,7 +72,7 @@ final class AppPanel: NSPanel {
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         // The system's own show and hide, not a chosen one.
         animationBehavior = .default
-        minSize = NSSize(width: 360, height: 240)
+        minSize = PanelSize.minimum
         // Remembered for a person, never for a measurement. The autosave goes
         // to the app's standard defaults rather than through `Prefs`, so it is
         // the one piece of state `BIRTA_MAC_DEFAULTS_SUITE` does not already
@@ -114,7 +121,14 @@ final class AppPanel: NSPanel {
         return cascadeTopLeft(from: point ?? other.cascadeTopLeft(from: .zero))
     }
 
-    /// First show with no remembered frame: centre on the screen under the mouse.
+    /// First show with no remembered frame: size for the screen under the
+    /// mouse, then centre on it.
+    ///
+    /// SIZE and then place, in that order, because the placement is a centring
+    /// and a centring needs the final size. Sizing here rather than at
+    /// construction is what lets the size answer to the screen at all: no
+    /// window has a screen before it has a frame, so a size chosen in `init`
+    /// can only ever be a constant.
     func placeIfUnplaced() {
         guard !placed else { return }
         placed = true
@@ -126,9 +140,10 @@ final class AppPanel: NSPanel {
         let mouse = NSEvent.mouseLocation
         let screen = NSScreen.screens.first(where: { $0.frame.contains(mouse) }) ?? NSScreen.main
         guard let visible = screen?.visibleFrame else { return }
-        let size = frame.size
-        let origin = NSPoint(x: visible.midX - size.width / 2, y: visible.midY - size.height / 2 + visible.height * 0.1)
-        setFrameOrigin(origin)
+        setContentSize(PanelSize.forScreen(visible: visible.size))
+        // The FRAME's size, not the content's: the title bar is part of what
+        // has to stay on the screen, and it is the part that goes off the top.
+        setFrameOrigin(PanelSize.origin(for: frame.size, visible: visible))
     }
 }
 

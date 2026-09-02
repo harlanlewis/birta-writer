@@ -16,8 +16,22 @@ import Foundation
 public enum FileMove: Equatable, Sendable {
     /// A rename or a move. Follow it: the note is the same note.
     case followed(URL)
-    /// A delete. Stop writing and say so.
-    case deleted
+    /// A delete, and WHERE it went. Stop writing and say so.
+    ///
+    /// The destination is carried rather than discarded, and that turns a
+    /// statement into an offer. A trashed file is still on the disk, byte for
+    /// byte, at a path this app was just handed: putting it back is a real
+    /// restore, and it is the only restore available here, because the buffer
+    /// is the sole other copy of the text and it is not the file. The
+    /// missing-file card used to say the note might have been deleted or moved
+    /// and offer to write the buffer over the path; it can now say the note is
+    /// in the Trash and offer to fetch it.
+    ///
+    /// Nil for a delete the app was told about with no destination, which is
+    /// what `accommodatePresentedItemDeletion` reports: an outright unlink, or
+    /// an emptied Trash. Nothing can be put back there and the card says so by
+    /// offering nothing.
+    case deleted(trashedTo: URL?)
 
     /// The names macOS gives a trash folder. `.Trash` is the one in a home
     /// directory; `.Trashes` is the per-volume one, which holds a directory
@@ -34,7 +48,9 @@ public enum FileMove: Equatable, Sendable {
     /// happened.
     public static func classify(movedTo destination: URL) -> FileMove {
         let components = destination.standardizedFileURL.pathComponents
-        if components.contains(where: trashDirectoryNames.contains) { return .deleted }
+        if components.contains(where: trashDirectoryNames.contains) {
+            return .deleted(trashedTo: destination)
+        }
         return .followed(destination)
     }
 }

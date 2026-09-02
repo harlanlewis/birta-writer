@@ -15,6 +15,7 @@
 import { placeMenu, MENU_CLIP_ATTR, MENU_GAP } from "@/ui/anchoredPlacement";
 import { hideTooltip } from "@/ui/tooltip";
 import { registerEscapeLayer } from "@/ui/escapeLayers";
+import { claimExclusiveChrome, releaseExclusiveChrome } from "@/ui/exclusiveChrome";
 import { watchOutsidePress } from "@/ui/outsidePress";
 import { hostArranges } from "../../../shared/hostProfile";
 
@@ -106,6 +107,13 @@ export function wireHoverMenu(
     // Outside-press unregister handle (null while closed). Only ever set
     // under `barMenusOnClick`; see the `open` path below.
     let outsideOff: (() => void) | null = null;
+    /**
+     * This menu's identity in the one-transient-surface-at-a-time set
+     * (`ui/exclusiveChrome.ts`). A symbol per wiring rather than the element,
+     * because the same element can be re-wired and the set must not then hold
+     * two entries for one menu.
+     */
+    const exclusive = Symbol("toolbar menu");
 
     const cancelHide = (): void => {
         if (hideTimer !== null) {
@@ -134,6 +142,11 @@ export function wireHoverMenu(
         // what keep it from coming BACK while the menu is out; this is what
         // takes down the one already on screen.
         hideTooltip();
+        // ...and this takes down whatever OTHER transient surface was out, so
+        // a dropdown never opens on top of the TOC's hover flyout. The wrap
+        // rather than the menu, because the containment test that protects a
+        // nested menu has to see the trigger as well as the panel.
+        claimExclusiveChrome(exclusive, wrap, close);
         button.setAttribute("aria-expanded", "true");
         // Marks the wrap so its ::after gap-bridge is live only while open.
         wrap.classList.add("tb-menu-open");
@@ -149,6 +162,7 @@ export function wireHoverMenu(
         escapeOff = null;
         outsideOff?.();
         outsideOff = null;
+        releaseExclusiveChrome(exclusive);
         cancelHide();
         cancelOpen();
         menu.style.display = "none";
@@ -273,6 +287,7 @@ export function wireHoverMenu(
             escapeOff = null;
             outsideOff?.();
             outsideOff = null;
+            releaseExclusiveChrome(exclusive);
             cancelHide();
             cancelOpen();
             button.removeEventListener("click", onClick);

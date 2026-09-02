@@ -14,6 +14,11 @@
 
   Typing the syntax yourself still works. `~~text~~`, `==text==`, `$x$` and `[[page]]` are you writing the characters deliberately, so the input rules fire whatever the target says; what a target changes is what the editor offers you.
 
+### Fixed
+
+- Opening a file puts you at the top of it. The editor remembers where you were reading, which is what makes switching to the raw source and back, reloading the window, or coming back to a tab you left, all land where you were; that same memory was being applied to a file you merely opened, so a document you last read the middle of opened in the middle, with no way to tell it from a document that had been left scrolled. Coming back to a view still restores your place. Opening a file no longer does. Everything else the editor remembers per file is unchanged: table widths, folds, list numbering and the frontmatter panel all come back whenever the document is on screen again.
+- A toolbar menu and the table of contents preview no longer sit on top of each other. Hovering the contents tab slides the panel out over the document, and opening a menu from the toolbar drew it across that panel with both left showing; now either one takes the other down as it opens.
+
 ---
 
 ## [2026.902.0] - 2026, September 2

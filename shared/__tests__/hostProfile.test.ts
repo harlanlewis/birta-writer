@@ -392,11 +392,11 @@ describe("the mac profile's copies", () => {
         // Fail loudly if the call moved, rather than matching some other array.
         //
         // Anchored on the NAME and not on the full signature, which has already
-        // gained a parameter once: view state became per document, so this is
-        // `bootConfig(viewStateFor:)` now, and the guard went red for a rename
-        // that changed nothing it holds. Read a red here as a moved anchor
-        // until you have checked otherwise, and follow it rather than loosening
-        // the equality below, which is the part doing the work.
+        // changed twice: view state became per document, and then per page
+        // LOAD rather than per file, so the parameter has been added and then
+        // renamed under a guard that holds neither. Read a red here as a moved
+        // anchor until you have checked otherwise, and follow it rather than
+        // loosening the equality below, which is the part doing the work.
         expect(swift).toContain(BOOT_CONFIG);
         expect(declaredIn(swift.slice(swift.indexOf(BOOT_CONFIG)))).toEqual([...HOST_PROFILES.mac]);
     });

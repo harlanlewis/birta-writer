@@ -111,6 +111,60 @@ final class TitlebarActionsTests: XCTestCase {
         XCTAssertEqual(reports, [nil], "withdrawing the buttons left their label up")
     }
 
+    func testAMenuOpeningShouldTakeTheLabelDown() {
+        // A menu takes the mouse for the whole of its tracking loop, so the
+        // button it was raised from is never sent `mouseExited` and goes on
+        // believing the pointer is on it. The label it asked the page to draw
+        // was left on screen underneath the open menu, naming the control the
+        // menu had just come from, which is what the recents button did.
+        //
+        // The NOTIFICATION rather than a real menu, because tracking a menu
+        // blocks in a run loop nothing here can drive; the notification is what
+        // the app watches, so this drives the same input the product does.
+        let view = boundTitle()
+        var reports: [String?] = []
+        let button = view.actionsView.buttons[0]
+        _ = button.hoverForMeasurement(true)
+        view.onTooltip = { label, _ in reports.append(label) }
+
+        NotificationCenter.default.post(name: NSMenu.didBeginTrackingNotification,
+                                        object: NSMenu(title: "Open Recent"))
+        XCTAssertEqual(reports, [nil], "the label sat under the open menu")
+    }
+
+    func testAMenuOpeningWithNoPointerOnAButtonShouldReportNothing() {
+        // The arm that keeps the one above from being satisfied by a view that
+        // simply clears the label on every menu there is. Nothing is hovered,
+        // so nothing changed, and a report here would be the page told to take
+        // down a label it was never drawing.
+        let view = boundTitle()
+        var reports: [String?] = []
+        view.onTooltip = { label, _ in reports.append(label) }
+
+        NotificationCenter.default.post(name: NSMenu.didBeginTrackingNotification,
+                                        object: NSMenu(title: "File"))
+        XCTAssertEqual(reports, [])
+    }
+
+    func testTrackingEndingShouldNotInventAHoverForAPointerThatIsElsewhere() {
+        // Tracking ending is not a pointer arriving. A menu dismissed by a
+        // click somewhere else leaves the pointer nowhere near the button, so
+        // the hover is re-derived from where the pointer IS rather than
+        // restored; restoring it would put a label back under nothing.
+        //
+        // The view is not in a window here, which is exactly the "cannot tell
+        // where the pointer is" case, and the answer for it is no hover.
+        let view = boundTitle()
+        let button = view.actionsView.buttons[0]
+        _ = button.hoverForMeasurement(true)
+        var reports: [String?] = []
+        view.onTooltip = { label, _ in reports.append(label) }
+
+        NotificationCenter.default.post(name: NSMenu.didBeginTrackingNotification, object: NSMenu())
+        NotificationCenter.default.post(name: NSMenu.didEndTrackingNotification, object: NSMenu())
+        XCTAssertEqual(reports, [nil], "the label came back for a pointer that is not there")
+    }
+
     // MARK: the reservation follows the buttons
 
     func testTheRoomHeldShouldGrowWithTheNumberOfButtons() {

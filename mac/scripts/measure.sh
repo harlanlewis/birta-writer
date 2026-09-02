@@ -1810,6 +1810,126 @@ fi
 echo "settings fit         ok: the window followed its pane across $SETTINGS_COUNT sizings (pane heights:$SETTINGS_PANES)"
 fi
 
+# Opening a file lands at the TOP of it, whatever position was remembered for
+# its path, and a view coming back lands where it was left.
+#
+# Its own launches, because the rule is about what a page load IS and the
+# scratchpad this run has been typing into is on its third or fourth. Two of
+# them, seeded identically, differing only in what happens after the panel
+# appears: the first opens and stops, the second walks the caret down the
+# document and then reloads the page as a settings change does.
+#
+# No other instrument can ask this. `ViewStateOnOpenTests` covers the rule with
+# no window and `scrollOnOpen.test.ts` covers the page's half in jsdom; neither
+# can say whether the app that ships opens at the top, which is the claim that
+# was false. A snapshot cannot say either: `writeSnapshot` draws the view
+# hierarchy through the PDF path and a `WKWebView` contributes nothing to it,
+# so a picture of a scrolled document and a picture of an unscrolled one are
+# the same picture.
+#
+# The document is the first-run tour, four times over, because an offset can
+# only be judged against the room there was to scroll: in a note that fits the
+# window every reading is zero and the whole arm passes with the rule deleted.
+# `scrollHeight` against `viewport` is asserted for exactly that reason.
+scroll_run() { # scroll_run <suite> <walk-and-reload:0|1>
+    local dir log pid
+    dir="$(mktemp -d -t mac-scroll)"
+    log="$(mktemp -t mac-scroll)"
+    python3 - "$dir/Scroll.md" <<'PY'
+import re, sys
+swift = open("mac/Sources/BirtaWriterCore/FirstRunNote.swift").read()
+body = re.search(r'public static let markdown = """\n([\s\S]*?)\n {4}"""', swift).group(1)
+text = "\n".join(line[4:] if line.startswith("    ") else line for line in body.split("\n"))
+open(sys.argv[1], "w").write(text * 4)
+PY
+    # The welcome screen is not what this is about, and it would sit in front
+    # of the document for the whole run.
+    defaults write "$1" hasSeenWelcome -bool YES
+    # A remembered position for this exact path, which is the whole premise:
+    # with none, opening at the top is what an app with no rule at all does.
+    # The formatting row rides along in the same bag, so the same seed also
+    # says the strip took the offset and left the rest of the bag alone.
+    defaults write "$1" viewState \
+        -dict "$dir/Scroll.md" '"{\"scrollY\":900,\"formattingRowExpanded\":true}"'
+    BIRTA_MAC_MEASURE=1 BIRTA_MAC_SCRATCHPAD="$dir/Scroll.md" \
+        BIRTA_MAC_DEFAULTS_SUITE="$1" "$APP" 2>"$log" &
+    pid=$!
+    local n=0
+    while ! grep -q "^mac-measure ready " "$log"; do
+        sleep 0.2; n=$((n+1))
+        if [ $n -gt 150 ]; then break; fi
+    done
+    sleep 1
+    kill -USR1 $pid; sleep 2
+    if [ "$2" = 1 ]; then
+        # Put the reader somewhere other than the top FIRST. What a remount
+        # brings back is where they are now, never what a previous session
+        # left in the defaults: the open they just did is what forgets that,
+        # so a run that skipped this would be asserting the opposite rule.
+        python3 -c 'import json,sys; sys.stdout.write(json.dumps({"type":"__birtaKeys","keys":["ArrowDown"]*90}))' \
+            > "$dir/.debug-message.json"
+        kill -URG $pid; sleep 9
+        printf '{"type":"__birtaScroll"}' > "$dir/.debug-message.json"
+        kill -URG $pid; sleep 1.5
+        SCROLL_WALKED="$(grep "^birta-trace scroll " "$log" | tail -1)"
+        # A settings change, which reloads the page onto the SAME file.
+        printf '{"type":"__birtaReload"}' > "$dir/.debug-message.json"
+        kill -URG $pid; sleep 4
+    fi
+    printf '{"type":"__birtaScroll"}' > "$dir/.debug-message.json"
+    kill -URG $pid; sleep 1.5
+    SCROLL_LINE="$(grep "^birta-trace scroll " "$log" | tail -1)"
+    SCROLL_ALIVE=0
+    grep -q "^mac-measure ready " "$log" && SCROLL_ALIVE=1
+    SCROLL_ROW="$(grep "^birta-trace dockgeometry " "$log" | tail -1 || true)"
+    kill $pid 2>/dev/null; wait $pid 2>/dev/null || true
+    rm -rf "$dir" "$log"
+}
+
+scroll_field() { # scroll_field <line> <name>
+    echo "$1" | sed -n "s/.* $2=\([0-9-]*\).*/\1/p"
+}
+
+SCROLL_OPEN_SUITE="com.birtalabs.birta-writer.measure.scrollopen.$$"
+SCROLL_BACK_SUITE="com.birtalabs.birta-writer.measure.scrollback.$$"
+EXTRA_SUITES="$EXTRA_SUITES $SCROLL_OPEN_SUITE $SCROLL_BACK_SUITE"
+
+scroll_run "$SCROLL_OPEN_SUITE" 0
+OPEN_LINE="$SCROLL_LINE"; OPEN_ALIVE="$SCROLL_ALIVE"
+if [ "$OPEN_ALIVE" != 1 ] || [ -z "$OPEN_LINE" ]; then
+    echo "scroll on open       FAILED: the run never reported a position, so nothing was measured" >&2
+    echo "  alive=$OPEN_ALIVE line=${OPEN_LINE:-<none>}" >&2; exit 1
+fi
+OPEN_Y="$(scroll_field "$OPEN_LINE" scrollY)"
+OPEN_H="$(scroll_field "$OPEN_LINE" scrollHeight)"
+OPEN_V="$(scroll_field "$OPEN_LINE" viewport)"
+# The instrument, before its verdict is read as meaning anything: in a document
+# that fits the window every position is the top.
+if [ "${OPEN_H:-0}" -le "$(( ${OPEN_V:-0} * 2 ))" ]; then
+    echo "scroll on open       FAILED: the document is not long enough to scroll, so zero proves nothing" >&2
+    echo "  $OPEN_LINE" >&2; exit 1
+fi
+if [ "${OPEN_Y:-1}" = 0 ]; then
+    echo "scroll on open       ok: a file with a remembered position opens at the top ($OPEN_H tall in $OPEN_V)"
+else
+    echo "scroll on open       FAILED: opening a file restored a position from a previous session" >&2
+    echo "  $OPEN_LINE" >&2; exit 1
+fi
+
+scroll_run "$SCROLL_BACK_SUITE" 1
+WALKED_Y="$(scroll_field "$SCROLL_WALKED" scrollY)"
+BACK_Y="$(scroll_field "$SCROLL_LINE" scrollY)"
+if [ "$SCROLL_ALIVE" != 1 ] || [ -z "$SCROLL_WALKED" ] || [ "${WALKED_Y:-0}" = 0 ]; then
+    echo "scroll on remount    FAILED: the reader was never moved off the top, so nothing was measured" >&2
+    echo "  walked=${SCROLL_WALKED:-<none>}" >&2; exit 1
+fi
+if [ "$BACK_Y" = "$WALKED_Y" ]; then
+    echo "scroll on remount    ok: a settings reload puts the reader back at $BACK_Y"
+else
+    echo "scroll on remount    FAILED: a page reload on the same file lost the reader's place" >&2
+    echo "  was $WALKED_Y, came back at ${BACK_Y:-<none>}" >&2; exit 1
+fi
+
 ONBOARD_FRESH_SUITE="com.birtalabs.birta-writer.measure.fresh.$$"
 ONBOARD_USED_SUITE="com.birtalabs.birta-writer.measure.used.$$"
 EXTRA_SUITES="$EXTRA_SUITES $ONBOARD_FRESH_SUITE $ONBOARD_USED_SUITE"

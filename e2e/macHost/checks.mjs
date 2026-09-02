@@ -314,6 +314,54 @@ export async function run({ page, check, baseUrl }) {
         check("mac: and it retracts when the pointer leaves",
             !(await page.evaluate(() => document.querySelector(".toc-panel").classList.contains("toc-panel--flyout"))),
             "the flyout stayed up");
+
+        // A toolbar dropdown opening takes the flyout down with it, rather
+        // than being drawn across a panel that is still there. Both are the
+        // editor answering "what else is here", and two of them on screen at
+        // once is it answering twice; the z-order that keeps a menu on top
+        // (`toolbarMenu`) is what made the overlap look deliberate.
+        //
+        // The MENU IS OPENED FROM THE KEYBOARD, and that is the whole of what
+        // makes this a check rather than decoration. The flyout is a hover
+        // preview and retracts on its own the moment the pointer leaves its
+        // trigger, so clicking a menu moves the pointer away and the flyout
+        // goes whether or not anything swept it: written that way it passed
+        // with the sweep deleted. Opening from the keyboard leaves the pointer
+        // resting on the trigger, where the flyout has every reason to stay,
+        // so a retraction can only be the menu's doing.
+        await page.mouse.move(20, 400);
+        await page.waitForTimeout(300);
+        await tocButton.hover();
+        await page.waitForTimeout(400);
+        const beforeMenu = await page.evaluate(() =>
+            document.querySelector(".toc-panel").classList.contains("toc-panel--flyout"));
+        // The instrument first: a flyout that never came out is dismissed by
+        // nothing, and the check below would read the same as a pass.
+        check("mac: the flyout is out before a menu is opened", beforeMenu, `${beforeMenu}`);
+
+        const opened = await page.evaluate(() => {
+            const trigger = document.querySelector(".editor-topbar .tb-fmt-wrap > button");
+            if (!trigger) { return { reached: false }; }
+            trigger.focus();
+            trigger.dispatchEvent(new KeyboardEvent("keydown", {
+                key: "ArrowDown", bubbles: true, cancelable: true,
+            }));
+            return { reached: true };
+        });
+        check("mac: a toolbar menu trigger was there to open", opened.reached, JSON.stringify(opened));
+        await page.waitForTimeout(500);
+        const afterMenu = await page.evaluate(() => ({
+            menuOpen: [...document.querySelectorAll(".tb-fmt-menu")]
+                .some((m) => m.style.display === "flex"),
+            flyout: document.querySelector(".toc-panel").classList.contains("toc-panel--flyout"),
+        }));
+        check("mac: opening a toolbar menu retracts the flyout",
+            afterMenu.menuOpen && !afterMenu.flyout, JSON.stringify(afterMenu));
+        // Put the page back: this suite goes on to read other chrome, and a
+        // menu left open is a state every check after this one inherits.
+        await page.keyboard.press("Escape");
+        await page.mouse.move(20, 400);
+        await page.waitForTimeout(300);
     }
 
     // ── formattingInSecondRow ─────────────────────────────────────────

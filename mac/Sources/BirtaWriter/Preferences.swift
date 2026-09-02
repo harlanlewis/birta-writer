@@ -1001,10 +1001,16 @@ enum Prefs {
             })
     }
 
-    /// - Parameter viewStateFor: the file the window being booted is on, so
-    ///   it is restored to its OWN remembered position. Every window asks with
-    ///   its own binding.
-    static func bootConfig(viewStateFor url: URL) -> BootConfig {
+    /// - Parameter viewState: the remembered bag to seed the page's own state
+    ///   with, as the LOAD is entitled to it rather than as this file holds it.
+    ///   Handed in rather than read here, because which of a file's remembered
+    ///   state survives depends on whether the page being built is opening that
+    ///   file or remounting it, and only the window knows which
+    ///   (`Coordinator.loadPage`, `BirtaWriterCore.ViewStateOnOpen`). It used
+    ///   to be read here from the URL, and the caller then overwrote it, so
+    ///   this computed a bag that was always discarded under a comment
+    ///   describing the rule it no longer followed.
+    static func bootConfig(viewState: String?) -> BootConfig {
         BootConfig(
             toolbarJSON: toolbarLayout.json,
             fontPreset: fontPreset,
@@ -1034,7 +1040,7 @@ enum Prefs {
             // arms.
             hostCapabilities: ["spellAndGrammar", "imageUpload", "toc", "appPreferences", "agent"]
                 .filter { $0 != "agent" || agentAvailable },
-            viewStateJSON: viewStateJSON(for: url),
+            viewStateJSON: viewState,
             hostShortcuts: AppMenu.shortcuts
         )
     }

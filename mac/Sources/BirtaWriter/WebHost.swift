@@ -352,6 +352,34 @@ final class WebHost: NSObject, WKScriptMessageHandler, WKNavigationDelegate, WKU
         }
     }
 
+    /// Where the document is scrolled to, for `mac/scripts/measure.sh`.
+    ///
+    /// Read off the page rather than off what this side last sent, for the
+    /// reason `reportEditorLock` states: the scroll position is the page's, and
+    /// this side has never held it. It is the only way to ask whether a file
+    /// opened at the top, because a snapshot cannot answer: `writeSnapshot`
+    /// draws the view hierarchy through the PDF path and a `WKWebView`
+    /// contributes nothing to it, so a picture of a scrolled document and a
+    /// picture of an unscrolled one are the same picture.
+    ///
+    /// The height goes with the offset because the offset alone cannot be
+    /// judged: zero is the top of every document, and any other number is only
+    /// meaningful against the room there was to scroll.
+    func reportScroll(_ report: @escaping (String) -> Void) {
+        let js = """
+        (function () {
+          var pm = document.querySelector('.ProseMirror');
+          if (!pm) { return 'absent'; }
+          return ['scrollY=' + Math.round(window.scrollY),
+                  'scrollHeight=' + document.documentElement.scrollHeight,
+                  'viewport=' + Math.round(window.innerHeight)].join(' ');
+        })()
+        """
+        webView.evaluateJavaScript(js) { value, _ in
+            report(value as? String ?? "unavailable")
+        }
+    }
+
     /// Ask the page where its formatting dock is, for `mac/scripts/measure.sh`.
     ///
     /// The panel's own page carries CSS the browser harness does not (the

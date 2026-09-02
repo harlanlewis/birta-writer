@@ -23,10 +23,13 @@ final class RecentsMenuTests: XCTestCase {
 
     /// A menu over a list this test controls, with every file present.
     ///
-    /// `current` defaults to nothing, so a check that is not about the
-    /// checkmark cannot have one appear in it by accident.
-    private func menu(_ list: [URL], current: URL? = nil) -> RecentsMenu {
-        RecentsMenu(source: { list }, exists: { _ in true }, current: { current })
+    /// `current` and `elsewhere` default to nothing, so a check that is not
+    /// about the window rules cannot have a row vanish or a group appear in it
+    /// by accident.
+    private func menu(_ list: [URL], current: URL? = nil,
+                      elsewhere: [URL] = []) -> RecentsMenu {
+        RecentsMenu(source: { list }, exists: { _ in true },
+                    current: { current }, openElsewhere: { elsewhere })
     }
 
     private func titles(of menu: NSMenu) -> [String] {
@@ -138,38 +141,85 @@ final class RecentsMenuTests: XCTestCase {
         XCTAssertTrue(attached is RecentsMenu)
     }
 
-    // MARK: which row is the one you are in
+    // MARK: which window is asking
 
-    func testTheFileOnScreenShouldBeTickedAndNothingElseShouldBe() {
-        // The list holds the current file, because every rebind records the
-        // file it moves TO. Without the tick, the row a reader is already in
-        // is offered back to them as though it were somewhere else to go.
+    func testTheFileThisWindowIsOnShouldNotBeOfferedBackToIt() {
+        // It used to be listed with a checkmark, which reads as "you are here"
+        // and was decided from an app-wide setting: with two windows open it
+        // could tick a row in the wrong window's menu. The menu is a list of
+        // places to go, and where you already are is not one.
         let here = url("/notes/here.md")
         let m = menu([here, url("/notes/other.md")], current: here)
-        let ticked = m.items.filter { $0.state == .on }.map(\.title)
-        XCTAssertEqual(ticked, ["here.md"])
+        XCTAssertEqual(titles(of: m), ["other.md", "-", "Clear Menu"])
+        XCTAssertTrue(m.items.allSatisfy { $0.state == .off },
+                      "and no row claims to be the one you are in")
     }
 
-    func testARowShouldBeTickedThroughAPathThatNeedsStandardizing() {
-        // The tick compares standardized paths, which is the SAME rule
-        // `RecentFiles.recording` dedupes the list with. That is the property
-        // worth pinning: a file the list treats as one file ticks as one file.
+    func testTheFileIsRecognisedThroughAPathThatNeedsStandardizing() {
+        // The comparison is over standardized paths, which is the SAME rule
+        // `RecentFiles.recording` dedupes the list with, so a file the list
+        // treats as one file is left out as one file.
         //
         // Standardizing removes `.` and `..`; it does not resolve symlinks, so
         // `/tmp` and `/private/tmp` stay two paths to both of them. That is a
-        // limit shared with the list itself rather than a gap here, which is
-        // why the case is not written as though it should tick.
+        // limit shared with the list itself rather than a gap here.
         let stored = URL(fileURLWithPath: "/notes/./sub/../here.md")
         let bound = URL(fileURLWithPath: "/notes/here.md")
         XCTAssertEqual(stored.standardizedFileURL, bound.standardizedFileURL,
                        "the two spellings are not the same path, so nothing below is compared")
-        let m = menu([stored], current: bound)
-        XCTAssertEqual(m.items.filter { $0.state == .on }.count, 1)
+        XCTAssertEqual(titles(of: menu([stored], current: bound)),
+                       ["No Recent Files", "-", "Clear Menu"])
     }
 
-    func testNoRowShouldBeTickedWhenNothingIsOpen() {
+    func testWithOneWindowThereShouldBeNoGroupAndNoHeading() {
         let m = menu([url("/notes/a.md"), url("/notes/b.md")])
-        XCTAssertTrue(m.items.allSatisfy { $0.state == .off })
+        XCTAssertEqual(titles(of: m), ["a.md", "b.md", "-", "Clear Menu"])
+    }
+
+    func testFilesOpenInOtherWindowsShouldBeAGroupAboveTheRest() {
+        // Three windows: this one on here.md, two others. The other two are
+        // named at the top under a heading, and the rest of the list follows a
+        // divider. `RecentFilesTests` covers which rows land where; this is
+        // about the menu AppKit ends up holding.
+        let here = url("/notes/here.md")
+        let m = menu([here, url("/notes/old.md")],
+                     current: here,
+                     elsewhere: [url("/notes/two.md"), url("/notes/three.md")])
+        XCTAssertEqual(titles(of: m),
+                       ["Open in Other Windows", "two.md", "three.md", "-",
+                        "old.md", "-", "Clear Menu"])
+    }
+
+    func testTheHeadingShouldBeDeadAndTheGroupRowsShouldOpenLikeAnyOther() throws {
+        // The heading is not a row: it names what is under it. A live one would
+        // be a menu item that looks like a file and opens nothing, and AppKit
+        // validates anything with an action, so no `isEnabled` written here
+        // would survive the next showing.
+        let m = menu([], current: url("/notes/here.md"),
+                     elsewhere: [url("/notes/two.md")])
+        let heading = try XCTUnwrap(m.items.first)
+        XCTAssertEqual(heading.title, "Open in Other Windows")
+        XCTAssertNil(heading.action)
+        XCTAssertNil(heading.representedObject)
+        // The row under it opens through exactly the path every other row does,
+        // which is what makes "switch to that window" free: the open already
+        // brings a file's own window forward rather than opening a second one.
+        let row = try XCTUnwrap(m.items.first { $0.representedObject is URL })
+        XCTAssertEqual(row.action, #selector(AppDelegate.menuOpenRecentDocument(_:)))
+        XCTAssertNil(row.target)
+        XCTAssertEqual((row.representedObject as? URL)?.path, "/notes/two.md")
+    }
+
+    func testAGroupShouldSuppressTheEmptyStateRatherThanSitAboveIt() {
+        // "No Recent Files" exists so an empty menu reads as an empty list
+        // rather than as rows that failed to load. A menu already showing a
+        // group of windows is in no danger of being read that way, and the row
+        // there would say there is nothing here directly under something.
+        let m = menu([], current: url("/notes/here.md"),
+                     elsewhere: [url("/notes/two.md")])
+        XCTAssertFalse(titles(of: m).contains("No Recent Files"))
+        XCTAssertEqual(titles(of: m),
+                       ["Open in Other Windows", "two.md", "-", "Clear Menu"])
     }
 
     // MARK: where it opens

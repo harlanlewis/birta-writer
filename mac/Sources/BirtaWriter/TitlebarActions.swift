@@ -200,9 +200,42 @@ final class TitlebarActionsView: NSView {
             }
         }
         setFrameSize(NSSize(width: room, height: 0))
+        observeMenuTracking()
     }
 
     required init?(coder: NSCoder) { fatalError("not used") }
+
+    /// While a menu is being tracked, no button has a pointer over it.
+    ///
+    /// An `NSMenu` takes the mouse for the whole of its tracking loop, so the
+    /// button it was raised from is never sent `mouseExited` and goes on
+    /// believing the pointer is on it. The label it asked the page to draw
+    /// therefore stays on screen underneath the open menu, naming the control
+    /// the menu already came from. The recents button is where this shows,
+    /// because its menu opens directly under the chip.
+    ///
+    /// Answered by watching MENUS rather than by clearing the label at each
+    /// place that opens one. The two menus reachable from this band are raised
+    /// by different objects (the app delegate for the recents button, the title
+    /// view for the path popup), and the main menu bar's own menus capture the
+    /// pointer just the same, so a per-site clear would be three sites and a
+    /// standing invitation to add a fourth without one.
+    ///
+    /// Tracking ENDING is not a pointer arriving, so the hover is re-derived
+    /// from where the pointer actually is rather than restored: a menu
+    /// dismissed by a click somewhere else leaves the pointer nowhere near the
+    /// button, and putting the label back would be inventing a hover.
+    private func observeMenuTracking() {
+        let centre = NotificationCenter.default
+        centre.addObserver(forName: NSMenu.didBeginTrackingNotification,
+                           object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.buttons.forEach { $0.dropHover() } }
+        }
+        centre.addObserver(forName: NSMenu.didEndTrackingNotification,
+                           object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.buttons.forEach { $0.syncHoverFromPointer() } }
+        }
+    }
 
     /// The buttons, in a row, centred on the band.
     ///
@@ -405,6 +438,30 @@ final class TitlebarActionButton: NSButton {
         isHovered = hovered
         syncInk()
         onHover?(self, hovered)
+    }
+
+    /// Stop believing the pointer is here, whatever the tracking areas think.
+    ///
+    /// For the one case a tracking area cannot report: a menu has taken the
+    /// mouse, so the exit event that would normally end this hover is never
+    /// sent. `TitlebarActionsView.observeMenuTracking` says when.
+    func dropHover() { setHovered(false) }
+
+    /// Take the hover from where the pointer IS, for when nothing can be
+    /// inferred from the events that did or did not arrive.
+    ///
+    /// The same question `AppearanceObservingView.syncHoverFromPointer`
+    /// answers, and asked for a sibling reason: there, the panel is summoned
+    /// under a cursor that never moved and so no enter event fires; here, a
+    /// menu has just given the mouse back and no event marks that either.
+    ///
+    /// A button that is not on screen is not hovered whatever the geometry
+    /// says: the row fades out rather than moving, so the pointer can sit over
+    /// where a withdrawn button used to be.
+    func syncHoverFromPointer() {
+        guard let window, !isHidden, alphaValue > 0 else { return setHovered(false) }
+        let inWindow = window.convertPoint(fromScreen: NSEvent.mouseLocation)
+        setHovered(bounds.contains(convert(inWindow, from: nil)))
     }
 
     func setWindowKey(_ key: Bool) {

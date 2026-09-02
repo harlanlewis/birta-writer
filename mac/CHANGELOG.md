@@ -14,6 +14,12 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ### Changed
 
+- A Birta Writer for Mac window opens at a size taken from the screen it opens on. The opening size was fixed, and it was small enough that a first note filled several screens of a window that used a fraction of a laptop's display. It now opens as large as the app wants and no larger, shrinking to fit a small screen and never growing past a comfortable measure on a big one. A window whose size you have set yourself is untouched, and a second window still opens at the size of the one it came from.
+
+- Open Recent groups the files open in your other windows at the top, under a heading, and the file the window you are in is already on is no longer listed at all. Picking a file from the group switches to the window holding it rather than opening it again, which is what that row already did; the grouping is what says so. A file listed there is not repeated below the divider. With one window open the menu is unchanged apart from that window's own file leaving it.
+
+  It used to mark the open file with a checkmark, decided from a single app-wide setting, so with more than one window open the mark could land on a row in the wrong window's menu.
+
 - With Automatically update on, Birta Writer for Mac now takes an update on its own. It downloads and checks the new version as soon as it finds one, instead of waiting for you to confirm a sheet, and it puts it in while nobody is using the app: no window on screen, nothing unsaved, no `/ai` run going, and no input on the machine for five minutes. The app reopens without taking the front, so coming back to your Mac finds the application you left in front of you still there.
 
   It does not download over a connection you pay for by the byte: cellular, a personal hotspot, or Low Data Mode all hold the background download off, while the check still runs and the offer still appears. Pressing Restart in that offer downloads whatever the connection is, because that is you asking.
@@ -22,11 +28,19 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ### Added
 
+- Put It Back, on the screen Birta Writer for Mac shows when the file a window is on has gone. When the app saw the file go to the Trash it now says so instead of guessing that it was deleted or moved, and offers to fetch it: the file comes back out of the Trash to where it was, unchanged. The case with nothing unsaved used to offer no way back to the file at all.
+
+  It is a different offer from Save It Back, which is still there and still writes what is on screen to that path. Put It Back returns the file's own contents; Save It Back returns yours. Where both apply they compose, so you can fetch the file and then save over it. Put It Back is absent, rather than dimmed, when the app does not know where the file went or the Trash no longer holds it: a file deleted outright, or while the app was not running, is not somewhere it can be fetched from.
+
 - A notice in the panel after an update went in on its own, naming the version. It stays until you close it, rather than fading like the app's other messages: the panel is hidden most of the time, so a message that faded would be spent on a screen nobody was looking at.
 
 - A Markdown pane in Settings, holding the syntax targets Birta Writer for Mac writes for: GitHub, Obsidian, Pandoc, and Birta Writer's own. All four ship on. Turning one off withdraws the rows that write its syntax from the Format menu, with their keyboard shortcuts, and from the toolbar and menus in every open note, so the menu bar and the windows under it offer one answer rather than two. CommonMark is always available and is not in the list, because every target includes it; turn all four off to write CommonMark alone.
 
   Nothing about a note changes. Every file opens with everything it contains drawn in full whatever is selected, and the rows that edit what is already there stay: a table keeps its row and column controls, and a task list keeps Toggle Task Done and Uncheck All Tasks even where Task List has gone. See [`../CHANGELOG.md`](../CHANGELOG.md) for what the setting does inside the editor itself.
+
+### Fixed
+
+- The label under a titlebar button in Birta Writer for Mac goes away when a menu opens from it. The label was left on screen underneath the open menu, naming the control the menu had just come from, because a menu takes the pointer for as long as it is open and the button was never told it had left.
 
 ---
 
