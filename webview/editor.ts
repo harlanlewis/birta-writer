@@ -13,11 +13,19 @@ import { getState, getView, type EditorView } from "./pm";
 import type { Node as ProseNode } from "./pm";
 import { getMarkdown } from "@milkdown/utils";
 import {
+    applyMinimalChanges,
     computeRoundTripProtection,
     type RoundTripProtection,
 } from "@birta/minimal-diff";
-import { mergeVerified } from "./utils/verifiedMerge";
-import { configureHeadingIds } from "./plugins/headingIdSync";
+import { mergeVerified, mergeVerifiedWith } from "./utils/verifiedMerge";
+import { verifyOracle, type VerifyOracle } from "./utils/verifyOracle";
+import { fingerprintDoc } from "./plugins/fingerprints";
+import { configureHeadingIds, seedHeadingIds, type HeadingIdSeed } from "./plugins/headingIdSync";
+import { EXTERNAL_SYNC_META, PROGRESSIVE_APPEND_META, setProgressiveStreaming } from "./plugins/docChange";
+import { foldPluginKey } from "./plugins/foldState";
+import { rehydrateListNumbering } from "./plugins/listNumbering";
+import { PROGRESSIVE_OPEN_MIN_CHARS, planProgressiveOpen, streamChunks, type StreamHandle } from "./progressiveOpen";
+import { Fragment, Selection } from "./pm";
 import { markdownFormat } from "./format/markdown";
 import type { FormatModule } from "./format/types";
 import { guardNodeViewFactory } from "./nodeViewBoundary";
@@ -218,13 +226,110 @@ function scheduleProtection(): void {
 let _hasUserInteracted = false;
 let _interactionListenerAdded = false;
 
-// Set once createEditor() has finished wiring an editor. Setting the initial
-// content during create() dispatches doc-changing transactions; this blocks
-// them from reaching the sync pipeline so opening a file never causes a silent
-// save. Module-scoped (like _hasUserInteracted) because the doc-change
-// subscriber is registered before the editor — and therefore before any local
-// would be initialized.
+// Set once createEditor() has finished wiring an editor AND the document is
+// whole. Setting the initial content during create() dispatches doc-changing
+// transactions; this blocks them from reaching the sync pipeline so opening a
+// file never causes a silent save. Module-scoped (like _hasUserInteracted)
+// because the doc-change subscriber is registered before the editor — and
+// therefore before any local would be initialized.
+//
+// A progressive open (progressiveOpen.ts, MAR-429) keeps it down until the
+// last chunk lands: while it is down the sync pipeline is inert and the flush
+// answers with the saved bytes, so no path can serialize a partial document.
+// That is the whole of the truncation guard, and `progressiveOpen.test.ts`
+// holds it against both paths.
 let _isSettled = false;
+
+// ── Progressive open (MAR-429) ──────────────────────────────────────────────
+let _progressiveMinChars = PROGRESSIVE_OPEN_MIN_CHARS;
+// The stream still appending, or null. Cancelled by a re-init or an inbound
+// external sync, both of which replace the document wholesale.
+let _stream: StreamHandle | null = null;
+// True for the synchronous span in which a chunk is dispatched, so the
+// doc-change subscriber can tell the document arriving from the user editing
+// it: the latter, while the stream runs, is owed a sync once it completes.
+let _appendingChunk = false;
+let _editedWhileStreaming = false;
+
+/** Test seam: lower the floor so a jsdom-sized document opens progressively. */
+export function setProgressiveOpenMinCharsForTests(minChars: number | undefined): void {
+    _progressiveMinChars = minChars ?? PROGRESSIVE_OPEN_MIN_CHARS;
+}
+
+/** Whether the document is whole and the pipeline live: false while a progressive open still streams. */
+export function isSettled(): boolean {
+    return _isSettled;
+}
+
+/**
+ * One chunk of the document landing: parsed on its own, its heading ids
+ * continuing the open's one assigner, appended at the end as a transaction
+ * that reads as the file's content arriving (not the user's edit, not
+ * history), with the selection put back where it was, because an append at
+ * the end moves nothing before it and the default mapping would carry a
+ * caret sitting at the old end to the new one.
+ */
+function appendChunk(editor: Editor, text: string, seed: HeadingIdSeed, pristine: ProseNode[]): void {
+    const view = editor.action((ctx) => getView(ctx));
+    const parsed = editor.action((ctx) => ctx.get(parserCtx)(text)) as ProseNode | null;
+    if (!parsed) throw new Error("progressive open: a chunk did not parse");
+    const seeded = editor.action((ctx) => seedHeadingIds(ctx, parsed, seed));
+    seeded.forEach((block) => pristine.push(block));
+    const { state } = view;
+    const tr = state.tr
+        .insert(state.doc.content.size, seeded.content)
+        .setMeta("addToHistory", false)
+        .setMeta(EXTERNAL_SYNC_META, true)
+        .setMeta(PROGRESSIVE_APPEND_META, true);
+    tr.setSelection(Selection.fromJSON(tr.doc, state.selection.toJSON()));
+    _appendingChunk = true;
+    try {
+        view.dispatch(tr);
+    } finally {
+        _appendingChunk = false;
+    }
+}
+
+/**
+ * The document is whole: what a plain open does at the end of `createEditor`,
+ * and what a progressive open does when its last chunk has landed. The
+ * order is the invariant: everything that restores presentation onto the
+ * document runs BEFORE the pipeline settles, so it reads as the open and not
+ * as an edit, and the sync owed for anything the user typed meanwhile is
+ * requested last, against a settled pipeline.
+ */
+function finishOpen(editor: Editor, initialMarkdown: string, pristine: ProseNode[] | null): void {
+    setProgressiveStreaming(false);
+    const live = editor.action((ctx) => getState(ctx).doc);
+    if (pristine) {
+        const view = editor.action((ctx) => getView(ctx));
+        rehydrateListNumbering(view);
+        view.dispatch(view.state.tr.setMeta(foldPluginKey, { type: "resolvePersisted" }).setMeta("addToHistory", false));
+    }
+    // Snapshot the pristine document and defer its round-trip protection off the
+    // critical path (see _protectionSnapshot above): the zero-edit
+    // re-serialization used to learn which regions the round trip cannot
+    // reproduce would otherwise block first paint on large files. PRISTINE
+    // is the word that matters: a progressive open's live document may
+    // already hold what the user typed while it streamed, and protection
+    // computed from that would read the edit as a region the round trip
+    // cannot reproduce, so the streamed document is reassembled from the
+    // chunks as they were parsed, which is what a whole parse gives.
+    _protectionSnapshot = {
+        baseline: initialMarkdown,
+        doc: pristine ? live.copy(Fragment.fromArray(pristine)) : live,
+        editor,
+    };
+    scheduleProtection();
+    mark("stream-end");
+    measure("stream", "stream-start", "stream-end");
+    _isSettled = true;
+    if (_editedWhileStreaming) {
+        _editedWhileStreaming = false;
+        _docChangeCount++;
+        _scheduler.request();
+    }
+}
 
 // True only for the synchronous span in which an INBOUND external change is
 // being dispatched, read by the doc-change subscriber to keep that change from
@@ -296,23 +401,72 @@ let _onUpdate: ((markdown: string) => void) | null = null;
 // at the call site in index.ts.
 let _onDocChange: (() => void) | null = null;
 
+// ── Off-thread verification (MAR-430, tier B0) ─────────────────────────────
+// A sync's verifying reparse is the one whole-document parse on the edit path
+// and, on a large document, most of the sync (`pnpm perf huge-outline` prints
+// the split as `sync split`). Above this many characters the reopen question
+// goes to the verify worker (utils/verifyOracle.ts) and the interaction
+// thread keeps only the serialize, the merge and the live fingerprint; below
+// it the parse is cheaper than a round trip, and the pipeline is the
+// synchronous one it always was. The floor sits above `pnpm perf large`, so
+// every gated launch fixture keeps the synchronous path, and below the typing
+// gate's `xlarge`, so that gate exercises the worker.
+//
+// The flush (`flushPendingEdit`) never waits on the worker: a save is the
+// user's own gesture, its answer is due inside the host's flush timeout, and
+// the main-thread check is the same function answering the same question.
+// What crosses to the worker is text and a fingerprint; what comes back is a
+// boolean. Which bytes reach the file is decided by `utils/verifiedMerge`
+// either way, and `verifiedMerge.test.ts` holds its two forms identical.
+export const OFF_THREAD_VERIFY_MIN_CHARS = 100_000;
+let _offThreadMinChars = OFF_THREAD_VERIFY_MIN_CHARS;
+
+/** Test seam: lower the floor so a jsdom-sized document takes the worker path. */
+export function setOffThreadVerifyMinCharsForTests(minChars: number | undefined): void {
+    _offThreadMinChars = minChars ?? OFF_THREAD_VERIFY_MIN_CHARS;
+}
+
+// Every serialization the pipeline takes, sync or flush, numbered in order.
+// THE ORDERING RULE: a worker's answer commits only while no serialization
+// has been taken since the one it answers. A flush taken meanwhile carried
+// fresher bytes to the file, and an older answer landing after it would post
+// older content under a newer seq, which the extension would apply; a later
+// sync or an external re-base moved the baseline the answer was merged
+// against. All three read as "not current", and a stale answer is dropped
+// whole, never partially applied.
+let _serialSeq = 0;
+// The sync a worker is answering, or null. ONE in flight at a time: a sync
+// the scheduler asks for meanwhile is owed once this one settles, never
+// queued behind it, so a worker slower than the max-wait window is bounded
+// to one round trip of extra staleness rather than a growing backlog.
+let _inFlight: { editor: Editor; seq: number; saved: string } | null = null;
+let _syncOwed = false;
+
+/** The oracle to ask for this document, or null: the worker holds the markdown parser and no other. */
+function offThreadOracle(): VerifyOracle | null {
+    return format === markdownFormat ? verifyOracle() : null;
+}
+
 /**
  * The file-ready bytes for `markdown`: the minimal-diff merge into the saved
  * text, verified to reopen as the document it came from (MAR-343 —
- * `utils/verifiedMerge`). Both save paths go through here so neither can
- * acquire the check without the other; the merge's damage does not care which
- * one wrote it.
+ * `utils/verifiedMerge`). Both save paths go through here or through
+ * `mergeForSaveWith` below, which is the same decision with its reparse run
+ * elsewhere; neither can acquire the check without the other, and the
+ * merge's damage does not care which one wrote it.
  *
  * The parser comes from the editor's own context, so this stays on the
  * FormatModule seam: the verifier is handed a parse function and a profile
  * rather than knowing markdown exists.
  *
- * Every pass stamps a `merge` work count: one pass, and how many times the
+ * Every pass stamps a `merge` work count: one pass, how many times the
  * verifier reparsed the merged bytes (zero for a file already in the
- * serializer's spelling, one or two otherwise). Each is a whole-document
- * walk, so how many of them a burst pays is what the nightly heavy-fixture
- * gate holds (`e2e/perf-counts.mjs`); a scheduler that fires too often, the
- * defect #421 found, moves this count and no gated duration.
+ * serializer's spelling, one or two otherwise), and how many of those ran on
+ * the interaction thread. Each is a whole-document walk, so how many of them
+ * a burst pays is what the nightly heavy-fixture gate holds
+ * (`e2e/perf-counts.mjs`); a scheduler that fires too often, the defect #421
+ * found, moves this count and no gated duration, and a worker that quietly
+ * stops loading moves `mainReparses` off its ceiling of zero.
  */
 function mergeForSave(editor: Editor, markdown: string): { text: string; canonical: boolean } {
     let reparses = 0;
@@ -327,7 +481,34 @@ function mergeForSave(editor: Editor, markdown: string): { text: string; canonic
             return editor.action((ctx) => ctx.get(parserCtx)(text)) as ProseNode | null;
         },
     );
-    countWork("merge", { passes: 1, reparses });
+    countWork("merge", { passes: 1, reparses, mainReparses: reparses });
+    return result;
+}
+
+/**
+ * `mergeForSave` with the reopen question asked of `oracle`. The merge, the
+ * fallback and the live fingerprint are all taken synchronously, in the task
+ * that serialized, so the answer describes the document as it stood at one
+ * instant; only the reparse is awaited.
+ */
+async function mergeForSaveWith(
+    editor: Editor,
+    markdown: string,
+    oracle: VerifyOracle,
+): Promise<{ text: string; canonical: boolean }> {
+    let reparses = 0;
+    const result = await mergeVerifiedWith(
+        _savedMarkdown,
+        markdown,
+        format.formatProfile,
+        getProtection(),
+        () => fingerprintDoc(editor.action((ctx) => getState(ctx).doc)),
+        (liveFp, text) => {
+            reparses++;
+            return oracle.reopens(liveFp, text);
+        },
+    );
+    countWork("merge", { passes: 1, reparses, mainReparses: 0 });
     return result;
 }
 
@@ -365,11 +546,54 @@ function dropCanonicalProtection(): void {
  * Serialize the live document, merge it into the saved bytes with round-trip
  * protection, and ship it to the extension if it substantively changed. The
  * scheduler guarantees this is never called mid-IME-composition.
+ *
+ * On a document past the off-thread floor the verifying reparse is asked of
+ * the worker and the commit lands when it answers; everything else about the
+ * sync, the serialize included, still happens here and now. The answer is
+ * committed only while it is current (see `_serialSeq`), and an oracle that
+ * fails answers the same question on this thread, so the worker decides
+ * where the check ran and never whether it ran.
  */
 function syncNow(): void {
     if (!_editor) { return; }
-    const markdown = _editor.action(getMarkdown());
-    const { text: toSave, canonical } = mergeForSave(_editor, markdown);
+    const editor = _editor;
+    const oracle = offThreadOracle();
+    if (oracle && _inFlight) {
+        _syncOwed = true;
+        return;
+    }
+    const markdown = editor.action(getMarkdown());
+    const seq = ++_serialSeq;
+    if (!oracle || markdown.length < _offThreadMinChars) {
+        commitSync(mergeForSave(editor, markdown));
+        return;
+    }
+    const flight = { editor, seq, saved: _savedMarkdown };
+    _inFlight = flight;
+    mergeForSaveWith(editor, markdown, oracle).then(
+        (result) => settleSync(flight, result),
+        // The oracle retired itself (utils/verifyOracle.ts). The same
+        // question, answered here, if the answer is still wanted.
+        () => settleSync(flight, isCurrent(flight) ? mergeForSave(editor, markdown) : null),
+    );
+}
+
+/** Nothing the pipeline knows has moved since this sync serialized. */
+function isCurrent(flight: NonNullable<typeof _inFlight>): boolean {
+    return flight.editor === _editor && flight.seq === _serialSeq && flight.saved === _savedMarkdown;
+}
+
+function settleSync(flight: NonNullable<typeof _inFlight>, result: { text: string; canonical: boolean } | null): void {
+    if (_inFlight === flight) { _inFlight = null; }
+    if (result && isCurrent(flight)) { commitSync(result); }
+    if (_syncOwed) {
+        _syncOwed = false;
+        _scheduler.request();
+    }
+}
+
+/** The tail of a sync: advance the baseline and post, if the bytes changed. */
+function commitSync({ text: toSave, canonical }: { text: string; canonical: boolean }): void {
     if (canonical) { dropCanonicalProtection(); }
     if (toSave === _savedMarkdown) { return; } // no substantive change — no save
     _savedMarkdown = toSave;
@@ -408,6 +632,10 @@ function onDocChanged(): void {
     if (_isSettled && _hasUserInteracted && !_applyingExternal) {
         _docChangeCount++;
         _scheduler.request();
+    } else if (_stream && _hasUserInteracted && !_applyingExternal && !_appendingChunk) {
+        // The user edited a document still arriving. Nothing syncs until the
+        // document is whole; this is the sync owed then (finishOpen).
+        _editedWhileStreaming = true;
     }
     _onDocChange?.();
 }
@@ -433,7 +661,15 @@ function onDocChanged(): void {
  */
 export function flushPendingEdit(id: string): string {
     _scheduler.reset();
-    if (!_editor) { return _savedMarkdown; }
+    // Unsettled means the document is not whole (a progressive open still
+    // streaming, or a create in flight): the saved bytes are the only ones
+    // that describe the whole file, and serializing the editor here would
+    // write a truncated one.
+    if (!_editor || !_isSettled) { return _savedMarkdown; }
+    // A serialization of its own: any worker answer still in flight is now
+    // older than the bytes about to reach the file, and is dropped when it
+    // lands (see `_serialSeq`).
+    ++_serialSeq;
     const { text, canonical } = mergeForSave(_editor, _editor.action(getMarkdown()));
     _flushCandidate = { id, text, canonical, docChangeCount: _docChangeCount };
     return text;
@@ -492,21 +728,29 @@ export function acknowledgeFlush(id: string, applied: boolean): void {
  * trigger a silent save.
  */
 /**
- * A harness probe, and never on the user's path: how `create`'s parse splits
- * between the markdown half (remark parse and run, where the callout and
- * directive tree transforms live) and the ProseMirror construction from
- * mdast. Both happen inside one `parserCtx` call, so the split is read from
- * outside: the remark processor alone gives the first half, the whole parse
- * gives the sum, and construction is the difference. `e2e/perf.mjs` calls it
- * after the settle marks and prints the two beside the spans (MAR-434).
+ * Harness probes, and never on the user's path. Installed only when the perf
+ * harness is driving the page (its init marker is on the window), so no
+ * production webview carries a global for them, and `e2e/perf.mjs` calls
+ * them after the settle marks and prints each beside the spans. Both are
+ * WARM readings: the parser and serializer have already run on this text, so
+ * a cold span is larger than the pieces' sum, and what each answers is which
+ * piece dominates, never how long any takes cold.
  *
- * Installed only when the perf harness is driving the page (its init marker
- * is on the window), so no production webview carries a global for it. It
- * is a WARM reading: the parser has already run once on this text, so the
- * cold `create` span is larger than the two halves' sum, and what the number
- * answers is which half dominates, not how long either takes cold.
+ * `parseSplit` (MAR-434): how `create`'s parse splits between the markdown
+ * half (remark parse and run, where the callout and directive tree
+ * transforms live) and the ProseMirror construction from mdast. Both happen
+ * inside one `parserCtx` call, so the split is read from outside: the remark
+ * processor alone gives the first half, the whole parse gives the sum, and
+ * construction is the difference.
+ *
+ * `syncSplit` (MAR-430): what one sync costs, piece by piece, on the
+ * document as it stands: the serialize, the minimal-diff merge, the live
+ * fingerprint, and the verifying reparse of the merged bytes. `offThread`
+ * says whether this document's syncs send that reparse to the verify worker,
+ * so the reading says which pieces the interaction thread still pays. It is
+ * how MAR-432 sizes its next tier.
  */
-function installParseSplitProbe(editor: Editor, markdown: string): void {
+function installPerfProbes(editor: Editor, markdown: string): void {
     const host = globalThis as { __perfInit?: unknown; __birtaPerf?: unknown };
     if (host.__perfInit === undefined) return;
     host.__birtaPerf = {
@@ -523,19 +767,26 @@ function installParseSplitProbe(editor: Editor, markdown: string): void {
             const mdast = t1 - t0;
             return { mdast, pm: (t2 - t1) - mdast, chars: markdown.length };
         },
+        syncSplit(): { serialize: number; merge: number; fingerprint: number; reparse: number; chars: number; offThread: boolean } {
+            const t0 = performance.now();
+            const serialized = editor.action(getMarkdown());
+            const t1 = performance.now();
+            const merged = applyMinimalChanges(_savedMarkdown, serialized, format.formatProfile, getProtection());
+            const t2 = performance.now();
+            fingerprintDoc(editor.action((ctx) => getState(ctx).doc));
+            const t3 = performance.now();
+            editor.action((ctx) => ctx.get(parserCtx)(merged));
+            const t4 = performance.now();
+            return {
+                serialize: t1 - t0,
+                merge: t2 - t1,
+                fingerprint: t3 - t2,
+                reparse: t4 - t3,
+                chars: serialized.length,
+                offThread: serialized.length >= _offThreadMinChars && offThreadOracle() !== null,
+            };
+        },
     };
-}
-
-/**
- * Lift the flag for input that reached the document without passing through
- * the listeners above: text typed into the static first frame's capture field
- * (firstFrame.ts) is real keyboard input that arrived BEFORE `createEditor`
- * reset the flag and installed them, and is replayed as transactions after.
- * Without this the replayed text sits in a document that never dirties, which
- * is the data-loss path the block above describes.
- */
-export function markUserInteracted(): void {
-    _hasUserInteracted = true;
 }
 
 function setupInteractionTracking(): void {
@@ -619,6 +870,19 @@ function _applyExternalNow(newMarkdown: string): boolean {
     if (!applied) {
         return false;
     }
+    // The file's content has replaced the document wholesale, so a stream
+    // still appending the old content is stopped (its chunks land only on
+    // idle slices, so none can land between the apply and this), and the
+    // pipeline settles on the whole document that is now on screen.
+    if (_stream) {
+        _stream.cancel();
+        _stream = null;
+        setProgressiveStreaming(false);
+        _editedWhileStreaming = false;
+        mark("stream-end");
+        measure("stream", "stream-start", "stream-end");
+        _isSettled = true;
+    }
     // Re-baseline against the freshly applied content so the NEXT genuine user
     // edit diffs against the right bytes (and the debounced listener never
     // echoes the external change back to the extension as a save). Protection
@@ -685,6 +949,21 @@ export async function createEditor(
     // write the previous content back over the file (MAR-148).
     _savedMarkdown = initialMarkdown;
     _flushCandidate = null;
+    // A worker answer for the previous editor settles against this one and
+    // reads as stale; it must not hold this editor's first sync back.
+    _inFlight = null;
+    _syncOwed = false;
+    // A stream still appending the previous document would append it to this one.
+    _stream?.cancel();
+    _stream = null;
+    setProgressiveStreaming(false);
+    _appendingChunk = false;
+    _editedWhileStreaming = false;
+    // How this document opens: whole, or on its first screen with the rest
+    // streamed in (progressiveOpen.ts). Decided once, here, so the frame in
+    // index.ts, the initial value below and the stream after create agree.
+    const plan = planProgressiveOpen(initialMarkdown, format, _progressiveMinChars);
+    const headingIds: HeadingIdSeed = {};
 
     // One live listener pair per editor instance (see _compositionAbort).
     _compositionAbort?.abort();
@@ -728,7 +1007,7 @@ export async function createEditor(
     let builder = Editor.make()
         .config((ctx) => {
             ctx.set(rootCtx, container);
-            ctx.set(defaultValueCtx, initialMarkdown);
+            ctx.set(defaultValueCtx, plan ? plan.first : initialMarkdown);
             // Layer 1 of the read-only lock (MAR-53; see webview/readOnly.ts).
             // A PREDICATE, not a constant: ProseMirror re-reads it on every
             // view update, so the toolbar toggle is live and needs only the
@@ -741,8 +1020,9 @@ export async function createEditor(
             }));
             // Heading ids onto the parsed document before the state is built,
             // so the view never has to redraw every heading to receive them.
-            // See plugins/headingIdSync.
-            configureHeadingIds(ctx);
+            // See plugins/headingIdSync. The seed is shared with the chunks a
+            // progressive open appends, so their ids continue this count.
+            configureHeadingIds(ctx, headingIds);
             // Format-supplied stringify options that keep serializer output
             // close to the original file formatting (bullets, rules, table
             // widths).
@@ -1004,20 +1284,46 @@ export async function createEditor(
     // and available in devtools against any real document. Installed once per
     // editor instance; initEditor destroys before it recreates.
     instrumentTransactions(_editor.action((ctx) => getView(ctx)));
-    installParseSplitProbe(_editor, initialMarkdown);
+    installPerfProbes(_editor, initialMarkdown);
 
-    // Snapshot the pristine document and defer its round-trip protection off the
-    // critical path (see _protectionSnapshot above): the zero-edit
-    // re-serialization used to learn which regions the round trip cannot
-    // reproduce would otherwise block first paint on large files.
-    // (_protection is still null — the reset block cleared it.)
-    _protectionSnapshot = {
-        baseline: initialMarkdown,
-        doc: _editor.action((ctx) => getState(ctx).doc),
-        editor: _editor,
-    };
-    scheduleProtection();
+    // A document past the off-thread floor starts its verify worker now, in
+    // idle time after the mount, and runs the worker's parser over the text
+    // once so the first sync's question is answered warm. The main thread
+    // pays a Blob and a constructor; the parse is the worker's.
+    if (initialMarkdown.length >= _offThreadMinChars) {
+        requestIdle(() => offThreadOracle()?.warm(initialMarkdown), 5000);
+    }
 
-    _isSettled = true;
+    // The rest of the document, or the whole of it already: either way the
+    // pipeline settles in finishOpen, and `stream` measures the gap. A
+    // stream that cannot finish (a chunk the parser refused, which markdown
+    // never does) leaves the pipeline unsettled rather than settling on a
+    // partial document, and reports through the crash boundary.
+    mark("stream-start");
+    if (plan) {
+        const editor = _editor;
+        // The document as parsed, chunk by chunk, for the protection
+        // snapshot: the first chunk is the state's own document before
+        // anything could touch it, and every later chunk adds its blocks as
+        // it lands.
+        const pristine: ProseNode[] = [];
+        editor.action((ctx) => getState(ctx).doc).forEach((block) => pristine.push(block));
+        setProgressiveStreaming(true);
+        const stream = streamChunks(plan.rest, (text) => appendChunk(editor, text, headingIds, pristine));
+        _stream = stream;
+        stream.done.then(
+            (complete) => {
+                if (_stream !== stream) return; // superseded by a re-init or an external sync
+                _stream = null;
+                if (complete) finishOpen(editor, initialMarkdown, pristine);
+            },
+            (e: unknown) => {
+                if (_stream === stream) _stream = null;
+                throw e;
+            },
+        );
+    } else {
+        finishOpen(_editor, initialMarkdown, null);
+    }
     return _editor;
 }

@@ -107,6 +107,25 @@ export function changeTouchesTextblock(prev: PmNode, next: PmNode, test: (text: 
     return spanHas(prev, range.start, range.endA) || spanHas(next, range.start, range.endB);
 }
 
+/**
+ * The position in `next` where content APPENDED after every block of `prev`
+ * starts, or null when `next` is not `prev` plus a tail. Read off node
+ * identity rather than value: an insertion at the end of the document keeps
+ * every earlier top-level child the same object (ProseMirror rebuilds only
+ * the path to the change), so this is one comparison per child, and never a
+ * walk into them. A progressive open (progressiveOpen.ts) is this shape once
+ * per chunk, and a paste at the end of a document is it once; a consumer
+ * that scans per top-level block can scan the tail alone and keep what it
+ * had for the rest, whose positions the append did not move.
+ */
+export function appendedAtEnd(prev: PmNode, next: PmNode): number | null {
+    if (next.childCount <= prev.childCount) return null;
+    for (let i = 0; i < prev.childCount; i++) {
+        if (next.child(i) !== prev.child(i)) return null;
+    }
+    return prev.content.size;
+}
+
 /** One top-level block replaced by one top-level block, everything else value-identical. */
 export interface TopLevelBlockEdit {
     /** The block's index among the document's children, the same in both docs. */

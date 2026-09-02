@@ -50,6 +50,34 @@ import { $prose } from "@milkdown/utils";
  * instead — see the module header for why the two cannot be unified. */
 export const EXTERNAL_SYNC_META = "external-sync";
 
+/**
+ * The transaction meta marking one chunk of a progressive open landing
+ * (progressiveOpen.ts, MAR-429): the document's own content arriving, not an
+ * edit. Such a transaction also carries `EXTERNAL_SYNC_META`, because every
+ * consumer of that tag is right about it too (the read-only lock admits it,
+ * history skips it, calc and anchor sync stand down); this one is for the
+ * consumer that has to know the append is an APPEND, the fold plugin, which
+ * maps its chrome rather than rebuilding for a document still growing.
+ */
+export const PROGRESSIVE_APPEND_META = "progressive-append";
+
+// Whether a progressive open is still appending, held here beside the meta
+// because the consumer that needs it is a plugin and editor.ts imports the
+// plugins. While it is up, the document's end is not the document's end: a
+// plugin that acts on "the last block" on any transaction (the trailing-rule
+// filler) would act on the end of a chunk, and every transaction the other
+// plugins dispatch after mount (decoration state, hydration) is one of those
+// transactions.
+let _progressiveStreaming = false;
+
+export function setProgressiveStreaming(streaming: boolean): void {
+    _progressiveStreaming = streaming;
+}
+
+export function isProgressiveStreaming(): boolean {
+    return _progressiveStreaming;
+}
+
 export const docChangeKey = new PluginKey("birta-doc-change");
 
 let _listener: (() => void) | null = null;

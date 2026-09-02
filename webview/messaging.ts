@@ -21,11 +21,18 @@ declare function acquireVsCodeApi(): VsCodeHost;
 // the extension ships one page, and a second one would have to import this
 // module rather than write the call again. `vscode` below is the typed funnel
 // over that handle - every send is checked against ToExtensionMessage.
-const host: VsCodeHost = acquireVsCodeApi();
+//
+// Acquired on FIRST USE rather than at module load, and still exactly once.
+// A worker that shares a module with the page (the save pipeline's verify
+// worker, webview/workers/) has this module in its graph through the
+// presets, and a worker has no `acquireVsCodeApi` to call: every send is
+// the page's, so the handle is taken when the page first sends.
+let host: VsCodeHost | null = null;
+const api = (): VsCodeHost => (host ??= acquireVsCodeApi());
 const vscode = {
-    postMessage: (message: ToExtensionMessage): void => host.postMessage(message),
-    getState: (): unknown => host.getState(),
-    setState: (state: unknown): void => host.setState(state),
+    postMessage: (message: ToExtensionMessage): void => api().postMessage(message),
+    getState: (): unknown => api().getState(),
+    setState: (state: unknown): void => api().setState(state),
 };
 
 // The syncVersion of the last init/externalUpdate the webview applied. Echoed
@@ -527,11 +534,15 @@ export function setWebviewState(state: Record<string, unknown>): void {
 // width, immediately switch to the raw editor) must not die in the 250ms
 // debounce window. Best-effort — a hard-killed webview can't post, which is
 // why the previous echo is already durable extension-side.
-window.addEventListener("pagehide", () => {
-    if (_viewStateEchoTimer) { flushViewStateEcho(); }
-});
-document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "hidden" && _viewStateEchoTimer) {
-        flushViewStateEcho();
-    }
-});
+// Registered only where there is a page: a worker holding this module has no
+// window and echoes no view state.
+if (typeof window !== "undefined") {
+    window.addEventListener("pagehide", () => {
+        if (_viewStateEchoTimer) { flushViewStateEcho(); }
+    });
+    document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "hidden" && _viewStateEchoTimer) {
+            flushViewStateEcho();
+        }
+    });
+}

@@ -230,7 +230,9 @@ export function commandMutates(id: string): boolean {
 // The bootstrap value is baked into the HTML before this script runs (the
 // `calcEnabled` pattern), so the very first paint is already in the right mode
 // and no transaction ever lands under the wrong one.
-let _readOnly = Boolean(window.__i18n?.readOnly);
+// Off the global rather than `window`: the same object in a page, and a
+// worker sharing this module (webview/workers/) has a global and no window.
+let _readOnly = Boolean((globalThis as { __i18n?: Window["__i18n"] }).__i18n?.readOnly);
 
 const _listeners = new Set<(readOnly: boolean) => void>();
 

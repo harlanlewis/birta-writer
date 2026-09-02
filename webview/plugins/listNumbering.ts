@@ -150,6 +150,24 @@ export function hydrateListNumbering(state: EditorState): Transaction | null {
 }
 
 /**
+ * Hydrate again, over a document that has grown since the plugin's own
+ * mount-time hydration: a progressive open (progressiveOpen.ts, MAR-429)
+ * mounts on the first chunk, so the lists in every later chunk have not met
+ * the bag until the stream completes and this runs. Idempotent, because
+ * `hydrateListNumbering` leaves a list that already carries an attr alone.
+ * A refused dispatch (the read-only lock) disarms `inUse` the way the mount
+ * path does, so the next reconcile cannot read an unhydrated document as the
+ * user having cleared every stored style.
+ */
+export function rehydrateListNumbering(view: EditorView): void {
+    const before = view.state.doc;
+    const tr = hydrateListNumbering(view.state);
+    if (!tr) return;
+    view.dispatch(tr);
+    if (view.state.doc === before) inUse = false;
+}
+
+/**
  * Restate the bag as the document currently has it. Idempotent, which is what
  * lets the caller schedule it freely — but NOT cheap: it walks the lists and
  * resolves an occurrence anchor per styled list, and that builds the anchor

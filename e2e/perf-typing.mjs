@@ -247,6 +247,16 @@ async function sampleTyping(browser, url, content, keys, fixture = "?", side = "
         () => performance.getEntriesByName("mdw:editor-painted").length > 0,
         { timeout: 30000 },
     );
+    // A progressive open (webview/progressiveOpen.ts) paints the first screen
+    // and streams the rest behind it; the burst measures typing on the whole
+    // document, so it waits for the stream. `stream-start` is stamped before
+    // the paint on every bundle that streams at all, so a bundle without it
+    // (an older merge-base) is not waited on.
+    await page.waitForFunction(
+        () => performance.getEntriesByName("mdw:stream-start").length === 0
+            || performance.getEntriesByName("mdw:stream-end").length > 0,
+        { timeout: 30000 },
+    );
 
     // Cursor into the first paragraph; let post-create normalization and
     // deferred work (protection recompute, TOC) settle before measuring.

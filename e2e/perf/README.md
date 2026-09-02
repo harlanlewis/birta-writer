@@ -24,11 +24,11 @@ pnpm perf:bundle                           # zero-variance eager-bytes metric
 | `launch` | 0 → `editor-painted` | **headline**: navigation start to first painted editor frame |
 | `eager` | `eval-start` → `ready-posted` | eager module eval + UI construction |
 | `roundtrip` | `ready-posted` → `init-received` | the `ready`→`init` postMessage hop |
-| `frame` | `frame-start` → `frame-painted` | the static first frame (`webview/firstFrame.ts`): stamped only on a document large enough to get one, so `–` on every default fixture; the time to something correct on screen, while `launch` stays the live editor's paint |
-| `create` | `create-start` → `create-end` | Milkdown `Editor…create()` (parses the doc) |
+| `create` | `create-start` → `create-end` | Milkdown `Editor…create()` (parses the doc; on a document that opens progressively, the first chunk alone) |
 | `toc` / `toolbar` | `*-start` → `*-end` | those two components' construction |
 | `rtp` | `rtp-start` → `rtp-end` | **post-paint**: `computeRoundTripProtection` (re-serializes the doc) |
 | `proofread` | `proofread-start` → `proofread-end` | **post-paint**: the first whole-document style/lint pass |
+| `stream` | `stream-start` → `stream-end` | **post-paint**: a progressive open's remaining chunks landing behind the live editor (`webview/progressiveOpen.ts`); about zero on a document that opened whole, and the whole model cost minus the first screen's on one that did not |
 
 `launch` minus the sum of the launch spans is the browser's bundle fetch+parse cost (the eager JS/CSS download before `eval-start`).
 
@@ -37,6 +37,10 @@ pnpm perf:bundle                           # zero-variance eager-bytes metric
 ### The create split (a probe, not a span)
 
 `create` is one `parserCtx` call: the markdown half (remark parse and run, where the callout and directive tree transforms live) and the ProseMirror construction from mdast, and no mark can sit between them without reaching into Milkdown. So the runner asks the page after the settle marks: the bundle installs `__birtaPerf.parseSplit()` only when the harness's init marker is on the window (`installParseSplitProbe` in `webview/editor.ts`), and it re-parses the document twice, once through the remark processor alone and once whole, so construction is the difference. `pnpm perf` prints the two under the table as `create split` and carries them in its JSON as `split`. It is a WARM reading, the parser having already run once on that text, so the cold `create` span is larger than the two halves' sum; what it answers is which half dominates (MAR-434), never how long either takes cold.
+
+### The sync split (a probe, not a span)
+
+A sync is four pieces: the serialize, the minimal-diff merge, the live fingerprint, and the verifying reparse of the merged bytes (`utils/verifiedMerge.ts`), and only the last of them is a whole-document parse. The same probe machinery asks the page for all four after the settle marks (`__birtaPerf.syncSplit()`, installed beside the create split in `webview/editor.ts`), and `pnpm perf` prints them as `sync split` and carries them as `syncSplit` in its JSON, with whether the document's syncs send the reparse to the verify worker (MAR-430) or run it on the main thread. Warm, like the create split. It is the reading that says which pieces the interaction thread still pays on a large document, which is what sizes the next tier of the worker pipeline (MAR-432); `pnpm perf huge-outline` is where to read it.
 
 ### The post-paint spans (`POST_PAINT_SPANS`)
 

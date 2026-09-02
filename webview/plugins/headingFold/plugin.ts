@@ -37,6 +37,7 @@ import {
 } from "./foldModel";
 import { cachedFoldRanges, getHeadingLevel } from "./foldModel";
 import { countWork } from "../../perf";
+import { PROGRESSIVE_APPEND_META } from "../docChange";
 import { singleTopLevelBlockEdit, type TopLevelBlockEdit } from "../../utils/textblockEdit";
 
 /** The fold set is rebuilt as a new object on every doc change, so equality is by members. */
@@ -240,6 +241,38 @@ export const headingFoldPlugin = $prose(() =>
             },
             apply(tr, value, oldState, newState) {
                 const meta = tr.getMeta(foldPluginKey) as FoldMeta | undefined;
+
+                // MAR-429: one chunk of a progressive open landed at the end
+                // of the document. Nothing before it moved, so the chrome
+                // maps; the structure fingerprint is left unmatchable, so the
+                // first transaction after the stream rebuilds once for the
+                // window instead of this plugin walking a growing document
+                // once per chunk. The persisted folds the chunk may hold are
+                // resolved when the stream completes (`resolvePersisted`).
+                if (tr.getMeta(PROGRESSIVE_APPEND_META)) {
+                    return {
+                        ...value,
+                        decorations: value.decorations.map(tr.mapping, newState.doc),
+                        fingerprint: "",
+                    };
+                }
+                if (meta?.type === "resolvePersisted") {
+                    if (!value.enabled) {
+                        return value;
+                    }
+                    const persisted = readPersistedFoldAnchors();
+                    const late = persisted ? resolveFoldAnchors(newState.doc, persisted) : seedSyntaxFolds(newState.doc);
+                    const folded = new Set<number>([...value.folded, ...late]);
+                    const windows = chromeWindows(value.window, value.pinned);
+                    return {
+                        ...value,
+                        folded,
+                        decorations: buildHeadingFoldDecorations(newState.doc, folded, value.enabled, windows),
+                        fingerprint: structureFingerprint(
+                            newState.doc, folded, cachedFoldRanges(newState.doc), value.enabled, windows,
+                        ),
+                    };
+                }
 
                 // MAR-215: the scroll window moved. Rebuild for the new window
                 // (the build is windowed too, so this is O(visible blocks));

@@ -22,19 +22,17 @@ import { createImageView } from "../../components/imageView";
 import { createMathInlineView } from "../../components/math";
 import { createTableView } from "../../components/table/tableView";
 import { createWikiLinkView } from "../../components/wikiLink";
-import { configureSerialization, gfmFidelity, pureCommonmark } from "../../serialization";
 import { findSafeCuts } from "../../utils/blockSegmenter";
 import { markdownProfile } from "../../utils/minimalDiff";
 import type { FormatModule } from "../types";
+import { markdownParse } from "./parse";
 
 /** The markdown format: presets, serializer config, NodeViews, and
- * minimal-diff profile. */
+ * minimal-diff profile. The parse half is `./parse` (the presets and the
+ * stringify config), spread here so the page and the verify worker build
+ * their parsers from the same objects. */
 export const markdownFormat: FormatModule = {
-    // Order matters: gfmFidelity's overrides must register after
-    // pureCommonmark, exactly as `.use(gfm)` always followed the base preset
-    // (see the gfmFidelity charter in serialization.ts).
-    presets: [pureCommonmark, gfmFidelity],
-    configureSerialization,
+    ...markdownParse,
     nodeViews: [
         ["code_block", createCodeBlockView],
         ["callout", createCalloutView],
