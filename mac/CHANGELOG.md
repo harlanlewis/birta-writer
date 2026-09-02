@@ -18,6 +18,10 @@ Versions are shared. Both files are stamped with the same release version, and a
 
   Nothing about a note changes. Every file opens with everything it contains drawn in full whatever is selected, and the rows that edit what is already there stay: a table keeps its row and column controls, and a task list keeps Toggle Task Done and Uncheck All Tasks even where Task List has gone. See [`../CHANGELOG.md`](../CHANGELOG.md) for what the setting does inside the editor itself.
 
+---
+
+## [2026.902.0] - 2026, September 2
+
 ### Fixed
 
 - Birta Writer for Mac draws a fullscreen diagram's name clear of the window buttons. A fullscreen surface covers the whole window, titlebar included, and puts the diagram's name in the top-left corner, which on this app is the corner the traffic lights occupy, so the two were drawn on top of each other. The name now starts after them, on the axis the rest of that band already lines up on.
