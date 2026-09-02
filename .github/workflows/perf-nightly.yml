@@ -34,6 +34,12 @@ jobs:
     name: Heavy fixtures (counts gated, durations reported)
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    # Every measuring step below pipes through `tee` so the table lands in the
+    # log AND the summary. Without `shell: bash` a step runs `bash -e` with no
+    # `pipefail`, the step's status is tee's, and the gate can never go red.
+    defaults:
+      run:
+        shell: bash
 
     steps:
       - uses: actions/checkout@v4
