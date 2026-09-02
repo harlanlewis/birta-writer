@@ -12,14 +12,16 @@
  * green run reports it, so the call sites are checked rather than trusted.
  */
 import { describe, it, expect } from "vitest";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
-import { globSync } from "node:fs";
 import { commandAvailable, commandSyntax } from "../commandAvailability";
 import { EDITOR_COMMANDS } from "../editorCommands";
 import { ALL_SYNTAX_FEATURES, type SyntaxSet } from "../syntaxSets";
 
 const root = resolve(__dirname, "../..");
+
+/** Every directory a surface can live in. */
+const SOURCE_ROOTS = ["webview", "src", "shared"];
 
 /**
  * The one module allowed to ask the host-only question, because it is what
@@ -43,10 +45,15 @@ function withSets(sets: readonly SyntaxSet[] | undefined, body: () => void): voi
 
 describe("commandAvailable is the one predicate", () => {
     it("no surface should call hostHasCommand directly", () => {
-        const files = globSync(["webview/**/*.ts", "src/**/*.ts", "shared/**/*.ts"], {
-            cwd: root,
-            exclude: (name) => name === "__tests__" || name === "node_modules",
-        }).map(String);
+        // `readdirSync` with `recursive` rather than `fs.globSync`, which is
+        // Node 22 and this project's CI runs Node 20: the glob version threw
+        // `globSync is not a function` there, so the one guard holding the
+        // whole predicate together crashed on every PR while passing locally.
+        const files = SOURCE_ROOTS.flatMap((dir) =>
+            readdirSync(resolve(root, dir), { recursive: true, encoding: "utf8" })
+                .map((name) => `${dir}/${String(name).split("\\").join("/")}`)
+                .filter((path) => path.endsWith(".ts"))
+                .filter((path) => !path.includes("/__tests__/") && !path.includes("/node_modules/")));
         // A sweep that reached nothing passes, so the corpus is asserted before
         // its verdict is.
         expect(files.length).toBeGreaterThan(100);

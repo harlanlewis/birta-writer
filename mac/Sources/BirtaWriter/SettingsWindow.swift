@@ -227,6 +227,14 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     /// Re-read the preferences. The argument is work to run between the
     /// buffer's flush and the page's reload; only a location change uses it.
     private let onChange: (BeforeReload?) -> Void
+    /// Re-read the preferences in EVERY window, not the front one.
+    ///
+    /// A second closure rather than a flag on `onChange`, because the two are
+    /// different claims about a setting rather than two ways of doing one
+    /// thing: `onChange` is for a setting whose only surface is the window it
+    /// changes, and this is for one with a surface the application owns. The
+    /// publishing targets are the first of those, and `WindowSet` holds why.
+    private let onChangeEverywhere: () -> Void
     /// Show the welcome window. Injected rather than built here: the window is
     /// the app delegate's, so it survives this one being closed.
     private let onShowWelcome: () -> Void
@@ -237,11 +245,13 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     init(flavour: AppFlavor,
          onHotkeyChange: @escaping () -> OSStatus,
          onChange: @escaping (BeforeReload?) -> Void,
+         onChangeEverywhere: @escaping () -> Void,
          onShowWelcome: @escaping () -> Void,
          onCheckForUpdates: @escaping () -> Void) {
         self.flavour = flavour
         self.onHotkeyChange = onHotkeyChange
         self.onChange = onChange
+        self.onChangeEverywhere = onChangeEverywhere
         self.onShowWelcome = onShowWelcome
         self.onCheckForUpdates = onCheckForUpdates
         let window = NSWindow(
@@ -1652,15 +1662,20 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     /// would have to agree on what "never opened this pane" means, and that
     /// answer (every target) belongs to `Prefs.syntaxSets` alone.
     ///
-    /// `onChange` reloads the page, which is what re-reads the boot config and
-    /// re-places the toolbar. The menu bar needs no telling: it reads `Prefs`
-    /// at the moment the Format menu opens.
+    /// The reload is what re-reads the boot config and re-places the toolbar,
+    /// and it has to reach every window rather than the front one.
     @objc private func toggleSyntaxSet(_ sender: NSSwitch) {
         guard let set = syntaxSwitches.first(where: { $0.value === sender })?.key else { return }
         var sets = Prefs.syntaxSets
         if sender.state == .on { sets.insert(set) } else { sets.remove(set) }
         Prefs.syntaxSets = sets
-        onChange(nil)
+        // EVERY window, not the front one, which is what `onChange` reaches.
+        // The Format menu is the application's and repaints from `Prefs` on
+        // every opening, so a back window left on the old target would offer
+        // tools the menu bar above it had already withdrawn. `WindowSet`
+        // explains it where the broadcast lives. The menu bar needs no
+        // telling: it reads `Prefs` at the moment it opens.
+        onChangeEverywhere()
     }
 }
 

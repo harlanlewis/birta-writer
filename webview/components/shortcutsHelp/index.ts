@@ -131,6 +131,30 @@ function close(via?: MouseEvent): void {
 }
 
 /** Open the shortcuts-help overlay; invoking it while open closes it. */
+/**
+ * Discard the built panel, so the next open reads the gate again.
+ *
+ * The panel is a singleton built once, which is right for a surface whose
+ * content is otherwise fixed for the life of the page. The syntax target is
+ * the one input to it that is not: a narrowed target withdraws a row here
+ * (`commandAvailable`, above), and a panel built before the change would go on
+ * printing a chord for a tool every other surface has stopped offering, which
+ * is the disagreement this whole gate exists to stop.
+ *
+ * Discard rather than repaint, because everything the panel holds is derived:
+ * rebuilding is the same work as walking it, and there is no state in it to
+ * preserve. An OPEN panel is rebuilt in place, so a reader watching it sees the
+ * change rather than a stale sheet that corrects itself when they look away.
+ */
+export function refreshShortcutsHelp(): void {
+    if (!panel) { return; }
+    const wasVisible = visible;
+    if (wasVisible) { close(); }
+    panel.remove();
+    panel = null;
+    if (wasVisible) { openShortcutsHelp(); }
+}
+
 export function openShortcutsHelp(): void {
     if (visible) {
         close();

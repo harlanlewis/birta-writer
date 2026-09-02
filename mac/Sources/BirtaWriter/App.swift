@@ -715,6 +715,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 flavour: .current,
                 onHotkeyChange: { [weak self] in self?.windows.registerHotkey() ?? -1 },
                 onChange: { [weak self] work in self?.front?.preferencesChanged(beforeReload: work) },
+                onChangeEverywhere: { [weak self] in self?.windows.preferencesChangedEverywhere() },
                 onShowWelcome: { [weak self] in self?.showWelcome() },
                 onCheckForUpdates: { [weak self] in self?.updater.checkNow() })
         }

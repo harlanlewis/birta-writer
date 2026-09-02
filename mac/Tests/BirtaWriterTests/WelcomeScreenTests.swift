@@ -100,7 +100,7 @@ final class WelcomeScreenTests: XCTestCase {
         let asked = rowLabels(in: welcome)
 
         let controller = SettingsWindowController(flavour: .release, onHotkeyChange: { 0 },
-                                                  onChange: { _ in }, onShowWelcome: {},
+                                                  onChange: { _ in }, onChangeEverywhere: {}, onShowWelcome: {},
                                                   onCheckForUpdates: {})
         defer { controller.window?.close() }
         var settings: [String] = []

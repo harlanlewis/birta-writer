@@ -12,8 +12,9 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { offeredItems, hostAvailableItems } from "../components/toolbar/registry";
 import { resolveVisible, ITEM_SYNTAX, FLOATING_TOOLBAR_ITEM_IDS } from "../components/selectionToolbar/registry";
 import { SLASH_MENU_ITEMS } from "../components/slashMenu/registry";
+import { createSlashMenu, slashRowDomId } from "../components/slashMenu";
 import { commandAvailable } from "../../shared/commandAvailability";
-import { syntaxAllows, ALL_SYNTAX_SETS, type SyntaxSet } from "../../shared/syntaxSets";
+import { ALL_SYNTAX_FEATURES, syntaxAllows, ALL_SYNTAX_SETS, type SyntaxSet } from "../../shared/syntaxSets";
 
 /** Declare `sets` for the duration of a case. Undefined means "says nothing". */
 function declare(sets: readonly SyntaxSet[] | undefined): void {
@@ -108,18 +109,41 @@ describe("the floating palette under a narrowed target", () => {
     });
 });
 
-describe("the slash registry under a narrowed target", () => {
-    /** The rows a menu built now would offer, by the filter `index.ts` applies. */
-    const offered = (): string[] =>
-        SLASH_MENU_ITEMS
-            .filter((item) => (item.visibleWhen?.() ?? true)
-                && commandAvailable(item.commandId)
-                && syntaxAllows(item.syntax))
+describe("the slash menu under a narrowed target", () => {
+    /**
+     * The rows a menu built NOW actually renders, read off its DOM.
+     *
+     * Not the registry filtered by a copy of the production predicate, which is
+     * what this asked before: that copy passed every assertion below with the
+     * gate deleted from `createSlashMenu`, because the test was answering its
+     * own question. `searchOnly` rows are surfaced with a query so the sweep
+     * reaches the four `insertCodeBlock` rows, which are the point of the
+     * row-level `syntax` field.
+     */
+    const offered = (query = ""): string[] => {
+        document.body.innerHTML = "";
+        const menu = createSlashMenu({ onPick: () => {}, onActiveChange: () => {} });
+        if (query) { menu.setQuery(query); }
+        // Mapped back through `slashRowDomId` rather than by stripping a
+        // prefix this test would then own a copy of.
+        const drawn = new Set(
+            Array.from(document.querySelectorAll<HTMLElement>(".slash-menu-item"))
+                .map((row) => row.id),
+        );
+        return SLASH_MENU_ITEMS
+            .filter((item) => drawn.has(slashRowDomId(item.id)))
             .map((item) => item.id);
+    };
+
+    /** Every row the menu will draw for any query, by id. */
+    const allOffered = (): string[] => [
+        ...offered(),
+        ...SLASH_MENU_ITEMS.flatMap((item) => offered(item.label)),
+    ];
 
     it("rows whose command declares a syntax should go with it", () => {
         declare([]);
-        const ids = offered();
+        const ids = allOffered();
         for (const id of ["table", "taskList", "footnote", "math", "callout", "callout-note"]) {
             expect(ids, `/${id} should be withdrawn`).not.toContain(id);
         }
@@ -131,7 +155,7 @@ describe("the slash registry under a narrowed target", () => {
         // they would all survive a CommonMark-only target while every other
         // diagram and math affordance went, which is the case this pins.
         declare([]);
-        const ids = offered();
+        const ids = allOffered();
         expect(ids).toContain("codeBlock");
         for (const id of ["mermaid", "svgBlock", "mathBlock", "calcBlock"]) {
             expect(ids, `/${id} should be withdrawn`).not.toContain(id);
@@ -140,17 +164,17 @@ describe("the slash registry under a narrowed target", () => {
 
     it("each of those rows should come back with the target that spells it", () => {
         declare(["gfm"]);
-        expect(offered()).toContain("mermaid");
-        expect(offered()).not.toContain("calcBlock");
+        expect(allOffered()).toContain("mermaid");
+        expect(allOffered()).not.toContain("calcBlock");
         declare(["birta"]);
-        expect(offered()).toContain("calcBlock");
-        expect(offered()).toContain("svgBlock");
-        expect(offered()).not.toContain("mermaid");
+        expect(allOffered()).toContain("calcBlock");
+        expect(allOffered()).toContain("svgBlock");
+        expect(allOffered()).not.toContain("mermaid");
     });
 
     it("the CommonMark rows should be untouched by any target", () => {
         declare([]);
-        const ids = offered();
+        const ids = allOffered();
         for (const id of ["paragraph", "heading1", "bulletList", "orderedList",
                           "blockquote", "codeBlock", "link", "divider"]) {
             expect(ids, `/${id} should survive`).toContain(id);
@@ -158,10 +182,15 @@ describe("the slash registry under a narrowed target", () => {
     });
 
     it("a row declaring a syntax should name one the vocabulary knows", () => {
+        // `syntaxAllows` returns a boolean for every input, so asking its TYPE
+        // is a check that cannot fail. What the row can get wrong is naming a
+        // feature the vocabulary does not hold, which the type system does not
+        // catch on its own: `syntax` is optional, so a row that misspells one
+        // widens the field's type rather than failing to compile.
         const declared = SLASH_MENU_ITEMS.flatMap((item) => item.syntax ? [item.syntax] : []);
         expect(declared.length).toBeGreaterThan(0);
         for (const feature of declared) {
-            expect(syntaxAllows(feature)).toBeTypeOf("boolean");
+            expect(ALL_SYNTAX_FEATURES, `slash row declares ${feature}`).toContain(feature);
         }
     });
 });
