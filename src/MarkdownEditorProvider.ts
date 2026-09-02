@@ -1568,6 +1568,13 @@ export class MarkdownEditorProvider
                         addStyleException(message.phrase);
                         break;
                     case "lintBlocks":
+                        // Every request gets a reply, a failed one an empty
+                        // one: the webview holds a slot per request in flight
+                        // (its review pass keeps one for the whole document),
+                        // and a request that is never answered keeps that
+                        // slot for the session. Empty results read as "nothing
+                        // to underline", which is what a lint that could not
+                        // run can honestly say; the error is still reported.
                         lintBlocks(message.blocks)
                             .then((results) => {
                                 postToWebview(webviewPanel.webview, {
@@ -1576,7 +1583,14 @@ export class MarkdownEditorProvider
                                     results,
                                 });
                             })
-                            .catch((err) => reportError("harper lint", err));
+                            .catch((err) => {
+                                reportError("harper lint", err);
+                                postToWebview(webviewPanel.webview, {
+                                    type: "lintResults",
+                                    id: message.id,
+                                    results: [],
+                                });
+                            });
                         break;
                     case "clipboardWrite":
                         // Copy-as-HTML / copy-as-Markdown from the right-click menu.
