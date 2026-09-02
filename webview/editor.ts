@@ -490,6 +490,18 @@ export function acknowledgeFlush(id: string, applied: boolean): void {
  * file, plugin normalization) emit none, so opening a document still cannot
  * trigger a silent save.
  */
+/**
+ * Lift the flag for input that reached the document without passing through
+ * the listeners above: text typed into the static first frame's capture field
+ * (firstFrame.ts) is real keyboard input that arrived BEFORE `createEditor`
+ * reset the flag and installed them, and is replayed as transactions after.
+ * Without this the replayed text sits in a document that never dirties, which
+ * is the data-loss path the block above describes.
+ */
+export function markUserInteracted(): void {
+    _hasUserInteracted = true;
+}
+
 function setupInteractionTracking(): void {
     if (_interactionListenerAdded) return;
     _interactionListenerAdded = true;

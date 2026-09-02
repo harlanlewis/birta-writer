@@ -24,6 +24,7 @@ pnpm perf:bundle                           # zero-variance eager-bytes metric
 | `launch` | 0 → `editor-painted` | **headline**: navigation start to first painted editor frame |
 | `eager` | `eval-start` → `ready-posted` | eager module eval + UI construction |
 | `roundtrip` | `ready-posted` → `init-received` | the `ready`→`init` postMessage hop |
+| `frame` | `frame-start` → `frame-painted` | the static first frame (`webview/firstFrame.ts`): stamped only on a document large enough to get one, so `–` on every default fixture; the time to something correct on screen, while `launch` stays the live editor's paint |
 | `create` | `create-start` → `create-end` | Milkdown `Editor…create()` (parses the doc) |
 | `toc` / `toolbar` | `*-start` → `*-end` | those two components' construction |
 | `rtp` | `rtp-start` → `rtp-end` | **post-paint**: `computeRoundTripProtection` (re-serializes the doc) |
