@@ -129,12 +129,16 @@ async function sampleOnce(browser, url, content, fixture = "?", side = "", settl
         }
         return m;
     });
-    // The create split probe (MAR-434): the bundle installs it only under the
-    // harness's init marker, and only measure mode asks for it, after every
-    // mark is in, so it can never sit inside a span and never costs the A/B a
-    // parse per sample. Null on a bundle that predates it.
+    // The probes (MAR-434's create split, MAR-430's sync split): the bundle
+    // installs them only under the harness's init marker, and only measure
+    // mode asks for them, after every mark is in, so neither can sit inside a
+    // span and neither costs the A/B a parse per sample. Null on a bundle that
+    // predates one.
     const split = probeSplit
         ? await page.evaluate(() => globalThis.__birtaPerf?.parseSplit?.() ?? null)
+        : null;
+    const syncSplit = probeSplit
+        ? await page.evaluate(() => globalThis.__birtaPerf?.syncSplit?.() ?? null)
         : null;
     await page.close();
     if (errors.length) {
@@ -147,6 +151,7 @@ async function sampleOnce(browser, url, content, fixture = "?", side = "", settl
     const out = spans(marks);
     if (missingSettle.length) { out.__missingSettle = missingSettle; }
     if (split) { out.__split = split; }
+    if (syncSplit) { out.__syncSplit = syncSplit; }
     return out;
 }
 
@@ -177,6 +182,17 @@ async function measureFixture(chromium, baseUrl, content, runs, fixture = "?") {
         agg.split = {
             mdast: round(median(splits.map((s) => s.mdast))),
             pm: round(median(splits.map((s) => s.pm))),
+        };
+    }
+    const syncSplits = samples.slice(1).map((s) => s.__syncSplit).filter(Boolean);
+    if (syncSplits.length) {
+        agg.syncSplit = {
+            serialize: round(median(syncSplits.map((s) => s.serialize))),
+            merge: round(median(syncSplits.map((s) => s.merge))),
+            fingerprint: round(median(syncSplits.map((s) => s.fingerprint))),
+            reparse: round(median(syncSplits.map((s) => s.reparse))),
+            // The same bundle answers the same way every sample; the last says.
+            offThread: syncSplits[syncSplits.length - 1].offThread,
         };
     }
     return agg;
@@ -243,6 +259,18 @@ async function measureMode(only, runs, jsonOut) {
         console.log("\ncreate split, warm probe after settle (ms): markdown parse and run / ProseMirror construction\n");
         for (const [name, agg] of withSplit) {
             console.log(`  ${name.padEnd(12)} mdast ${agg.split.mdast}  pm ${agg.split.pm}`);
+        }
+    }
+    // The sync split probe, warm (see README, "The sync split"): what one
+    // sync of this document costs piece by piece, and whether its reparse
+    // leaves the interaction thread for the verify worker (MAR-430).
+    const withSync = Object.entries(report.fixtures).filter(([, agg]) => agg.syncSplit);
+    if (withSync.length) {
+        console.log("\nsync split, warm probe after settle (ms): serialize / merge / live fingerprint / verifying reparse\n");
+        for (const [name, agg] of withSync) {
+            const s = agg.syncSplit;
+            const where = s.offThread ? "reparse off-thread" : "reparse on the main thread";
+            console.log(`  ${name.padEnd(12)} serialize ${s.serialize}  merge ${s.merge}  fingerprint ${s.fingerprint}  reparse ${s.reparse}  (${where})`);
         }
     }
     console.log("");

@@ -2,6 +2,7 @@ import * as esbuild from 'esbuild';
 import fs from 'fs';
 import path from 'path';
 import { MANIFEST_FILE, metafileFor } from './scripts/bundleManifest.mjs';
+import { WEBVIEW_LOADER, verifyWorkerBuildOptions } from './scripts/verifyWorkerBuild.mjs';
 
 const isProduction = process.argv.includes('--production');
 const isWatch = process.argv.includes('--watch');
@@ -121,6 +122,52 @@ const plantUmlWasmPlugin = {
     },
 };
 
+/**
+ * The save pipeline's verify worker (webview/workers/verifyWorker.ts),
+ * bundled self-contained and inlined AS A STRING into the webview bundle in
+ * place of the stub `webview/workers/verifyWorkerSource.ts`.
+ *
+ * A string rather than a file, because the page starts the worker from a
+ * Blob URL: inside VS Code the bundle's origin is not the page's, and a
+ * worker script must be same-origin, so a worker file under dist/ could not
+ * be loaded there at all (webview/utils/verifyOracle.ts has the argument).
+ * The page reaches the stub through a dynamic `import()`, so code splitting
+ * keeps the string in a lazy chunk and the eager bytes gate never sees it.
+ *
+ * Self-contained: a classic worker in `iife` form with no splitting, since a
+ * Blob-origin script has nothing to resolve a chunk against. Watch mode
+ * re-runs this whenever one of the worker's own inputs changes, which is what
+ * `watchFiles` declares.
+ *
+ * The nested build's metafile is kept so the attribution generator reads it
+ * (written as its own entry beside the shipped bundles' below), and its
+ * warnings join the build's own warning check rather than vanishing inside a
+ * plugin.
+ */
+let verifyWorkerMetafile = null;
+const verifyWorkerWarnings = [];
+const verifyWorkerPlugin = {
+    name: 'verify-worker-source',
+    setup(build) {
+        build.onLoad({ filter: /webview[\\/]workers[\\/]verifyWorkerSource\.ts$/ }, async () => {
+            const result = await esbuild.build(
+                verifyWorkerBuildOptions({ production: isProduction, webviewDir: path.resolve('./webview') }),
+            );
+            verifyWorkerMetafile = result.metafile;
+            verifyWorkerWarnings.push(...result.warnings);
+            const js = result.outputFiles.find((f) => f.path.endsWith('.js'));
+            if (!js) throw new Error('verify-worker-source: the nested build produced no script.');
+            return {
+                contents: `export const source = ${JSON.stringify(js.text)};`,
+                loader: 'js',
+                watchFiles: Object.keys(result.metafile.inputs)
+                    .filter((f) => !f.includes('node_modules'))
+                    .map((f) => path.resolve(f)),
+            };
+        });
+    },
+};
+
 // WebView frontend (Browser) - ESM + code splitting, lazy-loads Mermaid etc.
 const webviewBuild = {
     ...commonOptions,
@@ -143,24 +190,11 @@ const webviewBuild = {
     format: 'esm',
     splitting: true,
     chunkNames: 'chunks/[name]-[hash]',
-    loader: {
-        '.ttf': 'dataurl',
-        // KaTeX's stylesheet references its glyph fonts; inline them as data:
-        // URIs so no extra webview resource fetch (or CSP host) is needed.
-        '.woff2': 'dataurl',
-        '.woff': 'dataurl',
-        // PlantUML's engine ships as a wasm-bindgen "bundler"-target binary.
-        // `binary` inlines it as a Uint8Array inside the lazy chunk that
-        // imports it, which keeps the CSP at one added directive: the webview
-        // never fetches the module, so `connect-src` stays absent and
-        // `default-src 'none'` keeps blocking every request the webview could
-        // make. See webview/utils/plantUmlLoader.ts for the instantiation.
-        '.wasm': 'binary',
-    },
+    loader: WEBVIEW_LOADER,
     alias: {
         '@': path.resolve('./webview'),
     },
-    plugins: [refractorSingletonPlugin, plantUmlWasmPlugin],
+    plugins: [refractorSingletonPlugin, plantUmlWasmPlugin, verifyWorkerPlugin],
     metafile: withMetafile,
 };
 
@@ -209,8 +243,7 @@ if (isWatch) {
     // A warning here has no escape hatch, unlike the perf gates. The fix for
     // one is to fix it; if a future warning is ever genuinely correct to ship,
     // that is the point to add a hatch rather than now.
-    const ourWarnings = results
-        .flatMap((r) => r.warnings)
+    const ourWarnings = [...results.flatMap((r) => r.warnings), ...verifyWorkerWarnings]
         .filter((w) => !w.location?.file.includes('node_modules'));
     if (ourWarnings.length > 0) {
         // Uncoloured on purpose: this string goes into a thrown Error, which
@@ -239,6 +272,16 @@ if (isWatch) {
             fs.writeFileSync(path.resolve(file), JSON.stringify(metafile));
             return { name, metafile: file };
         });
+        // The verify worker ships inside the webview bundle as a string, so
+        // it has no output of its own to claim; its INPUTS are what the
+        // attribution generator needs, and its metafile joins the manifest
+        // for them. A webview build that never loaded the stub is a build
+        // that lost the worker, and that is loud rather than an appendix
+        // missing a bundle.
+        if (!verifyWorkerMetafile) throw new Error('--metafile was requested but the verify worker was never built.');
+        const workerMeta = metafileFor('verifyWorker');
+        fs.writeFileSync(path.resolve(workerMeta), JSON.stringify(verifyWorkerMetafile));
+        written.push({ name: 'verifyWorker', metafile: workerMeta });
         fs.writeFileSync(
             path.resolve(MANIFEST_FILE),
             `${JSON.stringify({ bundles: written }, null, 2)}\n`,

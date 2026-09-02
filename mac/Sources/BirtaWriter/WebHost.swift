@@ -139,15 +139,18 @@ final class BirtaSchemeHandler: NSObject, WKURLSchemeHandler {
     /// The CSP mirrors src/webviewHtml.ts in shape: nothing by default, our
     /// own origin for scripts and styles, inline styles (ProseMirror and the
     /// components set them), wasm for the lazy engines, data: for the fonts
-    /// esbuild inlines. The network opt-in widens img/frame/connect to https:,
-    /// which is what link cards and embeds need and what NETWORK_POSTURE.md
-    /// calls the user's consent.
+    /// esbuild inlines, and a Blob worker for the save pipeline's verifying
+    /// reparse (webview/utils/verifyOracle.ts says why it is a Blob and not a
+    /// file under dist/). The network opt-in widens img/frame/connect to
+    /// https:, which is what link cards and embeds need and what
+    /// NETWORK_POSTURE.md calls the user's consent.
     func csp() -> String {
         let net = networkEnabled ? " https:" : ""
         return [
             "default-src 'none'",
             "style-src 'self' 'unsafe-inline'",
             "script-src 'self' 'wasm-unsafe-eval'",
+            "worker-src blob:",
             "img-src 'self' data: blob:\(net)",
             "font-src 'self' data:",
             "connect-src 'self'\(net)",

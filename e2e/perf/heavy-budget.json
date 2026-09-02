@@ -19,7 +19,8 @@
       "mdw:style-scan.blocks": 62,
       "mdw:style-scan.chars": 8732,
       "mdw:lint-request.blocks": 62,
-      "mdw:lint-request.chars": 8732
+      "mdw:lint-request.chars": 8732,
+      "mdw:merge.mainReparses": 0
     }
   }
 }

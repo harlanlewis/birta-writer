@@ -43,6 +43,17 @@ export type EditorCtx = Parameters<Parameters<Editor["config"]>[0]>[0];
 /** What `Editor.use()` accepts: a single plugin or a plugin collection. */
 export type EditorPlugins = Parameters<Editor["use"]>[0];
 
+/**
+ * The half of a format that PARSES: its presets and its stringify
+ * configuration, and nothing that draws. A context with no document can build
+ * a parser from one (utils/headlessParser.ts), which is how the save
+ * pipeline's verify worker answers the reopen question with the page's own
+ * schema and remark pipeline (workers/verifyWorker.ts). A FormatModule is one
+ * of these plus its chrome, and a format's parse half must stay importable
+ * with no DOM: a module that reads `window` while it loads cannot be in it.
+ */
+export type FormatParse = Pick<FormatModule, "presets" | "configureSerialization">;
+
 /** One `nodeViewCtx` registration: `[schema node name, NodeView factory]`. */
 export type FormatNodeView = [nodeId: string, view: NodeViewConstructor];
 

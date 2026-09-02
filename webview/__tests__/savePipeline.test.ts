@@ -60,8 +60,15 @@ beforeAll(() => {
 import { editorViewCtx, serializerCtx, type Editor } from "@milkdown/core";
 import type { EditorView } from "../pm";
 import type { Node as ProseNode } from "../pm";
-import { acknowledgeFlush, createEditor, flushPendingEdit, syncExternalContent } from "../editor";
+import {
+    acknowledgeFlush,
+    createEditor,
+    flushPendingEdit,
+    setOffThreadVerifyMinCharsForTests,
+    syncExternalContent,
+} from "../editor";
 import { notifyUpdate } from "../messaging";
+import { setVerifyOracleForTests, type VerifyOracle } from "../utils/verifyOracle";
 
 /** A file full of constructs a zero-edit round trip would destroy. */
 const INITIAL = [
@@ -514,5 +521,178 @@ describe("webview save pipeline (edit → doc change → minimal diff → bytes)
         // Assert — the edit is save-capturable (invariant #2)
         expect(update).toHaveBeenCalledTimes(1);
         expect(update).toHaveBeenCalledWith("hello!\n");
+    });
+});
+
+/** A promise whose settlement the test holds. */
+function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void; reject: (reason: Error) => void } {
+    let resolve!: (value: T) => void;
+    let reject!: (reason: Error) => void;
+    const promise = new Promise<T>((res, rej) => {
+        resolve = res;
+        reject = rej;
+    });
+    return { promise, resolve, reject };
+}
+
+/**
+ * MAR-430: the reparse asked of an oracle that answers later. What is held
+ * here is the ORDERING RULE (`_serialSeq` in editor.ts) and the fallback, on
+ * the same fixture and the same expected bytes as the synchronous pipeline
+ * above: a flush taken while an answer is in flight wins and the answer is
+ * dropped; an oracle that fails costs nothing but where the check ran; a sync
+ * asked for meanwhile runs once more, after, with the later edit; a re-base
+ * under an in-flight answer makes it stale. jsdom has no worker, so the
+ * oracle is a hand-held promise and the floor is lowered to zero; whether a
+ * real worker answers under a real policy is `e2e/verifyWorker`.
+ *
+ * The fixture is a four-space outline and not `INITIAL`: the merge of
+ * `INITIAL` comes out byte-equal to the engine's own fallback, so the
+ * verifier short-circuits and never asks anyone, and every test here would
+ * pass with the oracle unplugged. A nested item at four spaces is spelled at
+ * two by the serializer, so the merge and the fallback differ and the
+ * question is really asked.
+ */
+describe("off-thread verification (MAR-430)", () => {
+    let editor: Editor;
+    let onUpdate: ReturnType<typeof vi.fn>;
+    let answers: ReturnType<typeof deferred<boolean>>[];
+    let reopens: ReturnType<typeof vi.fn>;
+    const OUTLINE = "# Doc\n\nSome paragraph.\n\n- item one\n    - nested under one\n- item two\n";
+    const EDITED = (suffix: string): string => OUTLINE.replace("Some paragraph.", `Some paragraph.${suffix}`);
+
+    beforeEach(async () => {
+        vi.clearAllMocks();
+        document.body.innerHTML = "";
+        answers = [];
+        reopens = vi.fn(() => {
+            const d = deferred<boolean>();
+            answers.push(d);
+            return d.promise;
+        });
+        const oracle: VerifyOracle = { reopens, warm: vi.fn() };
+        setVerifyOracleForTests(oracle);
+        setOffThreadVerifyMinCharsForTests(0);
+        const container = document.createElement("div");
+        document.body.appendChild(container);
+        onUpdate = vi.fn((md: string) => notifyUpdate(md));
+        editor = await createEditor(container, OUTLINE, onUpdate);
+        document.dispatchEvent(new KeyboardEvent("keydown", { key: "x", bubbles: true }));
+        await useFakeClockPastIdle();
+    });
+
+    afterEach(async () => {
+        vi.useRealTimers();
+        setVerifyOracleForTests(undefined);
+        setOffThreadVerifyMinCharsForTests(undefined);
+        await editor.destroy();
+    });
+
+    it("an edit's update should wait for the oracle's answer and carry the verified bytes", async () => {
+        const v = view(editor);
+        v.dispatch(v.state.tr.insertText(" edited", posAfterText(v, "Some paragraph.")));
+        await vi.advanceTimersByTimeAsync(600);
+
+        // Asked once, about the merged bytes, with a fingerprint a worker can be handed.
+        expect(reopens).toHaveBeenCalledTimes(1);
+        const [fingerprint, asked] = reopens.mock.calls[0] as [unknown, string];
+        expect(fingerprint).toBeInstanceOf(Map);
+        expect(asked).toBe(EDITED(" edited"));
+        expect(postedUpdates()).toEqual([]);
+
+        answers[0].resolve(true);
+        await vi.advanceTimersByTimeAsync(1);
+        expect(postedUpdates()).toEqual([EDITED(" edited")]);
+    });
+
+    it("a merge the oracle refuses should have the fallback asked about, and that answer should decide", async () => {
+        const v = view(editor);
+        v.dispatch(v.state.tr.insertText(" edited", posAfterText(v, "Some paragraph.")));
+        await vi.advanceTimersByTimeAsync(600);
+
+        answers[0].resolve(false);
+        await vi.advanceTimersByTimeAsync(1);
+        expect(reopens).toHaveBeenCalledTimes(2);
+        const [, fallback] = reopens.mock.calls[1] as [unknown, string];
+        // The serializer's own spelling: the nested item at two spaces.
+        expect(fallback).toContain("\n  - nested under one\n");
+        answers[1].resolve(true);
+        await vi.advanceTimersByTimeAsync(1);
+        expect(postedUpdates()).toEqual([fallback]);
+    });
+
+    it("a flush taken while the oracle is answering should carry the freshest bytes, and the late answer should be dropped", async () => {
+        const v = view(editor);
+        v.dispatch(v.state.tr.insertText(" one", posAfterText(v, "Some paragraph.")));
+        await vi.advanceTimersByTimeAsync(600);
+        expect(reopens).toHaveBeenCalledTimes(1);
+
+        v.dispatch(v.state.tr.insertText(" two", posAfterText(v, "Some paragraph. one")));
+        const flushed = flushPendingEdit("f1");
+        expect(flushed).toBe(EDITED(" one two"));
+
+        // The answer to the older question lands BEFORE the flush is
+        // acknowledged, while the baseline still reads as it did when the
+        // question was asked. Only the serialization order says it is stale;
+        // committed, it would post the older bytes under a newer seq and
+        // abandon the flush's candidate, and the file would revert.
+        answers[0].resolve(true);
+        await vi.advanceTimersByTimeAsync(1000);
+        expect(postedUpdates()).toEqual([]);
+        acknowledgeFlush("f1", true);
+
+        // And the next edit diffs against the flushed baseline, not the stale answer.
+        v.dispatch(v.state.tr.insertText(" three", posAfterText(v, "Some paragraph. one two")));
+        await vi.advanceTimersByTimeAsync(600);
+        expect(reopens).toHaveBeenCalledTimes(2);
+        answers[1].resolve(true);
+        await vi.advanceTimersByTimeAsync(1);
+        expect(postedUpdates()).toEqual([EDITED(" one two three")]);
+    });
+
+    it("an oracle that fails should have the same question answered on the main thread, and the update still posts", async () => {
+        const v = view(editor);
+        v.dispatch(v.state.tr.insertText(" edited", posAfterText(v, "Some paragraph.")));
+        await vi.advanceTimersByTimeAsync(600);
+
+        answers[0].reject(new Error("verify worker: gone"));
+        await vi.advanceTimersByTimeAsync(1);
+        expect(postedUpdates()).toEqual([EDITED(" edited")]);
+    });
+
+    it("a sync asked for while one is in flight should run once more after it settles, carrying the later edit", async () => {
+        const v = view(editor);
+        v.dispatch(v.state.tr.insertText(" one", posAfterText(v, "Some paragraph.")));
+        await vi.advanceTimersByTimeAsync(600);
+        expect(reopens).toHaveBeenCalledTimes(1);
+
+        // A second edit, and the max-wait window passing with the first
+        // answer still out: the scheduler asks, and the ask is owed, not stacked.
+        v.dispatch(v.state.tr.insertText(" two", posAfterText(v, "Some paragraph. one")));
+        await vi.advanceTimersByTimeAsync(2500);
+        expect(reopens).toHaveBeenCalledTimes(1);
+
+        answers[0].resolve(true);
+        await vi.advanceTimersByTimeAsync(1);
+        expect(postedUpdates()).toEqual([EDITED(" one")]);
+
+        // The owed sync, on the scheduler's own window, with both edits.
+        await vi.advanceTimersByTimeAsync(600);
+        expect(reopens).toHaveBeenCalledTimes(2);
+        answers[1].resolve(true);
+        await vi.advanceTimersByTimeAsync(1);
+        expect(postedUpdates()).toEqual([EDITED(" one"), EDITED(" one two")]);
+    });
+
+    it("an external re-base while the oracle is answering should make the answer stale", async () => {
+        const v = view(editor);
+        v.dispatch(v.state.tr.insertText(" edited", posAfterText(v, "Some paragraph.")));
+        await vi.advanceTimersByTimeAsync(600);
+        expect(reopens).toHaveBeenCalledTimes(1);
+
+        expect(syncExternalContent("# Doc\n\nExternally rewritten.\n")).toBe(true);
+        answers[0].resolve(true);
+        await vi.advanceTimersByTimeAsync(1000);
+        expect(postedUpdates()).toEqual([]);
     });
 });

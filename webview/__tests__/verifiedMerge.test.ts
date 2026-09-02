@@ -8,7 +8,7 @@
  * else in the suite would notice it.
  */
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { parserCtx, type Editor } from "@milkdown/core";
+import { parserCtx, serializerCtx, type Editor } from "@milkdown/core";
 import { getMarkdown } from "@milkdown/utils";
 import { applyMinimalChanges, serializerFallback } from "@birta/minimal-diff";
 import type { Node as ProseNode } from "../pm";
@@ -16,8 +16,8 @@ import { contentGuardPlugin } from "../plugins/contentGuard";
 import { diffFingerprints, fingerprintDoc, formatFingerprintDiff } from "../plugins/fingerprints";
 import { moveBlocks } from "../editing/moveBlocks";
 import { markdownProfile, computeRoundTripProtection } from "../utils/minimalDiff";
-import { mergeVerified } from "../utils/verifiedMerge";
-import { editorView, enumerateMovePairs, makeCorpusEditor } from "./helpers/moveFuzz";
+import { mergeVerified, mergeVerifiedWith, reopensAs, type VerifiedMerge } from "../utils/verifiedMerge";
+import { editorView, enumerateMovePairs, loadCorpusFixtures, makeCorpusEditor } from "./helpers/moveFuzz";
 
 vi.mock("../editing/rangeIndicator", () => ({
     flashRange: vi.fn(),
@@ -256,5 +256,98 @@ describe("mergeVerified", () => {
                 },
             ),
         ).not.toThrow();
+    });
+});
+
+/**
+ * MAR-430: the same decision with its reparse run elsewhere. The two forms
+ * share `candidates` and nothing else, so this holds them together where
+ * they could drift: every corpus fixture through a real edit, and the one
+ * merge the corpus is known to damage, both with an oracle that is the
+ * synchronous check awaited.
+ */
+describe("mergeVerifiedWith decides as mergeVerified", () => {
+    /** The synchronous check, awaited, counting how often it was consulted. */
+    function countingOracle(editor: Editor): { reopens: (fp: ReadonlyMap<string, number>, text: string) => Promise<boolean>; asked: () => number } {
+        let asked = 0;
+        const parse = parseWith(editor);
+        return {
+            reopens: async (fp, text) => {
+                asked++;
+                return reopensAs(fp, text, parse);
+            },
+            asked: () => asked,
+        };
+    }
+
+    it("over the corpus, through a real edit, both forms should return the same bytes and the same verdict", async () => {
+        const editor = await makeEditor("");
+        const parse = parseWith(editor);
+        const serialize = (doc: ProseNode): string => editor.action((ctx) => ctx.get(serializerCtx)(doc));
+        const oracle = countingOracle(editor);
+        const disagreements: string[] = [];
+        let compared = 0;
+        for (const f of loadCorpusFixtures()) {
+            const opened = parse(f.content)!;
+            const protection = computeRoundTripProtection(f.content, serialize(opened));
+            // The edit: a paragraph appended to the document as the user sees it.
+            const live = parse(`${serialize(opened)}\nAppended by the test.\n`)!;
+            const serialized = serialize(live);
+            const sync = mergeVerified(f.content, serialized, markdownProfile, protection, live, parse);
+            const off: VerifiedMerge = await mergeVerifiedWith(
+                f.content,
+                serialized,
+                markdownProfile,
+                protection,
+                () => fingerprintDoc(live),
+                oracle.reopens,
+            );
+            compared++;
+            if (sync.text !== off.text || sync.canonical !== off.canonical) disagreements.push(f.name);
+        }
+        expect(disagreements).toEqual([]);
+        expect(compared).toBeGreaterThan(20);
+        // The oracle was consulted, so the agreement is not the short-circuit
+        // agreeing with itself over a corpus the serializer spells canonically.
+        expect(oracle.asked()).toBeGreaterThan(0);
+    }, 120_000);
+
+    it("on the merge the corpus is known to damage, both forms should choose the serializer's bytes", async () => {
+        const editor = await makeEditor(FOUR_SPACE_DEPTH_3);
+        const v = editorView(editor);
+        const protection = computeRoundTripProtection(FOUR_SPACE_DEPTH_3, editor.action(getMarkdown()));
+        const baseState = v.state;
+        let found = false;
+        for (const { source, target } of enumerateMovePairs(v)) {
+            if (!moveBlocks(v, { from: source.from, to: source.to }, target)) {
+                v.updateState(baseState);
+                continue;
+            }
+            const serialized = editor.action(getMarkdown());
+            const merged = applyMinimalChanges(FOUR_SPACE_DEPTH_3, serialized, markdownProfile, protection);
+            if (!reopensClean(editor, v.state.doc, merged)) {
+                found = true;
+                const live = v.state.doc;
+                const oracle = countingOracle(editor);
+                const sync = mergeVerified(FOUR_SPACE_DEPTH_3, serialized, markdownProfile, protection, live, parseWith(editor));
+                const off = await mergeVerifiedWith(
+                    FOUR_SPACE_DEPTH_3,
+                    serialized,
+                    markdownProfile,
+                    protection,
+                    () => fingerprintDoc(live),
+                    oracle.reopens,
+                );
+                expect(off).toEqual(sync);
+                expect(off.text).toBe(serialized);
+                expect(off.canonical).toBe(true);
+                // Both questions were asked: the merge's, answered no, then the fallback's.
+                expect(oracle.asked()).toBe(2);
+                v.updateState(baseState);
+                break;
+            }
+            v.updateState(baseState);
+        }
+        expect(found, "no damaged pair in the depth-3 four-space outline").toBe(true);
     });
 });
