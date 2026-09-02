@@ -1935,9 +1935,9 @@ body.editor-width-auto :is(.code-width-toggle-btn, .mw-bc-width) {
 /* The ancestor trail (MAR-31): the sections the stuck heading is inside,
    root first, in chrome type rather than the heading's own (the sticky
    copies the heading's font onto itself; the trail opts back out). One line,
-   every crumb ellipsising as the pane narrows. Hidden while the docked
-   outline is open: it shows the same ancestry, highlighted, so the bar would
-   say it twice. */
+   every crumb ellipsising as the pane narrows. Hidden while the outline is
+   open, docked or overlaid: it shows the same ancestry, highlighted, so the
+   bar would say it twice. */
 .heading-sticky-trail {
     display: flex;
     align-items: baseline;
@@ -1953,7 +1953,8 @@ body.editor-width-auto :is(.code-width-toggle-btn, .mw-bc-width) {
     overflow: hidden;
 }
 
-body.toc-open .heading-sticky-trail {
+body.toc-open .heading-sticky-trail,
+body.toc-overlay-open .heading-sticky-trail {
     display: none;
 }
 
@@ -2042,15 +2043,22 @@ body.handles-rest-hover.handles-quiet .heading-sticky-title:not([data-collapsed=
 .heading-sticky-title {
     --sticky-gutter-gap: 10px;
     --sticky-gutter-width: 66px;
+    /* How far the bar paints OUTSIDE its own box: the gutter and its backdrop
+       reach this far to the left, and the backdrop this far above and below.
+       Named here because headingSticky.ts clips the bar at the outline panel's
+       edge, and a clip written from the box alone would erase the mask that
+       keeps document text from showing through the margin beside the bar. */
+    --sticky-paint-left: calc(-1 * (var(--sticky-gutter-gap) + var(--sticky-gutter-width)));
+    --sticky-paint-block: -0.5em;
 }
 
 .heading-sticky-title::before {
     content: "";
     position: absolute;
-    top: -0.5em;
-    bottom: -0.5em;
-    left: calc(-1 * (var(--sticky-gutter-gap) + var(--sticky-gutter-width)));
-    width: calc(var(--sticky-gutter-gap) + var(--sticky-gutter-width));
+    top: var(--sticky-paint-block);
+    bottom: var(--sticky-paint-block);
+    left: var(--sticky-paint-left);
+    width: calc(-1 * var(--sticky-paint-left));
     z-index: -1;
     background: var(--vscode-editor-background);
 }

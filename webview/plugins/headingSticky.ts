@@ -160,8 +160,8 @@ export function setStickyContent(
     // root first, above the title in chrome type. Each crumb is a real
     // button that scrolls its heading under the topbar and drops the caret
     // at its start; the current heading is the title row below, which
-    // already is one. Hidden while the docked outline is open (style.css:
-    // the outline shows the same ancestry, highlighted), and absent for a
+    // already is one. Hidden while the outline is open, docked or overlaid
+    // (style.css: it shows the same ancestry, highlighted), and absent for a
     // top-level heading, so the bar is one row exactly as before then.
     if (ancestors.length > 0) {
         const trail = document.createElement("nav");
@@ -410,6 +410,61 @@ export const headingStickyPlugin = $prose(() =>
                 delete sticky.dataset["headingPos"];
             };
 
+            let tocPanel: HTMLElement | null = null;
+            /**
+             * The column an OPEN outline panel occupies, or null when none is
+             * out. Read from `offsetLeft`/`offsetWidth`, which are layout and
+             * so ignore the open/close slide's transform: the column is the one
+             * the panel settles at, from the first frame of the slide to the
+             * last, rather than a value that has to be chased frame by frame.
+             * Whether a panel is out is the one thing geometry cannot answer,
+             * since a closed panel keeps its box and is merely translated away,
+             * so it comes from the outline's published body classes.
+             */
+            const tocColumn = (): { left: number; right: number } | null => {
+                const cls = document.body.classList;
+                if (!cls.contains("toc-open") && !cls.contains("toc-overlay-open")
+                    && !cls.contains("toc-flyout-open")) {
+                    return null;
+                }
+                if (!tocPanel?.isConnected) {
+                    tocPanel = document.querySelector<HTMLElement>(".toc-panel");
+                }
+                if (!tocPanel) {
+                    return null;
+                }
+                return { left: tocPanel.offsetLeft, right: tocPanel.offsetLeft + tocPanel.offsetWidth };
+            };
+
+            /**
+             * How far to clip each end of the bar so it never paints into that
+             * column. The panel is opaque and covers the document underneath it
+             * in overlay mode, so the bar, which mirrors a heading down there,
+             * has to be covered the same way. It cannot simply be layered under
+             * the panel: the panel sits BELOW the document popups (slash menu,
+             * footnote and proofreading cards) so they can open over it, and
+             * the bar sits ABOVE the drag veil, and no single order satisfies
+             * both. Clipping leaves the bar's left and typography untouched,
+             * which is what keeps a click on it mapping 1:1 onto the heading's
+             * own first line.
+             */
+            const stickyClip = (rect: DOMRect): string => {
+                const col = tocColumn();
+                if (!col) {
+                    return "";
+                }
+                const panelLeads = col.left + col.right < rect.left + rect.right;
+                const left = panelLeads ? Math.max(0, col.right - rect.left) : 0;
+                const right = panelLeads ? 0 : Math.max(0, rect.right - col.left);
+                if (!left && !right) {
+                    return "";
+                }
+                // The un-clipped end keeps the bar's own paint outsets, or the
+                // clip would cut off the gutter backdrop it reaches out to.
+                const leftInset = left ? `${left}px` : "var(--sticky-paint-left)";
+                return `inset(var(--sticky-paint-block) ${right}px var(--sticky-paint-block) ${leftInset})`;
+            };
+
             const updateSticky = () => {
                 rafId = null;
 
@@ -467,11 +522,17 @@ export const headingStickyPlugin = $prose(() =>
                 const foldable = stickyHeadingFoldable(view.state, headingPos);
                 const collapsed = foldState?.folded.has(headingPos) ?? false;
                 const rect = heading.getBoundingClientRect();
+                // Measured with the reads above and applied with the writes
+                // below: it asks the panel for its box, so taken after the
+                // writes it would force a second layout on every frame of a
+                // scroll.
+                const clip = stickyClip(rect);
                 sticky.hidden = false;
                 sticky.dataset["headingPos"] = String(headingPos);
                 sticky.style.top = `${top}px`;
                 sticky.style.left = `${rect.left}px`;
                 sticky.style.width = `${rect.width}px`;
+                sticky.style.clipPath = clip;
 
                 const ancestors = stickyAncestors(headings, activeIndex, (h) => h.parentElement === view.dom);
                 const trail = trailKey(ancestors);
@@ -534,9 +595,13 @@ export const headingStickyPlugin = $prose(() =>
             // column through CSS variables. The ResizeObserver below is NOT
             // enough on its own for those: docking moves the column with a
             // margin, and a pure horizontal shift resizes nothing.
+            // The outline's column joins the key for the same reason: opening it
+            // in overlay mode moves nothing and resizes nothing, so the clip
+            // above would otherwise stay behind until the next scroll.
             const placement = (): string => {
                 const box = view.dom.getBoundingClientRect();
-                return `${getTopbarBottom()}|${box.left}|${box.width}`;
+                const col = tocColumn();
+                return `${getTopbarBottom()}|${box.left}|${box.width}|${col?.left}|${col?.right}`;
             };
             let lastPlacement = placement();
             const bodyClassObserver = new MutationObserver(() => {
