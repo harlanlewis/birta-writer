@@ -186,6 +186,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Asked once a launch, in the background, and silent unless there is
         // something. `Updater` refuses for a development build, when the
         // setting is off, and under a throwaway defaults domain.
+        // BEFORE the first check, and that ordering is the point rather than
+        // an arrangement. The automatic download refuses over a connection
+        // somebody pays for by the byte, and the monitor answering that has to
+        // be running before anything asks: created on first read instead, it
+        // would begin monitoring inside the very check it was being consulted
+        // by, and answer from no path at all.
+        NetworkPath.start()
         updater.onStatus = { [weak self] message in self?.front?.flashStatus(message) }
         // Off the main-queue drain before anything modal. `onUpdateAvailable`
         // fires from inside `Updater`'s continuation, and an `NSAlert` spun
@@ -203,12 +210,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // And again on a timer, because this is not an app people quit. A
         // launch-only check stops happening for exactly the person who leaves
         // it running for weeks, which is what a menu-bar scratchpad is for.
-        // The pacing is `UpdatePolicy`'s; this only decides how often to ask
-        // whether it is due, and hourly is cheap because being due is a
-        // comparison rather than a request.
-        updateTimer = Timer.scheduledTimer(withTimeInterval: 3600, repeats: true) { [weak self] _ in
-            Task { @MainActor in self?.updater.checkIfDue() }
+        //
+        // One timer, two questions, and neither costs a request. Whether a
+        // check is due is a date comparison, paced by `UpdatePolicy` and not
+        // by this. Whether a downloaded update can go in is three booleans and
+        // one read of how long the machine has been untouched, and it is what
+        // sets the interval: the window in which nobody is there opens and
+        // closes as a person walks away and comes back, and an hourly poll
+        // would miss most of them.
+        updateTimer = Timer.scheduledTimer(withTimeInterval: UpdatePolicy.pollInterval,
+                                           repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                self?.updater.checkIfDue()
+                self?.applyStagedUpdateIfUnattended()
+            }
         }
+        // What the LAST launch did to itself, if it did anything. Read after
+        // the window exists, because the window is what carries the notice,
+        // and before anything can be summoned, so the message is already in
+        // place the first time the panel is looked at.
+        announceSilentUpdate(on: first)
         // After the panel exists, so the screen has a window to take over.
         // `FirstRunScreen` holds every arm of the decision and why, including
         // the one Open With adds: the screen is not put in front of a panel
@@ -630,13 +651,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         offering = true
         UpdatePrompt.present(tag: tag,
                              hasUnwrittenBytes: front?.hasUnwrittenBytes ?? false,
+                             staged: updater.staged?.tag == tag,
                              on: host) { [weak self] answer in
             guard let self else { return }
             self.offering = false
             guard answer == .install else {
                 // Remembered so this version is not raised again. A NEWER one
                 // still will be: that is different news.
+                //
+                // It suppresses the unattended swap as well as the sheet, and
+                // that is the point rather than a side effect: a no is an
+                // answer about the version, and a version that came back
+                // anyway the next time somebody stepped away would make the
+                // button a lie. The bytes go with it, because holding an
+                // unpacked bundle against a settled question is holding tens
+                // of megabytes for nothing.
                 Prefs.updateDeclinedTag = tag
+                self.updater.discardStaged()
                 return
             }
             self.installUpdate()
@@ -681,6 +712,89 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // this quit has nothing to ask and nobody waiting to answer.
             self.windows.quitUnattended()
             NSApp.perform(#selector(NSApplication.terminate(_:)), with: nil, afterDelay: 0)
+        }
+    }
+
+    /// Put the staged update in, with nobody asked, if nobody is there to ask.
+    ///
+    /// The other half of the offer sheet, and the reason the sheet stopped
+    /// being the only way in. This app is a menu-bar scratchpad: it is hidden
+    /// nearly all the time, and the sheet can only be shown when it is not, so
+    /// an update waited for a summon and then interrupted it. The version that
+    /// costs nobody anything is the one that happens while they are elsewhere.
+    ///
+    /// What has to be true is `UpdatePolicy.mayInstallUnattended`'s to say,
+    /// and this only gathers the facts. That split is deliberate: the decision
+    /// that quits somebody's app should be one predicate that a test can flip
+    /// field by field, rather than a chain of guards here where a clause that
+    /// stopped being consulted would be invisible to every green run.
+    ///
+    /// What a refusal costs is nothing. The update stays staged, and the next
+    /// poll asks again a minute later.
+    private func applyStagedUpdateIfUnattended() {
+        guard let staged = updater.staged, !updater.armed else { return }
+        let state = UpdatePolicy.UnattendedInstall(
+            isStaged: true,
+            autoUpdate: Prefs.autoUpdate,
+            wasDeclined: !UpdatePolicy.shouldOffer(tag: staged.tag,
+                                                   declined: Prefs.updateDeclinedTag),
+            offerOnScreen: offering,
+            workInFlight: windows.windows.contains(where: \.hasAgentRunInFlight),
+            attendance: UpdatePolicy.Attendance(
+                anyWindowVisible: isAnyWindowVisible,
+                hasUnwrittenBytes: windows.windows.contains(where: \.hasUnwrittenBytes),
+                idle: Updater.systemIdleSeconds()))
+        guard UpdatePolicy.mayInstallUnattended(state) else { return }
+        guard updater.armStagedSwap(inBackground: true) else { return }
+        // Written BEFORE the quit, because after it there is no process left
+        // to write anything, and this is the only record that the swap was
+        // ever attempted. It is not yet a claim that the swap WORKED:
+        // `announceSilentUpdate` asks the next launch's own version about
+        // that, and clears this without a word if the answer is no.
+        Prefs.updateInstalledTag = staged.tag
+        // Quitting is what performs the swap, through the ordinary terminate
+        // path so the buffer is flushed on the way out. Nobody is here to
+        // answer a sheet, so no window may raise one.
+        windows.quitUnattended()
+        NSApp.perform(#selector(NSApplication.terminate(_:)), with: nil, afterDelay: 0)
+    }
+
+    /// Any window of this app on screen, not only a panel.
+    ///
+    /// Settings and About count. A person reading the About window is as
+    /// present as a person typing, and an app that vanished and came back
+    /// underneath either of them would be the interruption this whole path is
+    /// built to avoid.
+    private var isAnyWindowVisible: Bool {
+        windows.isAnyVisible
+            || settingsWindow?.window?.isVisible == true
+            || aboutWindow?.window?.isVisible == true
+    }
+
+    /// Say what the app did to itself while nobody was watching.
+    ///
+    /// Only where the running build proves it happened. `updateInstalledTag`
+    /// is written by the process that armed the swap, before it could know
+    /// whether the swap would work, and it can fail for reasons that leave the
+    /// old app in place: a staged bundle the temporary directory reclaimed, a
+    /// move that could not be made. So the version this build actually is
+    /// answers the question, and a build older than the tag means the swap did
+    /// not happen and there is nothing to announce.
+    ///
+    /// The notice itself stays until it is dismissed, which is why the tag is
+    /// cleared by the button rather than here. The panel is hidden most of the
+    /// time; an announcement spent on being SHOWN would be spent on a window
+    /// that was up for a second while somebody reached for something else.
+    private func announceSilentUpdate(on window: Coordinator) {
+        guard let pending = Prefs.updateInstalledTag else { return }
+        guard !ReleaseFeed.isNewer(pending, than: updater.environment.currentVersion()) else {
+            Prefs.updateInstalledTag = nil
+            return
+        }
+        window.showUpdateNotice(
+            UpdatePolicy.installedNotice(appName: AppFlavor.current.displayName, tag: pending)
+        ) {
+            Prefs.updateInstalledTag = nil
         }
     }
 

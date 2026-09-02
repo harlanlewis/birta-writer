@@ -55,15 +55,36 @@ final class UpdatePolicyTests: XCTestCase {
     /// direction that matters: somebody would decline an update to protect
     /// bytes that were never at risk.
     func testTheDetailShouldPromiseAWriteWithoutPromisingThatCancelSavesAnything() {
-        let dirty = UpdatePolicy.detail(hasUnwrittenBytes: true)
-        let clean = UpdatePolicy.detail(hasUnwrittenBytes: false)
+        let dirty = UpdatePolicy.detail(hasUnwrittenBytes: true, staged: false)
+        let clean = UpdatePolicy.detail(hasUnwrittenBytes: false, staged: false)
         XCTAssertTrue(dirty.contains("written to disk first"))
         XCTAssertFalse(clean.contains("unsaved"))
-        for text in [dirty, clean] {
-            XCTAssertTrue(text.contains("replace itself"))
-            XCTAssertFalse(text.lowercased().contains("lose"))
-            XCTAssertFalse(text.lowercased().contains("cancel"))
+        // Every arm of both axes, so a wording change to one of the four
+        // cannot quietly reintroduce the claim these rule out.
+        for unwritten in [true, false] {
+            for staged in [true, false] {
+                let text = UpdatePolicy.detail(hasUnwrittenBytes: unwritten, staged: staged)
+                XCTAssertFalse(text.lowercased().contains("lose"), text)
+                XCTAssertFalse(text.lowercased().contains("cancel"), text)
+            }
         }
+    }
+
+    /// The sheet must not say a download is coming when the bytes are already
+    /// on the disk, and must not imply they are here when they are not.
+    ///
+    /// Both halves matter and they fail in opposite directions. Claiming a
+    /// download that already happened makes a restart look slower than it is,
+    /// which is what somebody weighs the button against. Claiming the update
+    /// is ready when it is still arriving makes a restart look instant, and
+    /// then the app sits there.
+    func testTheDetailShouldSayWhetherTheBytesHaveAlreadyArrived() {
+        let coming = UpdatePolicy.detail(hasUnwrittenBytes: false, staged: false)
+        let here = UpdatePolicy.detail(hasUnwrittenBytes: false, staged: true)
+        XCTAssertNotEqual(coming, here)
+        XCTAssertTrue(coming.contains("will download"), coming)
+        XCTAssertTrue(here.contains("already downloaded"), here)
+        XCTAssertFalse(here.contains("will download"), here)
     }
 
     func testTheTitleShouldNameTheAppAndTheVersion() {
@@ -150,5 +171,126 @@ final class UpdatePolicyTests: XCTestCase {
         // came to read the sheet is being made to wait at a dead button.
         XCTAssertGreaterThanOrEqual(UpdatePolicy.armingDelay, 1)
         XCTAssertLessThanOrEqual(UpdatePolicy.armingDelay, 5)
+    }
+
+    // MARK: whether anybody is there
+
+    /// The shape every arm below is checked against: nobody at the window.
+    private var away: UpdatePolicy.Attendance {
+        UpdatePolicy.Attendance(anyWindowVisible: false,
+                                hasUnwrittenBytes: false,
+                                idle: UpdatePolicy.unattendedIdle)
+    }
+
+    /// The control. Without it every arm below could be passing because the
+    /// predicate refuses everything, which is a predicate that discriminates
+    /// nothing and would still satisfy each of them.
+    func testAnEmptyMachineAtTheIdleFloorShouldBeUnattended() {
+        XCTAssertTrue(UpdatePolicy.isUnattended(away))
+    }
+
+    func testAWindowOnScreenShouldStopTheSwapHoweverIdleTheMachineLooks() {
+        // A person reading is a person who did not touch the keyboard, so idle
+        // time alone says nothing about whether the app is being used.
+        var reading = away
+        reading.anyWindowVisible = true
+        reading.idle = UpdatePolicy.unattendedIdle * 100
+        XCTAssertFalse(UpdatePolicy.isUnattended(reading))
+    }
+
+    func testUnwrittenBytesShouldStopTheSwap() {
+        // Quitting flushes, so this is not about losing the words. It is a
+        // sentence somebody was in the middle of, and the app disappearing and
+        // coming back around it is the interruption, not the risk.
+        var midSentence = away
+        midSentence.hasUnwrittenBytes = true
+        XCTAssertFalse(UpdatePolicy.isUnattended(midSentence))
+    }
+
+    func testAPauseShouldNotCountAsHavingLeft() {
+        var paused = away
+        paused.idle = UpdatePolicy.unattendedIdle - 1
+        XCTAssertFalse(UpdatePolicy.isUnattended(paused))
+        paused.idle = 0
+        XCTAssertFalse(UpdatePolicy.isUnattended(paused))
+    }
+
+    /// A clock that moved backwards produces a negative idle time, and the
+    /// bias on this whole path is that anything unreadable refuses. A refusal
+    /// costs a day; a wrong go ahead costs somebody the app they were using.
+    func testAnImpossibleIdleTimeShouldRefuseRatherThanCountAsForever() {
+        var wrong = away
+        wrong.idle = -1
+        XCTAssertFalse(UpdatePolicy.isUnattended(wrong))
+    }
+
+    // MARK: saying what happened
+
+    func testTheNoticeShouldNameTheVersionAndSayNobodyWasAsked() {
+        let said = UpdatePolicy.installedNotice(appName: "Birta Writer", tag: "v2026.902.0")
+        XCTAssertEqual(said, "Birta Writer updated to v2026.902.0 in the background.")
+    }
+
+    /// Past tense, because by the time it is read the swap is done and the app
+    /// in front of the reader is the new one. A sentence promising something
+    /// still to come would send them looking for a restart to perform.
+    func testTheNoticeShouldNotSoundLikeSomethingIsStillToHappen() {
+        let said = UpdatePolicy.installedNotice(appName: "Birta Writer", tag: "v2026.902.0")
+        for pending in ["will ", "restart", "downloading", "installing", "…"] {
+            XCTAssertFalse(said.lowercased().contains(pending), said)
+        }
+    }
+
+    // MARK: whether the swap may go in at all
+
+    /// The one state in which the app replaces itself with nobody asked.
+    private var clear: UpdatePolicy.UnattendedInstall {
+        UpdatePolicy.UnattendedInstall(isStaged: true,
+                                       autoUpdate: true,
+                                       wasDeclined: false,
+                                       offerOnScreen: false,
+                                       workInFlight: false,
+                                       attendance: away)
+    }
+
+    /// The control, and the thing every arm below is measured against: this
+    /// predicate does say yes to something.
+    func testTheOneClearStateShouldBeAllowed() {
+        XCTAssertTrue(UpdatePolicy.mayInstallUnattended(clear))
+    }
+
+    /// Every field, flipped on its own, must refuse.
+    ///
+    /// Written as a sweep rather than as five separate tests because what it
+    /// is really checking is that no field STOPPED being consulted. A clause
+    /// dropped from the predicate is invisible to a green run, and asking each
+    /// field in turn against a state that otherwise says go ahead is the only
+    /// thing that finds one. The count is asserted for the same reason: a
+    /// sweep that reached nothing would pass having checked none of them.
+    func testFlippingAnySingleFactShouldRefuse() {
+        let flips: [(String, (inout UpdatePolicy.UnattendedInstall) -> Void)] = [
+            ("nothing staged", { $0.isStaged = false }),
+            ("the setting off", { $0.autoUpdate = false }),
+            ("the version declined", { $0.wasDeclined = true }),
+            ("the offer on screen", { $0.offerOnScreen = true }),
+            ("work in flight", { $0.workInFlight = true }),
+            ("a window up", { $0.attendance.anyWindowVisible = true }),
+            ("unwritten bytes", { $0.attendance.hasUnwrittenBytes = true }),
+            ("somebody just typed", { $0.attendance.idle = 0 }),
+        ]
+        // Counted off the TYPES rather than restated as a number, so a fact
+        // added to either struct fails here until the sweep flips it. A
+        // hand-written number beside a hand-written list agrees with itself
+        // whatever the predicate does. `attendance` is subtracted because it
+        // is the other struct rather than a fact of its own.
+        let facts = Mirror(reflecting: clear).children.count
+            + Mirror(reflecting: clear.attendance).children.count - 1
+        XCTAssertEqual(flips.count, facts, "a fact was added and the sweep does not flip it")
+        for (name, flip) in flips {
+            var state = clear
+            flip(&state)
+            XCTAssertFalse(UpdatePolicy.mayInstallUnattended(state),
+                           "the swap went in with \(name)")
+        }
     }
 }

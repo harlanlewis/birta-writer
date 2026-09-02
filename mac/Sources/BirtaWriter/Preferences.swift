@@ -56,6 +56,7 @@ enum Prefs {
         case newNoteNameTemplate
         case lastUpdateCheck
         case updateDeclinedTag
+        case updateInstalledTag
         case lastNotesDirectory
         case lastScratchpadFile
         case tocVisibility
@@ -818,6 +819,32 @@ enum Prefs {
         set { d.set(newValue ?? "", forKey: Key.updateDeclinedTag.rawValue) }
     }
 
+    /// The release the app swapped itself to without asking, until the person
+    /// has been told.
+    ///
+    /// One key doing two jobs in sequence, and the sequence is what makes it
+    /// one key rather than two. It is written just before the app quits into a
+    /// staged swap, where it means "this is the version being put in, and it
+    /// is unverified". On the next launch the running version answers whether
+    /// the swap actually happened: a swap that failed leaves this ahead of the
+    /// build, and the key is cleared with nothing said, because announcing an
+    /// update that did not happen is worse than announcing nothing. A swap
+    /// that worked leaves it as the version to announce, and it stays until
+    /// the notice is dismissed.
+    ///
+    /// That last part is why it survives a quit at all. The panel is hidden
+    /// most of the time, so an announcement cleared on being SHOWN can be
+    /// spent on a window that was up for a second while somebody was reaching
+    /// for something else. The dismiss button is the only evidence anybody
+    /// read it.
+    static var updateInstalledTag: String? {
+        get {
+            let tag = d.string(forKey: Key.updateInstalledTag.rawValue) ?? ""
+            return tag.isEmpty ? nil : tag
+        }
+        set { d.set(newValue ?? "", forKey: Key.updateInstalledTag.rawValue) }
+    }
+
     /// Whether the app checks for a newer release on its own.
     ///
     /// ON by default, and deliberately NOT riding `networkEnabled`. The two
@@ -828,8 +855,13 @@ enum Prefs {
     /// release happened and run a shell script. `docs/NETWORK_POSTURE.md`
     /// carries the argument and the rung.
     ///
-    /// The check is automatic; the replacement is never. Swapping the app
-    /// somebody is typing into is not a thing to do behind them.
+    /// With it on, the check, the download and the swap all happen on their
+    /// own. What stays true is the rule they are all built around: swapping
+    /// the app somebody is TYPING INTO is not a thing to do behind them. So
+    /// the swap waits for a moment when `UpdatePolicy.isUnattended` can prove
+    /// there is nobody to interrupt, and where somebody is there instead, they
+    /// are asked. With it off nothing is checked, nothing is downloaded and
+    /// the Check Now button is the only way in.
     static var autoUpdate: Bool {
         get { d.object(forKey: Key.autoUpdate.rawValue) == nil ? true : d.bool(forKey: Key.autoUpdate.rawValue) }
         set { d.set(newValue, forKey: Key.autoUpdate.rawValue) }

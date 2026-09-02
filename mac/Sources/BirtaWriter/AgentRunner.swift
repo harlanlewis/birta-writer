@@ -19,6 +19,15 @@ final class AgentRunner {
     /// Runs in flight, so the panel can stop them and quitting can too.
     private var running: [String: Process] = [:]
 
+    /// Whether a child process is still working.
+    ///
+    /// Asked by the unattended-update path, which is the one caller that quits
+    /// the app on its own judgement rather than on somebody's word. A run can
+    /// take minutes while the panel is hidden and the machine untouched, which
+    /// is a state that looks exactly like nobody being there and is not: the
+    /// app is working, and quitting kills the child mid-answer.
+    var hasRunsInFlight: Bool { !running.isEmpty }
+
     /// The `PATH` every child gets, or nil to leave the environment alone.
     ///
     /// The person's own, not `launchd`'s. An app opened from the Finder
