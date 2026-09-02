@@ -911,7 +911,7 @@
                 "command": "birta.editor.toggleTaskList",
                 "key": "ctrl+shift+9",
                 "mac": "cmd+shift+9",
-                "when": "activeCustomEditorId == 'birta.editor' && birta.webviewFocused"
+                "when": "activeCustomEditorId == 'birta.editor' && birta.webviewFocused && birta.syntax.taskList"
             },
             {
                 "command": "birta.editor.toggleTaskChecked",
@@ -1036,11 +1036,11 @@
                 },
                 {
                     "command": "birta.editor.toggleStrikethrough",
-                    "when": "activeCustomEditorId == 'birta.editor'"
+                    "when": "activeCustomEditorId == 'birta.editor' && birta.syntax.strikethrough"
                 },
                 {
                     "command": "birta.editor.toggleHighlight",
-                    "when": "activeCustomEditorId == 'birta.editor'"
+                    "when": "activeCustomEditorId == 'birta.editor' && birta.syntax.highlight"
                 },
                 {
                     "command": "birta.editor.toggleInlineCode",
@@ -1088,7 +1088,7 @@
                 },
                 {
                     "command": "birta.editor.toggleTaskList",
-                    "when": "activeCustomEditorId == 'birta.editor'"
+                    "when": "activeCustomEditorId == 'birta.editor' && birta.syntax.taskList"
                 },
                 {
                     "command": "birta.editor.toggleTaskChecked",
@@ -1108,7 +1108,7 @@
                 },
                 {
                     "command": "birta.editor.insertTable",
-                    "when": "activeCustomEditorId == 'birta.editor'"
+                    "when": "activeCustomEditorId == 'birta.editor' && birta.syntax.table"
                 },
                 {
                     "command": "birta.editor.insertLink",
@@ -1140,11 +1140,11 @@
                 },
                 {
                     "command": "birta.editor.insertMath",
-                    "when": "activeCustomEditorId == 'birta.editor'"
+                    "when": "activeCustomEditorId == 'birta.editor' && birta.syntax.math"
                 },
                 {
                     "command": "birta.editor.insertFootnote",
-                    "when": "activeCustomEditorId == 'birta.editor'"
+                    "when": "activeCustomEditorId == 'birta.editor' && birta.syntax.footnote"
                 },
                 {
                     "command": "birta.editor.insertDate",
@@ -1164,7 +1164,7 @@
                 },
                 {
                     "command": "birta.editor.insertCallout",
-                    "when": "activeCustomEditorId == 'birta.editor'"
+                    "when": "activeCustomEditorId == 'birta.editor' && birta.syntax.calloutAlert"
                 },
                 {
                     "command": "birta.editor.toggleCallout",

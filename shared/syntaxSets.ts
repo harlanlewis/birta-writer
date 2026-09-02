@@ -216,10 +216,54 @@ export function enabledSyntaxSets(): readonly SyntaxSet[] {
  * withdrawn.
  */
 export function syntaxAllows(feature: SyntaxFeature | undefined): boolean {
+    return setsAllow(enabledSyntaxSets(), feature);
+}
+
+/**
+ * The same question asked of an EXPLICIT list, for a caller that holds the sets
+ * rather than living on the page that declares them.
+ *
+ * The extension host is the one such caller: it publishes the gate as VS Code
+ * context keys and has no `__i18n` blob to read, so without this it would
+ * either re-derive the union or write a declaration into its own globals to
+ * read straight back. The Swift port has had this shape from the start
+ * (`SyntaxScope.allows(_:in:)`), and the page's own predicate is now the same
+ * function with the declaration filled in.
+ */
+export function setsAllow(
+    sets: readonly SyntaxSet[],
+    feature: SyntaxFeature | undefined,
+): boolean {
     if (feature === undefined) {
         return true;
     }
-    return enabledSyntaxSets().some((set) => SYNTAX_SET_FEATURES[set].includes(feature));
+    return sets.some((set) => SYNTAX_SET_FEATURES[set].includes(feature));
+}
+
+/**
+ * The VS Code context key that carries `feature`'s answer into `when` clauses.
+ *
+ * The one thing a syntax target cannot withdraw from inside the page: VS Code's
+ * own command palette and its contributed keybindings are declared in
+ * `package.json` and resolved by the workbench, so the page never sees the
+ * question. `runEditorCommand` still refuses a withdrawn command, which is what
+ * keeps a stale palette row from doing anything, but a row that runs and does
+ * nothing is the toolbar and the palette disagreeing about whether a tool
+ * exists, which is what this whole predicate is for.
+ *
+ * Derived rather than written into `package.json` twice:
+ * `shared/__tests__/syntaxContributions.test.ts` builds the expected `when`
+ * clause from `EDITOR_COMMANDS` and fails on a contribution that does not carry
+ * it, so a new gated command cannot ship with a palette row that outlives it.
+ *
+ * Set from the resource-less read of the setting, the same one the live
+ * `syntaxSetsChanged` broadcast uses. A context key is per window and the
+ * setting can in principle differ per workspace folder; the broadcast already
+ * has that shape, so the palette agrees with the toolbar rather than with a
+ * third answer nobody else holds.
+ */
+export function syntaxContextKey(feature: SyntaxFeature): string {
+    return `birta.syntax.${feature}`;
 }
 
 /** The sets that provide `feature`, for a UI that has to explain an absence. */

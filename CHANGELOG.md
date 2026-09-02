@@ -13,6 +13,7 @@
   It never changes what a document renders. Every file opens with everything it contains drawn in full, whatever you have selected, and the parser and the serializer never read the setting. Nor does it touch what is already in the file: a table in a CommonMark-only document is still a table, and its row, column and alignment controls are all still there. The same holds for a task list's checkboxes and for a wikilink, which keeps the Local link format control so you can convert it rather than being left with a link the editor will not name.
 
   Typing the syntax yourself still works. `~~text~~`, `==text==`, `$x$` and `[[page]]` are you writing the characters deliberately, so the input rules fire whatever the target says; what a target changes is what the editor offers you.
+
 ### Changed
 
 - A large document opens on its first screen and is ready to type in almost at once. Above a size where building the whole document takes a visible moment, the editor is built on the first screen's blocks alone and the rest of the document streams in behind it, so you can read and edit the top while the bottom is still arriving. Everything about the file is decided exactly as before once the document is whole: a save asked for while it is still arriving writes the file as it was rather than a partial one, an edit made in the meantime is kept and saved once the rest has landed, and the outline fills in as the document does.

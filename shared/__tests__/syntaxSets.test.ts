@@ -52,6 +52,50 @@ const DECLARING_FILES = [
     "webview/components/linkPopup/formatSwitch.ts",
 ];
 
+/**
+ * The Record literals whose VALUES are gates, by the name they are declared
+ * under. Both map some other vocabulary onto a feature, so neither writes the
+ * word `syntax` beside the value the way every other gate does.
+ */
+const SYNTAX_TABLES = ["KIND_SYNTAX", "ITEM_SYNTAX"];
+
+/** The body of `const <name> ... = { ... };`, or "" where the file has none. */
+function tableBody(text: string, name: string): string {
+    const start = text.indexOf(`const ${name}`);
+    if (start === -1) { return ""; }
+    const open = text.indexOf("{", start);
+    const close = text.indexOf("\n};", open);
+    return open === -1 || close === -1 ? "" : text.slice(open, close);
+}
+
+/**
+ * Whether `text` gates something on `feature`, by the SHAPE of the declaration
+ * rather than by the feature's name appearing anywhere in the file.
+ *
+ * Three shapes, and only three:
+ *
+ *   syntax: "table"            a field on a command, a slash row or a menu row
+ *   syntaxAllows("wikiLink")   a surface asking directly
+ *   taskList: "taskList"       a value inside one of SYNTAX_TABLES, which map
+ *                              another vocabulary (a conversion kind, a
+ *                              palette item) onto a feature
+ *
+ * A substring test was the first version of this and it did not work. Feature
+ * names are also fence languages, keywords, block-menu section names and
+ * WebviewSection names, so `args: "svg"` and `section: "table"` both read as
+ * gates: deleting the real gate beside them left this check green, which is
+ * the exact failure it was written to catch. Restricting the value form to the
+ * two named tables is what keeps a field called `section` out of it.
+ */
+function declaresGate(text: string, feature: SyntaxFeature): boolean {
+    const direct = new RegExp(
+        `(?:\\bsyntax\\s*:\\s*|\\bsyntaxAllows\\(\\s*)"${feature}"`,
+    );
+    if (direct.test(text)) { return true; }
+    const value = new RegExp(`:\\s*"${feature}"`);
+    return SYNTAX_TABLES.some((name) => value.test(tableBody(text, name)));
+}
+
 const declarations = DECLARING_FILES.map((path) => ({
     path,
     text: readFileSync(resolve(root, path), "utf8"),
@@ -102,12 +146,50 @@ describe("the syntax-target vocabulary", () => {
             expect(text.length).toBeGreaterThan(0);
         }
         const ungated = ALL_SYNTAX_FEATURES.filter(
-            (feature) => !declarations.some(({ text }) => text.includes(`"${feature}"`)),
+            (feature) => !declarations.some(({ text }) => declaresGate(text, feature)),
         );
         expect(
             ungated,
             `these features are in the vocabulary and gate nothing: ${ungated.join(", ")}`,
         ).toEqual([]);
+    });
+
+    it("the sweep should not read a feature's name in a non-gate position as a gate", () => {
+        // The discriminating half, and the reason `declaresGate` is a shape
+        // rather than a substring. A bare `text.includes('"svg"')` passed on
+        // `args: "svg"` and on `section: "table"`, so deleting the gate beside
+        // them left this check green: the guard had stopped being about its
+        // subject and no run said so.
+        //
+        // Each fixture is a real line from a declaring file with the gate
+        // taken out of it, so what is asserted is what a deleted gate leaves.
+        const notGates = [
+            '{ id: "svgBlock", commandId: "insertCodeBlock", args: "svg" },',
+            '{ id: "mermaid", keywords: ["mermaid", "diagram"], args: "mermaid" },',
+            '{ id: "insertTable", title: "Insert Table", sections: ["table"] },',
+            '                section: "table",',
+            'keywords: ["math", "latex", "katex"],',
+        ];
+        for (const line of notGates) {
+            for (const feature of ALL_SYNTAX_FEATURES) {
+                expect(declaresGate(line, feature), `${feature} in: ${line}`).toBe(false);
+            }
+        }
+        // And the gate shapes themselves are recognised, or the assertions
+        // above would hold for a predicate that is simply always false.
+        expect(declaresGate('sections: [], syntax: "table" },', "table")).toBe(true);
+        expect(declaresGate('const offer = allowed && syntaxAllows("wikiLink");', "wikiLink")).toBe(true);
+        expect(declaresGate('const KIND_SYNTAX = {\n    taskList: "taskList",\n};\n', "taskList")).toBe(true);
+    });
+
+    it("each named syntax table should be found and be non-empty", () => {
+        // `tableBody` returns "" for a table it cannot find, and a gate read
+        // out of "" is a gate that silently stopped counting. Renaming either
+        // table has to fail here rather than quietly narrow the sweep above.
+        for (const name of SYNTAX_TABLES) {
+            const found = declarations.filter(({ text }) => tableBody(text, name).length > 0);
+            expect(found, `no declaring file holds ${name}`).toHaveLength(1);
+        }
     });
 
     it("no set's feature list should repeat a feature", () => {

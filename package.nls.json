@@ -52,7 +52,7 @@
   "config.syntax.sets.gfm": "GitHub: tables, strikethrough, task lists, footnotes, math, `> [!NOTE]` alerts and Mermaid diagrams.",
   "config.syntax.sets.obsidian": "Obsidian: wikilinks, ==highlights== and callouts, over the GitHub base.",
   "config.syntax.sets.pandoc": "Pandoc: footnotes, math and ::: fenced divs.",
-  "config.syntax.sets.birta": "Birta Writer's own: living calculation fences, PlantUML diagrams and Notion callouts. These render fully here and degrade to a code block or inline HTML elsewhere.",
+  "config.syntax.sets.birta": "Birta Writer's own: living calculation fences, SVG fences and Notion callouts. These render fully here and degrade to a code block or inline HTML elsewhere.",
   "config.whatsNew.indicator.description": "Show a dot on the settings gear when a release you have not looked at has a Security, Removed or Deprecated section: a security fix, or something taken away. The dot clears when you open the menu. Never a popup or a notification.",
   "config.debugMode.description": "Show debug overlays (e.g. table insert trigger zones). Intended for development use.",
   "config.imageLocalPath.description": "Local folder for saving images (relative or absolute path). Leave empty to auto-detect (images/, imgs/, assets/images/, assets/). Images are always stored locally and are never uploaded off your machine.",

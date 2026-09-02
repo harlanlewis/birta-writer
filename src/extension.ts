@@ -9,7 +9,7 @@ import { scanHeadings } from "../shared/headingScan";
 import { EDITOR_COMMANDS, editorCommandName } from "../shared/editorCommands";
 import { DOCUMENT_EXTENSIONS, isDocumentPath } from "../shared/documentExtensions";
 import { normalizeCopyFormat, normalizePasteFormat } from "../shared/config";
-import { normalizeSyntaxSets } from "../shared/syntaxSets";
+import { ALL_SYNTAX_FEATURES, normalizeSyntaxSets, setsAllow, syntaxContextKey } from "../shared/syntaxSets";
 import { WordCountStatusBar } from "./wordCountStatus";
 import { registerAgentBridge, currentAgentRoute, type BirtaApi } from "./agentBridge";
 import { reportErrorWithNotification } from "./errorSink";
@@ -293,6 +293,39 @@ export function activate(context: vscode.ExtensionContext) {
         });
     };
     publishUnread();
+
+    /**
+     * The syntax gate, as one context key per feature, for the two surfaces
+     * the page cannot reach: VS Code's command palette and our contributed
+     * keybindings, both resolved by the workbench out of `package.json`.
+     *
+     * `runEditorCommand` already refuses a withdrawn command, so nothing runs
+     * either way. What this buys is that the palette stops OFFERING it, which
+     * is the same thing the toolbar, the slash list and the Mac Format menu do
+     * and the reason they all ask one predicate: a row that runs and does
+     * nothing is the editor disagreeing with itself about whether a tool
+     * exists.
+     *
+     * Every feature gets a key, including the ones no contribution names
+     * today. The alternative is a second list of which features have palette
+     * rows, kept in step by hand; a key nothing reads costs one `setContext`
+     * at activation and the `when` clauses stay derivable from the command
+     * table alone (shared/__tests__/syntaxContributions.test.ts).
+     */
+    const publishSyntaxContext = (): void => {
+        // `setsAllow` rather than `syntaxAllows`: the page's predicate reads
+        // the declaration off `__i18n`, and the extension host has no such
+        // blob. Same union, one function, no second copy of the rule.
+        const sets = normalizeSyntaxSets(readBirtaSetting("syntaxSets"));
+        for (const feature of ALL_SYNTAX_FEATURES) {
+            vscode.commands.executeCommand(
+                "setContext",
+                syntaxContextKey(feature),
+                setsAllow(sets, feature),
+            );
+        }
+    };
+    publishSyntaxContext();
 
     // Debug mode: initialize the context variable
     const initialDebug = readBirtaSetting("debugMode");
@@ -652,6 +685,7 @@ export function activate(context: vscode.ExtensionContext) {
                 broadcastProofreadConfig();
             }
             if (e.affectsConfiguration("birta.syntax.sets")) {
+                publishSyntaxContext();
                 // Changing the target rebuilds the toolbar, the slash list and
                 // the block menu's Turn into rows in every open editor. It has
                 // to be live: a writer narrows the target BECAUSE they are
