@@ -1146,8 +1146,8 @@ export const proofreadPlugin = $prose(() => {
                 lastConfig = proofreadPluginKey.getState(view.state)!.config;
 
                 // The FIRST completed scan is the launch-time cost: the windowed
-                // style walk, the whole-document lint collection, the decoration
-                // build and its dispatch, landing on the frames just after first
+                // style walk and lint collection, the decoration build and its
+                // dispatch, landing on the frames just after first
                 // paint where no launch span reaches. Marked once so `pnpm perf`
                 // can attribute it — but the span only means anything if the
                 // harness's fixtures actually trip checks (MAR-310); a pass that
