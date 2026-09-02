@@ -158,6 +158,27 @@ export function safeAreaTop(): number {
     return getTopbarBottom() + visibleStickyHeadingHeight();
 }
 
+let stickyReservedPx = 0;
+
+/**
+ * The height CSS is currently reserving for the sticky heading title: what
+ * plugins/headingSticky.ts last published as `--editor-sticky-heading-height`,
+ * 0 while the bar is hidden. Held here so a reader that sizes a scroll band
+ * from the bar (plugins/caretScrollMargin.ts) can take the reserved height
+ * without asking layout for the bar's box, and so it moves only when the
+ * reservation does: the bar's box changes with every heading level it
+ * mirrors, and a band that followed the box re-wrote its own root variables
+ * on every such change, each a whole-document restyle.
+ */
+export function stickyReservedHeight(): number {
+    return stickyReservedPx;
+}
+
+/** The publisher's write; nothing else sets it. */
+export function setStickyReservedHeight(px: number): void {
+    stickyReservedPx = px;
+}
+
 /**
  * Fired on `window` when the sticky heading title's painted height changes
  * (plugins/headingSticky.ts, alongside its `--editor-sticky-heading-height`

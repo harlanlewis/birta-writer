@@ -1857,11 +1857,22 @@ final class Coordinator {
         write(.terminating)
     }
 
-    /// Write `latest` to the bound file, synchronously. Nothing is written
-    /// before the file has been read once (`hasLoaded`): before the first
-    /// `ready`, or forever when the web assets are missing, `latest` is the
-    /// empty string and writing it would truncate the user's scratchpad.
-    private func writeLatest(_ reason: StaticString) {
+    /// Write `latest` to the bound file. Nothing is written before the file
+    /// has been read once (`hasLoaded`): before the first `ready`, or forever
+    /// when the web assets are missing, `latest` is the empty string and
+    /// writing it would truncate the user's scratchpad.
+    ///
+    /// `waiting` is whether this thread stays until the bytes have landed.
+    /// A quit, a hide and a flush wait, because what follows them assumes
+    /// the file is written. The autosave timer does not: it fires on the
+    /// main thread, which is the thread every keystroke reaches the page
+    /// through, and the write it waits on is a whole-file copy, an `fsync`
+    /// and a rename, so waiting held the next keystroke back for as long as
+    /// the disk took, every half-second pause of typing in a large note.
+    /// Nothing after an autosave reads the file, and the writer keeps the
+    /// newest content and runs one write at a time, so the bytes land in the
+    /// same order either way.
+    private func writeLatest(_ reason: StaticString, waiting: Bool = true) {
         // `noteMissing` alongside `hasLoaded`, and both are about the same
         // thing: a path this write would create rather than update.
         // Every attempt, with the four facts that decide it, for
@@ -1896,7 +1907,7 @@ final class Coordinator {
             return
         }
         writer.submit(latest, to: boundURL)
-        writer.drain()
+        if waiting { writer.drain() }
         everSeenOnDisk = true
         // The one place the buffer and the file come back into step, so the
         // one place the title stops saying Edited. Guarded by `hasLoaded`
@@ -1961,7 +1972,7 @@ final class Coordinator {
     @objc private func autosaveFired() {
         autosaveTimer = nil
         autosaveDeadline = nil
-        writeLatest("autosaveFired")
+        writeLatest("autosaveFired", waiting: false)
     }
 
     private func cancelPendingAutosave() {

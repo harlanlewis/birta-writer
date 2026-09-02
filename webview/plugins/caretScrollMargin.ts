@@ -1,6 +1,6 @@
 import { Plugin } from "../pm";
 import { $prose } from "@milkdown/utils";
-import { getTopbarBottom } from "../utils/headingUtils";
+import { getTopbarBottom, stickyReservedHeight } from "../utils/headingUtils";
 
 // Caret auto-scroll margins (vim-scrolloff style).
 //
@@ -41,10 +41,16 @@ export function bodyLineHeightPx(): number {
 let stickyTitleEl: HTMLElement | null = null;
 
 /**
- * Height reserved for the sticky heading title. When it is currently shown
- * we measure it exactly. When hidden it may still appear right after the
- * scroll lands (the caret ends up inside some heading's section), so
- * reserve an estimated line: sticky typography tracks the active heading,
+ * Height reserved for the sticky heading title. When it is currently shown,
+ * the height CSS is reserving for it (`stickyReservedHeight`), which is the
+ * tallest bar seen rather than the box of the bar on screen: the band this
+ * sizes is written to root variables, and a band that tracked the box
+ * re-wrote them at every heading level change, each a whole-document
+ * restyle on every scroll that passed a heading. The box is measured only
+ * where nothing has been published, which is a bar shown outside the
+ * publisher (a test's stand-in). When hidden it may still appear right
+ * after the scroll lands (the caret ends up inside some heading's section),
+ * so reserve an estimated line: sticky typography tracks the active heading,
  * so this can undershoot for H1/H2 sections — the comfort band in
  * computeInsets() absorbs that difference.
  */
@@ -59,7 +65,7 @@ export function measureStickyHeadingHeight(): number {
     }
     const sticky = stickyTitleEl;
     if (sticky && !sticky.hidden) {
-        return sticky.getBoundingClientRect().height;
+        return stickyReservedHeight() || sticky.getBoundingClientRect().height;
     }
     const fontSize = parseFloat(window.getComputedStyle(document.body).fontSize);
     const base = Number.isFinite(fontSize) && fontSize > 0 ? fontSize : 14;

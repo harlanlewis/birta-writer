@@ -7,13 +7,20 @@
  * that regressions hide in.
  *
  * Policy (see the "View→document sync invariant" in AGENTS.md):
- *   • Leading edge — the first edit after a quiet period (≥ idleMs since the last
- *     sync ENDED) fires ASAP (delay 0, async) so the document dirties before the
- *     user can reach Cmd+S. A leading-edge fire in flight is never pushed out by
- *     a fast follow-up edit — that is its whole job. Measuring the lull from the
- *     sync's end rather than its start is load-bearing on a large document,
- *     where one sync outlasts idleMs; see the stamp in `arm`, and the
- *     `syncing` guard in `request` that covers the window that stamp runs in.
+ *   • Leading edge — the first edit while the backing document is CLEAN fires
+ *     ASAP (delay 0, async) so the document dirties before the user can reach
+ *     Cmd+S. Clean means opened and not yet edited, or saved since the last
+ *     sync: `reset()` after a save flush is what re-arms it, and nothing else
+ *     does. A leading-edge fire in flight is never pushed out by a fast
+ *     follow-up edit — that is its whole job.
+ *     Not the first edit after every lull, on purpose. Once the document is
+ *     dirty a leading sync buys nothing a save can see (a save flushes the live
+ *     editor whatever the document holds), and it costs a whole-document
+ *     serialize on the frame of the keystroke that ends the pause, which on a
+ *     large document is a stall on the first letter of every word; the
+ *     trailing debounce and the max-wait cap bound the document's staleness
+ *     between saves on their own. `pnpm perf:typing --key-delay 400` is the
+ *     cadence that reads it.
  *   • Trailing debounce — during a burst, the sync is deferred until typing
  *     pauses (idleMs), so a large document is not re-serialized mid-burst.
  *   • Max-wait cap — during genuinely continuous typing (never an idleMs pause)
@@ -56,7 +63,7 @@ export function createSyncScheduler(deps: SyncSchedulerDeps): SyncScheduler {
     const maxWaitMs = deps.maxWaitMs ?? 2000;
 
     let timer: TimerHandle | null = null;
-    let lastSyncMs = 0;      // when the last sync ENDED (leading-edge reference)
+    let leadingReady = true; // the backing document is clean: the next edit is a leading edge
     let burstStartMs = 0;    // when the current un-synced burst began (max-wait reference)
     let pendingSync = false; // an edit is waiting to be synced
     let leadingPending = false; // the armed timer is a leading-edge (dirty-ASAP) one
@@ -78,21 +85,17 @@ export function createSyncScheduler(deps: SyncSchedulerDeps): SyncScheduler {
             leadingPending = false;
             burstStartMs = 0;
             syncing = true;
+            // Spent before the fire, not after it: a request raised from
+            // INSIDE the sync (a plugin dispatching in response to the doc
+            // change) must find the leading edge already taken, or it arms a
+            // second one at delay 0 inside the one running. `syncing` covers
+            // the same window and stays, since it also stops a reentrant
+            // trailing arm from clearing the timer under a running fire.
+            leadingReady = false;
             try {
                 fire();
             } finally {
                 syncing = false;
-                // The lull the leading edge tests for is time since the last
-                // sync ENDED, which is why this is stamped here and not before
-                // the fire. Stamped at the START, a sync costing more than
-                // idleMs makes the next keystroke look like a fresh lull, so
-                // every edit re-fires a leading edge and neither the trailing
-                // debounce nor the max-wait cap is ever reached. That loop
-                // tightens as the document grows, which is the opposite of what
-                // the debounce exists to do. `finally` so a throwing sync still
-                // advances the reference rather than leaving the next edit to
-                // test against a stale one.
-                lastSyncMs = deps.now();
             }
         }, delay);
     };
@@ -101,22 +104,11 @@ export function createSyncScheduler(deps: SyncSchedulerDeps): SyncScheduler {
         pendingSync = true;
         if (deps.isComposing()) { return; }
         const now = deps.now();
-        // Leading edge: first edit after a lull → sync ASAP (async so the keypress
-        // is free) so the document dirties before the user can reach Cmd+S.
-        //
-        // `syncing` is what makes the lull test safe under reentrancy. A
-        // request raised from INSIDE a sync (a plugin dispatching in response
-        // to the doc change) reads a reference the `finally` above has not
-        // advanced yet, and on a sync outlasting idleMs the gap it measures is
-        // the running sync's own duration — so without this it would arm a
-        // second leading edge inside the one already running, at delay 0,
-        // which is the very loop the end-stamp exists to close. A timestamp
-        // cannot express this: the reference is stale for exactly as long as
-        // the sync runs, and a stamp taken before the fire is only correct
-        // while the sync is shorter than idleMs, which is the case where none
-        // of this matters. It takes the trailing path instead, like any other
-        // mid-burst edit.
-        if (timer === null && !syncing && now - lastSyncMs >= idleMs) {
+        // Leading edge: the first edit on a clean document → sync ASAP (async
+        // so the keypress is free) so the document dirties before the user can
+        // reach Cmd+S. Clean is the initial posture and what `reset()` restores
+        // after a save flush; a fire of any kind spends it.
+        if (timer === null && !syncing && leadingReady) {
             burstStartMs = now;
             arm(0, true);
             return;
@@ -135,7 +127,7 @@ export function createSyncScheduler(deps: SyncSchedulerDeps): SyncScheduler {
 
     const reset = (): void => {
         if (timer !== null) { deps.clearTimer(timer); timer = null; }
-        lastSyncMs = 0;   // leading-ready: next edit fires immediately
+        leadingReady = true;   // the document was just saved: next edit fires immediately
         // `syncing` is deliberately NOT cleared: it describes whether a sync is
         // on the stack, which a reset cannot change, and clearing it from
         // inside one would re-open the reentrant leading edge above.
