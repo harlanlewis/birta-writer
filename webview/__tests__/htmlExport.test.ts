@@ -1,11 +1,4 @@
 /**
- * @vitest-environment jsdom
- *
- * `selectorApplies`'s keep-on-parse-failure branch exists because jsdom
- * (like Chromium) throws on a selector it cannot parse; happy-dom accepts
- * the same selector, so the branch under test is unreachable there.
- */
-/**
  * webview/export tests (MAR-32): the pure halves of Export as HTML, run
  * against jsdom, plus the eager-graph pin for its loader seam.
  *

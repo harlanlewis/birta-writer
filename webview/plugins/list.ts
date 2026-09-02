@@ -7,6 +7,9 @@ import { extendListItemSchemaForTask } from "@milkdown/preset-gfm";
 import type { Node as ProseNode, Transaction } from "../pm";
 import { canJoin, Fragment, keymap, Mapping } from "../pm";
 import { Decoration, DecorationSet } from "../pm";
+import { countWork } from "../perf";
+import { appendedAtEnd } from "../utils/textblockEdit";
+import { PROGRESSIVE_APPEND_META } from "./docChange";
 import { Plugin, PluginKey, Selection, TextSelection } from "../pm";
 import { joinTextblockBackward, liftListItem, undoInputRule } from "../pm";
 import { $prose } from "@milkdown/utils";
@@ -802,9 +805,13 @@ interface TaskItemMark {
  * transaction, pruned, is what `pnpm perf:typing:ab` failed `xlarge` for, and
  * is the whole reason `taskListItemsTouched` below exists.
  */
-function taskItemMarks(doc: ProseNode): TaskItemMark[] {
+function taskItemMarks(doc: ProseNode, from = 0): TaskItemMark[] {
     const marks: TaskItemMark[] = [];
-    doc.descendants((node, pos) => {
+    let nodes = 0;
+    // From `from` to the end: the document by default, or the tail an append
+    // added, for which the controls before it already stand (see apply).
+    doc.nodesBetween(from, doc.content.size, (node, pos) => {
+        nodes++;
         if (node.isTextblock) { return false; }
         const checked = node.attrs["checked"];
         if (node.type.name === "list_item" && typeof checked === "boolean") {
@@ -812,6 +819,9 @@ function taskItemMarks(doc: ProseNode): TaskItemMark[] {
         }
         return true;
     });
+    // Once at mount and on a structural list edit; the gates read it so a
+    // keystroke that reaches it is visible as growth (MAR-431).
+    countWork("task-marks", { nodes });
     return marks;
 }
 
@@ -884,27 +894,28 @@ export function taskListItemsTouched(tr: Transaction): boolean {
     return false;
 }
 
+function taskCheckboxWidgets(marks: readonly TaskItemMark[]): Decoration[] {
+    return marks.map((mark) =>
+        Decoration.widget(taskCheckboxPos(mark), () => taskCheckboxA11yDom(mark.checked), {
+            // -1, the side the item's own block-handle gutter already
+            // takes at this position. Every widget this editor puts in
+            // front of content takes a negative side, so it sorts before
+            // the caret rather than after it; plugins/emptyLineHint.ts
+            // holds what WebKit does otherwise, and e2e/enterCaret pins
+            // the gesture in both engines.
+            side: -1,
+            // The state is IN the key, so a tick re-renders the control
+            // instead of reusing DOM that still says `aria-checked`
+            // whatever it said before.
+            key: `task-a11y:${mark.checked ? "x" : "o"}`,
+            ignoreSelection: true,
+        }),
+    );
+}
+
 function taskCheckboxDecorations(doc: ProseNode, marks: readonly TaskItemMark[]): DecorationSet {
     if (marks.length === 0) { return DecorationSet.empty; }
-    return DecorationSet.create(
-        doc,
-        marks.map((mark) =>
-            Decoration.widget(taskCheckboxPos(mark), () => taskCheckboxA11yDom(mark.checked), {
-                // -1, the side the item's own block-handle gutter already
-                // takes at this position. Every widget this editor puts in
-                // front of content takes a negative side, so it sorts before
-                // the caret rather than after it; plugins/emptyLineHint.ts
-                // holds what WebKit does otherwise, and e2e/enterCaret pins
-                // the gesture in both engines.
-                side: -1,
-                // The state is IN the key, so a tick re-renders the control
-                // instead of reusing DOM that still says `aria-checked`
-                // whatever it said before.
-                key: `task-a11y:${mark.checked ? "x" : "o"}`,
-                ignoreSelection: true,
-            })
-        ),
-    );
+    return DecorationSet.create(doc, taskCheckboxWidgets(marks));
 }
 
 const taskCheckboxA11yKey = new PluginKey<DecorationSet>("MD_TASK_CHECKBOX_A11Y");
@@ -927,8 +938,19 @@ const taskCheckboxA11yPlugin = $prose(
             state: {
                 init: (_config, state) =>
                     taskCheckboxDecorations(state.doc, taskItemMarks(state.doc)),
-                apply: (tr, previous) => {
+                apply: (tr, previous, oldState) => {
                     if (!tr.docChanged) { return previous; }
+                    // Content appended after every block: the controls before
+                    // it stand where they are, and only the tail is read. A
+                    // progressive open lands its document this way, chunk by
+                    // chunk; read as a structural list edit, each chunk would
+                    // rebuild for the whole document so far.
+                    const tail = appendedAtEnd(oldState.doc, tr.doc);
+                    if (tail !== null) {
+                        const added = taskCheckboxWidgets(taskItemMarks(tr.doc, tail));
+                        const mapped = previous.map(tr.mapping, tr.doc);
+                        return added.length ? mapped.add(tr.doc, added) : mapped;
+                    }
                     if (taskListItemsTouched(tr)) {
                         return taskCheckboxDecorations(tr.doc, taskItemMarks(tr.doc));
                     }
@@ -1481,6 +1503,12 @@ export const listSpreadNormalizePlugin = $prose((ctx) => {
     return new Plugin({
         appendTransaction(transactions, _oldState, newState) {
             if (!transactions.some((tr) => tr.docChanged)) return null;
+            // A chunk of a progressive open is the file's content landing,
+            // not an edit: a whole open runs no transaction over it and
+            // leaves every list as the file spelled it, and so must this,
+            // or a list the user never touched would serialize loose on
+            // the first save (MAR-429).
+            if (transactions.some((tr) => tr.getMeta(PROGRESSIVE_APPEND_META))) return null;
 
             let minFrom = newState.doc.content.size;
             let maxTo = 0;

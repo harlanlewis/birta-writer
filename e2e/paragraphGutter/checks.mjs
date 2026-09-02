@@ -93,6 +93,17 @@ export async function run({ page, check, baseUrl }) {
     // The button's border box (hover background + click target) is padded well
     // beyond the glyph, while negative margins keep the glyph's rendered
     // position where the bare text sat: 2px inside the gutter's right edge.
+    //
+    // The floors below sit under the declared `padding: 5px 6px` (style.css,
+    // `.heading-fold-marker`), which would put them at 12 and 10 exactly. They
+    // are lower because the comparison is against the GLYPH rect, and a Range's
+    // rect is the font's own ascent and descent rather than the line box, so how
+    // far it exceeds the content height is a rasterization detail that differs
+    // sub-pixel between engines. Measured on the `##` marker, the vertical
+    // figure lands a hair either side of 8 depending on the engine. What is
+    // being asserted is that the box grows around the glyph at all, which is
+    // what a negative margin plus `box-sizing` mistake would take away; the
+    // slack is there so the check is not also asserting a font metric.
     const markerGeometry = (sel) =>
         page.$eval(sel, (el) => {
             const range = document.createRange();
@@ -107,7 +118,7 @@ export async function run({ page, check, baseUrl }) {
             };
         });
     const pGeom = await markerGeometry(pMarker);
-    check("P marker box is padded beyond the glyph", pGeom.padX >= 10 && pGeom.padY >= 8,
+    check("P marker box is padded beyond the glyph", pGeom.padX >= 10 && pGeom.padY >= 7.5,
         `padX=${pGeom.padX.toFixed(1)} padY=${pGeom.padY.toFixed(1)}`);
     check("P glyph stays 2px inside the gutter's right edge",
         Math.abs(pGeom.glyphInsetFromGutterRight - 2) <= 1.5,
@@ -122,7 +133,7 @@ export async function run({ page, check, baseUrl }) {
     // ── 4c. Heading hash marker: same enlargement, chevron untouched ──
     const hMarker = '.ProseMirror h2 .heading-fold-marker:not([data-key="P"])';
     const hGeom = await markerGeometry(hMarker);
-    check("## marker box is padded beyond the glyph", hGeom.padX >= 10 && hGeom.padY >= 8,
+    check("## marker box is padded beyond the glyph", hGeom.padX >= 10 && hGeom.padY >= 7.5,
         `padX=${hGeom.padX.toFixed(1)} padY=${hGeom.padY.toFixed(1)}`);
     check("## glyph stays 2px inside the gutter's right edge",
         Math.abs(hGeom.glyphInsetFromGutterRight - 2) <= 1.5,

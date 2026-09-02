@@ -31,6 +31,11 @@ public enum BinaryPayload {
 public enum WebviewMessage: Equatable {
     case ready
     case update(content: String, baseSyncVersion: Int, seq: Int)
+    /// The frontmatter panel was edited. It carries a base version and no seq
+    /// on purpose: the panel rewrites only its own block, so there is nothing
+    /// for a seq to order it against, and a base the host has moved past is
+    /// settled as a re-push exactly as the extension settles it.
+    case frontmatterUpdate(frontmatter: String, baseSyncVersion: Int)
     case flushResult(id: String, content: String, baseSyncVersion: Int, seq: Int)
     case viewState(json: String)
     case openUrl(String)
@@ -159,6 +164,9 @@ public enum WebviewMessage: Equatable {
         case "update":
             guard let c = str("content"), let b = int("baseSyncVersion"), let s = int("seq") else { return .other(type: type) }
             return .update(content: c, baseSyncVersion: b, seq: s)
+        case "frontmatterUpdate":
+            guard let f = str("frontmatter"), let b = int("baseSyncVersion") else { return .other(type: type) }
+            return .frontmatterUpdate(frontmatter: f, baseSyncVersion: b)
         case "flushResult":
             guard let id = str("id"), let c = str("content"), let b = int("baseSyncVersion"), let s = int("seq") else { return .other(type: type) }
             return .flushResult(id: id, content: c, baseSyncVersion: b, seq: s)
@@ -272,8 +280,20 @@ public enum WebviewMessage: Equatable {
 /// Outbound messages. `jsonObject()` is what gets marshalled into
 /// `window.postMessage(...)`; the shapes mirror `ToWebviewMessage`.
 public enum HostMessage: Equatable {
-    case initDoc(content: String, syncVersion: Int, viewStateJSON: String?)
-    case externalUpdate(content: String, syncVersion: Int)
+    /// The document, split the way every host must split it: `content` is the
+    /// BODY, `frontmatter` is the block the panel draws, and `lineOffset` is
+    /// how many source lines that block takes so the page can name a document
+    /// line the file actually has. `BirtaWriterCore.DocumentSplit` is what
+    /// makes the three, and the whole of why the split is the host's job.
+    case initDoc(content: String, frontmatter: String, lineOffset: Int, syncVersion: Int, viewStateJSON: String?)
+    case externalUpdate(content: String, frontmatter: String, lineOffset: Int, syncVersion: Int)
+    /// A new `lineOffset` with the document left where it is: what a panel edit
+    /// amounts to, since it changes how far the body is pushed down and nothing
+    /// about the body. No `lineMap` travels with it, because the map describes
+    /// the body and the body did not move; the page keeps the one it computed.
+    /// Sending the document instead would be an `externalUpdate`, which redraws
+    /// the panel out from under the person typing in it.
+    case lineOffsetUpdate(lineOffset: Int)
     case flushSave(id: String)
     case flushAck(id: String, applied: Bool)
     /// Reply to `uploadImage`: `url` is what goes INTO the document, so it is
@@ -370,15 +390,19 @@ public enum HostMessage: Equatable {
             return object
         case let .raw(json):
             return (json.data(using: .utf8).flatMap { try? JSONSerialization.jsonObject(with: $0) } as? [String: Any]) ?? [:]
-        case let .initDoc(content, syncVersion, viewStateJSON):
-            var o: [String: Any] = ["type": "init", "content": content, "syncVersion": syncVersion]
+        case let .initDoc(content, frontmatter, lineOffset, syncVersion, viewStateJSON):
+            var o: [String: Any] = ["type": "init", "content": content, "frontmatter": frontmatter,
+                                    "lineOffset": lineOffset, "syncVersion": syncVersion]
             if let vs = viewStateJSON, let d = vs.data(using: .utf8),
                let obj = try? JSONSerialization.jsonObject(with: d), obj is [String: Any] {
                 o["viewState"] = obj
             }
             return o
-        case let .externalUpdate(content, syncVersion):
-            return ["type": "externalUpdate", "content": content, "syncVersion": syncVersion]
+        case let .externalUpdate(content, frontmatter, lineOffset, syncVersion):
+            return ["type": "externalUpdate", "content": content, "frontmatter": frontmatter,
+                    "lineOffset": lineOffset, "syncVersion": syncVersion]
+        case let .lineOffsetUpdate(lineOffset):
+            return ["type": "lineMapUpdate", "lineOffset": lineOffset]
         case let .agentRun(requestId, status, harness, text, message):
             var o: [String: Any] = ["type": "agentRun", "requestId": requestId, "status": status]
             if let harness { o["harness"] = harness }

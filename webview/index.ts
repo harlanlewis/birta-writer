@@ -555,12 +555,22 @@ async function initEditor(
     // Resolved before the old editor is torn down, so a failed mdx chunk load
     // cannot leave the pane empty-handed with the previous editor destroyed.
     const formatModule = await resolveFormat(documentFormat);
+    // A frame is for the FIRST open only. A re-init (a revert, the external
+    // update's rebuild fallback) replaces a document the user may be typing
+    // into, and a frame there would take their focus and replay their keys at
+    // the top of the new document rather than where they were. Switching back
+    // from the raw editor is a first open too: VS Code disposes the webview.
+    const firstOpen = currentEditor === null;
     if (currentEditor) {
         currentEditor.destroy();
         currentEditor = null;
         container.innerHTML = "";
     }
 
+    // A large document opens on its first screen and streams the rest in
+    // behind the live editor (progressiveOpen.ts, decided inside
+    // createEditor), so nothing here has to show something before the model
+    // exists: the model of the first screen is what exists first.
     try {
         currentEditor = await createEditor(
             container,

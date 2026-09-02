@@ -13,6 +13,41 @@
   It never changes what a document renders. Every file opens with everything it contains drawn in full, whatever you have selected, and the parser and the serializer never read the setting. Nor does it touch what is already in the file: a table in a CommonMark-only document is still a table, and its row, column and alignment controls are all still there. The same holds for a task list's checkboxes and for a wikilink, which keeps the Local link format control so you can convert it rather than being left with a link the editor will not name.
 
   Typing the syntax yourself still works. `~~text~~`, `==text==`, `$x$` and `[[page]]` are you writing the characters deliberately, so the input rules fire whatever the target says; what a target changes is what the editor offers you.
+### Changed
+
+- A large document opens on its first screen and is ready to type in almost at once. Above a size where building the whole document takes a visible moment, the editor is built on the first screen's blocks alone and the rest of the document streams in behind it, so you can read and edit the top while the bottom is still arriving. Everything about the file is decided exactly as before once the document is whole: a save asked for while it is still arriving writes the file as it was rather than a partial one, an edit made in the meantime is kept and saved once the rest has landed, and the outline fills in as the document does.
+- Proofreading now costs the screen, not the document. Style underlines are computed for the blocks near the viewport and follow the scroll, and the spelling and grammar check is asked about those blocks first rather than the whole document at once, so a large document opens and answers a keystroke sooner with `birta.proofreading.enabled` on. The review sidebar's Proofread tab still lists the whole document; on a large one it fills in over a moment, and a check that fails for a block leaves it unmarked rather than leaving the list incomplete.
+- Typing in a large document no longer re-walks it on every keystroke for the block gutter, image blocks, link cards, calc cues or note markers; each now redoes only the block the edit touched.
+- Typing in a large document no longer pauses for the save pipeline's verification. Every save and autosave checks that the bytes about to be written reopen as the document on screen, which means parsing them again, and on a large file that parse landed on the editor between keystrokes as a visible hitch. Above a size where it is felt, the check now runs on a background thread and the editor commits the result when it arrives; what is written is decided exactly as before, an explicit Save still checks on the spot, and a document that stays in its editor's own spelling never needed the check and is unchanged. Below that size nothing changes.
+- Opening a large document is faster, and most noticeably on a long outline. Every heading carries an `id` so it can be linked to, and the editor assigned those ids after the document was already on screen: one transaction step per heading, which rebuilt the document and made the editor redraw every heading it had just finished drawing. The ids are now placed on the document before it is first rendered, so the work happens once instead of twice. The saving scales with how many headings a document has, so a deeply structured file gains most and a flat one gains little.
+
+### Removed
+
+- Pinch-to-zoom on a diagram's inline preview, so that scrolling past a diagram no longer feels like the page is refusing to move. Intercepting a pinch means cancelling the gesture, and a handler that can cancel takes every scroll over that pane off the fast path and onto the main thread, whether or not it turns out to be a pinch. A diagram sitting in the middle of a document is something you scroll past far more often than you zoom, so the pane no longer answers the wheel at all. Zoom is still on the pane's own buttons and its reset control, and the fullscreen view keeps pinch, wheel zoom and wheel pan, because there is no document behind it to scroll.
+
+### Fixed
+
+- Typing after clicking a diagram no longer edits somewhere else in the document, in Birta Writer for Mac. A click on a diagram's preview, or on any of a code block's controls, is supposed to leave the editor inert until you click back into text. It did stop the editor being focused, but the caret you had before the click was still a live target, so the next Return split a paragraph you were not looking at and the next characters were typed into it. The same thing happened over an open fullscreen diagram or image: keystrokes reached the note behind it. Birta Writer for VS Code renders in a different engine, which drops a selection along with the focus, and was not affected.
+
+- Deleting the last character of an inline formula removes the formula, in Birta Writer for Mac. Backspacing through `$x^2$` cleared it down to one character and then stopped: the last character survived, the empty formula stayed in the document, and the caret jumped out to the text beside it. Emptying a formula and then moving the caret away has always been the way to delete one, and it works again.
+
+- Opening a document is faster in Birta Writer for Mac. Two pieces of work that are meant to run only after the document is on screen, the save-protection precompute and the first proofreading pass, were running before it instead, so their cost was paid before anything was drawn. It is proportional to document size, so the longer the note the more of the wait was this. Birta Writer for VS Code already deferred both and is unchanged.
+
+- Mermaid diagrams draw each label inside its own shape in Birta Writer for Mac. Every label in every diagram was painted in the diagram's top-left corner instead of in its node, so the shapes came out empty and the words arrived in one unreadable pile on top of each other. Opening the same diagram fullscreen has always drawn it correctly, which is the workaround anyone who hit this will have found. A diagram draws its labels as HTML inside the picture, the editor's own paragraph styling was reaching into that markup, and WebKit paints the result in the wrong place; the fullscreen view escapes because it is the one surface that styling does not reach. Birta Writer for VS Code renders in a different engine and was never affected, and no other diagram type was: PlantUML and Graphviz draw their labels as SVG text rather than HTML, and an `svg` fence cannot carry the construct at all.
+
+- Typing in a large document was slowed by the editor's own save pipeline. The editor copies your text into the file's backing document when you pause typing, and it judged whether you had paused by measuring from the moment the previous copy began rather than from the moment it finished. Once a document was big enough that one copy outlasted the pause it was being timed against, every keystroke looked like the first one after a lull and bought another whole-document copy, so the editor got slower the slower it already was. The pause is now measured from the end of the previous copy, which is what it was always meant to describe, so a continuous burst of typing triggers the periodic copy rather than one per keystroke. Saving is unaffected: Cmd+S and autosave still write what the editor holds at the moment you save. A plain outline is as exposed as a document full of tables, because the cost is the document's size rather than what is in it. If you upgraded for the spelling and grammar fix in 2026.827.0 and a large file was still slow to type in, this is the other half of it.
+
+---
+
+## [2026.901.0] - 2026, September 1
+
+_No user-visible changes; internal work only._
+
+---
+
+## [2026.828.0] - 2026, August 28
+
+_No user-visible changes; internal work only._
 
 ---
 

@@ -60,8 +60,12 @@ export type ParseMarkdown = (markdown: string) => ProseNode | null;
 
 const CLEAN = "lost: (none); gained: (none)";
 
-/** Does `text` reopen holding exactly the content `liveFp` fingerprints? */
-function reopensAs(liveFp: Fingerprint, text: string, parse: ParseMarkdown): boolean {
+/**
+ * Does `text` reopen holding exactly the content `liveFp` fingerprints?
+ * Exported for the verify worker (workers/verifyWorker.ts), which answers
+ * this and nothing else, with the same function.
+ */
+export function reopensAs(liveFp: Fingerprint, text: string, parse: ParseMarkdown): boolean {
     let doc: ProseNode | null;
     try {
         doc = parse(text);
@@ -127,11 +131,7 @@ export function mergeVerified(
     live: ProseNode,
     parse: ParseMarkdown,
 ): VerifiedMerge {
-    const merged = applyMinimalChanges(saved, serialized, profile, protection);
-    const fallback = serializerFallback(saved, serialized);
-    // One comparison decides `canonical` for every exit, so the flag cannot
-    // drift from the bytes it describes as branches are added.
-    const result = (text: string): VerifiedMerge => ({ text, canonical: text === fallback });
+    const { merged, fallback, result } = candidates(saved, serialized, profile, protection);
     // The merge already chose the serializer's text (an internal self-check
     // tripped, or there was nothing saved to preserve). Both candidates are
     // the same bytes, so every branch below would return them; this only saves
@@ -152,4 +152,54 @@ export function mergeVerified(
     // broken and writing canonical bytes would not fix it, while discarding
     // the file's spelling on every save certainly would hurt.
     return result(reopensAs(liveFp, fallback, parse) ? fallback : merged);
+}
+
+/** Answers `reopensAs` somewhere else: a worker holding the page's parser (utils/verifyOracle.ts). */
+export type ReopensOracle = (liveFp: Fingerprint, text: string) => Promise<boolean>;
+
+/**
+ * `mergeVerified` with the reopen question asked of an oracle instead of run
+ * here (MAR-430). The merge and the fallback are still computed on the
+ * caller's thread, because on the largest fixture they are a rounding error
+ * beside the reparse and computing them here keeps the short-circuit above
+ * from costing a round trip. The live fingerprint is taken lazily, past that
+ * short-circuit, for the same reason.
+ *
+ * THE TWO FUNCTIONS MUST DECIDE IDENTICALLY, and `verifiedMerge.test.ts`
+ * holds them together over the corpus: same bytes, same `canonical`, for
+ * every input, whichever thread answered. Everything they share is in
+ * `candidates`; what this one adds is only that its two questions are awaited.
+ */
+export async function mergeVerifiedWith(
+    saved: string,
+    serialized: string,
+    profile: FormatProfile,
+    protection: RoundTripProtection | null,
+    liveFingerprint: () => Fingerprint,
+    reopens: ReopensOracle,
+): Promise<VerifiedMerge> {
+    const { merged, fallback, result } = candidates(saved, serialized, profile, protection);
+    if (merged === fallback) {
+        return result(merged);
+    }
+    const liveFp = liveFingerprint();
+    if (await reopens(liveFp, merged)) {
+        return result(merged);
+    }
+    return result((await reopens(liveFp, fallback)) ? fallback : merged);
+}
+
+/** The two texts every save chooses between, and the `canonical` verdict for either. */
+function candidates(
+    saved: string,
+    serialized: string,
+    profile: FormatProfile,
+    protection: RoundTripProtection | null,
+): { merged: string; fallback: string; result: (text: string) => VerifiedMerge } {
+    const merged = applyMinimalChanges(saved, serialized, profile, protection);
+    const fallback = serializerFallback(saved, serialized);
+    // One comparison decides `canonical` for every exit, so the flag cannot
+    // drift from the bytes it describes as branches are added.
+    const result = (text: string): VerifiedMerge => ({ text, canonical: text === fallback });
+    return { merged, fallback, result };
 }

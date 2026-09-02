@@ -48,9 +48,19 @@ public struct SyncGuard: Equatable, Sendable {
     /// (even if the caller's apply then turns out to be a no-op, so the mark
     /// stays a monotonic ceiling).
     public mutating func judge(baseSyncVersion: Int, seq: Int) -> Verdict {
-        guard baseSyncVersion == version else { return .repush }
+        guard admits(baseSyncVersion: baseSyncVersion) else { return .repush }
         guard seq > appliedSeq else { return .staleSeq }
         appliedSeq = seq
         return .admit
+    }
+
+    /// Whether content serialized against `baseSyncVersion` may be applied at
+    /// all, for an inbound message that carries a base and NO seq: today
+    /// `frontmatterUpdate`, which rewrites only the panel's own block, so
+    /// there is nothing for a seq to order it against and the high-water mark
+    /// is not its to claim. The one base rule, shared with `judge` rather than
+    /// restated beside it, so the two cannot answer differently.
+    public func admits(baseSyncVersion: Int) -> Bool {
+        baseSyncVersion == version
     }
 }

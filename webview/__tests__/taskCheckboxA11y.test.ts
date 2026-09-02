@@ -16,7 +16,7 @@
  * `BIRTA_E2E_BROWSER=webkit`, in WebKit.
  */
 import { describe, it, expect, afterEach } from "vitest";
-import { Editor, rootCtx, defaultValueCtx, editorViewCtx } from "@milkdown/core";
+import { Editor, rootCtx, defaultValueCtx, editorViewCtx, parserCtx } from "@milkdown/core";
 import type { EditorView } from "../pm";
 import type { Node as ProseNode } from "../pm";
 import { TextSelection } from "../pm";
@@ -126,6 +126,27 @@ describe("task checkbox accessibility", () => {
         // catches a decoration applied to list items in general.
         expect(tasks.every((s) => s.aria !== null)).toBe(true);
         expect(plain.every((s) => s.aria === null)).toBe(true);
+    });
+
+    it("task items appended after the whole document should get controls, with the earlier ones untouched", async () => {
+        const editor = await makeEditor(FIXTURE);
+        const v = view(editor);
+        // The shape a progressive open lands its chunks in: parsed on their
+        // own and inserted at the end, every earlier block the same object.
+        const chunk = editor.action((ctx) => ctx.get(parserCtx)("- [ ] late task\n- [x] late done\n- late plain\n")) as ProseNode;
+        const before = v.state.doc;
+        v.dispatch(v.state.tr.insert(v.state.doc.content.size, chunk.content));
+        expect(v.state.doc.child(0)).toBe(before.child(0));
+
+        const states = itemStates(editor);
+        expect(states.map((s) => s.text)).toEqual([
+            "open task", "done task", "parent", "nested task", "plain bullet", "late task", "late done", "late plain",
+        ]);
+        const tasks = states.filter((s) => s.drawn !== null);
+        expect(tasks).toHaveLength(6);
+        expect(tasks.every((s) => s.aria !== null)).toBe(true);
+        expect(states.filter((s) => s.drawn === null).every((s) => s.aria === null)).toBe(true);
+        expect(states[6]?.aria).toBe("true");
     });
 
     it("a task's accessible state should be the state it draws, not a fixed value", async () => {

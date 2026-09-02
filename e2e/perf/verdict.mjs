@@ -14,6 +14,8 @@ export const SPANS = [
     ["launch", null, "editor-painted"],
     ["eager", "eval-start", "ready-posted"],
     ["roundtrip", "ready-posted", "init-received"],
+    // On a document that opens progressively (webview/progressiveOpen.ts)
+    // this is the first chunk's model alone, and `stream` below is the rest.
     ["create", "create-start", "create-end"],
     // The INITIAL VIEW RENDER: everything between Milkdown handing back a
     // created editor and the browser painting the first frame that shows it —
@@ -28,6 +30,13 @@ export const SPANS = [
     // ── after `editor-painted` (see POST_PAINT_SPANS) ──
     ["rtp", "rtp-start", "rtp-end"],
     ["proofread", "proofread-start", "proofread-end"],
+    // A progressive open (webview/progressiveOpen.ts): from the editor being
+    // created on the first chunk to the last chunk appended. `create` and
+    // `launch` then cover the first screen only, and this is the rest of the
+    // document arriving behind them, idle slice by idle slice. Stamped on
+    // every open, so a document opened whole reads it as about zero rather
+    // than as a dash.
+    ["stream", "stream-start", "stream-end"],
 ];
 
 /**

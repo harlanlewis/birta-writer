@@ -26,6 +26,7 @@ import "./htmlLivePairs.css";
 import { $prose } from "@milkdown/utils";
 import type { EditorState, Node as PMNode } from "../pm";
 import { Decoration, DecorationSet, Plugin, PluginKey, keymap } from "../pm";
+import { countWork } from "../perf";
 import { openSelectedHtmlEditor } from "../components/htmlView";
 
 export const LIVE_PAIR_TAGS = ["u", "sub", "sup", "kbd", "mark"] as const;
@@ -89,13 +90,17 @@ function blockDecorations(block: PMNode, blockStart: number): Decoration[] {
 /** Build the full set for a document (init, and the test seam). */
 export function livePairDecorations(doc: PMNode): DecorationSet {
     const decos: Decoration[] = [];
+    let blocks = 0;
     doc.descendants((node, pos) => {
         if (node.isTextblock) {
+            blocks++;
             decos.push(...blockDecorations(node, pos + 1));
             return false;
         }
         return true;
     });
+    // Once, at init; edits recompute only the touched textblocks below.
+    countWork("html-pairs", { blocks });
     return decos.length ? DecorationSet.create(doc, decos) : DecorationSet.empty;
 }
 
@@ -125,6 +130,10 @@ export const htmlLivePairsPlugin = $prose(
                     });
                     const doc = newState.doc;
                     const seen = new Set<number>();
+                    // Counted here as well as at init, so a chunk of a
+                    // progressive open, which arrives through this path, is
+                    // visible to the count gate the way the mount pass is.
+                    let recomputed = 0;
                     for (const { from, to } of touched) {
                         const lo = Math.max(0, Math.min(from, doc.content.size));
                         const hi = Math.max(0, Math.min(to, doc.content.size));
@@ -134,6 +143,7 @@ export const htmlLivePairsPlugin = $prose(
                             }
                             if (!seen.has(pos)) {
                                 seen.add(pos);
+                                recomputed++;
                                 mapped = mapped.remove(
                                     mapped.find(pos, pos + node.nodeSize),
                                 );
@@ -145,6 +155,7 @@ export const htmlLivePairsPlugin = $prose(
                             return false;
                         });
                     }
+                    countWork("html-pairs", { blocks: recomputed });
                     return mapped;
                 },
             },

@@ -16,7 +16,7 @@
  */
 import { readFile, stat, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
-import { FIXTURES } from "./perf/fixtures.mjs";
+import { FIXTURES, HEAVY_FIXTURES } from "./perf/fixtures.mjs";
 import { serve, serveAB, repoRoot } from "./perf/server.mjs";
 // The pure gate logic lives in verdict.mjs so it can be unit-tested (this file
 // runs Playwright/process.exit on import and can't be).
@@ -96,7 +96,7 @@ async function loadPlaywright() {
 // pass it; the A/B narrows the list per side after its warmup pair so a bundle
 // predating a mark pays the timeout once per fixture rather than once per
 // sample. A caller passing `[]` reads whatever has been stamped by paint time.
-async function sampleOnce(browser, url, content, fixture = "?", side = "", settleMarks = []) {
+async function sampleOnce(browser, url, content, fixture = "?", side = "", settleMarks = [], probeSplit = false) {
     const page = await browser.newPage({ viewport: { width: 1000, height: 900 } });
     const errors = [];
     page.on("pageerror", (e) => errors.push(`pageerror: ${e}`));
@@ -129,6 +129,17 @@ async function sampleOnce(browser, url, content, fixture = "?", side = "", settl
         }
         return m;
     });
+    // The probes (MAR-434's create split, MAR-430's sync split): the bundle
+    // installs them only under the harness's init marker, and only measure
+    // mode asks for them, after every mark is in, so neither can sit inside a
+    // span and neither costs the A/B a parse per sample. Null on a bundle that
+    // predates one.
+    const split = probeSplit
+        ? await page.evaluate(() => globalThis.__birtaPerf?.parseSplit?.() ?? null)
+        : null;
+    const syncSplit = probeSplit
+        ? await page.evaluate(() => globalThis.__birtaPerf?.syncSplit?.() ?? null)
+        : null;
     await page.close();
     if (errors.length) {
         const where = side ? `${side} bundle, fixture "${fixture}"` : `fixture "${fixture}"`;
@@ -139,6 +150,8 @@ async function sampleOnce(browser, url, content, fixture = "?", side = "", settl
     }
     const out = spans(marks);
     if (missingSettle.length) { out.__missingSettle = missingSettle; }
+    if (split) { out.__split = split; }
+    if (syncSplit) { out.__syncSplit = syncSplit; }
     return out;
 }
 
@@ -150,7 +163,7 @@ async function measureFixture(chromium, baseUrl, content, runs, fixture = "?") {
     try {
         for (let i = 0; i < runs; i++) {
             try {
-                const s = await sampleOnce(browser, baseUrl, content, fixture, "", SETTLE_MARKS);
+                const s = await sampleOnce(browser, baseUrl, content, fixture, "", SETTLE_MARKS, true);
                 for (const m of s.__missingSettle ?? []) { missing.add(m); }
                 samples.push(s);
             } catch (e) {
@@ -164,6 +177,24 @@ async function measureFixture(chromium, baseUrl, content, runs, fixture = "?") {
     // Discard the first run (cold caches / JIT warmup); aggregate the rest.
     const agg = aggregate(samples.slice(1));
     if (missing.size) { agg.missingSettle = [...missing]; }
+    const splits = samples.slice(1).map((s) => s.__split).filter(Boolean);
+    if (splits.length) {
+        agg.split = {
+            mdast: round(median(splits.map((s) => s.mdast))),
+            pm: round(median(splits.map((s) => s.pm))),
+        };
+    }
+    const syncSplits = samples.slice(1).map((s) => s.__syncSplit).filter(Boolean);
+    if (syncSplits.length) {
+        agg.syncSplit = {
+            serialize: round(median(syncSplits.map((s) => s.serialize))),
+            merge: round(median(syncSplits.map((s) => s.merge))),
+            fingerprint: round(median(syncSplits.map((s) => s.fingerprint))),
+            reparse: round(median(syncSplits.map((s) => s.reparse))),
+            // The same bundle answers the same way every sample; the last says.
+            offThread: syncSplits[syncSplits.length - 1].offThread,
+        };
+    }
     return agg;
 }
 
@@ -174,10 +205,21 @@ async function measureMode(only, runs, jsonOut) {
         console.error("dist/webview.js not found — run `pnpm build` first.");
         process.exit(2);
     }
-    const names = Object.keys(FIXTURES).filter((n) => !only || n === only);
+    // A NAMED fixture may be a heavy one; the default sweep never is. Without
+    // this the launch harness could not open any document larger than `large`
+    // (96 KB), because it resolved a name against FIXTURES alone — and both
+    // defects #421 fixes scale with document size. See HEAVY_FIXTURES.
+    const pool = { ...FIXTURES, ...HEAVY_FIXTURES };
+    // `Object.hasOwn`, never `in`: `in` walks the prototype chain, so a fixture
+    // named `constructor` or `toString` would resolve to a function and be
+    // measured as a document. The filter this replaced was safe by accident.
+    const names = only ? (Object.hasOwn(pool, only) ? [only] : []) : Object.keys(FIXTURES);
     if (names.length === 0) {
         console.error(only ? `no fixture named "${only}"` : "no fixtures");
         process.exit(2);
+    }
+    if (only && Object.hasOwn(HEAVY_FIXTURES, only)) {
+        console.log(`\n  ${only} is a HEAVY fixture (${Math.round(pool[only].length / 1024)} KB): on demand only, never gated.`);
     }
     const { chromium } = await loadPlaywright();
     const server = serve();
@@ -188,7 +230,7 @@ async function measureMode(only, runs, jsonOut) {
     const header = ["fixture", ...SPANS.map(([l]) => l)];
     const rows = [];
     for (const name of names) {
-        const agg = await measureFixture(chromium, baseUrl, FIXTURES[name], runs, name);
+        const agg = await measureFixture(chromium, baseUrl, pool[name], runs, name);
         report.fixtures[name] = agg;
         rows.push([name, ...SPANS.map(([l]) => (agg.median[l] == null ? "–" : String(agg.median[l])))]);
     }
@@ -208,6 +250,27 @@ async function measureMode(only, runs, jsonOut) {
     for (const [name, agg] of Object.entries(report.fixtures)) {
         if (agg.missingSettle) {
             console.log(`  ⚠ ${name}: no ${agg.missingSettle.join(", ")} mark within ${SETTLE_TIMEOUT_MS} ms of paint — that span is unmeasured, not zero.`);
+        }
+    }
+    // The create split probe, warm (see README, "The create split"): which
+    // half of the parse dominates, never how long either takes cold.
+    const withSplit = Object.entries(report.fixtures).filter(([, agg]) => agg.split);
+    if (withSplit.length) {
+        console.log("\ncreate split, warm probe after settle (ms): markdown parse and run / ProseMirror construction\n");
+        for (const [name, agg] of withSplit) {
+            console.log(`  ${name.padEnd(12)} mdast ${agg.split.mdast}  pm ${agg.split.pm}`);
+        }
+    }
+    // The sync split probe, warm (see README, "The sync split"): what one
+    // sync of this document costs piece by piece, and whether its reparse
+    // leaves the interaction thread for the verify worker (MAR-430).
+    const withSync = Object.entries(report.fixtures).filter(([, agg]) => agg.syncSplit);
+    if (withSync.length) {
+        console.log("\nsync split, warm probe after settle (ms): serialize / merge / live fingerprint / verifying reparse\n");
+        for (const [name, agg] of withSync) {
+            const s = agg.syncSplit;
+            const where = s.offThread ? "reparse off-thread" : "reparse on the main thread";
+            console.log(`  ${name.padEnd(12)} serialize ${s.serialize}  merge ${s.merge}  fingerprint ${s.fingerprint}  reparse ${s.reparse}  (${where})`);
         }
     }
     console.log("");

@@ -1,12 +1,4 @@
 /**
- * @vitest-environment jsdom
- *
- * DOMPurify does not actually work under happy-dom (it keeps remote refs
- * and event handlers while reporting `isSupported: true`), so the rendered
- * face this file asserts on — nested `<style>` removal, dropped
- * declarations, tabindex neutralization — never materializes there.
- */
-/**
  * The rendered face of an html atom is output, not a surface (MAR-366).
  *
  * Three contracts: a document's `<style>` never applies, a `style` attribute

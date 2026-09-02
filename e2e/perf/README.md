@@ -24,14 +24,23 @@ pnpm perf:bundle                           # zero-variance eager-bytes metric
 | `launch` | 0 → `editor-painted` | **headline**: navigation start to first painted editor frame |
 | `eager` | `eval-start` → `ready-posted` | eager module eval + UI construction |
 | `roundtrip` | `ready-posted` → `init-received` | the `ready`→`init` postMessage hop |
-| `create` | `create-start` → `create-end` | Milkdown `Editor…create()` (parses the doc) |
+| `create` | `create-start` → `create-end` | Milkdown `Editor…create()` (parses the doc; on a document that opens progressively, the first chunk alone) |
 | `toc` / `toolbar` | `*-start` → `*-end` | those two components' construction |
 | `rtp` | `rtp-start` → `rtp-end` | **post-paint**: `computeRoundTripProtection` (re-serializes the doc) |
 | `proofread` | `proofread-start` → `proofread-end` | **post-paint**: the first whole-document style/lint pass |
+| `stream` | `stream-start` → `stream-end` | **post-paint**: a progressive open's remaining chunks landing behind the live editor (`webview/progressiveOpen.ts`); about zero on a document that opened whole, and the whole model cost minus the first screen's on one that did not |
 
 `launch` minus the sum of the launch spans is the browser's bundle fetch+parse cost (the eager JS/CSS download before `eval-start`).
 
 `paint` (`create-end` → `editor-painted`) is the easiest span to overlook. It is ProseMirror's first DOM build plus style/layout/paint, *including any work a plugin schedules from its `view()` onto the frames before that paint*. Work moved in front of first paint is invisible to every other span, so if a plugin schedules its own rAF at mount, suspect this one.
+
+### The create split (a probe, not a span)
+
+`create` is one `parserCtx` call: the markdown half (remark parse and run, where the callout and directive tree transforms live) and the ProseMirror construction from mdast, and no mark can sit between them without reaching into Milkdown. So the runner asks the page after the settle marks: the bundle installs `__birtaPerf.parseSplit()` only when the harness's init marker is on the window (`installParseSplitProbe` in `webview/editor.ts`), and it re-parses the document twice, once through the remark processor alone and once whole, so construction is the difference. `pnpm perf` prints the two under the table as `create split` and carries them in its JSON as `split`. It is a WARM reading, the parser having already run once on that text, so the cold `create` span is larger than the two halves' sum; what it answers is which half dominates (MAR-434), never how long either takes cold.
+
+### The sync split (a probe, not a span)
+
+A sync is four pieces: the serialize, the minimal-diff merge, the live fingerprint, and the verifying reparse of the merged bytes (`utils/verifiedMerge.ts`), and only the last of them is a whole-document parse. The same probe machinery asks the page for all four after the settle marks (`__birtaPerf.syncSplit()`, installed beside the create split in `webview/editor.ts`), and `pnpm perf` prints them as `sync split` and carries them as `syncSplit` in its JSON, with whether the document's syncs send the reparse to the verify worker (MAR-430) or run it on the main thread. Warm, like the create split. It is the reading that says which pieces the interaction thread still pays on a large document, which is what sizes the next tier of the worker pipeline (MAR-432); `pnpm perf huge-outline` is where to read it.
 
 ### The post-paint spans (`POST_PAINT_SPANS`)
 
@@ -94,6 +103,48 @@ Generated deterministically (no `Date`/`Math.random`) in `fixtures.mjs`, so a ru
 Injected by the runner as `window.__perfInit` before any script runs, so fixture I/O never pollutes the `roundtrip` measurement.
 
 `large` and `xlarge` repeat a section that contains a table and a code block. Worth knowing before designing a probe: a caret walked blindly into one of those fixtures lands in a table cell or a code block about as often as in prose, and those have very different costs.
+
+## Heavy fixtures (`HEAVY_FIXTURES`)
+
+Two documents are exported separately as a by-name pool: either runner can be pointed at one explicitly, and neither is in `FIXTURES`, so neither is ever measured by `pnpm perf` or by the `launch-perf` gate. `xlarge` remains a member of `TYPING_FIXTURES` exactly as it was, so `pnpm perf:typing` still sweeps it; what is new is that the launch runner can open it at all.
+
+```bash
+node e2e/perf.mjs huge-outline          # launch spans on a working-file-sized outline; the run prints its size
+node e2e/perf-typing.mjs huge-outline   # per-keystroke dispatch on the same
+node e2e/perf.mjs xlarge                # the largest typing fixture, cold start
+```
+
+| fixture | shape |
+| --- | --- |
+| `xlarge` | about three times `large`, all `richSection`, the typing-lag tail |
+| `huge-outline` | about eight times `large`: ~440 headings across three levels, ~3000 list items, unwrapped paragraphs, and no tables, code, images, raw HTML, math or diagrams |
+
+Neither size is written here; `fixtures.test.mjs` holds each to a band, and the runner prints what it opened.
+
+They exist because the harnesses could not open a document the size of the ones users complain about. `large`, at 96 KB, was the biggest cold start anything here could measure: `e2e/perf.mjs` resolved a fixture name against `FIXTURES` alone, so `xlarge` had sat in `TYPING_FIXTURES` for a long time with no way to launch it. Both of the defects fixed in #421 scale with document size, and neither was found by an instrument in this repository. They were found by hand, on a file eight times larger than anything the harnesses could reach.
+
+`huge-outline` is a SHAPE and not only a size, and scaling an existing fixture would not have produced it. Every sized fixture here is built from `richSection`, which carries a table and a fenced code block per section, so the same byte count would hold ~800 of each and its cost would be dominated by two NodeViews and the highlighter. The motivating file contains none of those three constructs and was still seconds to open and seconds to answer a keystroke. `webview/__tests__/perfFixtureConstructs.test.ts` asserts the absence through the real parser, and the presence of the headings and list items alongside it, because a parse that produced nothing would satisfy every absence on its own.
+
+Why a third set rather than an ungated eighth fixture: `launch-perf` is a required, blocking check that measures every entry of `FIXTURES` on both sides of the A/B, twice when a regression has to be confirmed, and `perf:typing` is the most expensive check in the repo and is dominated by its largest fixture. Report-only avoids the verdict and not the cost. A document that size in either default sweep would spend minutes of every PR's critical path.
+
+### The nightly count gate (`pnpm perf:counts`, CI job `perf-nightly`)
+
+What holds the heavy fixtures instead is `.github/workflows/perf-nightly.yml`: it builds `main` once a day, runs `node e2e/perf.mjs` on both heavy fixtures and `node e2e/perf-typing.mjs huge-outline`, and gates on the work counts the typing run collected.
+
+```bash
+node esbuild.mjs --production --metafile
+node e2e/perf-typing.mjs huge-outline --json typing.json
+node e2e/perf-counts.mjs --check typing.json        # the nightly's verdict
+node e2e/perf-counts.mjs --set-budget typing.json   # re-record every ceiling from this run, plus headroom
+```
+
+Counts, never durations, and the reason is the one that keeps `block` ungated above: a nightly has no sibling build to interleave against, so a duration would be a bare absolute read on a shared runner, while a `countWork` total (`webview/perf.ts`) is the same number on a loaded runner and an idle laptop. The ceilings live in `heavy-budget.json` and are a contract the way `eagerBudget` is: `--set-budget` writes measured plus headroom and nothing else, `counts.test.mjs` fails if a measured figure creeps in. The headroom covers the burst's one non-determinism, a runner stall past the proofread debounce landing one extra rescan; a regression the gate exists for is a multiple of the ceiling.
+
+Not every count can hold a ceiling. A counter a TIMER stamps, such as the sync pipeline's `merge` (one pass per max-wait window the burst spans), follows runner speed the way a duration does, and a ceiling on it would make a slow night red. The budget's `reported` list names those counters with the reason each cannot be gated; they are printed beside the gated ones and never fail on their value. `--set-budget` carries that list over untouched, because it is a judgement about what a counter measures and no run can re-derive it.
+
+Three failures, each a different defect. `OVER` is a pass that became proportional to the document again. `unbudgeted` is a new counter on neither list, refused on purpose: a `countWork` call reaches this gate by existing, and the PR that adds one either records its ceiling or places it in `reported` with the reason. `missing` is a listed counter the run did not stamp, and it fails rather than abstains because a dash reads exactly like "cheap" (MAR-311). The durations go into the run summary for a person to read, alongside the counts.
+
+Two properties of `huge-outline` are load-bearing and easy to lose in a rewrite. Its heading DENSITY, roughly one per 1.7 KB, is what mount-time id work scales with. And its heading text REPEATS, roughly two in three, because `headingIdAssigner`'s `-#N` dedup counter only runs when two headings slug the same, and every other fixture numbers its headings uniquely. `fixtures.test.mjs` asserts both, along with the size band, so an edited section that is never re-derived fails rather than quietly becoming a different document.
 
 The prose fixtures deliberately trip the style check (`STYLE_SENTENCES`); the non-prose ones deliberately do not. `birta.proofreading.enabled` defaults to `true`, so every measured launch has always paid a proofread scan, but until MAR-310 no fixture contained a phrase the shipped word lists match, and `medium` produced 0 `.pf-style-hit` elements. The harness was measuring the matcher's traversal of prose that matches nothing, and never the decoration build, which is the half that scales with how much a document actually trips. A green gate over that fixture set was evidence of non-interference, not of coverage. `code-heavy`, `math`, `link-heavy` and `html-heavy` stay unseeded: they exist to isolate the highlighter, the KaTeX path, the embed recognizer and the html NodeView, and prose seeded into them would blur what they isolate. That set is derived from `FIXTURES` in `fixtures.test.mjs` rather than listed, so a fixture added later cannot skip the bar.
 

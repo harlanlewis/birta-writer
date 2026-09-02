@@ -25,7 +25,7 @@
  * needs a DOM.
  */
 import { describe, it, expect } from "vitest";
-import { FIXTURES } from "../../e2e/perf/fixtures.mjs";
+import { FIXTURES, HEAVY_FIXTURES } from "../../e2e/perf/fixtures.mjs";
 import { makeCorpusEditor, editorView } from "./helpers/moveFuzz";
 
 /** Every node type in the parsed document, with its count. */
@@ -128,6 +128,52 @@ describe("launch-perf fixture constructs", () => {
                 if ((counts.get("html") ?? 0) > 0) withHtml.push(name);
             }
             expect(withHtml.sort()).toEqual([HTML_FIXTURE, GATED_HTML_FIXTURE].sort());
+        },
+        120_000,
+    );
+
+    /**
+     * `huge-outline` stands in for a real 765 KB working file, and what makes
+     * it that document is as much what it does NOT contain as what it does: no
+     * tables, no code blocks, no images, no raw HTML, no math and no diagrams.
+     * Scaling `large` to this size would instead produce ~800 tables and ~800
+     * code blocks, and its cost would be two NodeViews and the highlighter
+     * rather than the outline and the prose the real file is made of.
+     *
+     * Asked of the PARSER for the same reason MAR-367 is: source bytes cannot
+     * answer it in either direction. A pipe character in a sentence is not a
+     * table, an indented line can become a code block nobody wrote a fence for,
+     * and a stray `<` becomes an html atom whose NodeView then mounts per atom.
+     *
+     * The positive half is what keeps the negative honest. A parse that
+     * produced nothing at all would satisfy every `toBe(0)` here and report
+     * total success, which is the instrument-measured-nothing failure; the
+     * heading and list floors are what rule it out.
+     *
+     * The timeout matches the whole-fixture sweep above rather than the
+     * single-fixture cases, because this parses the largest document in the
+     * repository and is comparable work. It sits far above the real cost, which
+     * is the point: a bound a contended box can trip turns this into a red
+     * nobody can act on. Read that cost with `npx vitest run --project webview
+     * webview/__tests__/perfFixtureConstructs.test.ts`, never from a figure
+     * written here.
+     */
+    it(
+        "the huge-outline fixture should be an outline over prose and nothing else",
+        async () => {
+            const counts = await nodeTypeCounts(HEAVY_FIXTURES["huge-outline"]);
+            const at = (t: string) => counts.get(t) ?? 0;
+            const present = [...counts.keys()].sort().join(", ");
+
+            // Reached something, and the right something.
+            expect(at("heading"), `headings; node types present: ${present}`).toBeGreaterThan(400);
+            expect(at("list_item"), "list items").toBeGreaterThan(2000);
+            expect(at("paragraph"), "paragraphs").toBeGreaterThan(800);
+
+            // And nothing whose cost would dominate the measurement.
+            for (const type of ["table", "code_block", "image", "html", "math_block", "diagram"]) {
+                expect(at(type), `${type} nodes; node types present: ${present}`).toBe(0);
+            }
         },
         120_000,
     );

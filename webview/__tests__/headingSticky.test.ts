@@ -236,7 +236,7 @@ describe("sticky heading foldability", () => {
 describe("sticky heading rescan scheduling", () => {
     /** Deterministic rAF: the plugin coalesces on a pending frame, so a test
      *  that let jsdom's timer-backed rAF fire on its own would race it. */
-    function stubRaf(): { pending: () => number; flush: () => void } {
+    function stubRaf(): { pending: () => number; flush: () => void; drain: () => void } {
         let queue: FrameRequestCallback[] = [];
         let id = 0;
         vi.stubGlobal("requestAnimationFrame", (cb: FrameRequestCallback) => {
@@ -244,14 +244,28 @@ describe("sticky heading rescan scheduling", () => {
             return ++id;
         });
         vi.stubGlobal("cancelAnimationFrame", () => {});
+        const flush = (): void => {
+            const due = queue;
+            queue = [];
+            for (const cb of due) {
+                cb(0);
+            }
+        };
         return {
             pending: () => queue.length,
-            flush: () => {
-                const due = queue;
-                queue = [];
-                for (const cb of due) {
-                    cb(0);
-                }
+            flush,
+            /**
+             * Flush until nothing is left, not once.
+             *
+             * A callback may schedule the next frame from inside this one, so a
+             * single flush can leave the queue non-empty and a later
+             * `pending()` then counts a frame this test never caused.
+             * `requestIdle` does exactly that (utils/idle.ts). Bounded, so a
+             * scheduler that re-arms forever fails the test rather than
+             * hanging it.
+             */
+            drain: () => {
+                for (let i = 0; i < 20 && queue.length > 0; i++) flush();
             },
         };
     }
@@ -285,7 +299,7 @@ describe("sticky heading rescan scheduling", () => {
         editors.push(editor);
         activeEditor = editor;
         const editorView = view(editor);
-        raf.flush(); // drain the mount-time scan
+        raf.drain(); // everything the mount scheduled, including re-armed frames
         return { editorView, raf };
     }
 

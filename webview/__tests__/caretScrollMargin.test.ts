@@ -1,10 +1,4 @@
 /**
- * @vitest-environment jsdom
- *
- * The short-viewport band math asserts exact pixel insets, and happy-dom's
- * layout defaults land them differently (94 where jsdom computes 102).
- */
-/**
  * Tests for the caret scroll-margin plugin: per-side scrollThreshold /
  * scrollMargin insets that keep the caret clear of the fixed topbar and
  * sticky heading title, plus the scroll-padding CSS-var mirror.

@@ -1,0 +1,44 @@
+<!doctype html>
+<!-- e2e harness: does a Mermaid label's INK land inside its own box?
+
+     The defect this pins is a paint bug, not a layout one. getBoundingClientRect
+     reports every label at exactly the right coordinates while WebKit rasterizes
+     all of them at the SVG's origin, so every rect-based check in
+     e2e/mermaidRender passes for the whole life of it. The verdict has to come
+     from pixels, and this suite is the only place in the tree that reads any.
+
+     The block is a real ```mermaid fence in the editor's own document rather
+     than a spare SVG in a div, and that is the whole fixture: what breaks is
+     the editor's own paragraph rule reaching the <p> Mermaid puts inside each
+     label, so a diagram outside this subtree cannot reproduce it. Nothing else
+     about the document matters. Position does not: the defect is there with the
+     diagram on the first screen, which is why this fixture is short.
+
+     Chromium is clean here and always was. The check still runs in both, because
+     "the ink is inside the box" is not an engine-specific claim, and a guard
+     that only ever ran under BIRTA_E2E_BROWSER=webkit would be a guard nobody
+     runs. -->
+<meta charset="utf-8">
+<link rel="stylesheet" href="dist/hostPalette.css">
+<style>
+  body { background: var(--vscode-editor-background); color: var(--vscode-editor-foreground); margin: 0; }
+  .editor-topbar { min-height: 40px; box-sizing: border-box; }
+</style>
+<script>
+  document.addEventListener("DOMContentLoaded", () => document.body.classList.add("editor-width-auto", "vscode-dark"));
+  window.__i18n = { translations: {}, isMac: true, mermaidTheme: "light", toolbar: { placements: {}, order: [] } };
+  window.__posted = [];
+  const CONTENT = "# Label paint\n\nA diagram's labels are HTML inside the SVG, which is what makes this worth\na suite of its own.\n\n```mermaid\nflowchart TD\n  A[Start] --> B{Decision}\n  B -->|Yes| C[Do thing]\n  B -->|No| D[Skip]\n```\n\ntrailing prose\n";
+  window.acquireVsCodeApi = () => ({
+    postMessage: (msg) => {
+      window.__posted.push(msg);
+      if (msg.type === "ready")
+        window.postMessage({ type: "init", content: CONTENT, syncVersion: 1 }, "*");
+    },
+    getState: () => undefined, setState: () => {},
+  });
+</script>
+<link rel="stylesheet" href="dist/webview.css">
+<div class="editor-topbar"></div>
+<div id="editor"></div>
+<script type="module" src="dist/webview.js"></script>

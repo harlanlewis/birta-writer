@@ -1,0 +1,75 @@
+<!doctype html>
+<!-- e2e harness: MAR-430's verify worker. A document past the off-thread
+     floor, served under a CSP mirroring the provider's (nonce'd scripts,
+     `default-src 'none'`, and the one grant the worker needs), so the Blob
+     worker starts under the policy the extension ships and a refusal is a
+     console error the runner fails on. `?small=1` serves a document below the
+     floor, where no worker may be started. Mirrors the provider template with
+     acquireVsCodeApi stubbed. -->
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy"
+  content="default-src 'none';
+           style-src 'self' 'unsafe-inline';
+           script-src 'nonce-verifyharness' 'self';
+           worker-src blob:;
+           img-src 'self' data:;
+           font-src 'self' data:;">
+<style>
+  :root {
+    --vscode-editor-background: #1e1e1e; --vscode-editor-foreground: #d4d4d4;
+    --vscode-foreground: #cccccc; --vscode-descriptionForeground: #999999;
+    --vscode-editor-font-family: monospace; --vscode-font-family: -apple-system, sans-serif; --vscode-font-size: 13px;
+    --vscode-editorHoverWidget-background: #252526; --vscode-editorHoverWidget-foreground: #cccccc;
+    --vscode-editorHoverWidget-border: #454545; --vscode-focusBorder: #007fd4;
+    --vscode-toolbar-hoverBackground: rgba(90,93,94,0.31); --vscode-list-hoverBackground: #2a2d2e;
+    --vscode-editor-selectionBackground: #264f78;
+    --vscode-button-background: #0e639c; --vscode-button-foreground: #ffffff; --vscode-button-hoverBackground: #1177bb;
+    --vscode-button-secondaryBackground: #3a3d41; --vscode-panel-border: #454545;
+  }
+  body { background: var(--vscode-editor-background); color: var(--vscode-editor-foreground); }
+  .editor-topbar { height: 40px; box-sizing: border-box; }
+</style>
+<script nonce="verifyharness">
+  // Every worker the page starts, counted before the bundle can start one:
+  // the instrument has to reach its subject, and "no main-thread reparse"
+  // alone is also what a document that never synced would report.
+  window.__workers = 0;
+  const RealWorker = window.Worker;
+  window.Worker = class extends RealWorker {
+    constructor(...args) {
+      super(...args);
+      window.__workers++;
+      // A worker's own failure is an event on the worker, never a page
+      // error; surfaced as one so the runner's "no page errors" carries it.
+      this.addEventListener("error", (e) => console.error("worker error:", e.message, e.filename, e.lineno));
+      this.addEventListener("message", (e) => { if (e.data?.type === "failed") console.error("worker failed:", e.data.reason); });
+    }
+  };
+  window.__i18n = { translations: {}, isMac: true, toolbar: { placements: {}, order: [] }, tocAutoHideThreshold: 999 };
+  window.__posted = [];
+  const small = new URLSearchParams(location.search).get("small") === "1";
+  // A four-space outline: the serializer does not spell it, so every sync
+  // pays a verifying reparse, which is the case the worker exists for.
+  const LINES = ["# Verify worker document", "", "Opening paragraph.", ""];
+  const SECTIONS = small ? 12 : 1400;
+  for (let i = 1; i <= SECTIONS; i++) {
+    LINES.push(`## Section ${i}`, "",
+               `Paragraph body for section ${i}, long enough that the document is past the off-thread floor when there are enough sections.`, "",
+               `- item one of ${i}`, `    - nested under one of ${i}`, `- item two of ${i}`, "");
+  }
+  LINES.push("Final paragraph.", "");
+  const DOC = LINES.join("\n");
+  window.__docLength = DOC.length;
+  window.acquireVsCodeApi = () => ({
+    postMessage: (msg) => {
+      window.__posted.push(msg);
+      if (msg.type === "ready")
+        window.postMessage({ type: "init", content: DOC, syncVersion: 1 }, "*");
+    },
+    getState: () => undefined, setState: () => {},
+  });
+</script>
+<link rel="stylesheet" href="dist/webview.css">
+<div class="editor-topbar"></div>
+<div id="editor"></div>
+<script type="module" nonce="verifyharness" src="dist/webview.js"></script>

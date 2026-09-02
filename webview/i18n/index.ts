@@ -147,8 +147,12 @@ declare global {
     }
 }
 
-const _t: Record<string, string> = window.__i18n?.translations ?? {};
-const _isMac: boolean = window.__i18n?.isMac ?? false;
+// Read off the global rather than `window`: the table is the same object in a
+// page, and a worker that shares a module with the page has a global and no
+// window. A worker never has the table, so it reads every string as its key.
+const _blob = (globalThis as { __i18n?: Window["__i18n"] }).__i18n;
+const _t: Record<string, string> = _blob?.translations ?? {};
+const _isMac: boolean = _blob?.isMac ?? false;
 
 /** Translate a string; if not found, return the original key (i.e. the English source text) */
 export function t(key: string): string {

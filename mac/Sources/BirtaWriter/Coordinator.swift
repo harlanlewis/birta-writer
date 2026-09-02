@@ -73,6 +73,12 @@ final class Coordinator {
     /// cache, so nothing a fetch touches persists between requests.
     private let fetcher = PageMetadataFetcher(transport: URLSessionTransport())
     private var guardState = SyncGuard()
+    /// Which half of the document the page is holding where: the frontmatter
+    /// block in its panel, the body in its editor. The app is the host here,
+    /// and splitting is the host's job (`BirtaWriterCore.DocumentSplit`); a
+    /// host that hands over the whole file gives the panel nothing to draw and
+    /// leaves the Markdown parser to read `---` as a rule.
+    private var split = DocumentSplit()
     private var state: State = .cold
     /// The newest buffer content the host has seen or written.
     private var latest = ""
@@ -982,6 +988,22 @@ final class Coordinator {
 
     // MARK: bridge
 
+    /// Put a document in front of the page, split into the block its panel
+    /// draws and the body its editor holds.
+    ///
+    /// THE one place an `externalUpdate` is sent, which is what keeps the
+    /// mirror in `split` true: it records what the panel was last given, and a
+    /// send that went round this would leave it describing a panel holding
+    /// something else. The version is the caller's because the two kinds of
+    /// send disagree about it: a fresh document bumps, and a re-push after a
+    /// rejected base must NOT, or the page's next correctly-based update reads
+    /// as stale and typed text is replaced.
+    private func pushDocument(_ content: String, syncVersion: Int) {
+        let doc = split.forPage(content)
+        host.send(.externalUpdate(content: doc.body, frontmatter: doc.frontmatter,
+                                  lineOffset: doc.lineOffset, syncVersion: syncVersion))
+    }
+
     private func handle(_ message: WebviewMessage) {
         switch message {
         case .ready:
@@ -1011,7 +1033,9 @@ final class Coordinator {
                 reloadFromDisk = false
                 hasLoaded = adopt(readActiveNote())
             }
-            host.send(.initDoc(content: latest, syncVersion: guardState.version,
+            let doc = split.forPage(latest)
+            host.send(.initDoc(content: doc.body, frontmatter: doc.frontmatter,
+                               lineOffset: doc.lineOffset, syncVersion: guardState.version,
                                viewStateJSON: Prefs.viewStateJSON(for: boundURL)))
             state = .warm
             // A fresh page starts with its chrome shown; tell it where the
@@ -1037,14 +1061,17 @@ final class Coordinator {
         case let .update(content, base, seq):
             switch guardState.judge(baseSyncVersion: base, seq: seq) {
             case .admit:
-                latest = content
+                // The page serializes the BODY: the frontmatter block never
+                // entered its document, so the buffer is that block plus what
+                // came back, not what came back on its own.
+                latest = split.document(body: content)
                 isEdited = true
                 write(.edit)
             case .repush:
                 // Re-push authoritative content at the CURRENT version, as
                 // the extension does: bumping here would read the page's next
                 // correctly-based update as stale and replace typed text.
-                host.send(.externalUpdate(content: latest, syncVersion: guardState.version))
+                pushDocument(latest, syncVersion: guardState.version)
             case .staleSeq:
                 break
             }
@@ -1052,7 +1079,7 @@ final class Coordinator {
             let pending = pendingFlushes.removeValue(forKey: id)
             switch guardState.judge(baseSyncVersion: base, seq: seq) {
             case .admit:
-                latest = content
+                latest = split.document(body: content)
                 // Only for a caller that has said its own `then` does not
                 // decide. `flushThen` holds the argument; the short version is
                 // that this used to write unconditionally, on the belief that
@@ -1064,15 +1091,41 @@ final class Coordinator {
                     writeLatest("flushResult")
                 }
                 host.send(.flushAck(id: id, applied: true))
-                pending?.resolve(content)
+                // The DOCUMENT, not the body the page sent: a caller waiting on
+                // a flush wants the bytes that would be written, and the
+                // frontmatter block is not the page's to hand back.
+                pending?.resolve(latest)
             case .repush:
                 host.send(.flushAck(id: id, applied: false))
-                host.send(.externalUpdate(content: latest, syncVersion: guardState.version))
+                pushDocument(latest, syncVersion: guardState.version)
                 pending?.resolve(nil)
             case .staleSeq:
                 host.send(.flushAck(id: id, applied: false))
                 pending?.resolve(nil)
             }
+        case let .frontmatterUpdate(frontmatter, base):
+            // The panel was edited. Only the block is rewritten; the body under
+            // it is untouched, byte for byte, which is why this path carries no
+            // seq and needs none. A base the host has moved past is settled as
+            // a re-push rather than rebased, the same degradation the extension
+            // settles a rejected frontmatter base with: this side replaces one
+            // block and has nothing to rebase a whole document against.
+            guard guardState.admits(baseSyncVersion: base) else {
+                pushDocument(latest, syncVersion: guardState.version)
+                break
+            }
+            let updated = split.document(latest, replacingFrontmatterWith: frontmatter)
+            guard updated != latest else { break }
+            latest = updated
+            isEdited = true
+            write(.edit)
+            // A block that gained or lost lines pushes the body down by a
+            // different amount, and the page is drawing gutter numbers and
+            // naming lines to an agent off the offset it was last told. The
+            // extension sends the same message here for the same reason; the
+            // document is deliberately NOT re-sent, which would redraw the
+            // panel out from under the person who just typed in it.
+            host.send(.lineOffsetUpdate(lineOffset: split.lineOffset))
         case let .viewState(json):
             Prefs.setViewStateJSON(json, for: boundURL)
         case let .openUrl(url):
@@ -1417,7 +1470,7 @@ final class Coordinator {
         latest = text
         isEdited = false
         if state == .warm {
-            host.send(.externalUpdate(content: text, syncVersion: guardState.bumpVersion()))
+            pushDocument(text, syncVersion: guardState.bumpVersion())
         }
         statusOverlay.flash("This note has arrived. Saving is on again.")
     }
@@ -2001,7 +2054,7 @@ final class Coordinator {
         latest = onDisk
         isEdited = false
         if state == .warm {
-            host.send(.externalUpdate(content: onDisk, syncVersion: guardState.bumpVersion()))
+            pushDocument(onDisk, syncVersion: guardState.bumpVersion())
         }
     }
 
@@ -2114,7 +2167,7 @@ final class Coordinator {
         isEdited = false
         refreshTitle()
         if state == .warm {
-            host.send(.externalUpdate(content: content, syncVersion: guardState.bumpVersion()))
+            pushDocument(content, syncVersion: guardState.bumpVersion())
         }
     }
 
@@ -3342,7 +3395,7 @@ final class Coordinator {
         // file is going. Same claim `writeLatest` makes at the same moment.
         isEdited = false
         if state == .warm {
-            host.send(.externalUpdate(content: content, syncVersion: guardState.bumpVersion()))
+            pushDocument(content, syncVersion: guardState.bumpVersion())
         }
     }
 

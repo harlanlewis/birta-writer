@@ -42,6 +42,13 @@ export type FoldMeta =
      */
     | { type: "buildAffordance" }
     /**
+     * MAR-429: a progressive open finished streaming. `init` resolved the
+     * persisted fold anchors (or seeded the syntax defaults) over the first
+     * chunk alone; this resolves them again over the whole document and adds
+     * what the later chunks hold, then rebuilds for the window.
+     */
+    | { type: "resolvePersisted" }
+    /**
      * MAR-215: the scroll window moved (plugins/visibleRange.ts). Carries the
      * document range whose gutter chrome is materialized, or null for "the
      * whole document" — the answer with no layout engine, and the pre-windowing

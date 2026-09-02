@@ -1,0 +1,64 @@
+<!doctype html>
+<!-- e2e harness: MAR-429's progressive open. A document large enough to open
+     on its first screen with the rest streamed in, so "interactive before the
+     document is whole", "a keystroke during the stream keeps its place" and
+     "a save during the stream cannot truncate" are observable behaviors.
+     `?small=1` serves a document below the floor, which opens whole. Mirrors
+     the provider template with acquireVsCodeApi stubbed; a `flushSave` can be
+     posted to the page from the checks, and its `flushResult` is recorded. -->
+<meta charset="utf-8">
+<style>
+  :root {
+    --vscode-editor-background: #1e1e1e; --vscode-editor-foreground: #d4d4d4;
+    --vscode-foreground: #cccccc; --vscode-descriptionForeground: #999999;
+    --vscode-editor-font-family: monospace; --vscode-font-family: -apple-system, sans-serif; --vscode-font-size: 13px;
+    --vscode-editorHoverWidget-background: #252526; --vscode-editorHoverWidget-foreground: #cccccc;
+    --vscode-editorHoverWidget-border: #454545; --vscode-focusBorder: #007fd4;
+    --vscode-toolbar-hoverBackground: rgba(90,93,94,0.31); --vscode-list-hoverBackground: #2a2d2e;
+    --vscode-editor-selectionBackground: #264f78;
+    --vscode-button-background: #0e639c; --vscode-button-foreground: #ffffff; --vscode-button-hoverBackground: #1177bb;
+    --vscode-button-secondaryBackground: #3a3d41; --vscode-panel-border: #454545;
+  }
+  body { background: var(--vscode-editor-background); color: var(--vscode-editor-foreground); }
+  .editor-topbar { height: 40px; box-sizing: border-box; }
+</style>
+<script>
+  // The document's block count at the moment each mark is stamped, taken
+  // synchronously with the mark so the checks cannot drift by a task.
+  (() => {
+    const origMark = performance.mark.bind(performance);
+    window.__at = {};
+    performance.mark = (name, ...rest) => {
+      if ((name === "mdw:editor-painted" || name === "mdw:stream-end") && window.__at[name] === undefined) {
+        window.__at[name] = { blocks: document.querySelectorAll(".milkdown .ProseMirror > *").length, t: performance.now() };
+      }
+      return origMark(name, ...rest);
+    };
+  })();
+  window.__i18n = { translations: {}, isMac: true, toolbar: { placements: {}, order: [] }, tocAutoHideThreshold: 999 };
+  window.__posted = [];
+  const small = new URLSearchParams(location.search).get("small") === "1";
+  const LINES = ["# Progressive document", "", "Opening paragraph.", ""];
+  const SECTIONS = small ? 12 : 2600;
+  for (let i = 1; i <= SECTIONS; i++) {
+    LINES.push(`## Section ${i}`, "",
+               `Paragraph body for section ${i}, long enough that the document is past the floor when there are enough sections.`, "",
+               `- item one of ${i}`, `    - nested under one of ${i}`, `- item two of ${i}`, "");
+  }
+  LINES.push("Closing paragraph.", "");
+  const DOC = LINES.join("\n");
+  window.__doc = DOC;
+  window.__docLength = DOC.length;
+  window.acquireVsCodeApi = () => ({
+    postMessage: (msg) => {
+      window.__posted.push(msg);
+      if (msg.type === "ready")
+        window.postMessage({ type: "init", content: DOC, syncVersion: 1 }, "*");
+    },
+    getState: () => undefined, setState: () => {},
+  });
+</script>
+<link rel="stylesheet" href="dist/webview.css">
+<div class="editor-topbar"></div>
+<div id="editor"></div>
+<script type="module" src="dist/webview.js"></script>

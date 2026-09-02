@@ -29,7 +29,7 @@
  * assertion below, and fix the fixture rather than the assertion.
  */
 import { describe, it, expect } from "vitest";
-import { FIXTURES, TYPING_FIXTURES } from "./fixtures.mjs";
+import { FIXTURES, TYPING_FIXTURES, HEAVY_FIXTURES } from "./fixtures.mjs";
 import { GATED_FIXTURES } from "./verdict.mjs";
 import { compileStyleMatcher } from "../../webview/utils/styleMatcher.ts";
 import {
@@ -55,8 +55,20 @@ const match = compileStyleMatcher(
     Object.fromEntries(Object.keys(PHRASE_LISTS).map((c) => [c, true])),
 );
 
-/** The fixtures whose job is realistic prose. The rest isolate other paths. */
-const PROSE_FIXTURES = ["tiny", "medium", "large"];
+/** Every fixture this module exports, under any of its three names. */
+const ALL_FIXTURES = { ...FIXTURES, ...TYPING_FIXTURES, ...HEAVY_FIXTURES };
+
+/**
+ * The partition, DECLARED rather than derived, and checked against the exports
+ * below. Deriving one side from the other would make the check a tautology:
+ * every fixture leaves through exactly one branch of a filter the test itself
+ * writes, so a fixture nobody classified still passes.
+ *
+ * Seeded fixtures must trip the style check; isolating ones must not, so each
+ * keeps isolating the single path it exists for.
+ */
+const SEEDED = new Set(["tiny", "medium", "large", "xlarge", "realistic", "huge-outline"]);
+const ISOLATING = new Set(["code-heavy", "math", "link-heavy", "html-heavy"]);
 
 // The seeded fixtures land one phrase hit per ~181 source characters (2026-08-04:
 // medium 69/12526, large 540/97452, xlarge 1713/311884). The floor sits at less
@@ -69,8 +81,105 @@ const PROSE_FIXTURES = ["tiny", "medium", "large"];
 const MAX_CHARS_PER_HIT = 400;
 
 describe("launch-perf prose fixtures", () => {
-    it.each(PROSE_FIXTURES)("%s should trip the style check", (name) => {
-        expect(match(FIXTURES[name]).length).toBeGreaterThan(0);
+    /**
+     * The bar above is only a bar for the fixtures something enumerates, and
+     * every enumeration in this file used to read `FIXTURES` alone. A fixture
+     * exported under any other name was therefore covered by nothing, silently:
+     * `xlarge` sat in `TYPING_FIXTURES` and was reached only by one case that
+     * names it, and `HEAVY_FIXTURES` would have added two more the day it
+     * landed. That is the absent-guard shape, not a wrong one, so no green run
+     * would ever have reported it.
+     *
+     * This is the check that cannot be escaped by adding a fixture: the union
+     * of the three exports must equal the union of the two declared classes, so
+     * a new fixture fails here until somebody decides which bar it takes.
+     */
+    it("every exported fixture should be declared seeded or isolating", () => {
+        // The floor first. Equality between two empty lists is true, and the
+        // two `it.each` blocks below over an empty set run no cases and pass,
+        // so a module that stopped exporting fixtures would satisfy this whole
+        // describe having compared nothing. That is the shape this file exists
+        // to catch one construct over.
+        expect(Object.keys(ALL_FIXTURES).length, "fixtures exported").toBeGreaterThanOrEqual(10);
+        const declared = [...SEEDED, ...ISOLATING].sort();
+        expect(Object.keys(ALL_FIXTURES).sort()).toEqual(declared);
+    });
+
+    it.each([...SEEDED])("%s should trip the style check", (name) => {
+        expect(match(ALL_FIXTURES[name]).length).toBeGreaterThan(0);
+    });
+
+    it.each([...ISOLATING])("%s should stay unseeded, so it keeps isolating its own path", (name) => {
+        expect(match(ALL_FIXTURES[name]).length).toBe(0);
+    });
+
+    /**
+     * `huge-outline` is not gated, and takes the gated fixtures' phrase density
+     * anyway. The density bar exists because proofreading ships on and its scan
+     * is one of the post-paint spans, so a fixture built to expose chokepoints
+     * has to trip at a rate a real document reaches or the scan it is measuring
+     * is the traversal half only (MAR-310).
+     */
+    it("huge-outline should trip at the same density as the gated fixtures", () => {
+        const doc = HEAVY_FIXTURES["huge-outline"];
+        const hits = match(doc).length;
+        expect(hits, `${hits} phrase hits in ${doc.length} chars`)
+            .toBeGreaterThan(doc.length / MAX_CHARS_PER_HIT);
+    });
+
+    /**
+     * A FIXTURE'S IDENTITY IS ITS SIZE, and `huge-outline`'s identity is also
+     * its outline. It stands in for a real 765 KB working file, and the three
+     * figures below are the ones that make it that document rather than a large
+     * one: its size, its heading count (what the mount-time id work scales
+     * with) and its list density. A section edited without re-deriving the
+     * section count fails here rather than quietly producing a different
+     * document that every later measurement is taken against.
+     *
+     * Counted off the SOURCE on purpose. This is a drift alarm on the
+     * generator, and the constructs it must not contain are asserted through
+     * the real parser instead, in webview/__tests__/perfFixtureConstructs.test.ts,
+     * because that is a question source bytes cannot answer.
+     */
+    it("huge-outline should hold the size and outline it stands in for", () => {
+        const doc = HEAVY_FIXTURES["huge-outline"];
+        const lines = doc.split("\n");
+        const headings = lines.filter((l) => /^#{1,6}\s/.test(l)).length;
+        const items = lines.filter((l) => /^[-*+]\s/.test(l)).length;
+        const kb = doc.length / 1024;
+
+        expect(kb, `${Math.round(kb)} KB`).toBeGreaterThan(700);
+        expect(kb, `${Math.round(kb)} KB`).toBeLessThan(830);
+        expect(headings).toBeGreaterThan(400);
+        expect(items / headings, "list items per heading").toBeGreaterThan(5);
+
+        // Across three levels, so the outline has depth for the TOC to build
+        // from and the id pass has more than one heading type to walk.
+        const levels = new Set(lines.flatMap((l) => {
+            const m = /^(#{1,6})\s/.exec(l);
+            return m ? [m[1].length] : [];
+        }));
+        expect([...levels].sort()).toEqual([1, 2, 3, 4]);
+    });
+
+    /**
+     * `headingIdAssigner`'s `-#N` dedup counter only runs when two headings
+     * slug the same, and every other fixture numbers its headings uniquely, so
+     * nothing here exercised it at scale. A working document repeats section
+     * titles constantly, which is the property this asserts.
+     */
+    it("huge-outline should repeat heading text, so the id dedup counter runs", () => {
+        const titles = HEAVY_FIXTURES["huge-outline"]
+            .split("\n")
+            .flatMap((l) => {
+                const m = /^#{1,6}\s+(.*)$/.exec(l);
+                return m ? [m[1]] : [];
+            });
+        const counts = new Map();
+        for (const t of titles) counts.set(t, (counts.get(t) ?? 0) + 1);
+        const repeated = [...counts.values()].filter((n) => n > 1);
+        expect(repeated.length, "distinct titles that repeat").toBeGreaterThan(5);
+        expect(Math.max(...repeated), "deepest dedup suffix reached").toBeGreaterThan(20);
     });
 
     it("the gated fixtures should trip at a density a real document reaches", () => {
@@ -102,21 +211,4 @@ describe("launch-perf prose fixtures", () => {
         expect(match(TYPING_FIXTURES.xlarge).length).toBeGreaterThan(0);
     });
 
-    it("the non-prose fixtures should stay unseeded, so they keep isolating their own path", () => {
-        // code-heavy is highlighter registration, math is the KaTeX path,
-        // link-heavy is the embed recognizer and html-heavy is the html
-        // NodeView; prose seeded into any of them would blur what it exists to
-        // isolate.
-        //
-        // DERIVED from the fixture set rather than listed, so a fixture added
-        // later cannot skip this bar. `realistic` is seeded on purpose and is
-        // the one non-prose fixture that must be excluded by name.
-        const isolating = Object.keys(FIXTURES).filter(
-            (n) => !PROSE_FIXTURES.includes(n) && n !== "realistic",
-        );
-        expect(isolating.length, "isolating fixtures enumerated").toBeGreaterThan(0);
-        for (const name of isolating) {
-            expect(match(FIXTURES[name]).length, name).toBe(0);
-        }
-    });
 });

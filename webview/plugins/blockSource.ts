@@ -14,6 +14,7 @@
 import { $prose } from "@milkdown/utils";
 import { parserCtx, serializerCtx } from "@milkdown/core";
 import { Decoration, DecorationSet, Plugin, PluginKey, TextSelection } from "../pm";
+import { countWork } from "../perf";
 import type { EditorState, EditorView, Node as ProseNode, Schema, Transaction } from "../pm";
 import { blocksFromSource, sourceOfBlocks, type BlockSourcePipeline } from "../editing/blockSource";
 import { createBlockSourcePanel, type BlockSourcePanel } from "../components/blockSource";
@@ -195,7 +196,15 @@ export const blockSourcePlugin = $prose((ctx) => {
                         ignoreSelection: true,
                     }),
                 ];
-                state.doc.forEach((node, offset) => {
+                // Only the blocks the panel stands in for, walked from the
+                // panel's own start: this prop is read on every update while
+                // the panel is open, and the document may be large (MAR-431).
+                const doc = state.doc;
+                let { index, offset } = doc.childAfter(Math.min(value.from, doc.content.size));
+                let blocks = 0;
+                for (; index < doc.childCount && offset < value.to; index++) {
+                    const node = doc.child(index);
+                    blocks++;
                     if (offset >= value.from && offset + node.nodeSize <= value.to) {
                         decorations.push(
                             Decoration.node(offset, offset + node.nodeSize, {
@@ -203,7 +212,9 @@ export const blockSourcePlugin = $prose((ctx) => {
                             }),
                         );
                     }
-                });
+                    offset += node.nodeSize;
+                }
+                countWork("block-source", { blocks });
                 return DecorationSet.create(state.doc, decorations);
             },
         },

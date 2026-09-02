@@ -3,6 +3,7 @@ import type { EditorView, Node, NodeType, ResolvedPos } from "../pm";
 import { keymap } from "../pm";
 import { NodeSelection, Plugin, Selection } from "../pm";
 import { $command, $prose } from "@milkdown/utils";
+import { isProgressiveStreaming } from "./docChange";
 
 function isHorizontalRuleNode(node: { type: { name: string } } | null | undefined): boolean {
     return node?.type.name === "hr" ||
@@ -240,6 +241,13 @@ export const trailingHrParagraphPlugin = $prose((ctx) => {
     return new Plugin({
         appendTransaction(_trs, _oldState, newState) {
             if (!paragraph) return null;
+            // While a progressive open streams, the document's end is a
+            // chunk's end and not the document's: a paragraph put there
+            // would sit in the middle of the document once the next chunk
+            // landed. A whole open adds nothing after a trailing rule until
+            // its first transaction, and the streamed one gets its turn on
+            // the transactions that finish the stream.
+            if (isProgressiveStreaming()) return null;
             const { doc } = newState;
             if (!isHorizontalRuleNode(doc.lastChild)) return null;
             const empty = paragraph.createAndFill();

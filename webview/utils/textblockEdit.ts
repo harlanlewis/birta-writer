@@ -79,6 +79,110 @@ export function changedRange(prev: PmNode, next: PmNode): ChangedRange | null {
  * when it could have touched document structure (then the caller must do the
  * full walk). Pure.
  */
+/**
+ * Whether the change between two docs touches a textblock whose text `test`
+ * accepts, in either doc: a block edited or added in `next`, or one removed
+ * from `prev`. Cost is bounded by the changed span, never the document, so a
+ * plugin whose work depends on text of one shape (a `=` for the calc cues)
+ * can ask this on every edit and walk nothing when the answer is no.
+ */
+export function changeTouchesTextblock(prev: PmNode, next: PmNode, test: (text: string) => boolean): boolean {
+    const range = changedRange(prev, next);
+    if (!range) {
+        return false;
+    }
+    const spanHas = (doc: PmNode, from: number, to: number): boolean => {
+        let found = false;
+        const max = doc.content.size;
+        doc.nodesBetween(Math.min(from, max), Math.min(to, max), (node) => {
+            if (found) { return false; }
+            if (node.isTextblock) {
+                if (test(node.textContent)) { found = true; }
+                return false;
+            }
+            return true;
+        });
+        return found;
+    };
+    return spanHas(prev, range.start, range.endA) || spanHas(next, range.start, range.endB);
+}
+
+/**
+ * The position in `next` where content APPENDED after every block of `prev`
+ * starts, or null when `next` is not `prev` plus a tail. Read off node
+ * identity rather than value: an insertion at the end of the document keeps
+ * every earlier top-level child the same object (ProseMirror rebuilds only
+ * the path to the change), so this is one comparison per child, and never a
+ * walk into them. A progressive open (progressiveOpen.ts) is this shape once
+ * per chunk, and a paste at the end of a document is it once; a consumer
+ * that scans per top-level block can scan the tail alone and keep what it
+ * had for the rest, whose positions the append did not move.
+ */
+export function appendedAtEnd(prev: PmNode, next: PmNode): number | null {
+    if (next.childCount <= prev.childCount) return null;
+    for (let i = 0; i < prev.childCount; i++) {
+        if (next.child(i) !== prev.child(i)) return null;
+    }
+    return prev.content.size;
+}
+
+/** One top-level block replaced by one top-level block, everything else value-identical. */
+export interface TopLevelBlockEdit {
+    /** The block's index among the document's children, the same in both docs. */
+    index: number;
+    prevBlockPos: number;
+    nextBlockPos: number;
+    prevBlock: PmNode;
+    nextBlock: PmNode;
+    /** Net size change carried by the edit. */
+    delta: number;
+}
+
+/**
+ * The coarser sibling of `singleTextblockInlineEdit`, for the case it
+ * rejects on purpose: the whole change lies inside ONE top-level block,
+ * which may have been replaced rather than edited inline. Typing in a
+ * heading is the common shape, because the heading-id plugin restamps the
+ * heading's attrs right after the keystroke, and a node replacement puts
+ * the diff at the block's boundary. Neighbouring blocks are untouched by
+ * construction, so a consumer that reads per top-level block can redo this
+ * one and shift the rest by `delta`. Null when more than one top-level
+ * block differs, or the docs are identical.
+ */
+export function singleTopLevelBlockEdit(prev: PmNode, next: PmNode): TopLevelBlockEdit | null {
+    const range = changedRange(prev, next);
+    if (!range) {
+        return null;
+    }
+    if (prev.childCount !== next.childCount) {
+        return null;
+    }
+    const { start, endA, endB } = range;
+    const a = prev.childAfter(Math.min(start, prev.content.size));
+    const b = next.childAfter(Math.min(start, next.content.size));
+    if (!a.node || !b.node || a.index !== b.index) {
+        return null;
+    }
+    // The change must end inside the same block in both docs; a range that
+    // reaches the block's end could have joined it with the next.
+    if (endA > a.offset + a.node.nodeSize || endB > b.offset + b.node.nodeSize) {
+        return null;
+    }
+    // The block after it must be the same node in both, or the change
+    // reached past the boundary after all.
+    if (a.index + 1 < prev.childCount && prev.child(a.index + 1) !== next.child(b.index + 1)) {
+        return null;
+    }
+    return {
+        index: a.index,
+        prevBlockPos: a.offset,
+        nextBlockPos: b.offset,
+        prevBlock: a.node,
+        nextBlock: b.node,
+        delta: b.node.nodeSize - a.node.nodeSize,
+    };
+}
+
 export function singleTextblockInlineEdit(prev: PmNode, next: PmNode): TextblockEdit | null {
     const range = changedRange(prev, next);
     if (!range) {

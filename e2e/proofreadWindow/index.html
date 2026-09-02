@@ -1,0 +1,110 @@
+<!doctype html>
+<!-- e2e harness: the proofread passes' scroll window (MAR-425 style, MAR-426
+     lint). A document long enough that the window covers only part of it,
+     with a style hit in every paragraph, so "decorations appear as you
+     scroll", "the pass costs the screen" and "the sidebar lists the document"
+     are real, observable behaviors. Mirrors the provider template with
+     acquireVsCodeApi stubbed. Spelling is on, answered by a stub host below
+     that flags the last word of every block it is asked about: what the page
+     asks is the subject, and the answers only have to be drawable. Grammar is
+     off, because one lint kind is enough to see the request. -->
+<meta charset="utf-8">
+<style>
+  :root {
+    --vscode-editor-background: #1e1e1e; --vscode-editor-foreground: #d4d4d4;
+    --vscode-foreground: #cccccc; --vscode-descriptionForeground: #999999;
+    --vscode-editor-font-family: monospace; --vscode-font-family: -apple-system, sans-serif; --vscode-font-size: 13px;
+    --vscode-editorHoverWidget-background: #252526; --vscode-editorHoverWidget-foreground: #cccccc;
+    --vscode-editorHoverWidget-border: #454545; --vscode-focusBorder: #007fd4;
+    --vscode-editorWidget-background: #252526; --vscode-editorWidget-foreground: #cccccc;
+    --vscode-editorWidget-border: #454545; --vscode-widget-border: rgba(128, 128, 128, 0.25);
+    --vscode-toolbar-hoverBackground: rgba(90,93,94,0.31); --vscode-list-hoverBackground: #2a2d2e;
+    --vscode-editor-selectionBackground: #264f78;
+    --vscode-editorWarning-foreground: #cca700; --vscode-editorInfo-foreground: #3794ff;
+    --vscode-badge-background: #4d4d4d; --vscode-badge-foreground: #ffffff;
+    --vscode-button-background: #0e639c; --vscode-button-foreground: #ffffff; --vscode-button-hoverBackground: #1177bb;
+    --vscode-button-secondaryBackground: #3a3d41; --vscode-panel-border: #454545;
+  }
+  body { background: var(--vscode-editor-background); color: var(--vscode-editor-foreground); }
+  .editor-topbar { height: 40px; box-sizing: border-box; }
+</style>
+<script>
+  // Capture how many style decorations exist at the EXACT moment the bundle
+  // stamps its first-paint mark (the gutterWindow harness's technique): the
+  // first pass is deferred past paint, and a window must not move it forward.
+  (() => {
+    const origMark = performance.mark.bind(performance);
+    performance.mark = (name, ...rest) => {
+      if (name === "mdw:editor-painted" && window.__atPaint === undefined) {
+        window.__atPaint = {
+          hits: document.querySelectorAll(".pf-style-hit").length,
+          spell: document.querySelectorAll(".pf-spell-err").length,
+          asked: window.__posted.filter((m) => m.type === "lintBlocks").length,
+          blocks: document.querySelectorAll(".milkdown .ProseMirror > *").length,
+        };
+      }
+      return origMark(name, ...rest);
+    };
+  })();
+  // The panel auto-opens above tocAutoHideThreshold headings, which the sidebar
+  // check relies on; every other check ignores it.
+  window.__i18n = {
+    translations: {}, isMac: true, toolbar: { placements: {}, order: [] },
+    tocAutoHideThreshold: 3,
+    proofread: { grammarCheck: false, spellCheck: true },
+  };
+  window.__posted = [];
+  // The full config shape the host sends, for the toggle check. Style and
+  // spelling on, grammar off, and the master gate as given.
+  window.__proofreadConfig = (proofreadingEnabled) => ({
+    proofreadingEnabled, styleCheck: true,
+    fillers: true, redundancies: true, cliches: true, wordiness: true,
+    aiVocabulary: true, aiArtifacts: true, passive: true, negativeParallelism: true,
+    longSentences: true, ruleOfThree: true, emDash: true, nonAsciiPunct: true,
+    absolutePerf: true, rhythm: true, styleExceptions: [],
+    spellCheck: true, grammarCheck: false, userWords: [],
+  });
+  // The stub host: every block it is asked about gets one spelling finding on
+  // its last word. Answered on the next task, the way a real reply arrives,
+  // never inside the post.
+  const lastWord = (text) => {
+    const m = /(\S+)\s*$/.exec(text);
+    return m ? { start: m.index, end: m.index + m[1].length } : null;
+  };
+  const answerLint = (msg) => {
+    const results = (msg.blocks || []).map((b) => {
+      const span = lastWord(b.text);
+      const lints = span
+        ? [{ start: span.start, end: span.end, kind: "Spelling", message: "stub finding", suggestions: [] }]
+        : [];
+      return { key: b.key, lints };
+    });
+    window.postMessage({ type: "lintResults", id: msg.id, results }, "*");
+  };
+  const LINES = ["# Windowed style pass", ""];
+  // One filler per paragraph, two paragraphs per section: every section
+  // carries hits, so "hits < paragraphs with hits" is the window and nothing
+  // else. Short sentences, so no long-sentence or rhythm flag joins in. Enough
+  // sections that the part of the document a scroll tour never reaches is
+  // several review slices long, so the slicing is observable here too.
+  for (let i = 1; i <= 300; i++) {
+    LINES.push(`## Section ${i}`, "",
+               `Section ${i} is really the one with the note.`, "",
+               `The note for ${i} is actually short.`, "");
+  }
+  LINES.push("Final paragraph, basically.", "");
+  const DOC = LINES.join("\n");
+  window.acquireVsCodeApi = () => ({
+    postMessage: (msg) => {
+      window.__posted.push(msg);
+      if (msg.type === "ready")
+        window.postMessage({ type: "init", content: DOC, syncVersion: 1 }, "*");
+      if (msg.type === "lintBlocks") answerLint(msg);
+    },
+    getState: () => undefined, setState: () => {},
+  });
+</script>
+<link rel="stylesheet" href="dist/webview.css">
+<div class="editor-topbar"></div>
+<div id="editor"></div>
+<script type="module" src="dist/webview.js"></script>

@@ -35,6 +35,7 @@ const LOCKED = ["run.mjs", "perf.mjs", "perf-typing.mjs", "perf-ab.mjs"];
  */
 const UNLOCKED = {
     "perf-bundle.mjs": "browser-free byte count; contends with nothing",
+    "perf-counts.mjs": "browser-free count check over a JSON another runner wrote; contends with nothing",
     "harnessLock.mjs": "the lock itself",
     "harnessLock.globalSetup.mjs": "vitest's end of the lock, exempt in watch mode",
 };

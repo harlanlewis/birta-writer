@@ -1,0 +1,43 @@
+<!doctype html>
+<!-- e2e harness: a wheel over a diagram pane has to scroll the DOCUMENT.
+
+     The pane offers zoom through its overlay buttons and its pan pad, and
+     handles no wheel event at all. It used to intercept ctrl+wheel for
+     pinch-to-zoom, and the cost of that was not the branch, it was the
+     listener: preventDefault needs `{ passive: false }`, and a non-passive
+     wheel listener takes every gesture over the element off the compositor and
+     onto the main thread whether or not the branch fires. A pane in the middle
+     of a document is scrolled past far more often than it is zoomed.
+
+     The fixture's diagram is deliberately wider than its pane, so the pane has
+     real scrollable overflow. That is the condition under which a container is
+     most likely to claim a gesture, and a fixture whose diagram fits would pass
+     this suite without ever posing the question.
+
+     `page.mouse.wheel` rather than a dispatched WheelEvent: a synthetic event
+     goes straight to the listener and cannot tell an intercepted gesture from a
+     forwarded one. Only the browser's own input pipeline decides who scrolls. -->
+<meta charset="utf-8">
+<link rel="stylesheet" href="dist/hostPalette.css">
+<style>
+  body { background: var(--vscode-editor-background); color: var(--vscode-editor-foreground); margin: 0; }
+  .editor-topbar { min-height: 40px; box-sizing: border-box; }
+</style>
+<script>
+  document.addEventListener("DOMContentLoaded", () => document.body.classList.add("editor-width-auto", "vscode-dark"));
+  window.__i18n = { translations: {}, isMac: true, mermaidTheme: "light", toolbar: { placements: {}, order: [] } };
+  window.__posted = [];
+  const CONTENT = "# Diagram scroll\n\nProse above the diagram.\n\n```mermaid\nflowchart LR\n  A[This is a long node label for measuring] --> B[Second quite long node label here]\n  B --> C[Third extended node label text content]\n  C --> D[Fourth long descriptive label text]\n  D --> E[Fifth wide node label for good measure]\n  E --> F[Sixth terminal node label LongEnd]\n```\n\nFiller paragraph 1, so the document has somewhere to scroll to.\n\nFiller paragraph 2, so the document has somewhere to scroll to.\n\nFiller paragraph 3, so the document has somewhere to scroll to.\n\nFiller paragraph 4, so the document has somewhere to scroll to.\n\nFiller paragraph 5, so the document has somewhere to scroll to.\n\nFiller paragraph 6, so the document has somewhere to scroll to.\n\nFiller paragraph 7, so the document has somewhere to scroll to.\n\nFiller paragraph 8, so the document has somewhere to scroll to.\n\nFiller paragraph 9, so the document has somewhere to scroll to.\n\nFiller paragraph 10, so the document has somewhere to scroll to.\n\nFiller paragraph 11, so the document has somewhere to scroll to.\n\nFiller paragraph 12, so the document has somewhere to scroll to.\n\nFiller paragraph 13, so the document has somewhere to scroll to.\n\nFiller paragraph 14, so the document has somewhere to scroll to.\n\nFiller paragraph 15, so the document has somewhere to scroll to.\n\nFiller paragraph 16, so the document has somewhere to scroll to.\n\nFiller paragraph 17, so the document has somewhere to scroll to.\n\nFiller paragraph 18, so the document has somewhere to scroll to.\n\nFiller paragraph 19, so the document has somewhere to scroll to.\n\nFiller paragraph 20, so the document has somewhere to scroll to.\n\nFiller paragraph 21, so the document has somewhere to scroll to.\n\nFiller paragraph 22, so the document has somewhere to scroll to.\n\nFiller paragraph 23, so the document has somewhere to scroll to.\n\nFiller paragraph 24, so the document has somewhere to scroll to.\n\nFiller paragraph 25, so the document has somewhere to scroll to.\n\nFiller paragraph 26, so the document has somewhere to scroll to.\n\nFiller paragraph 27, so the document has somewhere to scroll to.\n\nFiller paragraph 28, so the document has somewhere to scroll to.\n\nFiller paragraph 29, so the document has somewhere to scroll to.\n\nFiller paragraph 30, so the document has somewhere to scroll to.\n\nFiller paragraph 31, so the document has somewhere to scroll to.\n\nFiller paragraph 32, so the document has somewhere to scroll to.\n\nFiller paragraph 33, so the document has somewhere to scroll to.\n\nFiller paragraph 34, so the document has somewhere to scroll to.\n\nFiller paragraph 35, so the document has somewhere to scroll to.\n\nFiller paragraph 36, so the document has somewhere to scroll to.\n\nFiller paragraph 37, so the document has somewhere to scroll to.\n\nFiller paragraph 38, so the document has somewhere to scroll to.\n\nFiller paragraph 39, so the document has somewhere to scroll to.\n\nFiller paragraph 40, so the document has somewhere to scroll to.\n\nFiller paragraph 41, so the document has somewhere to scroll to.\n\nFiller paragraph 42, so the document has somewhere to scroll to.\n\nFiller paragraph 43, so the document has somewhere to scroll to.\n\nFiller paragraph 44, so the document has somewhere to scroll to.\n\nFiller paragraph 45, so the document has somewhere to scroll to.\n\nFiller paragraph 46, so the document has somewhere to scroll to.\n\nFiller paragraph 47, so the document has somewhere to scroll to.\n\nFiller paragraph 48, so the document has somewhere to scroll to.\n\nFiller paragraph 49, so the document has somewhere to scroll to.\n\nFiller paragraph 50, so the document has somewhere to scroll to.\n\nFiller paragraph 51, so the document has somewhere to scroll to.\n\nFiller paragraph 52, so the document has somewhere to scroll to.\n\nFiller paragraph 53, so the document has somewhere to scroll to.\n\nFiller paragraph 54, so the document has somewhere to scroll to.\n\nFiller paragraph 55, so the document has somewhere to scroll to.\n\nFiller paragraph 56, so the document has somewhere to scroll to.\n\nFiller paragraph 57, so the document has somewhere to scroll to.\n\nFiller paragraph 58, so the document has somewhere to scroll to.\n\nFiller paragraph 59, so the document has somewhere to scroll to.\n\nFiller paragraph 60, so the document has somewhere to scroll to.\n";
+  window.acquireVsCodeApi = () => ({
+    postMessage: (msg) => {
+      window.__posted.push(msg);
+      if (msg.type === "ready")
+        window.postMessage({ type: "init", content: CONTENT, syncVersion: 1 }, "*");
+    },
+    getState: () => undefined, setState: () => {},
+  });
+</script>
+<link rel="stylesheet" href="dist/webview.css">
+<div class="editor-topbar"></div>
+<div id="editor"></div>
+<script type="module" src="dist/webview.js"></script>

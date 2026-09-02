@@ -340,6 +340,7 @@ export function buildWebviewHtml(
     content="default-src 'none';
              style-src ${webview.cspSource} 'unsafe-inline';
              script-src 'nonce-${nonce}' ${webview.cspSource} 'wasm-unsafe-eval';
+             worker-src blob:;
              img-src ${webview.cspSource} data:${embedImgHosts};${embedFrameSrc}
              font-src ${webview.cspSource} data:;">
 	  <meta name="viewport" content="width=device-width, initial-scale=1.0">
