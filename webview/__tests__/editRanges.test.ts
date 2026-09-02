@@ -85,6 +85,27 @@ describe("forEachTouchedTopLevel", () => {
         expect(large).toBe(small);
     });
 
+    it("a two-step move should name the seam of the deletion in the final document's coordinates", async () => {
+        // Delete the last paragraph, then insert it above the first: the
+        // deletion's range is in the intermediate document, and only carried
+        // through the insertion does it name the right seam.
+        await withView(paragraphs(4), (view) => {
+            const doc = view.state.doc;
+            const last = doc.child(3);
+            const lastPos = doc.content.size - last.nodeSize;
+            const tr = view.state.tr.delete(lastPos, lastPos + last.nodeSize).insert(0, last);
+            expect(touchedIndexes(tr)).toEqual([0, 1, 3]);
+        });
+    });
+
+    it("an edit touching the very end of the document should name the last block", async () => {
+        await withView(paragraphs(3), (view) => {
+            const size = view.state.doc.content.size;
+            const tr = view.state.tr.insertText("x", size - 1);
+            expect(touchedIndexes(tr)).toEqual([2]);
+        });
+    });
+
     it("a transaction with no steps should name nothing", async () => {
         await withView(paragraphs(2), (view) => {
             expect(touchedIndexes(view.state.tr)).toEqual([]);

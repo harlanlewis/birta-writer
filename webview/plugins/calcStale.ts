@@ -322,7 +322,8 @@ function docHasArrow(doc: ProseNode): boolean {
         if (node.textContent.includes("=>")) { found = true; }
         return false;
     });
-    countWork("calc-scan", { blocks });
+    // Its own amount, so a ceiling can tell the pre-check from the cue pass.
+    countWork("calc-scan", { probe: blocks });
     return found;
 }
 

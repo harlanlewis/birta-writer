@@ -384,21 +384,45 @@ export function structureFingerprint(
         if (!folds && !inWindows(windows, offset, end)) {
             return;
         }
-        if (isHeadingNode(node)) {
-            const collapsed = enabled && folded.has(offset);
-            const foldable = enabled && Boolean(ranges.get(offset));
-            parts.push(headingGutterSpec(getHeadingLevel(node), collapsed, foldable).key);
-        } else if (isListNode(node)) {
-            parts.push("L");
-            emitItemGutters(node, offset, null, parts, foldCtx);
-        } else {
-            const fold = blockFoldInfo(node, offset, foldCtx, false);
-            parts.push(`${blockMarkerSpec(node)?.key ?? "·"}${foldKeyPart(fold)}`);
-            if (isContainerNode(node)) {
-                emitContainerChildGutters(node, offset, null, parts, foldCtx);
-            }
-        }
+        parts.push(blockFingerprintPart(node, offset, folded, enabled, enabled && Boolean(ranges.get(offset))));
     });
+    return parts.join("|");
+}
+
+/**
+ * ONE top-level block's contribution to the structure fingerprint: what its
+ * gutter chrome depends on, and nothing about its neighbours except, for a
+ * heading, whether it owns a section (`foldable`, which the caller reads off
+ * the fold ranges or computes for that heading alone). The fold plugin's
+ * leaf-edit path compares this for the edited block before and after, which
+ * is what lets it skip the whole-document pass without ever returning stale
+ * chrome: a code block gaining its first character becomes foldable, a
+ * paragraph gaining a caption beside its image changes glyph, and both show
+ * up here. Cost is proportional to the block (a list's items), never the
+ * document.
+ */
+export function blockFingerprintPart(
+    node: any,
+    offset: number,
+    folded: ReadonlySet<number>,
+    enabled: boolean,
+    foldable: boolean,
+): string {
+    const foldCtx = { folded, enabled };
+    if (isHeadingNode(node)) {
+        const collapsed = enabled && folded.has(offset);
+        return headingGutterSpec(getHeadingLevel(node), collapsed, foldable).key;
+    }
+    if (isListNode(node)) {
+        const parts: string[] = ["L"];
+        emitItemGutters(node, offset, null, parts, foldCtx);
+        return parts.join("|");
+    }
+    const fold = blockFoldInfo(node, offset, foldCtx, false);
+    const parts = [`${blockMarkerSpec(node)?.key ?? "·"}${foldKeyPart(fold)}`];
+    if (isContainerNode(node)) {
+        emitContainerChildGutters(node, offset, null, parts, foldCtx);
+    }
     return parts.join("|");
 }
 

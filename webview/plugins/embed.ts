@@ -336,11 +336,12 @@ interface CachedEmbed {
  * Walk the doc for recognized bare-link paragraphs. Returns [] immediately
  * when the feature is off (no provider scan, no widget, no import). This is
  * the expensive half — URL recognition per bare link — and the plugin runs it
- * only on doc changes (and the arm/regate), NEVER on selection-only
- * transactions: reveal-on-caret needs the selection, but re-walking the doc
- * per caret move re-parsed every bare URL on every arrow key (perf review,
- * 2026-07-24 — the sibling proofread/calcStale plugins never recompute on
- * selection either).
+ * only on the arm and the regate; a doc change goes through `updateEmbeds`,
+ * which recognizes the touched blocks alone, and a selection-only
+ * transaction recomputes nothing: reveal-on-caret needs the selection, but
+ * re-walking the doc per caret move re-parsed every bare URL on every arrow
+ * key (perf review, 2026-07-24 — the sibling proofread/calcStale plugins
+ * never recompute on selection either).
  */
 export function collectEmbeds(state: EditorState): CachedEmbed[] {
     const providers = embedsFeatureOn();
@@ -387,8 +388,21 @@ export function updateEmbeds(state: EditorState, tr: Transaction, prev: readonly
         if (to <= from) continue;
         kept.push({ ...embed, from, to });
     }
-    countWork("embed-scan", { blocks });
-    return withOrdinals([...kept, ...fresh].sort((a, b) => a.from - b.from));
+    const numbered = withOrdinals([...kept, ...fresh].sort((a, b) => a.from - b.from));
+    // A reader's per-link choice (card or text) is keyed by the link's
+    // occurrence among same-href blocks, so a kept embed whose ordinal moved
+    // may now read a different choice: recognize those blocks again too.
+    let moved = 0;
+    const result = numbered.map((embed) => {
+        const before = kept.find((k) => k.from === embed.from);
+        if (!before || before.ordinal === embed.ordinal) return embed;
+        moved++;
+        const again: CachedEmbed[] = [];
+        embedsInBlock(state, tr.doc.nodeAt(embed.from)!, embed.from, providers, linkCards, again);
+        return again.length ? { ...again[0], ordinal: embed.ordinal } : null;
+    }).filter((e): e is CachedEmbed => e !== null);
+    countWork("embed-scan", { blocks: blocks + moved });
+    return result;
 }
 
 /** Ordinals in document order over embeds already sorted by position. */

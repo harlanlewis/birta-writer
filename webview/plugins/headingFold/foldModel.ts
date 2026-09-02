@@ -20,6 +20,7 @@ import {
 } from "../../pm";
 import { foldPluginKey } from "../foldState";
 import { BlockRangeSelection } from "../blockRange";
+import { countWork } from "../../perf";
 
 export type HeadingFoldRange = { from: number; to: number };
 
@@ -272,6 +273,10 @@ export function setHeadingLevelAt(view: EditorView, headingPos: number, level: n
  * higher rank. Null value = the heading owns nothing (not foldable).
  */
 export function computeFoldRanges(doc: any): Map<number, HeadingFoldRange | null> {
+    // A top-level pass; memoized per document by `cachedFoldRanges`, and
+    // counted so a path that reaches it per keystroke shows as growth. With a
+    // fold live, every doc change still asks it through `foldHiddenRange`.
+    countWork("fold-ranges", { blocks: doc.childCount });
     const ranges = new Map<number, HeadingFoldRange | null>();
     const open: { pos: number; level: number; from: number }[] = [];
     const closeThrough = (level: number, to: number): void => {

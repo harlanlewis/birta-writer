@@ -37,11 +37,20 @@ async function withView<T>(fn: (view: ReturnType<typeof viewOf>) => T): Promise<
 }
 const viewOf = (editor: Awaited<ReturnType<typeof makeCorpusEditor>>) => editor.action((ctx) => ctx.get(editorViewCtx));
 
-/** Every decoration as `[from, to, class]`, sorted, so two sets compare by content. */
+/**
+ * Every decoration as `from-to:class`, sorted, so two sets compare by content.
+ * A node decoration keeps its attrs on `type`, never on `spec`, and a class
+ * that is missing reads as a literal absence rather than as equal to
+ * another absence.
+ */
 function shape(set: ReturnType<typeof computeImageBlockDecorations>): string[] {
     return set
         .find()
-        .map((d) => `${d.from}-${d.to}:${(d.spec as { class?: string }).class ?? (d as unknown as { type: { attrs: { class: string } } }).type.attrs.class}`)
+        .map((d) => {
+            const cls = (d as unknown as { type: { attrs?: { class?: string } } }).type.attrs?.class;
+            if (typeof cls !== "string") throw new Error(`decoration ${d.from}-${d.to} carries no class`);
+            return `${d.from}-${d.to}:${cls}`;
+        })
         .sort();
 }
 
