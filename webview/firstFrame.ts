@@ -33,7 +33,9 @@
  *   the swap happens. Those are real key events, so they lift the editor's
  *   interaction flag the way any keystroke does, and the replayed text
  *   reaches the save pipeline like typed text. Formatting chords pressed
- *   before the editor exists have nothing to act on and are not replayed.
+ *   before the editor exists have nothing to act on and are not replayed,
+ *   and a selection or arrow key acts on the captured text rather than on
+ *   the document the reader cannot yet edit.
  */
 import { Editor, defaultValueCtx, parserCtx, rootCtx, schemaCtx } from "@milkdown/core";
 import { markUserInteracted } from "./editor";
@@ -143,6 +145,14 @@ export async function paintFirstFrame(
     const sink = document.createElement("textarea");
     sink.className = "birta-first-frame-sink";
     sink.setAttribute("aria-label", "Loading editor");
+    // Tab would move focus off the field and every later key would go to
+    // the toolbar; the editor's own Tab (an indent) is not replayed either
+    // way, so the key is swallowed and focus stays. Selection and arrow keys
+    // act on the field's own text, which is the safe reading: a select-all
+    // over the live document would let the next character replace it.
+    sink.addEventListener("keydown", (e) => {
+        if (e.key === "Tab") e.preventDefault();
+    });
     frame.append(body, sink);
     container.appendChild(frame);
     sink.focus({ preventScroll: true });

@@ -73,12 +73,18 @@ describe("lintBlocks replies", () => {
         expect(post).toHaveBeenCalledWith({ type: "lintResults", id: 7, results: [{ key: 3, lints: [] }] });
     });
 
-    it("a lint that throws should still reply, with empty results, so the request's slot is released", async () => {
+    it("a lint that throws should still answer every block asked, with nothing to underline, so the slot is released and nothing is re-asked", async () => {
         vi.mocked(lintBlocks).mockRejectedValue(new Error("harper down"));
         const { post, send } = await resolvedHandler();
-        send({ type: "lintBlocks", id: 8, blocks: [{ key: 3, text: "Some prose." }] });
+        send({ type: "lintBlocks", id: 8, blocks: [{ key: 3, text: "Some prose." }, { key: 9, text: "More." }] });
         await settle();
         await settle();
-        expect(post).toHaveBeenCalledWith({ type: "lintResults", id: 8, results: [] });
+        // One result per block, never an empty array: an empty reply teaches
+        // the webview's cache nothing, and its review pass would ask again.
+        expect(post).toHaveBeenCalledWith({
+            type: "lintResults",
+            id: 8,
+            results: [{ key: 3, lints: [] }, { key: 9, lints: [] }],
+        });
     });
 });

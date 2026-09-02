@@ -1568,13 +1568,18 @@ export class MarkdownEditorProvider
                         addStyleException(message.phrase);
                         break;
                     case "lintBlocks":
-                        // Every request gets a reply, a failed one an empty
-                        // one: the webview holds a slot per request in flight
-                        // (its review pass keeps one for the whole document),
-                        // and a request that is never answered keeps that
-                        // slot for the session. Empty results read as "nothing
-                        // to underline", which is what a lint that could not
-                        // run can honestly say; the error is still reported.
+                        // Every request gets a reply, a failed one an answer
+                        // of "nothing to underline" FOR EACH BLOCK ASKED. The
+                        // webview holds a slot per request in flight (its
+                        // review pass keeps one for the whole document), so a
+                        // request never answered keeps that slot for the
+                        // session; and a reply that names no block teaches
+                        // its cache nothing, so those blocks stay unknown and
+                        // the review asks for them again, slice after slice,
+                        // for as long as the host keeps failing. A clean
+                        // result per block is what a lint that could not run
+                        // can honestly say, and it ends the asking; the error
+                        // is still reported.
                         lintBlocks(message.blocks)
                             .then((results) => {
                                 postToWebview(webviewPanel.webview, {
@@ -1588,7 +1593,7 @@ export class MarkdownEditorProvider
                                 postToWebview(webviewPanel.webview, {
                                     type: "lintResults",
                                     id: message.id,
-                                    results: [],
+                                    results: message.blocks.map((b) => ({ key: b.key, lints: [] })),
                                 });
                             });
                         break;

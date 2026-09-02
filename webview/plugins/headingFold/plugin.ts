@@ -51,22 +51,20 @@ function sameFoldSet(a: ReadonlySet<number>, b: ReadonlySet<number>): boolean {
 
 /**
  * Whether a heading at `index` owns a section: any block before the next
- * heading of its level or higher. Walked from the heading forward and
- * stopped at that heading, so the cost is the section's length, never the
- * document's, which is what lets the single-block path below ask it per
- * keystroke. `computeFoldRanges` answers the same for every heading at once.
+ * heading of its level or higher. The block right after it decides on its
+ * own, because one content block is already a section and a heading of its
+ * level or higher there is already the section's end, so the answer is O(1)
+ * and the single-block path below can ask it per keystroke. The range it
+ * returns is a stand-in whose only reader tests its truthiness (`foldable`
+ * in `blockChrome`); `computeFoldRanges` is where the real extents come from.
  */
-function headingSection(doc: ProseNode, index: number, level: number): { from: number; to: number } | null {
-    let offset = 0;
-    for (let i = 0; i < index; i++) offset += doc.child(i).nodeSize;
-    const from = offset + doc.child(index).nodeSize;
-    let to = from;
-    for (let i = index + 1; i < doc.childCount; i++) {
-        const child = doc.child(i);
-        if (isHeadingNode(child) && getHeadingLevel(child) <= level) break;
-        to += child.nodeSize;
-    }
-    return to > from ? { from, to } : null;
+function headingSection(doc: ProseNode, index: number, level: number, headingPos: number): { from: number; to: number } | null {
+    const heading = doc.child(index);
+    const from = headingPos + heading.nodeSize;
+    if (index + 1 >= doc.childCount) return null;
+    const next = doc.child(index + 1);
+    if (isHeadingNode(next) && getHeadingLevel(next) <= level) return null;
+    return { from, to: from + next.nodeSize };
 }
 
 /**
@@ -102,8 +100,8 @@ function singleBlockEditKeepsStructure(
     if (isHeadingNode(nextBlock)) {
         if (getHeadingLevel(prevBlock) !== getHeadingLevel(nextBlock)) return null;
         const level = getHeadingLevel(nextBlock);
-        prevFoldable = enabled && headingSection(prev, index, level) !== null;
-        section = headingSection(next, index, level);
+        prevFoldable = enabled && headingSection(prev, index, level, prevBlockPos) !== null;
+        section = headingSection(next, index, level, nextBlockPos);
         nextFoldable = enabled && section !== null;
     }
     const before = blockFingerprintPart(prevBlock, prevBlockPos, folded, enabled, prevFoldable);

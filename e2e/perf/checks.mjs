@@ -94,7 +94,10 @@ export async function run({ page, check, baseUrl }) {
     // few screens of the fixture rather than to the whole of it. `fixtures.test.mjs`
     // counts phrase MATCHES over the same fixture, and one match can decorate
     // several nodes. They are different metrics — don't reconcile the two numbers.
-    check("large fixture trips the style check", m.styleHits >= 10, `${m.styleHits} .pf-style-hit`);
+    // The floor sits near what the window produces on this fixture (two
+    // screens of margin each side of a 900px viewport), so a pass that
+    // decorated a paragraph or two would fail it rather than clear it.
+    check("large fixture trips the style check", m.styleHits >= 20, `${m.styleHits} .pf-style-hit`);
 
     check("proofread first pass is marked", m.pfStart != null && m.pfEnd != null,
         `start=${m.pfStart} end=${m.pfEnd}`);

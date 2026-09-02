@@ -513,7 +513,10 @@ function installParseSplitProbe(editor: Editor, markdown: string): void {
         parseSplit(): { mdast: number; pm: number; chars: number } {
             const remark = editor.action((ctx) => ctx.get(remarkCtx));
             const t0 = performance.now();
-            remark.runSync(remark.parse(markdown));
+            // The transforms read the source through the file, as the real
+            // parser hands it to them; a bare tree throws inside the first
+            // one that looks at a marker.
+            remark.runSync(remark.parse(markdown), markdown);
             const t1 = performance.now();
             editor.action((ctx) => ctx.get(parserCtx)(markdown));
             const t2 = performance.now();
