@@ -216,6 +216,27 @@ describe("incrementalScanNotes — oracle equality with a full scan", () => {
         return inc;
     }
 
+    it("blocks appended after the whole document should fast-path, scanning the tail alone", () => {
+        const doc = docOf(p("lead with [TK] one"), p("middle"));
+        const { prev, next } = edit(doc, (s) =>
+            s.tr.insert(s.doc.content.size, [p("appended TODO: two"), p("plain tail")]),
+        );
+        // Every earlier block is the same object after an append at the end,
+        // which is what lets the tail be scanned without the rest.
+        expect(next.child(0)).toBe(prev.child(0));
+        const inc = check(prev, next);
+        expect(inc).not.toBeNull();
+        expect(inc!.map((i) => i.kind)).toEqual(["placeholder", "todo"]);
+    });
+
+    it("blocks appended when the previous document had none of its own should scan them all", () => {
+        const doc = docOf(p("lead"));
+        const { prev, next } = edit(doc, (s) => s.tr.insert(s.doc.content.size, [p("[TK] late")]));
+        const inc = check(prev, next);
+        expect(inc).not.toBeNull();
+        expect(inc!).toHaveLength(1);
+    });
+
     it("typing in a marker-free paragraph should fast-path and shift a later marker", () => {
         const doc = docOf(p("plain lead"), p("tail has [TK] here"));
         const { prev, next } = edit(doc, (s) => s.tr.insertText("XX", 1));

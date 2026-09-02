@@ -38,7 +38,6 @@ import {
     registerSelectionChangeHandler,
     setLogTableSel,
 } from "./editor";
-import { paintFirstFrame, replayTypedText } from "./firstFrame";
 import type { EditorView } from "./pm";
 import { GapCursor, isGapCursorPosition, TextSelection } from "./pm";
 import { t } from "./i18n";
@@ -568,12 +567,10 @@ async function initEditor(
         container.innerHTML = "";
     }
 
-    // On a large document, something correct on screen before the model is
-    // built (firstFrame.ts): the frame paints, the editor mounts behind it,
-    // and it comes down in the same task the editor's DOM lands. Null on a
-    // document too small to feel the build.
-    const frame = firstOpen ? await paintFirstFrame(container, markdown, formatModule) : null;
-
+    // A large document opens on its first screen and streams the rest in
+    // behind the live editor (progressiveOpen.ts, decided inside
+    // createEditor), so nothing here has to show something before the model
+    // exists: the model of the first screen is what exists first.
     try {
         currentEditor = await createEditor(
             container,
@@ -604,7 +601,6 @@ async function initEditor(
             formatModule,
         );
     } catch (e) {
-        frame?.dispose();
         if (documentFormat === "mdx") {
             // MDX parse errors are fatal (a stray `{`, an unclosed tag): this
             // document cannot open WYSIWYG. Show the banner and hand off to
@@ -621,18 +617,6 @@ async function initEditor(
         // Markdown never fails to parse (every byte sequence is valid), so
         // anything else is a real crash for the crash boundary to report.
         throw e;
-    }
-    if (frame) {
-        // Same task as the editor's DOM landing, so no paint shows both or
-        // neither. Keystrokes that arrived while the frame was up go in now,
-        // and the view takes the focus the frame held, so keys queued behind
-        // the model build dispatch into the editor rather than the body.
-        const { typed, hadFocus } = frame.dispose();
-        const view = getEditorView();
-        if (view) {
-            if (typed) { replayTypedText(view, typed); }
-            if (hadFocus) { view.focus(); }
-        }
     }
     toc?.refresh();
     // Seed the status-bar word count for the freshly loaded document (MAR-29):

@@ -7,19 +7,19 @@
   },
   "fixtures": {
     "huge-outline": {
-      "mdw:task-marks.nodes": 9262,
-      "mdw:html-pairs.blocks": 5363,
-      "mdw:fold-ranges.blocks": 2439,
-      "mdw:fold-structure.blocks": 4977,
-      "mdw:fold-build.blocks": 2439,
-      "mdw:image-blocks.blocks": 2538,
-      "mdw:calc-scan.probe": 5363,
-      "mdw:embed-scan.blocks": 2538,
-      "mdw:note-scan.blocks": 18611,
-      "mdw:style-scan.blocks": 62,
-      "mdw:style-scan.chars": 8732,
-      "mdw:lint-request.blocks": 62,
-      "mdw:lint-request.chars": 8732,
+      "mdw:html-pairs.blocks": 5462,
+      "mdw:task-marks.nodes": 9261,
+      "mdw:fold-ranges.blocks": 2467,
+      "mdw:fold-structure.blocks": 2593,
+      "mdw:fold-build.blocks": 2467,
+      "mdw:image-blocks.blocks": 2558,
+      "mdw:calc-scan.probe": 61,
+      "mdw:embed-scan.blocks": 2558,
+      "mdw:note-scan.blocks": 18549,
+      "mdw:style-scan.blocks": 61,
+      "mdw:style-scan.chars": 8629,
+      "mdw:lint-request.blocks": 61,
+      "mdw:lint-request.chars": 8629,
       "mdw:merge.mainReparses": 0
     }
   }

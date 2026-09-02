@@ -51,6 +51,26 @@ function canContainHeading(node: ProseNode): boolean {
 type AssignId = (node: ProseNode) => string | null;
 
 /**
+ * One assigner for one open, shared by the seed of the initial document and
+ * the seed of every chunk a progressive open appends after it (MAR-429). The
+ * `-#N` dedup counter is stateful across a document-order walk, and a chunk
+ * seeded with a fresh assigner would give a repeated heading the id the
+ * first occurrence already holds; continuing the same assigner gives every
+ * chunk the id a whole-document seed would have given it. Filled lazily by
+ * whichever seed runs first, because the generator lives in the ctx and is
+ * not readable before the schema is.
+ */
+export interface HeadingIdSeed {
+    assign?: AssignId;
+}
+
+/** `doc` with every heading id assigned by `seed`'s assigner, continuing its count. */
+export function seedHeadingIds(ctx: EditorCtx, doc: ProseNode, seed: HeadingIdSeed): ProseNode {
+    seed.assign ??= headingIdAssigner(ctx.get(headingIdGenerator.key));
+    return withHeadingIds(doc, headingSchema.type(ctx), seed.assign);
+}
+
+/**
  * THE id vocabulary, in one place because two callers walk the document with
  * it: the seed below, which runs once before the state exists, and `updateId`,
  * which maintains ids afterwards. Both must spell an id the same way or the
@@ -133,7 +153,7 @@ function withHeadingIds(doc: ProseNode, headingType: NodeType, assign: AssignId)
  * rejected. It is not equivalent: it moves a whole-document transaction into a
  * window the user is already interacting in, and fold state does not survive it.
  */
-export function configureHeadingIds(ctx: EditorCtx): void {
+export function configureHeadingIds(ctx: EditorCtx, seed: HeadingIdSeed = {}): void {
     ctx.update(editorStateOptionsCtx, (prev) => (options) => {
         const base = prev(options);
         if (!base.doc) {
@@ -141,8 +161,7 @@ export function configureHeadingIds(ctx: EditorCtx): void {
         }
         // Read late, inside the options call: this runs once the schema and the
         // preset's own ctx slices are ready, which config time cannot promise.
-        const assign = headingIdAssigner(ctx.get(headingIdGenerator.key));
-        return { ...base, doc: withHeadingIds(base.doc, headingSchema.type(ctx), assign) };
+        return { ...base, doc: seedHeadingIds(ctx, base.doc, seed) };
     });
 }
 

@@ -229,7 +229,7 @@ describe("headingIdSync parity with the stock plugin", () => {
      */
     it("the editor's composition root should wire the seed", () => {
         const root = fs.readFileSync(path.resolve(__dirname, "..", "editor.ts"), "utf8");
-        expect(root).toContain("configureHeadingIds(ctx)");
+        expect(root).toContain("configureHeadingIds(ctx, headingIds)");
     });
 
 

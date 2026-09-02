@@ -130,6 +130,10 @@ export const htmlLivePairsPlugin = $prose(
                     });
                     const doc = newState.doc;
                     const seen = new Set<number>();
+                    // Counted here as well as at init, so a chunk of a
+                    // progressive open, which arrives through this path, is
+                    // visible to the count gate the way the mount pass is.
+                    let recomputed = 0;
                     for (const { from, to } of touched) {
                         const lo = Math.max(0, Math.min(from, doc.content.size));
                         const hi = Math.max(0, Math.min(to, doc.content.size));
@@ -139,6 +143,7 @@ export const htmlLivePairsPlugin = $prose(
                             }
                             if (!seen.has(pos)) {
                                 seen.add(pos);
+                                recomputed++;
                                 mapped = mapped.remove(
                                     mapped.find(pos, pos + node.nodeSize),
                                 );
@@ -150,6 +155,7 @@ export const htmlLivePairsPlugin = $prose(
                             return false;
                         });
                     }
+                    countWork("html-pairs", { blocks: recomputed });
                     return mapped;
                 },
             },

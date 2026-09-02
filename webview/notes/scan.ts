@@ -22,7 +22,7 @@
  * light up inside `pseudoTODO` / `networks`.
  */
 import type { Node as ProseNode } from "../pm";
-import { singleTextblockInlineEdit, singleTopLevelBlockEdit } from "../utils/textblockEdit";
+import { appendedAtEnd, singleTextblockInlineEdit, singleTopLevelBlockEdit } from "../utils/textblockEdit";
 import { countWork } from "../perf";
 
 export type NoteKind = "placeholder" | "todo" | "fixme" | "comment" | "custom";
@@ -221,11 +221,14 @@ export function scanTextblock(block: ProseNode, base: number, customMarkers: rea
  * `birta.notes.customMarkers`. For the per-keystroke hot path, prefer
  * `incrementalScanNotes` and fall back to this.
  */
-export function scanNotes(doc: ProseNode, customMarkers: readonly string[] = []): NoteItem[] {
+export function scanNotes(doc: ProseNode, customMarkers: readonly string[] = [], from = 0): NoteItem[] {
     const items: NoteItem[] = [];
     let blocks = 0;
 
-    doc.descendants((node, pos) => {
+    // From `from` to the end: the whole document by default, or the tail an
+    // append added (`incrementalScanNotes`), which visits only the top-level
+    // blocks that start at or after it.
+    doc.nodesBetween(from, doc.content.size, (node, pos) => {
         blocks++;
         // A block-level HTML node (inline comment atoms live inside textblocks
         // and are handled by scanTextblock, which stops descent into them).
@@ -268,6 +271,13 @@ export function incrementalScanNotes(
     nextDoc: ProseNode,
     customMarkers: readonly string[] = [],
 ): NoteItem[] | null {
+    // Content appended after every block the previous scan read: nothing
+    // before it moved, so the tail is scanned alone and the rest stands. A
+    // progressive open lands its document this way, chunk by chunk.
+    const tail = appendedAtEnd(prevDoc, nextDoc);
+    if (tail !== null) {
+        return [...prevItems, ...scanNotes(nextDoc, customMarkers, tail)];
+    }
     const inline = singleTextblockInlineEdit(prevDoc, nextDoc);
     if (inline?.kind === "identical") { return prevItems as NoteItem[]; }
     // The inline case, or its coarser sibling: one top-level TEXTBLOCK

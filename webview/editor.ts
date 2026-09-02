@@ -20,7 +20,12 @@ import {
 import { mergeVerified, mergeVerifiedWith } from "./utils/verifiedMerge";
 import { verifyOracle, type VerifyOracle } from "./utils/verifyOracle";
 import { fingerprintDoc } from "./plugins/fingerprints";
-import { configureHeadingIds } from "./plugins/headingIdSync";
+import { configureHeadingIds, seedHeadingIds, type HeadingIdSeed } from "./plugins/headingIdSync";
+import { EXTERNAL_SYNC_META, PROGRESSIVE_APPEND_META, setProgressiveStreaming } from "./plugins/docChange";
+import { foldPluginKey } from "./plugins/foldState";
+import { rehydrateListNumbering } from "./plugins/listNumbering";
+import { PROGRESSIVE_OPEN_MIN_CHARS, planProgressiveOpen, streamChunks, type StreamHandle } from "./progressiveOpen";
+import { Fragment, Selection } from "./pm";
 import { markdownFormat } from "./format/markdown";
 import type { FormatModule } from "./format/types";
 import { guardNodeViewFactory } from "./nodeViewBoundary";
@@ -221,13 +226,110 @@ function scheduleProtection(): void {
 let _hasUserInteracted = false;
 let _interactionListenerAdded = false;
 
-// Set once createEditor() has finished wiring an editor. Setting the initial
-// content during create() dispatches doc-changing transactions; this blocks
-// them from reaching the sync pipeline so opening a file never causes a silent
-// save. Module-scoped (like _hasUserInteracted) because the doc-change
-// subscriber is registered before the editor — and therefore before any local
-// would be initialized.
+// Set once createEditor() has finished wiring an editor AND the document is
+// whole. Setting the initial content during create() dispatches doc-changing
+// transactions; this blocks them from reaching the sync pipeline so opening a
+// file never causes a silent save. Module-scoped (like _hasUserInteracted)
+// because the doc-change subscriber is registered before the editor — and
+// therefore before any local would be initialized.
+//
+// A progressive open (progressiveOpen.ts, MAR-429) keeps it down until the
+// last chunk lands: while it is down the sync pipeline is inert and the flush
+// answers with the saved bytes, so no path can serialize a partial document.
+// That is the whole of the truncation guard, and `progressiveOpen.test.ts`
+// holds it against both paths.
 let _isSettled = false;
+
+// ── Progressive open (MAR-429) ──────────────────────────────────────────────
+let _progressiveMinChars = PROGRESSIVE_OPEN_MIN_CHARS;
+// The stream still appending, or null. Cancelled by a re-init or an inbound
+// external sync, both of which replace the document wholesale.
+let _stream: StreamHandle | null = null;
+// True for the synchronous span in which a chunk is dispatched, so the
+// doc-change subscriber can tell the document arriving from the user editing
+// it: the latter, while the stream runs, is owed a sync once it completes.
+let _appendingChunk = false;
+let _editedWhileStreaming = false;
+
+/** Test seam: lower the floor so a jsdom-sized document opens progressively. */
+export function setProgressiveOpenMinCharsForTests(minChars: number | undefined): void {
+    _progressiveMinChars = minChars ?? PROGRESSIVE_OPEN_MIN_CHARS;
+}
+
+/** Whether the document is whole and the pipeline live: false while a progressive open still streams. */
+export function isSettled(): boolean {
+    return _isSettled;
+}
+
+/**
+ * One chunk of the document landing: parsed on its own, its heading ids
+ * continuing the open's one assigner, appended at the end as a transaction
+ * that reads as the file's content arriving (not the user's edit, not
+ * history), with the selection put back where it was, because an append at
+ * the end moves nothing before it and the default mapping would carry a
+ * caret sitting at the old end to the new one.
+ */
+function appendChunk(editor: Editor, text: string, seed: HeadingIdSeed, pristine: ProseNode[]): void {
+    const view = editor.action((ctx) => getView(ctx));
+    const parsed = editor.action((ctx) => ctx.get(parserCtx)(text)) as ProseNode | null;
+    if (!parsed) throw new Error("progressive open: a chunk did not parse");
+    const seeded = editor.action((ctx) => seedHeadingIds(ctx, parsed, seed));
+    seeded.forEach((block) => pristine.push(block));
+    const { state } = view;
+    const tr = state.tr
+        .insert(state.doc.content.size, seeded.content)
+        .setMeta("addToHistory", false)
+        .setMeta(EXTERNAL_SYNC_META, true)
+        .setMeta(PROGRESSIVE_APPEND_META, true);
+    tr.setSelection(Selection.fromJSON(tr.doc, state.selection.toJSON()));
+    _appendingChunk = true;
+    try {
+        view.dispatch(tr);
+    } finally {
+        _appendingChunk = false;
+    }
+}
+
+/**
+ * The document is whole: what a plain open does at the end of `createEditor`,
+ * and what a progressive open does when its last chunk has landed. The
+ * order is the invariant: everything that restores presentation onto the
+ * document runs BEFORE the pipeline settles, so it reads as the open and not
+ * as an edit, and the sync owed for anything the user typed meanwhile is
+ * requested last, against a settled pipeline.
+ */
+function finishOpen(editor: Editor, initialMarkdown: string, pristine: ProseNode[] | null): void {
+    setProgressiveStreaming(false);
+    const live = editor.action((ctx) => getState(ctx).doc);
+    if (pristine) {
+        const view = editor.action((ctx) => getView(ctx));
+        rehydrateListNumbering(view);
+        view.dispatch(view.state.tr.setMeta(foldPluginKey, { type: "resolvePersisted" }).setMeta("addToHistory", false));
+    }
+    // Snapshot the pristine document and defer its round-trip protection off the
+    // critical path (see _protectionSnapshot above): the zero-edit
+    // re-serialization used to learn which regions the round trip cannot
+    // reproduce would otherwise block first paint on large files. PRISTINE
+    // is the word that matters: a progressive open's live document may
+    // already hold what the user typed while it streamed, and protection
+    // computed from that would read the edit as a region the round trip
+    // cannot reproduce, so the streamed document is reassembled from the
+    // chunks as they were parsed, which is what a whole parse gives.
+    _protectionSnapshot = {
+        baseline: initialMarkdown,
+        doc: pristine ? live.copy(Fragment.fromArray(pristine)) : live,
+        editor,
+    };
+    scheduleProtection();
+    mark("stream-end");
+    measure("stream", "stream-start", "stream-end");
+    _isSettled = true;
+    if (_editedWhileStreaming) {
+        _editedWhileStreaming = false;
+        _docChangeCount++;
+        _scheduler.request();
+    }
+}
 
 // True only for the synchronous span in which an INBOUND external change is
 // being dispatched, read by the doc-change subscriber to keep that change from
@@ -530,6 +632,10 @@ function onDocChanged(): void {
     if (_isSettled && _hasUserInteracted && !_applyingExternal) {
         _docChangeCount++;
         _scheduler.request();
+    } else if (_stream && _hasUserInteracted && !_applyingExternal && !_appendingChunk) {
+        // The user edited a document still arriving. Nothing syncs until the
+        // document is whole; this is the sync owed then (finishOpen).
+        _editedWhileStreaming = true;
     }
     _onDocChange?.();
 }
@@ -555,7 +661,11 @@ function onDocChanged(): void {
  */
 export function flushPendingEdit(id: string): string {
     _scheduler.reset();
-    if (!_editor) { return _savedMarkdown; }
+    // Unsettled means the document is not whole (a progressive open still
+    // streaming, or a create in flight): the saved bytes are the only ones
+    // that describe the whole file, and serializing the editor here would
+    // write a truncated one.
+    if (!_editor || !_isSettled) { return _savedMarkdown; }
     // A serialization of its own: any worker answer still in flight is now
     // older than the bytes about to reach the file, and is dropped when it
     // lands (see `_serialSeq`).
@@ -679,18 +789,6 @@ function installPerfProbes(editor: Editor, markdown: string): void {
     };
 }
 
-/**
- * Lift the flag for input that reached the document without passing through
- * the listeners above: text typed into the static first frame's capture field
- * (firstFrame.ts) is real keyboard input that arrived BEFORE `createEditor`
- * reset the flag and installed them, and is replayed as transactions after.
- * Without this the replayed text sits in a document that never dirties, which
- * is the data-loss path the block above describes.
- */
-export function markUserInteracted(): void {
-    _hasUserInteracted = true;
-}
-
 function setupInteractionTracking(): void {
     if (_interactionListenerAdded) return;
     _interactionListenerAdded = true;
@@ -772,6 +870,19 @@ function _applyExternalNow(newMarkdown: string): boolean {
     if (!applied) {
         return false;
     }
+    // The file's content has replaced the document wholesale, so a stream
+    // still appending the old content is stopped (its chunks land only on
+    // idle slices, so none can land between the apply and this), and the
+    // pipeline settles on the whole document that is now on screen.
+    if (_stream) {
+        _stream.cancel();
+        _stream = null;
+        setProgressiveStreaming(false);
+        _editedWhileStreaming = false;
+        mark("stream-end");
+        measure("stream", "stream-start", "stream-end");
+        _isSettled = true;
+    }
     // Re-baseline against the freshly applied content so the NEXT genuine user
     // edit diffs against the right bytes (and the debounced listener never
     // echoes the external change back to the extension as a save). Protection
@@ -842,6 +953,17 @@ export async function createEditor(
     // reads as stale; it must not hold this editor's first sync back.
     _inFlight = null;
     _syncOwed = false;
+    // A stream still appending the previous document would append it to this one.
+    _stream?.cancel();
+    _stream = null;
+    setProgressiveStreaming(false);
+    _appendingChunk = false;
+    _editedWhileStreaming = false;
+    // How this document opens: whole, or on its first screen with the rest
+    // streamed in (progressiveOpen.ts). Decided once, here, so the frame in
+    // index.ts, the initial value below and the stream after create agree.
+    const plan = planProgressiveOpen(initialMarkdown, format, _progressiveMinChars);
+    const headingIds: HeadingIdSeed = {};
 
     // One live listener pair per editor instance (see _compositionAbort).
     _compositionAbort?.abort();
@@ -885,7 +1007,7 @@ export async function createEditor(
     let builder = Editor.make()
         .config((ctx) => {
             ctx.set(rootCtx, container);
-            ctx.set(defaultValueCtx, initialMarkdown);
+            ctx.set(defaultValueCtx, plan ? plan.first : initialMarkdown);
             // Layer 1 of the read-only lock (MAR-53; see webview/readOnly.ts).
             // A PREDICATE, not a constant: ProseMirror re-reads it on every
             // view update, so the toolbar toggle is live and needs only the
@@ -898,8 +1020,9 @@ export async function createEditor(
             }));
             // Heading ids onto the parsed document before the state is built,
             // so the view never has to redraw every heading to receive them.
-            // See plugins/headingIdSync.
-            configureHeadingIds(ctx);
+            // See plugins/headingIdSync. The seed is shared with the chunks a
+            // progressive open appends, so their ids continue this count.
+            configureHeadingIds(ctx, headingIds);
             // Format-supplied stringify options that keep serializer output
             // close to the original file formatting (bullets, rules, table
             // widths).
@@ -1171,18 +1294,36 @@ export async function createEditor(
         requestIdle(() => offThreadOracle()?.warm(initialMarkdown), 5000);
     }
 
-    // Snapshot the pristine document and defer its round-trip protection off the
-    // critical path (see _protectionSnapshot above): the zero-edit
-    // re-serialization used to learn which regions the round trip cannot
-    // reproduce would otherwise block first paint on large files.
-    // (_protection is still null — the reset block cleared it.)
-    _protectionSnapshot = {
-        baseline: initialMarkdown,
-        doc: _editor.action((ctx) => getState(ctx).doc),
-        editor: _editor,
-    };
-    scheduleProtection();
-
-    _isSettled = true;
+    // The rest of the document, or the whole of it already: either way the
+    // pipeline settles in finishOpen, and `stream` measures the gap. A
+    // stream that cannot finish (a chunk the parser refused, which markdown
+    // never does) leaves the pipeline unsettled rather than settling on a
+    // partial document, and reports through the crash boundary.
+    mark("stream-start");
+    if (plan) {
+        const editor = _editor;
+        // The document as parsed, chunk by chunk, for the protection
+        // snapshot: the first chunk is the state's own document before
+        // anything could touch it, and every later chunk adds its blocks as
+        // it lands.
+        const pristine: ProseNode[] = [];
+        editor.action((ctx) => getState(ctx).doc).forEach((block) => pristine.push(block));
+        setProgressiveStreaming(true);
+        const stream = streamChunks(plan.rest, (text) => appendChunk(editor, text, headingIds, pristine));
+        _stream = stream;
+        stream.done.then(
+            (complete) => {
+                if (_stream !== stream) return; // superseded by a re-init or an external sync
+                _stream = null;
+                if (complete) finishOpen(editor, initialMarkdown, pristine);
+            },
+            (e: unknown) => {
+                if (_stream === stream) _stream = null;
+                throw e;
+            },
+        );
+    } else {
+        finishOpen(_editor, initialMarkdown, null);
+    }
     return _editor;
 }

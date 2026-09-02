@@ -24,11 +24,11 @@ pnpm perf:bundle                           # zero-variance eager-bytes metric
 | `launch` | 0 → `editor-painted` | **headline**: navigation start to first painted editor frame |
 | `eager` | `eval-start` → `ready-posted` | eager module eval + UI construction |
 | `roundtrip` | `ready-posted` → `init-received` | the `ready`→`init` postMessage hop |
-| `frame` | `frame-start` → `frame-painted` | the static first frame (`webview/firstFrame.ts`): stamped only on a document large enough to get one, so `–` on every default fixture; the time to something correct on screen, while `launch` stays the live editor's paint |
-| `create` | `create-start` → `create-end` | Milkdown `Editor…create()` (parses the doc) |
+| `create` | `create-start` → `create-end` | Milkdown `Editor…create()` (parses the doc; on a document that opens progressively, the first chunk alone) |
 | `toc` / `toolbar` | `*-start` → `*-end` | those two components' construction |
 | `rtp` | `rtp-start` → `rtp-end` | **post-paint**: `computeRoundTripProtection` (re-serializes the doc) |
 | `proofread` | `proofread-start` → `proofread-end` | **post-paint**: the first whole-document style/lint pass |
+| `stream` | `stream-start` → `stream-end` | **post-paint**: a progressive open's remaining chunks landing behind the live editor (`webview/progressiveOpen.ts`); about zero on a document that opened whole, and the whole model cost minus the first screen's on one that did not |
 
 `launch` minus the sum of the launch spans is the browser's bundle fetch+parse cost (the eager JS/CSS download before `eval-start`).
 
