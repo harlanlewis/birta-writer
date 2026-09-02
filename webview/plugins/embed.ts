@@ -44,7 +44,9 @@
  * no import, no idle pass. (The plugin itself is composed unconditionally in
  * editor.ts — see the comment there — and is inert when gated off.)
  */
-import type { Command, EditorState, EditorView, Node as ProseNode } from "../pm";
+import type { Command, EditorState, EditorView, Node as ProseNode, Transaction } from "../pm";
+import { countWork } from "../perf";
+import { forEachTouchedTopLevel, touchedRanges } from "./editRanges";
 import { Decoration, DecorationSet, keymap, NodeSelection, Plugin, PluginKey, Selection, TextSelection } from "../pm";
 import { $prose } from "@milkdown/utils";
 import { requestIdle } from "../utils/idle";
@@ -334,11 +336,12 @@ interface CachedEmbed {
  * Walk the doc for recognized bare-link paragraphs. Returns [] immediately
  * when the feature is off (no provider scan, no widget, no import). This is
  * the expensive half — URL recognition per bare link — and the plugin runs it
- * only on doc changes (and the arm/regate), NEVER on selection-only
- * transactions: reveal-on-caret needs the selection, but re-walking the doc
- * per caret move re-parsed every bare URL on every arrow key (perf review,
- * 2026-07-24 — the sibling proofread/calcStale plugins never recompute on
- * selection either).
+ * only on the arm and the regate; a doc change goes through `updateEmbeds`,
+ * which recognizes the touched blocks alone, and a selection-only
+ * transaction recomputes nothing: reveal-on-caret needs the selection, but
+ * re-walking the doc per caret move re-parsed every bare URL on every arrow
+ * key (perf review, 2026-07-24 — the sibling proofread/calcStale plugins
+ * never recompute on selection either).
  */
 export function collectEmbeds(state: EditorState): CachedEmbed[] {
     const providers = embedsFeatureOn();
@@ -347,14 +350,85 @@ export function collectEmbeds(state: EditorState): CachedEmbed[] {
         return [];
     }
     const embeds: CachedEmbed[] = [];
+    state.doc.forEach((node, pos) => {
+        embedsInBlock(state, node, pos, providers, linkCards, embeds);
+    });
+    countWork("embed-scan", { blocks: state.doc.childCount });
+    return withOrdinals(embeds);
+}
+
+/**
+ * The embeds after a doc-changing transaction: every untouched block's embed
+ * carried to where the edit put it, the touched top-level blocks recognized
+ * again, and the ordinals renumbered over the result. Recognition depends on
+ * one block's own content, so the touched blocks are the whole of what an
+ * edit owes; the renumbering is proportional to the embeds, never to the
+ * document (MAR-431). Exported for unit testing.
+ */
+export function updateEmbeds(state: EditorState, tr: Transaction, prev: readonly CachedEmbed[]): CachedEmbed[] {
+    const providers = embedsFeatureOn();
+    const linkCards = linkCardsPossible();
+    if (!providers && !linkCards) {
+        countWork("embed-scan", { blocks: 0 });
+        return [];
+    }
+    const touched = new Set<number>();
+    const fresh: CachedEmbed[] = [];
+    const blocks = forEachTouchedTopLevel(tr.doc, touchedRanges(tr), (node, pos) => {
+        touched.add(pos);
+        embedsInBlock(state, node, pos, providers, linkCards, fresh);
+    });
+    const kept: CachedEmbed[] = [];
+    for (const embed of prev) {
+        const start = tr.mapping.mapResult(embed.from, 1);
+        if (start.deleted) continue;
+        const from = start.pos;
+        if (touched.has(from)) continue;
+        const to = tr.mapping.map(embed.to, -1);
+        if (to <= from) continue;
+        kept.push({ ...embed, from, to });
+    }
+    const numbered = withOrdinals([...kept, ...fresh].sort((a, b) => a.from - b.from));
+    // A reader's per-link choice (card or text) is keyed by the link's
+    // occurrence among same-href blocks, so a kept embed whose ordinal moved
+    // may now read a different choice: recognize those blocks again too.
+    let moved = 0;
+    const result = numbered.map((embed) => {
+        const before = kept.find((k) => k.from === embed.from);
+        if (!before || before.ordinal === embed.ordinal) return embed;
+        moved++;
+        const again: CachedEmbed[] = [];
+        embedsInBlock(state, tr.doc.nodeAt(embed.from)!, embed.from, providers, linkCards, again);
+        return again.length ? { ...again[0], ordinal: embed.ordinal } : null;
+    }).filter((e): e is CachedEmbed => e !== null);
+    countWork("embed-scan", { blocks: blocks + moved });
+    return result;
+}
+
+/** Ordinals in document order over embeds already sorted by position. */
+function withOrdinals(embeds: CachedEmbed[]): CachedEmbed[] {
     const occurrences = new Map<string, number>();
-    const push = (match: CardMatch, href: string, pos: number, node: ProseNode): void => {
-        const identity = `${match.kind}:${match.id}`;
+    return embeds.map((embed) => {
+        const identity = `${embed.match.kind}:${embed.match.id}`;
         const ordinal = occurrences.get(identity) ?? 0;
         occurrences.set(identity, ordinal + 1);
-        embeds.push({ from: pos, to: pos + node.nodeSize, match, href, ordinal });
+        return embed.ordinal === ordinal ? embed : { ...embed, ordinal };
+    });
+}
+
+/** Recognize one top-level block, pushing its embed (if any) with a placeholder ordinal. */
+function embedsInBlock(
+    state: EditorState,
+    node: ProseNode,
+    pos: number,
+    providers: boolean,
+    linkCards: boolean,
+    embeds: CachedEmbed[],
+): void {
+    const push = (match: CardMatch, href: string): void => {
+        embeds.push({ from: pos, to: pos + node.nodeSize, match, href, ordinal: 0 });
     };
-    state.doc.forEach((node, pos) => {
+    {
         const href = soleLinkHref(node);
         if (!href) {
             return;
@@ -369,7 +443,7 @@ export function collectEmbeds(state: EditorState): CachedEmbed[] {
         // default must not re-card it (below) just because they are off.
         const recognized = bareLinkHref(node) !== null ? recognizeEmbedCached(href) : null;
         if (providers && recognized && providerCardGateOpen(recognized)) {
-            push(recognized, href, pos, node);
+            push(recognized, href);
             return;
         }
         // Then a link card, for a lone link no provider card took, when the
@@ -380,10 +454,9 @@ export function collectEmbeds(state: EditorState): CachedEmbed[] {
         // must not become an OG card that fetches youtube.com anyway.
         if (linkCards && linkCardWanted(state.doc, pos, href, recognized !== null)) {
             const label = node.textContent !== href ? node.textContent : undefined;
-            push({ kind: "linkCard", id: href, ...(label !== undefined && { label }) }, href, pos, node);
+            push({ kind: "linkCard", id: href, ...(label !== undefined && { label }) }, href);
         }
-    });
-    return embeds;
+    }
 }
 
 /**
@@ -490,10 +563,15 @@ export const embedPlugin = $prose(() =>
                     // first pass never runs synchronously during mount.
                     return { armed, embeds: [], deco: DecorationSet.empty };
                 }
-                if (tr.docChanged || meta?.type === "arm") {
-                    // The doc (or a gate, via regate's arm) changed: re-walk,
-                    // then filter against the new selection.
+                if (meta?.type === "arm") {
+                    // A gate opened (the idle arm, or regate): walk once, then
+                    // filter against the selection.
                     embeds = collectEmbeds(newState);
+                    deco = decorationsFor(embeds, newState.selection, newState.doc);
+                } else if (tr.docChanged) {
+                    // The doc changed: recognize the touched blocks again,
+                    // carry the rest, then filter against the new selection.
+                    embeds = updateEmbeds(newState, tr, embeds);
                     deco = decorationsFor(embeds, newState.selection, newState.doc);
                 } else if (tr.selectionSet) {
                     // Selection-only: the doc is unchanged (no steps → cached

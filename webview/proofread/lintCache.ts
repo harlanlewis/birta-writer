@@ -1,15 +1,22 @@
 /**
  * Spelling and grammar results, remembered by the text they were computed for.
  *
- * The proofread rescan walks the WHOLE document on a debounce after every edit,
- * and without this it would hand every block to the host's checker. One
- * keystroke changes one block, so the rest would be re-checked for an answer
- * nobody has any reason to expect to have changed. What that costs is not
- * theoretical and not always the page's own time: in Birta Writer for Mac the
- * checker is `NSSpellChecker`, which is AppKit and runs on the main thread, the
- * same thread key events arrive on, so a whole-document recheck is paid in caret
+ * The proofread rescan walks the blocks near the viewport on a debounce after
+ * every edit, and without this it would hand every one of them to the host's
+ * checker. One keystroke changes one block, so the rest would be re-checked
+ * for an answer nobody has any reason to expect to have changed. What that
+ * costs is not theoretical and not always the page's own time: in Birta Writer
+ * for Mac the checker is `NSSpellChecker`, which is AppKit and runs on the main
+ * thread, the same thread key events arrive on, so a recheck is paid in caret
  * latency. `birta-trace lint` prints `blocks`, `chars` and `ms` for every round
  * trip and is how to read the cost back rather than trusting a number here.
+ *
+ * It is also what the drawn set is BUILT from (MAR-426): every lint decoration
+ * is a lookup by the block's current text, so a reply is remembered here and
+ * then drawn for whatever window the reader is on, never from the positions
+ * the request was keyed to. That is why an answer can never be stale in
+ * position, and why the review sidebar, which lists the whole document, can
+ * be answered from here for the blocks a host has ever been asked about.
  *
  * The cache key is the block's plain text and nothing else. Block POSITION
  * deliberately is not part of the key, so moving a paragraph, or editing the one
@@ -36,10 +43,22 @@ import type { HarperLint } from "../../shared/messages";
  * Sized against the document, not the session: what has to fit is every block
  * of the file being edited, or the very next rescan re-asks for the ones that
  * fell out and the cache buys nothing on exactly the documents it exists for.
- * A large note is a few hundred blocks, so this holds several of them, and the
- * entries are short strings plus a usually-empty array.
+ * A FIFO smaller than the document is worse than no cache, because it evicts
+ * every entry before the next pass reads it, so the bound sits above the
+ * block count of the largest document the heavy perf fixtures stand in for
+ * (`huge-outline`), the same bound the style cache carries. The entries are
+ * short strings plus a usually-empty array. Exported so the eviction test
+ * reads the bound rather than restating it.
  */
-const MAX_ENTRIES = 4096;
+export const LINT_CACHE_MAX = 16384;
+
+/**
+ * Bumped by every write, so a memo built from this cache can tell whether an
+ * answer has arrived since it was built. The review sidebar's document-wide
+ * lint set is the reader: the drawn set is windowed, and the list rebuilds
+ * only when the document, the config or this has moved.
+ */
+let generation = 0;
 
 /**
  * Insertion-ordered, which is what makes the eviction below cheap: a `Map`
@@ -60,11 +79,17 @@ export function lookupLints(text: string): HarperLint[] | undefined {
 export function rememberLints(text: string, lints: HarperLint[]): void {
     if (cache.has(text)) { cache.delete(text); }
     cache.set(text, lints);
-    while (cache.size > MAX_ENTRIES) {
+    generation++;
+    while (cache.size > LINT_CACHE_MAX) {
         const oldest = cache.keys().next();
         if (oldest.done) { break; }
         cache.delete(oldest.value);
     }
+}
+
+/** A number that moves whenever the remembered answers do. */
+export function lintCacheGeneration(): number {
+    return generation;
 }
 
 /**
@@ -78,6 +103,7 @@ export function rememberLints(text: string, lints: HarperLint[]): void {
  */
 export function clearLintCache(): void {
     cache.clear();
+    generation++;
 }
 
 /** How many texts are remembered. For tests and for the eviction bound. */

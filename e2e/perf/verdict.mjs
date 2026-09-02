@@ -14,6 +14,13 @@ export const SPANS = [
     ["launch", null, "editor-painted"],
     ["eager", "eval-start", "ready-posted"],
     ["roundtrip", "ready-posted", "init-received"],
+    // The static first frame (webview/firstFrame.ts): a throwaway plugin
+    // stack, the prefix parse and render, and the frame's wait for a paint.
+    // Stamped only on a document large enough to get one, so it reads `–` on
+    // every default fixture and a number on the heavy ones; `launch` still
+    // ends at the LIVE editor's paint, and this span is what a reader saw
+    // content before.
+    ["frame", "frame-start", "frame-painted"],
     ["create", "create-start", "create-end"],
     // The INITIAL VIEW RENDER: everything between Milkdown handing back a
     // created editor and the browser painting the first frame that shows it —

@@ -30,7 +30,7 @@ import { describe, it, expect, beforeAll, beforeEach, afterEach, vi } from "vite
 import { editorViewCtx, type Editor } from "@milkdown/core";
 import type { EditorView } from "../pm";
 import { createEditor } from "../editor";
-import { applyLintResults } from "../plugins/proofread";
+import { applyLintResults, clearStyleCache } from "../plugins/proofread";
 import { clearLintCache } from "../proofread/lintCache";
 import type { LintBlock } from "../../shared/messages";
 
@@ -135,6 +135,7 @@ function view(editor: Editor): EditorView {
  */
 async function workForOneKeystroke(doc: string): Promise<Counter[]> {
     clearLintCache();
+    clearStyleCache();
     document.body.innerHTML = "";
     vi.useFakeTimers();
     const spy = postMessageSpy();

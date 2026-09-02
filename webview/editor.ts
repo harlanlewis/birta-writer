@@ -4,6 +4,7 @@ import {
     editorViewOptionsCtx,
     nodeViewCtx,
     parserCtx,
+    remarkCtx,
     rootCtx,
     serializerCtx,
 } from "@milkdown/core";
@@ -22,7 +23,7 @@ import type { FormatModule } from "./format/types";
 import { guardNodeViewFactory } from "./nodeViewBoundary";
 import { refractor, ensureGrammars } from "./highlighter";
 import { applyExternalSync } from "./externalSync";
-import { instrumentTransactions, mark, measure } from "./perf";
+import { countWork, instrumentTransactions, mark, measure } from "./perf";
 import { createSyncScheduler } from "./syncScheduler";
 import { isReadOnly } from "./readOnly";
 import { requestIdle } from "./utils/idle";
@@ -305,16 +306,29 @@ let _onDocChange: (() => void) | null = null;
  * The parser comes from the editor's own context, so this stays on the
  * FormatModule seam: the verifier is handed a parse function and a profile
  * rather than knowing markdown exists.
+ *
+ * Every pass stamps a `merge` work count: one pass, and how many times the
+ * verifier reparsed the merged bytes (zero for a file already in the
+ * serializer's spelling, one or two otherwise). Each is a whole-document
+ * walk, so how many of them a burst pays is what the nightly heavy-fixture
+ * gate holds (`e2e/perf-counts.mjs`); a scheduler that fires too often, the
+ * defect #421 found, moves this count and no gated duration.
  */
 function mergeForSave(editor: Editor, markdown: string): { text: string; canonical: boolean } {
-    return mergeVerified(
+    let reparses = 0;
+    const result = mergeVerified(
         _savedMarkdown,
         markdown,
         format.formatProfile,
         getProtection(),
         editor.action((ctx) => getState(ctx).doc),
-        (text) => editor.action((ctx) => ctx.get(parserCtx)(text)) as ProseNode | null,
+        (text) => {
+            reparses++;
+            return editor.action((ctx) => ctx.get(parserCtx)(text)) as ProseNode | null;
+        },
     );
+    countWork("merge", { passes: 1, reparses });
+    return result;
 }
 
 /**
@@ -477,6 +491,53 @@ export function acknowledgeFlush(id: string, applied: boolean): void {
  * file, plugin normalization) emit none, so opening a document still cannot
  * trigger a silent save.
  */
+/**
+ * A harness probe, and never on the user's path: how `create`'s parse splits
+ * between the markdown half (remark parse and run, where the callout and
+ * directive tree transforms live) and the ProseMirror construction from
+ * mdast. Both happen inside one `parserCtx` call, so the split is read from
+ * outside: the remark processor alone gives the first half, the whole parse
+ * gives the sum, and construction is the difference. `e2e/perf.mjs` calls it
+ * after the settle marks and prints the two beside the spans (MAR-434).
+ *
+ * Installed only when the perf harness is driving the page (its init marker
+ * is on the window), so no production webview carries a global for it. It
+ * is a WARM reading: the parser has already run once on this text, so the
+ * cold `create` span is larger than the two halves' sum, and what the number
+ * answers is which half dominates, not how long either takes cold.
+ */
+function installParseSplitProbe(editor: Editor, markdown: string): void {
+    const host = globalThis as { __perfInit?: unknown; __birtaPerf?: unknown };
+    if (host.__perfInit === undefined) return;
+    host.__birtaPerf = {
+        parseSplit(): { mdast: number; pm: number; chars: number } {
+            const remark = editor.action((ctx) => ctx.get(remarkCtx));
+            const t0 = performance.now();
+            // The transforms read the source through the file, as the real
+            // parser hands it to them; a bare tree throws inside the first
+            // one that looks at a marker.
+            remark.runSync(remark.parse(markdown), markdown);
+            const t1 = performance.now();
+            editor.action((ctx) => ctx.get(parserCtx)(markdown));
+            const t2 = performance.now();
+            const mdast = t1 - t0;
+            return { mdast, pm: (t2 - t1) - mdast, chars: markdown.length };
+        },
+    };
+}
+
+/**
+ * Lift the flag for input that reached the document without passing through
+ * the listeners above: text typed into the static first frame's capture field
+ * (firstFrame.ts) is real keyboard input that arrived BEFORE `createEditor`
+ * reset the flag and installed them, and is replayed as transactions after.
+ * Without this the replayed text sits in a document that never dirties, which
+ * is the data-loss path the block above describes.
+ */
+export function markUserInteracted(): void {
+    _hasUserInteracted = true;
+}
+
 function setupInteractionTracking(): void {
     if (_interactionListenerAdded) return;
     _interactionListenerAdded = true;
@@ -943,6 +1004,7 @@ export async function createEditor(
     // and available in devtools against any real document. Installed once per
     // editor instance; initEditor destroys before it recreates.
     instrumentTransactions(_editor.action((ctx) => getView(ctx)));
+    installParseSplitProbe(_editor, initialMarkdown);
 
     // Snapshot the pristine document and defer its round-trip protection off the
     // critical path (see _protectionSnapshot above): the zero-edit

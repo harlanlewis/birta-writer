@@ -85,7 +85,7 @@ type LineClass =
 
 /** Leading-whitespace width in columns, tabs expanding to the next multiple
  * of 4 (the CommonMark tab stop). */
-function leadingColumns(line: string): number {
+export function leadingColumns(line: string): number {
     let col = 0;
     for (const ch of line) {
         if (ch === " ") col++;
@@ -101,18 +101,86 @@ function leadingColumns(line: string): number {
  * delimiter — and are read only by `listMarkerAt`; every other use here is a
  * bare `.test()` or `[0]`.
  */
-const LIST_MARKER_RE = /^([ \t]*)(?:([-*+])|\d{1,9}([.)]))(?:[ \t]|$)/;
+export const LIST_MARKER_RE = /^([ \t]*)(?:([-*+])|\d{1,9}([.)]))(?:[ \t]|$)/;
 const SETEXT_DASH_RE = /^ {0,3}-+[ \t]*$/;
 const ATX_HEADING_RE = /^ {0,3}#{1,6}(?:[ \t]|$)/;
 const QUOTE_MARKER_RE = /^ {0,3}>/;
 /** A code-fence open/close marker run, matched against a trimStart'd line. */
 const FENCE_LINE_RE = /^(`{3,}|~{3,})/;
 
+/** The fence currently open: its marker run, and whether it sits indented. */
+export interface OpenFence {
+    marker: string;
+    /**
+     * The fence is nested in a list/outline, so its body's leading indent is
+     * outline structure the serializer legitimately re-emits (MAR-131) and
+     * stays depth-normalized; a column-0 fence compares raw.
+     */
+    nested: boolean;
+}
+
+/**
+ * Step the fence state over one NON-BLANK line: the fence open after it, and
+ * whether the line is fence CONTENT (open before it, and not its closer). The
+ * opener and the closer are not content; both compare as prose.
+ *
+ * This is THE fence scanner: `classifyLines` runs it on every merge, and the
+ * block segmenter (utils/blockSegmenter.ts) runs the same function to decide
+ * where a text may be cut, so the two can never disagree about where a fence
+ * is. Blank lines never reach it; a blank inside a fence leaves the state as
+ * it was.
+ */
+export function fenceStep(line: string, open: OpenFence | null): { open: OpenFence | null; content: boolean } {
+    const t = line.trimStart();
+    let f = FENCE_LINE_RE.exec(t);
+    // A fence may OPEN on a list-marker line (`- ```js`), which the
+    // trimStart'd test above cannot see — the line starts with the marker,
+    // not with backticks. Missing the opener is not a small error: the
+    // scanner then reads the fence's own CLOSING line as an opener and
+    // classifies the entire rest of the document as fence content, so
+    // ordinary outline lines below stop being recognized as structure.
+    //
+    // The shape is legal CommonMark that anyone may hand-write, and since
+    // MAR-230 the serializer emits it too (an item whose content is a fence
+    // now rides the marker line), which is how it started biting: a fence
+    // bullet moved to the top of a tab outline had the lines after it
+    // treated as verbatim, so `reconcileInsertion` skipped their indent
+    // lookup and wrote the serializer's spaces beside kept tabs — the moved
+    // block's neighbour became its child on reopen.
+    //
+    // Only consulted when no fence is open: inside one, a closing run must
+    // be the whole line, so a marker line can never close it.
+    //
+    // The `nested` flag below is deliberately NOT forced on for this case.
+    // Such a fence sits at column 0, so its body indent is the marker's own
+    // content column — always spaces, never the outline tabs that flag
+    // exists to normalize — and no probe could produce different bytes
+    // either way. An unfalsifiable branch is decoration, so there isn't one.
+    if (open === null && f === null) {
+        const marker = LIST_MARKER_RE.exec(line);
+        if (marker) {
+            f = FENCE_LINE_RE.exec(line.slice(marker[0].length).replace(/^ {0,3}/, ""));
+        }
+    }
+    if (open) {
+        const closes =
+            f !== null &&
+            f[1][0] === open.marker[0] &&
+            f[1].length >= open.marker.length &&
+            t.slice(f[1].length).trim() === "";
+        return closes ? { open: null, content: false } : { open, content: true };
+    }
+    if (f) {
+        return { open: { marker: f[1], nested: /^[ \t]/.test(line) }, content: false };
+    }
+    return { open: null, content: false };
+}
+
 /** Classify every line of a document in one contextual pass. Blank lines are
  * insignificant to the diff and classify as prose. */
 function classifyLines(lines: string[]): LineClass[] {
     const classes: LineClass[] = new Array(lines.length);
-    let fence: { marker: string; nested: boolean } | null = null;
+    let fence: OpenFence | null = null;
     let prevNonBlank: { text: string; cls: LineClass } | null = null;
     let blankBefore = true; // document start behaves like after-a-blank
     for (let i = 0; i < lines.length; i++) {
@@ -123,50 +191,13 @@ function classifyLines(lines: string[]): LineClass[] {
             continue;
         }
         let cls: LineClass = "prose";
-        const t = line.trimStart();
-        let f = FENCE_LINE_RE.exec(t);
-        // A fence may OPEN on a list-marker line (`- ```js`), which the
-        // trimStart'd test above cannot see — the line starts with the marker,
-        // not with backticks. Missing the opener is not a small error: the
-        // scanner then reads the fence's own CLOSING line as an opener and
-        // classifies the entire rest of the document as fence content, so
-        // ordinary outline lines below stop being recognized as structure.
-        //
-        // The shape is legal CommonMark that anyone may hand-write, and since
-        // MAR-230 the serializer emits it too (an item whose content is a fence
-        // now rides the marker line), which is how it started biting: a fence
-        // bullet moved to the top of a tab outline had the lines after it
-        // treated as verbatim, so `reconcileInsertion` skipped their indent
-        // lookup and wrote the serializer's spaces beside kept tabs — the moved
-        // block's neighbour became its child on reopen.
-        //
-        // Only consulted when no fence is open: inside one, a closing run must
-        // be the whole line, so a marker line can never close it.
-        //
-        // The `nested` flag below is deliberately NOT forced on for this case.
-        // Such a fence sits at column 0, so its body indent is the marker's own
-        // content column — always spaces, never the outline tabs that flag
-        // exists to normalize — and no probe could produce different bytes
-        // either way. An unfalsifiable branch is decoration, so there isn't one.
-        if (fence === null && f === null) {
-            const marker = LIST_MARKER_RE.exec(line);
-            if (marker) {
-                f = FENCE_LINE_RE.exec(line.slice(marker[0].length).replace(/^ {0,3}/, ""));
-            }
-        }
-        if (fence) {
-            const closes =
-                f !== null &&
-                f[1][0] === fence.marker[0] &&
-                f[1].length >= fence.marker.length &&
-                t.slice(f[1].length).trim() === "";
-            if (closes) {
-                fence = null; // the close line itself compares as prose
-            } else {
-                cls = fence.nested ? "fence-nested" : "fence-raw";
-            }
-        } else if (f) {
-            fence = { marker: f[1], nested: /^[ \t]/.test(line) };
+        const step = fenceStep(line, fence);
+        const wasOpen = fence !== null;
+        fence = step.open;
+        if (step.content) {
+            cls = fence!.nested ? "fence-nested" : "fence-raw";
+        } else if (wasOpen || fence !== null) {
+            // The closer and the opener both compare as prose.
         } else if (leadingColumns(line) >= 4) {
             // Indented-code candidate. It is code when it opens a block
             // outside a list context — after a blank, at document start, or

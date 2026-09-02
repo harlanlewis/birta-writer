@@ -1,0 +1,72 @@
+<!doctype html>
+<!-- e2e harness: MAR-428's static first frame. A document large enough that
+     the model build is felt, so "something correct on screen before the
+     editor exists" and "keystrokes during the window are kept" are real,
+     observable behaviors. `?small=1` serves a document below the size floor,
+     where no frame may appear. Mirrors the provider template with
+     acquireVsCodeApi stubbed. -->
+<meta charset="utf-8">
+<style>
+  :root {
+    --vscode-editor-background: #1e1e1e; --vscode-editor-foreground: #d4d4d4;
+    --vscode-foreground: #cccccc; --vscode-descriptionForeground: #999999;
+    --vscode-editor-font-family: monospace; --vscode-font-family: -apple-system, sans-serif; --vscode-font-size: 13px;
+    --vscode-editorHoverWidget-background: #252526; --vscode-editorHoverWidget-foreground: #cccccc;
+    --vscode-editorHoverWidget-border: #454545; --vscode-focusBorder: #007fd4;
+    --vscode-toolbar-hoverBackground: rgba(90,93,94,0.31); --vscode-list-hoverBackground: #2a2d2e;
+    --vscode-editor-selectionBackground: #264f78;
+    --vscode-button-background: #0e639c; --vscode-button-foreground: #ffffff; --vscode-button-hoverBackground: #1177bb;
+    --vscode-button-secondaryBackground: #3a3d41; --vscode-panel-border: #454545;
+  }
+  body { background: var(--vscode-editor-background); color: var(--vscode-editor-foreground); }
+  .editor-topbar { height: 40px; box-sizing: border-box; }
+</style>
+<script>
+  // Snapshot the DOM at the EXACT moment each mark is stamped, synchronously
+  // with the mark, so the checks cannot drift by a task.
+  (() => {
+    const origMark = performance.mark.bind(performance);
+    const snap = () => ({
+      frameHeadings: document.querySelectorAll(".birta-first-frame h2").length,
+      frameEditable: document.querySelector(".birta-first-frame .ProseMirror")?.getAttribute("contenteditable") ?? null,
+      sinkFocused: document.activeElement?.classList.contains("birta-first-frame-sink") === true,
+      liveEditor: document.querySelector(".milkdown:not(.birta-first-frame) .ProseMirror") !== null,
+      frameCount: document.querySelectorAll(".birta-first-frame").length,
+      scrollHeight: document.documentElement.scrollHeight,
+    });
+    window.__at = {};
+    performance.mark = (name, ...rest) => {
+      if ((name === "mdw:frame-painted" || name === "mdw:editor-painted") && window.__at[name] === undefined) {
+        window.__at[name] = snap();
+      }
+      return origMark(name, ...rest);
+    };
+  })();
+  window.__i18n = { translations: {}, isMac: true, toolbar: { placements: {}, order: [] }, tocAutoHideThreshold: 999 };
+  window.__posted = [];
+  const small = new URLSearchParams(location.search).get("small") === "1";
+  const LINES = ["# First frame document", ""];
+  // Sections of prose and a list, enough of them to put the document well
+  // past the frame's size floor (a few hundred KB) unless `small` is set.
+  const SECTIONS = small ? 20 : 2600;
+  for (let i = 1; i <= SECTIONS; i++) {
+    LINES.push(`## Section ${i}`, "",
+               `Paragraph body for section ${i}, written long enough that the model build on the whole document takes a visible fraction of a second.`, "",
+               `- item one of ${i}`, `- item two of ${i}`, "");
+  }
+  LINES.push("Final paragraph.", "");
+  const DOC = LINES.join("\n");
+  window.__docLength = DOC.length;
+  window.acquireVsCodeApi = () => ({
+    postMessage: (msg) => {
+      window.__posted.push(msg);
+      if (msg.type === "ready")
+        window.postMessage({ type: "init", content: DOC, syncVersion: 1 }, "*");
+    },
+    getState: () => undefined, setState: () => {},
+  });
+</script>
+<link rel="stylesheet" href="dist/webview.css">
+<div class="editor-topbar"></div>
+<div id="editor"></div>
+<script type="module" src="dist/webview.js"></script>

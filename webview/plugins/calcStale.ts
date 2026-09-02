@@ -64,6 +64,8 @@ import { CARET_CONTEXT_WINDOW } from "./caretSuggest";
 import { hideLintPopup, showFindingsPopup, type PopupFinding } from "../proofread/popup";
 import { findingsAt } from "./proofread";
 import { requestIdle } from "../utils/idle";
+import { changeTouchesTextblock } from "../utils/textblockEdit";
+import { countWork } from "../perf";
 import { t } from "../i18n";
 import { isReadOnly } from "../readOnly";
 import "./calcStale.css";
@@ -207,8 +209,10 @@ export function computeCalcCueDecorations(doc: ProseNode): CalcCueScan {
         );
     };
 
+    let blocks = 0;
     doc.descendants((node: ProseNode, pos: number) => {
         if (!node.isTextblock) { return true; }
+        blocks++;
         if (node.type.spec.code || node.type.name === "heading") { return false; }
         const text = blockCalcText(node);
         // No `=` → no definition and no equation; skip before any scan work.
@@ -236,6 +240,7 @@ export function computeCalcCueDecorations(doc: ProseNode): CalcCueScan {
         return false;
     });
 
+    countWork("calc-scan", { blocks });
     return { set: DecorationSet.create(doc, decorations), needsUnits };
 }
 
@@ -309,12 +314,16 @@ function cueFinding(view: EditorView, from: number, to: number, cue: CalcCueSpec
  * that keeps arrow-less documents at one early-exiting walk per scan. */
 function docHasArrow(doc: ProseNode): boolean {
     let found = false;
+    let blocks = 0;
     doc.descendants((node: ProseNode) => {
         if (found) { return false; }
         if (!node.isTextblock) { return true; }
+        blocks++;
         if (node.textContent.includes("=>")) { found = true; }
         return false;
     });
+    // Its own amount, so a ceiling can tell the pre-check from the cue pass.
+    countWork("calc-scan", { probe: blocks });
     return found;
 }
 
@@ -459,6 +468,7 @@ export const calcStalePlugin = $prose(() => {
             return {
                 update() {
                     if (view.state.doc !== lastDoc) {
+                        const prev = lastDoc;
                         lastDoc = view.state.doc;
                         // Any edit invalidates the popup's captured positions —
                         // and covers every staleness source at once: typing,
@@ -466,7 +476,15 @@ export const calcStalePlugin = $prose(() => {
                         // external-sync replays (which are exactly when cues
                         // must appear, so no EXTERNAL_SYNC_META exemption).
                         hideLintPopup();
-                        schedule();
+                        // The scan itself is whole-document by its semantics
+                        // (a definition's scope runs to the end of the text),
+                        // so what is bounded to the edit is the DECISION to
+                        // run it: an edit that adds, changes or removes no
+                        // `=` anywhere in its changed span cannot move a cue,
+                        // and the mapped set already stands (MAR-431).
+                        if (prev === null || changeTouchesTextblock(prev, view.state.doc, (t) => t.includes("="))) {
+                            schedule();
+                        }
                     }
                 },
                 destroy() {

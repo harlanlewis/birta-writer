@@ -1,0 +1,25 @@
+{
+  "note": "Work-count CEILINGS for the nightly heavy-fixture gate (`pnpm perf:counts --check <typing.json>`): each is the count a mount-plus-burst on the named fixture handed across an instrumented boundary (`countWork` in webview/perf.ts, summed by e2e/perf-typing.mjs), plus headroom. The gate fails when a fresh run exceeds a ceiling, stamps a counter this file does not list, or stops stamping one it does. `reported` lists the counters printed without a ceiling, each with the reason it cannot hold one. Counts, never durations: a count of document-proportional work reads the same on a loaded runner and an idle laptop. Re-set after a change that moves one deliberately: `node esbuild.mjs --production --metafile && node e2e/perf-typing.mjs huge-outline --json typing.json && node e2e/perf-counts.mjs --set-budget typing.json`, then commit this file and say why. This file holds ceilings and reasons and NOTHING ELSE; for the current counts, run the tool.",
+  "headroomPct": 10,
+  "reported": {
+    "mdw:merge.passes": "timer-driven: a sync fires per max-wait window the burst spans, so the count follows runner speed the way a duration does; the per-keystroke gate in perKeystrokeWork.test.ts holds it instead",
+    "mdw:merge.reparses": "one per pass on a file the serializer does not spell canonically, so it follows passes; what MAR-430 moves is where it runs, not how often"
+  },
+  "fixtures": {
+    "huge-outline": {
+      "mdw:task-marks.nodes": 9262,
+      "mdw:html-pairs.blocks": 5363,
+      "mdw:fold-ranges.blocks": 2439,
+      "mdw:fold-structure.blocks": 4977,
+      "mdw:fold-build.blocks": 2439,
+      "mdw:image-blocks.blocks": 2538,
+      "mdw:calc-scan.probe": 5363,
+      "mdw:embed-scan.blocks": 2538,
+      "mdw:note-scan.blocks": 18611,
+      "mdw:style-scan.blocks": 62,
+      "mdw:style-scan.chars": 8732,
+      "mdw:lint-request.blocks": 62,
+      "mdw:lint-request.chars": 8732
+    }
+  }
+}

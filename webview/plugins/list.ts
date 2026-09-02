@@ -7,6 +7,7 @@ import { extendListItemSchemaForTask } from "@milkdown/preset-gfm";
 import type { Node as ProseNode, Transaction } from "../pm";
 import { canJoin, Fragment, keymap, Mapping } from "../pm";
 import { Decoration, DecorationSet } from "../pm";
+import { countWork } from "../perf";
 import { Plugin, PluginKey, Selection, TextSelection } from "../pm";
 import { joinTextblockBackward, liftListItem, undoInputRule } from "../pm";
 import { $prose } from "@milkdown/utils";
@@ -804,7 +805,9 @@ interface TaskItemMark {
  */
 function taskItemMarks(doc: ProseNode): TaskItemMark[] {
     const marks: TaskItemMark[] = [];
+    let nodes = 0;
     doc.descendants((node, pos) => {
+        nodes++;
         if (node.isTextblock) { return false; }
         const checked = node.attrs["checked"];
         if (node.type.name === "list_item" && typeof checked === "boolean") {
@@ -812,6 +815,9 @@ function taskItemMarks(doc: ProseNode): TaskItemMark[] {
         }
         return true;
     });
+    // Once at mount and on a structural list edit; the gates read it so a
+    // keystroke that reaches it is visible as growth (MAR-431).
+    countWork("task-marks", { nodes });
     return marks;
 }
 

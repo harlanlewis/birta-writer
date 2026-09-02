@@ -6,6 +6,9 @@
 
 ### Changed
 
+- A large document shows its first screen almost at once. Above a size where building the editor takes a visible moment, the first screen's blocks are painted read-only while the editor loads behind them, and the editor takes over without a jump. Anything typed in the meantime is kept and lands where the caret opens; a formatting shortcut pressed before the editor exists does nothing.
+- Proofreading now costs the screen, not the document. Style underlines are computed for the blocks near the viewport and follow the scroll, and the spelling and grammar check is asked about those blocks first rather than the whole document at once, so a large document opens and answers a keystroke sooner with `birta.proofreading.enabled` on. The review sidebar's Proofread tab still lists the whole document; on a large one it fills in over a moment, and a check that fails for a block leaves it unmarked rather than leaving the list incomplete.
+- Typing in a large document no longer re-walks it on every keystroke for the block gutter, image blocks, link cards, calc cues or note markers; each now redoes only the block the edit touched.
 - Opening a large document is faster, and most noticeably on a long outline. Every heading carries an `id` so it can be linked to, and the editor assigned those ids after the document was already on screen: one transaction step per heading, which rebuilt the document and made the editor redraw every heading it had just finished drawing. The ids are now placed on the document before it is first rendered, so the work happens once instead of twice. The saving scales with how many headings a document has, so a deeply structured file gains most and a flat one gains little.
 
 ### Removed

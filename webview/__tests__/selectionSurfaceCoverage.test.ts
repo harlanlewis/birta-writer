@@ -73,6 +73,13 @@ const ISLAND_REGISTRY: Record<string, string> = {
         "an open panel before reading (webview/index.ts), as does the save flush " +
         "(messageHandlers.ts flushSave), so both leave on committed bytes even on the " +
         "in-webview command path, where no natural blur precedes them. Pinned in e2e/blockSource.",
+    "firstFrame.ts":
+        "the static first frame's keystroke capture textarea (MAR-428) — it exists only " +
+        "BEFORE any editor view does: painted while the model builds, removed in the same " +
+        "task the live editor's DOM lands (initEditor's frame.dispose()), its value replayed " +
+        "into the view as typed text. No ProseMirror selection is parked while it is up " +
+        "because there is no ProseMirror yet, and it is gone before any mode switch can be " +
+        "asked; not a switch surface. Pinned in e2e/firstFrame.",
     "ui/clipboard.ts":
         "the execCommand copy fallback's hidden textarea — created on document.body, focused, " +
         "copied and removed synchronously inside one call, so no selection outlives it; " +

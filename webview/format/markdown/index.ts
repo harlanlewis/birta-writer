@@ -23,6 +23,7 @@ import { createMathInlineView } from "../../components/math";
 import { createTableView } from "../../components/table/tableView";
 import { createWikiLinkView } from "../../components/wikiLink";
 import { configureSerialization, gfmFidelity, pureCommonmark } from "../../serialization";
+import { findSafeCuts } from "../../utils/blockSegmenter";
 import { markdownProfile } from "../../utils/minimalDiff";
 import type { FormatModule } from "../types";
 
@@ -51,4 +52,5 @@ export const markdownFormat: FormatModule = {
         ],
     ],
     formatProfile: markdownProfile,
+    findSafeCuts,
 };

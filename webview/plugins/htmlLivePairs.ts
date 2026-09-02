@@ -26,6 +26,7 @@ import "./htmlLivePairs.css";
 import { $prose } from "@milkdown/utils";
 import type { EditorState, Node as PMNode } from "../pm";
 import { Decoration, DecorationSet, Plugin, PluginKey, keymap } from "../pm";
+import { countWork } from "../perf";
 import { openSelectedHtmlEditor } from "../components/htmlView";
 
 export const LIVE_PAIR_TAGS = ["u", "sub", "sup", "kbd", "mark"] as const;
@@ -89,13 +90,17 @@ function blockDecorations(block: PMNode, blockStart: number): Decoration[] {
 /** Build the full set for a document (init, and the test seam). */
 export function livePairDecorations(doc: PMNode): DecorationSet {
     const decos: Decoration[] = [];
+    let blocks = 0;
     doc.descendants((node, pos) => {
         if (node.isTextblock) {
+            blocks++;
             decos.push(...blockDecorations(node, pos + 1));
             return false;
         }
         return true;
     });
+    // Once, at init; edits recompute only the touched textblocks below.
+    countWork("html-pairs", { blocks });
     return decos.length ? DecorationSet.create(doc, decos) : DecorationSet.empty;
 }
 

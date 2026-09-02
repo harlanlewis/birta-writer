@@ -12,6 +12,7 @@ import { describe, it, expect } from "vitest";
 import { schemaCtx } from "@milkdown/core";
 import { getMarkdown } from "@milkdown/utils";
 import { markdownFormat } from "../format/markdown";
+import { mdxFormat } from "../format/mdx";
 import { makeCorpusEditor } from "./helpers/moveFuzz";
 
 describe("markdown FormatModule", () => {
@@ -48,5 +49,13 @@ describe("markdown FormatModule", () => {
         // contract (@birta/minimal-diff FormatProfile).
         const keys = markdownFormat.formatProfile.keyLines(["# a", "", "b"]);
         expect(keys).toHaveLength(3);
+    });
+
+    it("should declare the block segmenter, and MDX should not, because absent means one chunk", () => {
+        // Markdown's cut points are proven against the parser over the corpus
+        // (blockSegmenter.test.ts); MDX has argued none, so a consumer asking
+        // it gets the conservative answer by the member being absent.
+        expect(markdownFormat.findSafeCuts?.(["a", "", "b"])).toEqual([2]);
+        expect(mdxFormat.findSafeCuts).toBeUndefined();
     });
 });

@@ -22,7 +22,8 @@
  * light up inside `pseudoTODO` / `networks`.
  */
 import type { Node as ProseNode } from "../pm";
-import { singleTextblockInlineEdit } from "../utils/textblockEdit";
+import { singleTextblockInlineEdit, singleTopLevelBlockEdit } from "../utils/textblockEdit";
+import { countWork } from "../perf";
 
 export type NoteKind = "placeholder" | "todo" | "fixme" | "comment" | "custom";
 
@@ -222,8 +223,10 @@ export function scanTextblock(block: ProseNode, base: number, customMarkers: rea
  */
 export function scanNotes(doc: ProseNode, customMarkers: readonly string[] = []): NoteItem[] {
     const items: NoteItem[] = [];
+    let blocks = 0;
 
     doc.descendants((node, pos) => {
+        blocks++;
         // A block-level HTML node (inline comment atoms live inside textblocks
         // and are handled by scanTextblock, which stops descent into them).
         if (node.type.name === "html") {
@@ -245,6 +248,8 @@ export function scanNotes(doc: ProseNode, customMarkers: readonly string[] = [])
         return true;
     });
 
+    // The whole-document form; the per-keystroke path below reads one block.
+    countWork("note-scan", { blocks });
     return items.sort((a, b) => a.from - b.from);
 }
 
@@ -263,9 +268,18 @@ export function incrementalScanNotes(
     nextDoc: ProseNode,
     customMarkers: readonly string[] = [],
 ): NoteItem[] | null {
-    const edit = singleTextblockInlineEdit(prevDoc, nextDoc);
-    if (!edit) { return null; }
-    if (edit.kind === "identical") { return prevItems as NoteItem[]; }
+    const inline = singleTextblockInlineEdit(prevDoc, nextDoc);
+    if (inline?.kind === "identical") { return prevItems as NoteItem[]; }
+    // The inline case, or its coarser sibling: one top-level TEXTBLOCK
+    // replaced whole, which is what a keystroke in a heading looks like once
+    // the heading-id plugin has restamped its attrs. Either way exactly one
+    // textblock's notes can have changed.
+    let edit: { prevBlockPos: number; prevBlock: ProseNode; nextBlockPos: number; nextBlock: ProseNode; delta: number } | null = inline;
+    if (!edit) {
+        const block = singleTopLevelBlockEdit(prevDoc, nextDoc);
+        if (!block || !block.prevBlock.isTextblock || !block.nextBlock.isTextblock) { return null; }
+        edit = block;
+    }
 
     const blockStart = edit.prevBlockPos;
     const blockEnd = edit.prevBlockPos + edit.prevBlock.nodeSize;
@@ -274,5 +288,6 @@ export function incrementalScanNotes(
         .filter((i) => i.from >= blockEnd)
         .map((i) => ({ ...i, from: i.from + edit.delta, to: i.to + edit.delta }));
     const within = scanTextblock(edit.nextBlock, edit.nextBlockPos + 1, customMarkers);
+    countWork("note-scan", { blocks: 1 });
     return [...before, ...within, ...after].sort((a, b) => a.from - b.from);
 }
