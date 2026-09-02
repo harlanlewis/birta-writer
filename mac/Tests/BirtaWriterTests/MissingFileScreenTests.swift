@@ -25,13 +25,14 @@ final class MissingFileScreenTests: XCTestCase {
     /// coordinates and a screen with no superview cannot tell a conversion
     /// that works from one that is a no-op standing in for it.
     private func shown(unsaved: Bool,
+                       inTrash: Bool = false,
                        width: CGFloat = 640,
                        height: CGFloat = 400) -> MissingFileScreen {
         let screen = MissingFileScreen()
         let container = NSView(frame: NSRect(x: 0, y: 0, width: width, height: height))
         container.addSubview(screen)
         screen.frame = container.bounds
-        screen.show(true, hasUnsavedText: unsaved)
+        screen.show(true, hasUnsavedText: unsaved, isInTrash: inTrash)
         screen.layoutSubtreeIfNeeded()
         return screen
     }
@@ -76,10 +77,12 @@ final class MissingFileScreenTests: XCTestCase {
     }
 
     func testEachButtonShouldReportTheGestureItNames() {
-        // Three buttons wired to three closures is exactly the shape where two
-        // end up on one handler and nothing looks wrong.
-        let screen = shown(unsaved: true)
+        // Four buttons wired to four closures is exactly the shape where two
+        // end up on one handler and nothing looks wrong. Driven in the state
+        // that offers every one of them, so no arm is left unpressed.
+        let screen = shown(unsaved: true, inTrash: true)
         var calls: [String] = []
+        screen.onPutItBack = { calls.append("putback") }
         screen.onSaveItBack = { calls.append("save") }
         screen.onDiscardAndStartNew = { calls.append("discard") }
         screen.onOpenRecent = { _ in calls.append("recent") }
@@ -88,7 +91,55 @@ final class MissingFileScreenTests: XCTestCase {
             XCTAssertNotNil(button, title)
             button?.performClick(nil)
         }
-        XCTAssertEqual(calls, ["save", "discard", "recent"])
+        XCTAssertEqual(calls, ["putback", "save", "discard", "recent"])
+    }
+
+    // MARK: the file is in the Trash, which is a different thing to say
+
+    /// The card used to guess ("deleted or moved") at a state the app can
+    /// often name. A move is followed live (`NoteWatcher`), so a window reaches
+    /// this screen because the file went, and when the app watched it go it
+    /// knows the Trash is where.
+    func testAFileInTheTrashShouldBeNamedRatherThanGuessedAt() {
+        let state = shown(unsaved: false, inTrash: true).stateForMeasurement
+        XCTAssertEqual(state.heading, "This file is in the Trash")
+        XCTAssertFalse(state.body.contains("deleted or moved"), state.body)
+    }
+
+    /// The case that used to offer no way back to the file at all: it is in
+    /// the Trash, nothing is unsaved, and the card's only options were to
+    /// abandon it. Put It Back is a real restore, and it is the whole answer
+    /// here.
+    func testWithNothingUnsavedAndTheFileInTheTrashItShouldOfferToFetchIt() {
+        let state = shown(unsaved: false, inTrash: true).stateForMeasurement
+        XCTAssertEqual(state.buttons, ["Put It Back", "New Note", "Open Recent…"])
+    }
+
+    /// Both offers, because they are different promises and they compose: put
+    /// the file back, then save over it, and neither copy is lost.
+    func testWithUnsavedTextAndTheFileInTheTrashItShouldOfferBoth() {
+        let state = shown(unsaved: true, inTrash: true).stateForMeasurement
+        XCTAssertEqual(state.buttons,
+                       ["Put It Back", "Save It Back", "Discard and Start New", "Open Recent…"])
+        XCTAssertTrue(state.body.contains("not saved anywhere else"), state.body)
+    }
+
+    /// With nowhere to put it back FROM, the button is absent rather than
+    /// disabled: a control that cannot act is a question the reader has to
+    /// answer about their own file system.
+    func testWithNoKnownTrashPathThereShouldBeNoPutItBackButton() {
+        for unsaved in [true, false] {
+            let state = shown(unsaved: unsaved, inTrash: false).stateForMeasurement
+            XCTAssertFalse(state.buttons.contains("Put It Back"), "unsaved=\(unsaved)")
+            XCTAssertEqual(state.heading, "This file can't be found")
+        }
+    }
+
+    /// The trashed-and-nothing-unsaved card says one thing once. A body
+    /// repeating the heading is a sentence nobody reads twice, and the card is
+    /// sized from what it says, so an empty one would leave a gap.
+    func testTheTrashedCardWithNothingAtStakeShouldNotRepeatItsHeading() {
+        XCTAssertEqual(shown(unsaved: false, inTrash: true).stateForMeasurement.body, "")
     }
 
     func testAHiddenScreenShouldTakeNoClicksAtAll() {

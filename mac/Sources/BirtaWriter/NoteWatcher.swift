@@ -24,7 +24,12 @@ final class NoteWatcher: NSObject {
     /// The file moved, and it is the same file: rebind and follow it.
     var onMoved: ((URL) -> Void)?
     /// The file is gone. Stop writing and say so.
-    var onDeleted: (() -> Void)?
+    ///
+    /// The argument is where it went, when that is known: a trashed file is
+    /// still on the disk at a path macOS just handed over, and putting it back
+    /// is the only real restore this app can offer. Nil for a delete reported
+    /// with no destination, which is an outright unlink or an emptied Trash.
+    var onDeleted: ((URL?) -> Void)?
 
     private final class Presenter: NSObject, NSFilePresenter {
         var presentedItemURL: URL?
@@ -40,7 +45,7 @@ final class NoteWatcher: NSObject {
             return queue
         }()
         var onMove: ((URL) -> Void)?
-        var onDelete: (() -> Void)?
+        var onDelete: ((URL?) -> Void)?
 
         func presentedItemDidMove(to newURL: URL) {
             // `NSFilePresenter`'s contract: the presented URL follows the item,
@@ -48,7 +53,7 @@ final class NoteWatcher: NSObject {
             presentedItemURL = newURL
             switch FileMove.classify(movedTo: newURL) {
             case .followed(let url): onMove?(url)
-            case .deleted: onDelete?()
+            case .deleted(let trashed): onDelete?(trashed)
             }
         }
 
@@ -58,7 +63,7 @@ final class NoteWatcher: NSObject {
         /// waiting on it blocks whoever asked for the deletion, which is
         /// usually Finder.
         func accommodatePresentedItemDeletion(completionHandler: @escaping (Error?) -> Void) {
-            onDelete?()
+            onDelete?(nil)
             completionHandler(nil)
         }
     }
@@ -76,8 +81,8 @@ final class NoteWatcher: NSObject {
         presenter.onMove = { [weak self] moved in
             Task { @MainActor in self?.onMoved?(moved) }
         }
-        presenter.onDelete = { [weak self] in
-            Task { @MainActor in self?.onDeleted?() }
+        presenter.onDelete = { [weak self] trashed in
+            Task { @MainActor in self?.onDeleted?(trashed) }
         }
         NSFileCoordinator.addFilePresenter(presenter)
         self.presenter = presenter

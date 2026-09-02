@@ -11,6 +11,7 @@ import { hostArranges } from "../../../shared/hostProfile";
 import { commandAvailable } from "../../../shared/commandAvailability";
 import type { EventManager } from "@/eventManager";
 import { onOutsideClick } from "@/ui/outsideClick";
+import { claimExclusiveChrome, releaseExclusiveChrome } from "@/ui/exclusiveChrome";
 import {
     getTopbarBottom,
     scrollElementBelowTopbar,
@@ -1339,6 +1340,17 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
     let flyoutOpen = false;
     let flyoutHideTimer: ReturnType<typeof setTimeout> | null = null;
     let flyoutCleanupTimer: ReturnType<typeof setTimeout> | null = null;
+    /**
+     * The flyout's identity in the one-transient-surface-at-a-time set
+     * (`ui/exclusiveChrome.ts`): coming out takes down any toolbar dropdown,
+     * and a dropdown opening retracts this.
+     *
+     * The FLYOUT alone, never the docked drawer. The drawer is a panel the
+     * reader has opened and is entitled to keep; sweeping it away when a menu
+     * opened would be reading the rule as being about panels rather than about
+     * menus.
+     */
+    const exclusiveFlyout = Symbol("toc flyout");
     // Must match the exit transition in toc.css (.toc-panel--flyout).
     const FLYOUT_EXIT_MS = 150;
     // Standard flyout width — a fixed dropdown width, independent of the docked
@@ -1384,6 +1396,11 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
      *  the dock-open path) and restore the docked drawer's CSS positioning. */
     function teardownFlyout(): void {
         cancelFlyoutCleanup();
+        // Released HERE rather than in `hideFlyout`, because the box is still
+        // on screen through the exit transition and every path that removes it
+        // for good arrives here: the fade-out, the dock-open, and a live
+        // visibility change.
+        releaseExclusiveChrome(exclusiveFlyout);
         // A flyout that retracts with the keyboard inside it (Tab moved focus
         // in; the reveal tab's blur timer still fires) must not strand focus
         // on a hidden box. Skipped when the teardown is the dock-open path,
@@ -1412,6 +1429,11 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         // The flyout shows the ToC itself, so the tab's "Show table of contents"
         // tooltip is redundant (and would overlap the panel) — dismiss it.
         hideTooltip();
+        // ...and any toolbar dropdown, for the same reason one level up: two
+        // transient surfaces out at once is the editor answering "what else is
+        // here" twice. `hideFlyout` is the dismissal, not `teardownFlyout`,
+        // so being swept looks exactly like retracting on its own.
+        claimExclusiveChrome(exclusiveFlyout, panel, hideFlyout);
         renderActiveView();
         // Enter with transitions SUPPRESSED (--flyout-enter): the closed drawer's
         // transform is translateX(±100%), and animating straight to the flyout's

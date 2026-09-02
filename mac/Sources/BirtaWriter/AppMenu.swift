@@ -776,7 +776,14 @@ enum AppMenu {
                 // for the titlebar button, which has no submenu to open.
                 item.action = nil
                 item.target = nil
-                item.submenu = RecentsMenu()
+                // Asked of the TARGET rather than built here, because the menu
+                // needs to know which window is asking and this table knows
+                // nothing about windows. A target that cannot answer gets the
+                // menu as it was, which is the one-window app: `AppMenuTests`
+                // and `FormatMenuSyntaxTests` build these menus with a test
+                // case as the target and have no window set to offer.
+                item.submenu = (target as? RecentsMenuProviding)?.makeRecentsMenu()
+                    ?? RecentsMenu()
             } else if case .submenu = row.action {
                 let sub = NSMenu(title: row.title)
                 fill(sub, with: Self.rows.filter { $0.menu == menu && $0.submenu == row.title },

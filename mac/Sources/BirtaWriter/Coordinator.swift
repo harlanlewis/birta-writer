@@ -128,6 +128,11 @@ final class Coordinator {
     /// which way it went.
     var onOpenRequest: ((URL) -> Int)?
 
+    /// Ask the app for the recents menu. Which files the OTHER windows hold is
+    /// a fact about the set, so a window can only ask; the missing-file card's
+    /// Open Recent button is the one control here that raises it.
+    var makeRecentsMenu: (() -> RecentsMenu)?
+
     /// Re-register the summon key after the recorder on the first-run screen
     /// has changed it. The key is one registration for the process, so this
     /// window can only ask.
@@ -189,6 +194,26 @@ final class Coordinator {
     /// document path) rather than re-showing `latest` (a remount after the
     /// content process died).
     private var reloadFromDisk = true
+    /// The file the last page this window built was handed, so the next one can
+    /// say whether it is REMOUNTING that file or OPENING another.
+    ///
+    /// Nil until the first page is built, which makes a launch an open: the
+    /// window has not shown this file yet, and the reader is arriving at it
+    /// rather than coming back to it. That is deliberate and is the case the
+    /// scroll rule was reported for.
+    ///
+    /// The FILE decides it, not `reloadFromDisk`, which looks like the same
+    /// question and is not: a settings change sets that flag too, so it is true
+    /// both for a reload that moved this window onto another note and for one
+    /// that changed nothing about which file is on screen. Comparing the file
+    /// separates those, and separates them the way a reader would describe
+    /// what happened.
+    private var lastMountedURL: URL?
+    /// The remembered view state as the page currently loading was given it,
+    /// which is `ViewStateOnOpen`'s answer for that load rather than what
+    /// `Prefs` holds. Held because two doors hand it over and both must hand
+    /// over the same thing; `loadPage` says why.
+    private var mountedViewStateJSON: String?
     /// False until the bound file has been read once; nothing is written before.
     private var hasLoaded = false
     /// True while the bound file is THERE and could not be read: evicted by
@@ -209,6 +234,16 @@ final class Coordinator {
     /// has never been written. Set by a successful read and by a successful
     /// write; cleared with the binding, since it is a fact about one path.
     private var everSeenOnDisk = false
+
+    /// Where the bound file went when it was trashed, so it can be put back.
+    ///
+    /// Set only by the delete the app WATCHED, so a file already gone at launch,
+    /// or trashed while this app was not running, arrives with nowhere to
+    /// point. A path into the Trash also goes stale on its own, because the
+    /// Trash can be emptied and the file can be put back from the Finder, which
+    /// is why the card asks whether it is still there rather than trusting that
+    /// this is set.
+    private var trashedAt: URL?
 
     /// The bound file is gone, so nothing may be written to its path.
     ///
@@ -412,7 +447,10 @@ final class Coordinator {
             self.menuState = MenuState(proofreadOptions: Prefs.proofreadOptions,
                                        noteHighlight: Prefs.noteHighlight,
                                        tocShown: Prefs.tocVisibility == "shown")
-            return Prefs.bootConfig(viewStateFor: self.boundURL)
+            // The view state is the load's, not the file's: `loadPage` has
+            // already decided whether this page is opening a file or
+            // remounting one, and that decision is what seeds the shim.
+            return Prefs.bootConfig(viewState: self.mountedViewStateJSON)
         }
         host.onMessage = { [weak self] m in self?.handle(m) }
         host.onProcessTerminated = { [weak self] in self?.contentProcessDied() }
@@ -433,9 +471,14 @@ final class Coordinator {
         // edge and the page knows nothing about it.
         contentView.addSubview(missingFileScreen)
         missingFileScreen.onSaveItBack = { [weak self] in self?.saveMissingNoteBack() }
+        missingFileScreen.onPutItBack = { [weak self] in self?.putMissingNoteBack() }
         missingFileScreen.onOpenRecent = { [weak self] anchor in
-            guard self != nil else { return }
-            RecentsMenu().popUp(
+            guard let self else { return }
+            // The APP's menu, not one built here. Which files the other windows
+            // hold is a fact about the set, and a window that answered it from
+            // what it can see would offer this card's own dead file back as
+            // somewhere to go.
+            (self.makeRecentsMenu?() ?? RecentsMenu()).popUp(
                 positioning: nil,
                 at: RecentsMenu.popUpOrigin(in: anchor.bounds, isFlipped: anchor.isFlipped),
                 in: anchor)
@@ -478,7 +521,7 @@ final class Coordinator {
         ])
         contentView.onHoverChange = { [weak self] _ in self?.applyChromeVisibility() }
         watcher.onMoved = { [weak self] url in self?.noteMovedOnDisk(to: url) }
-        watcher.onDeleted = { [weak self] in self?.noteDeletedOnDisk() }
+        watcher.onDeleted = { [weak self] trashed in self?.noteDeletedOnDisk(trashedTo: trashed) }
         startWatching()
         contentView.onLayout = { [weak self] in
             MainActor.assumeIsolated {
@@ -682,6 +725,24 @@ final class Coordinator {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
                     self?.host.reportTooltip { line in
                         MainActor.assumeIsolated { self?.measure.trace("hovertooltip \(line)") }
+                    }
+                }
+                return
+            }
+            // Where the document sits, and how big the window drawing it is.
+            //
+            // The pair, because neither half answers on its own: an offset is
+            // judged against the room there was to scroll, and "the window
+            // opens smaller than its contents" is a claim about the window
+            // rather than about the page. Both are read at the moment the
+            // message arrives, so a script decides when to ask.
+            if obj["type"] as? String == "__birtaScroll" {
+                measure.mark("debug-scroll")
+                let frame = panel.frame
+                host.reportScroll { [weak self] line in
+                    MainActor.assumeIsolated {
+                        self?.measure.trace("scroll \(line)"
+                            + " panelW=\(Int(frame.width)) panelH=\(Int(frame.height))")
                     }
                 }
                 return
@@ -919,6 +980,25 @@ final class Coordinator {
     private func loadPage() {
         state = .loading
         measure.mark("load-start")
+        // Decided HERE, before the page starts, and once. The page reads the
+        // remembered bag through two doors that must not disagree: the
+        // `acquireVsCodeApi` shim is seeded with it at document start
+        // (`Bridge.userScript`, which is what `getState` returns and therefore
+        // what the page treats as its own live memory), and `initDoc` carries
+        // it again as the host's per-file echo. Deciding at each door made the
+        // strip a no-op, because the shim's copy was merged back over the
+        // stripped one: the page's `withoutScroll` refuses the echo and cannot
+        // refuse the live bag, since the live bag is exactly what a remount is
+        // supposed to bring back.
+        //
+        // And before the page starts rather than at `ready`, because the shim
+        // is seeded at document start, which is earlier.
+        let remembered = Prefs.viewStateJSON(for: boundURL)
+        let remounting = lastMountedURL.map { FileIdentity.sameFile($0, boundURL) } ?? false
+        mountedViewStateJSON = remounting
+            ? ViewStateOnOpen.forRemount(remembered)
+            : ViewStateOnOpen.forOpen(remembered)
+        lastMountedURL = boundURL
         host.schemeHandler.networkEnabled = Prefs.networkEnabled
         host.load(themeClass: currentThemeClass())
     }
@@ -1053,7 +1133,7 @@ final class Coordinator {
             let doc = split.forPage(latest)
             host.send(.initDoc(content: doc.body, frontmatter: doc.frontmatter,
                                lineOffset: doc.lineOffset, syncVersion: guardState.version,
-                               viewStateJSON: Prefs.viewStateJSON(for: boundURL)))
+                               viewStateJSON: mountedViewStateJSON))
             state = .warm
             // A fresh page starts with its chrome shown; tell it where the
             // pointer is, and say which file it is now bound to.
@@ -2184,6 +2264,13 @@ final class Coordinator {
         isEdited = false
         refreshTitle()
         if state == .warm {
+            // The live page is now showing this file, with no page load in
+            // between, so the next one is REMOUNTING it. Without this the
+            // window would still name whatever it mounted last: a Finder
+            // rename arrives here and nowhere else, and the next settings
+            // reload would read the rename as an open and throw a reader who
+            // did nothing but rename their note back to the top of it.
+            lastMountedURL = url
             pushDocument(content, syncVersion: guardState.bumpVersion())
         }
     }
@@ -2522,6 +2609,11 @@ final class Coordinator {
         // a deletion rather than as a note never written. `writeLatest` sets
         // this for its own writes; this one bypasses it.
         everSeenOnDisk = true
+        // Whatever was remembered about this path describes a document that no
+        // longer exists there. Show Welcome can reach this on a path that has
+        // been read before, and a scroll offset or a fold anchor kept from the
+        // note the tour just replaced would be applied to the tour.
+        Prefs.setViewStateJSON(nil, for: url)
         bindTo(url, content: FirstRunNote.markdown)
     }
 
@@ -2605,7 +2697,13 @@ final class Coordinator {
     /// perverse; what actually protects the text is the offer to write it,
     /// which is on the screen doing the covering.
     private func showMissingFileScreen() {
-        missingFileScreen.show(noteMissing, hasUnsavedText: !latest.isBlank)
+        // Asked of the DISK rather than of `trashedAt` alone. The path goes
+        // stale on its own: the Trash can be emptied, and the file can be put
+        // back from the Finder while this card is on screen. A button offered
+        // on the strength of a remembered path would fail when pressed, which
+        // is the one thing a recovery control must not do.
+        missingFileScreen.show(noteMissing, hasUnsavedText: !latest.isBlank,
+                               isInTrash: trashedFileIsStillThere)
         layoutMissingFileScreen()
         applyNoteMissingToPage()
         // The cluster just changed WIDTH, which the drag strip is sized from.
@@ -2720,14 +2818,73 @@ final class Coordinator {
     /// Nothing is written and nothing is reloaded: the buffer is now the only
     /// copy of those bytes, and reading a file that is not there over the top
     /// of it is exactly the mistake `NoteRead` was added to stop.
-    private func noteDeletedOnDisk() {
+    private func noteDeletedOnDisk(trashedTo trashed: URL? = nil) {
         guard !noteMissing else { return }
+        trashedAt = trashed
         noteMissing = true
         // Traced because the absence of a file is not evidence on its own: a
         // check that deletes the note and finds it still gone passes whether
         // the write was REFUSED or never attempted, and those are different
         // programs. This says the refusal happened.
         if measure.enabled { measure.trace("noteMissing at=\(boundURL.lastPathComponent)") }
+    }
+
+    /// Whether there is a trashed file to fetch, right now.
+    private var trashedFileIsStillThere: Bool {
+        guard let trashedAt else { return false }
+        return FileManager.default.fileExists(atPath: trashedAt.path)
+    }
+
+    /// Move the file out of the Trash, back to where it was.
+    ///
+    /// The only RESTORE this app can offer, and the difference from Save It
+    /// Back is the whole reason both buttons exist: this returns the file's own
+    /// bytes, and that one writes the buffer.
+    ///
+    /// `moveItem` rather than a read and a write, and that is not tidiness. A
+    /// copy would leave the original in the Trash, so the next empty would take
+    /// a file the reader has been told is back; and reading the bytes to write
+    /// them again turns a rename into a re-encoding, which is a way to lose
+    /// something on a file this app never had a reason to parse.
+    ///
+    /// The buffer is untouched. It may be ahead of the file that has just come
+    /// back, which is the state the title bar already has a word for, and
+    /// silently writing over the recovered file with it would undo the restore
+    /// in the same gesture that performed it. Save It Back is still there for
+    /// somebody who wants that, and now says what it does.
+    private func putMissingNoteBack() {
+        guard let trashedAt else { return }
+        do {
+            try FileManager.default.createDirectory(
+                at: boundURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try FileManager.default.moveItem(at: trashedAt, to: boundURL)
+        } catch {
+            NSLog("Birta Writer: could not put \(trashedAt.path) back: \(error)")
+            // The card stays up, because nothing has changed: the file is still
+            // gone from where the window is looking. The likely reasons are
+            // ones a reader can act on, and none is worth a dialog.
+            statusOverlay.flash("Could not put \(boundURL.lastPathComponent) back.")
+            // ...but the card is drawn again, because the offer may have gone
+            // stale under it. The Trash can be emptied while this screen is on
+            // screen, and nothing re-renders on that: `showMissingFileScreen`
+            // asks the disk again, so a button that just failed because its
+            // file is no longer there stops being offered. A control that goes
+            // on inviting a press that cannot work is worse than one that
+            // leaves.
+            showMissingFileScreen()
+            return
+        }
+        self.trashedAt = nil
+        noteMissing = false
+        everSeenOnDisk = true
+        watcher.watch(boundURL)
+        // The file is the truth again, and it is NOT necessarily the buffer:
+        // the reader may have typed since it went. `adopt` is what puts the
+        // recovered bytes on screen and would throw those away, so this
+        // deliberately does not call it, and the title goes on saying Edited
+        // until the reader decides which copy wins.
+        refreshTitle()
+        statusOverlay.flash("Put \(boundURL.lastPathComponent) back.")
     }
 
     /// Put the buffer back at the path it came from.

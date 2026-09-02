@@ -174,6 +174,37 @@ export interface MessageHandlerDeps {
     topbarTb: ToolbarController | null;
 }
 
+/**
+ * The same bag with no scroll offset in it.
+ *
+ * OPENING a file lands at the top; a VIEW coming back lands where it was left.
+ * Those are two different questions and one bag was answering both, so a file
+ * opened months later opened wherever it was last read (confirmed against the
+ * running Mac app: the same note, launched with a remembered offset of 900 and
+ * with none, opens at 900 and at 0).
+ *
+ * The seam is WHICH bag the offset is taken from, which is why this is a
+ * filter here rather than a flag the host sets. `msg.viewState` is the host's
+ * PER-FILE memory: it outlives the view, so every open would inherit it. The
+ * live bag (`getWebviewState`, VS Code's `getState`) belongs to THIS view: it
+ * survives a tab hide, a webview revival and a settings reload, and is empty
+ * for a file being opened. So the offset rides the live bag alone and the rule
+ * needs no host to declare it.
+ *
+ * Everything else in the bag is document state that SHOULD outlive the view —
+ * table widths, folds, list numbering, the formatting row — so this takes one
+ * key rather than refusing the bag.
+ *
+ * A host that wants a remount to keep its place puts the offset in the LIVE
+ * bag, which is what the Mac app's `acquireVsCodeApi` shim seeds from
+ * `viewStateJSON`; `ViewStateOnOpen` in Swift is the other half of this rule.
+ */
+function withoutScroll(bag: Record<string, unknown>): Record<string, unknown> {
+    if (!("scrollY" in bag)) { return bag; }
+    const { scrollY: _dropped, ...rest } = bag;
+    return rest;
+}
+
 // ── Message-handler factory ────────────────────────────────
 
 /** Create the message handlers. */
@@ -207,7 +238,7 @@ export function createMessageHandlers(
             // remembered. The old all-or-nothing skip did exactly that: one
             // stale key silently reverted every table width and fold.
             if (msg.viewState) {
-                setWebviewState({ ...msg.viewState, ...(getWebviewState() ?? {}) });
+                setWebviewState({ ...withoutScroll(msg.viewState), ...(getWebviewState() ?? {}) });
             }
             setBaseSyncVersion(msg.syncVersion);
             setMarkdownSource(msg.content);

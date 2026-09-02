@@ -140,6 +140,7 @@ webview/i18n/index.ts                         t() / kbd() translation functions
 webview/commandChords.ts                      THE resolver every surface asks for a printable chord; the never-guess rule
 shared/fixedChords.ts                         The chords the editor binds itself, per command: the only ones printable with no host
 webview/ui/fullscreenSurface.ts               THE fullscreen shell (grounds + control geography) every lightbox composes
+webview/ui/exclusiveChrome.ts                 One piece of transient chrome out at a time: which surfaces join, and why a working surface and a docked panel do not
 webview/ui/hoverSelection.ts                  Hover and the arrows share one menu highlight; the guard that stops a still pointer taking it back
 webview/ui/icons.ts                           SVG icons
 webview/ui/tooltip.ts                         Tooltip component
@@ -162,20 +163,22 @@ mac/scripts/install-app.sh                    Installs the built app to /Applica
 mac/scripts/menu-bar.sh                       The app's REAL menu bar, read by pid through the accessibility API; what macOS adds to a menu the app built exists nowhere else, and why System Events cannot be asked
 mac/scripts/make-icons.sh                     Regenerates AppIcon.icns and MenuBarTemplate.pdf from the SVGs in mac/Resources; outputs are committed
 mac/Sources/BirtaWriterCore/WindowTitle.swift    What a macOS window title says, with no window: whether Edited is drawn at all, and the path popup's walk
+mac/Sources/BirtaWriterCore/PanelSize.swift      How big the window opens and where it lands, decided against the screen rather than written down; the clamp lives here so it can be asked about screens this machine does not have
+mac/Sources/BirtaWriterCore/ViewStateOnOpen.swift Which remembered view state survives OPENING a file and which only survives a view coming back; the page half is `withoutScroll` in webview/messageHandlers.ts
 mac/Sources/BirtaWriter/AppMenu.swift            THE menu table: every menu built from it, the page's hostShortcuts declared from it, and why the chords are the extension's
 mac/Sources/BirtaWriterCore/MenuState.swift      What a menu row draws of the state it toggles, and why an option nobody touched reads as on
 mac/Sources/BirtaWriterCore/StyleCategories.swift  The style-check vocabulary ported for the Style Options submenu; guarded against the page's own list
 mac/Sources/BirtaWriterCore/AppKitDefaults.swift  The AppKit behaviours turned off before NSApplication exists, and why a menu bar cannot be edited after the fact
 mac/Sources/BirtaWriter/TitlebarActions.swift    New Note, Open and Open Recent as titlebar buttons; which SF Symbol each takes, and why the near alternatives are wrong
-mac/Sources/BirtaWriter/RecentsMenu.swift        The Open Recent menu, filled by itself rather than by whichever of its two surfaces raised it
+mac/Sources/BirtaWriter/RecentsMenu.swift        The Open Recent menu, filled by itself rather than by whichever of its three surfaces raised it
 mac/Sources/BirtaWriter/SpellService.swift       Spelling and grammar from NSSpellChecker: why it is sliced across run-loop turns, and why requestChecking is not usable
 mac/Sources/BirtaWriterCore/ProofreadFilter.swift  Which flagged spans are prose and which are paths or identifiers; a port of shared/proofreadFilter.ts, and why it counts in UTF-16
-mac/Sources/BirtaWriterCore/RecentFiles.swift    What the recents list keeps, where the More boundary falls, and when a row says more than a file name
+mac/Sources/BirtaWriterCore/RecentFiles.swift    What the recents list keeps, where the More boundary falls, when a row says more than a file name, and how the menu is grouped once there is more than one window
 mac/Sources/BirtaWriter/TitleBar.swift           Draws it as a leading titlebar accessory; why the label is sized from what its cell needs and centred on `bounds`, never on what it reports or was built at
 mac/Sources/BirtaWriter/TitlebarDrag.swift       Makes the band draggable where the page is not using it; why the CSS answer does not exist in WebKit
 mac/Sources/BirtaWriterCore/TitlebarBand.swift   Where that strip starts and stops, how wide the title may be drawn so a strip is still left, and what a double click on a titlebar is the user's setting to decide
 mac/Sources/BirtaWriter/TitlePopover.swift       The Name/Tags/Where popover the title opens, and why it is built rather than inherited from NSDocument
-mac/Sources/BirtaWriter/MissingFileScreen.swift  What the panel says when the bound file has gone, and the two lanes its card keeps clear so the titlebar can still name its own controls
+mac/Sources/BirtaWriter/MissingFileScreen.swift  What the panel says when the bound file has gone, why Put It Back and Save It Back are different promises, and the two lanes its card keeps clear so the titlebar can still name its own controls
 mac/Sources/BirtaWriter/StatusOverlay.swift      The transient status line: legible with no frame, so the ink is measured and the scrim is the page's own paper colour
 mac/Sources/BirtaWriterCore/ActiveBinding.swift  WHICH of the app's three file settings is in force, so a rename writes back to the one it was read from
 mac/Sources/BirtaWriterCore/Frontmatter.swift    The metadata block split off the body, host side: a port of shared/contentTransform.ts and shared/lineMap.ts, and why the block the panel holds is mirrored rather than re-read from the buffer

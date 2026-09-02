@@ -109,4 +109,108 @@ final class RecentFilesTests: XCTestCase {
         // that left the other behind would strand rows nothing draws.
         XCTAssertEqual(RecentFiles.capacity, RecentFiles.firstPage + RecentFiles.morePage)
     }
+
+    // MARK: the menu, once there can be more than one window
+
+    private let here = URL(fileURLWithPath: "/notes/here.md")
+
+    func testTheFileThisWindowIsOnShouldAppearInNeitherGroup() {
+        let menu = RecentFiles.menu(stored: urls(["/notes/here.md", "/notes/old.md"]),
+                                    openElsewhere: [], here: here, exists: all)
+        XCTAssertEqual(menu.recent.map(\.url.path), ["/notes/old.md"])
+        XCTAssertTrue(menu.elsewhere.isEmpty)
+    }
+
+    func testAFileOpenInAnotherWindowShouldBeInTheGroupAndNowhereElse() {
+        // Listed twice it would be two rows doing the same thing, with only
+        // the heading saying so.
+        let two = URL(fileURLWithPath: "/notes/two.md")
+        let menu = RecentFiles.menu(stored: urls(["/notes/two.md", "/notes/old.md"]),
+                                    openElsewhere: [two], here: here, exists: all)
+        XCTAssertEqual(menu.elsewhere.map(\.url.path), ["/notes/two.md"])
+        XCTAssertEqual(menu.recent.map(\.url.path), ["/notes/old.md"])
+    }
+
+    /// The group is what the WINDOWS hold, so a file the recents list has never
+    /// heard of is still in it. That is every file currently open in its first
+    /// window: the list records a file when the window rebinds or closes, and
+    /// neither has happened yet.
+    func testAWindowsFileShouldBeListedEvenWhenItIsNotInTheStoredList() {
+        let two = URL(fileURLWithPath: "/notes/two.md")
+        let menu = RecentFiles.menu(stored: urls(["/notes/old.md"]),
+                                    openElsewhere: [two], here: here, exists: all)
+        XCTAssertEqual(menu.elsewhere.map(\.url.path), ["/notes/two.md"])
+    }
+
+    /// ...and existence is not asked of it. A note deleted underneath a window
+    /// leaves that window on screen showing the missing-file card, holding a
+    /// buffer that may be the only copy of the text, and a group that dropped
+    /// it would offer no way back to that window.
+    func testAWindowWhoseFileHasGoneShouldStillBeAWayBackToIt() {
+        let gone = URL(fileURLWithPath: "/notes/gone.md")
+        let menu = RecentFiles.menu(stored: urls(["/notes/old.md"]),
+                                    openElsewhere: [gone], here: here,
+                                    exists: { $0.lastPathComponent != "gone.md" })
+        XCTAssertEqual(menu.elsewhere.map(\.url.path), ["/notes/gone.md"])
+        XCTAssertEqual(menu.recent.map(\.url.path), ["/notes/old.md"],
+                       "the stored list is still filtered, which is the difference")
+    }
+
+    /// Titles are decided across BOTH groups at once. Two notes called the same
+    /// thing, one open in another window and one merely recent, are exactly the
+    /// collision the folder suffix exists for, and two lists disambiguated
+    /// separately would each conclude its own name was unique.
+    func testANameThatCollidesACROSSTheTwoGroupsShouldStillCarryItsFolder() {
+        let open = URL(fileURLWithPath: "/work/notes.md")
+        let menu = RecentFiles.menu(stored: urls(["/home/notes.md"]),
+                                    openElsewhere: [open], here: here, exists: all)
+        XCTAssertEqual(menu.elsewhere.map(\.title), ["notes.md (work)"])
+        XCTAssertEqual(menu.recent.map(\.title), ["notes.md (home)"])
+    }
+
+    func testANameThatIsUniqueAcrossBothGroupsShouldStayJustAName() {
+        let open = URL(fileURLWithPath: "/work/two.md")
+        let menu = RecentFiles.menu(stored: urls(["/home/one.md"]),
+                                    openElsewhere: [open], here: here, exists: all)
+        XCTAssertEqual(menu.elsewhere.map(\.title), ["two.md"])
+        XCTAssertEqual(menu.recent.map(\.title), ["one.md"])
+    }
+
+    func testTheGroupShouldKeepTheOrderItWasGiven() {
+        // Most recently fronted first is the caller's ordering; what this holds
+        // is that nothing here re-sorts it.
+        let two = URL(fileURLWithPath: "/notes/two.md")
+        let three = URL(fileURLWithPath: "/notes/three.md")
+        let menu = RecentFiles.menu(stored: [], openElsewhere: [two, three],
+                                    here: here, exists: all)
+        XCTAssertEqual(menu.elsewhere.map(\.url.path), ["/notes/two.md", "/notes/three.md"])
+    }
+
+    /// Two windows cannot hold one file (`WindowSet.openDocument` refuses it),
+    /// but a caller assembling this list is not the place to rely on that.
+    func testAFileNamedTwiceInTheGroupShouldAppearOnce() {
+        let two = URL(fileURLWithPath: "/notes/two.md")
+        let alias = URL(fileURLWithPath: "/notes/./two.md")
+        let menu = RecentFiles.menu(stored: [], openElsewhere: [two, alias],
+                                    here: here, exists: all)
+        XCTAssertEqual(menu.elsewhere.count, 1)
+    }
+
+    func testAMenuIsEmptyOnlyWhenBOTHGroupsAre() {
+        // What the "No Recent Files" row is for. Asked of both, so it never
+        // appears under a group of windows saying there is nothing here.
+        XCTAssertTrue(RecentFiles.menu(stored: [], openElsewhere: [], here: here, exists: all).isEmpty)
+        XCTAssertFalse(RecentFiles.menu(stored: [], openElsewhere: [URL(fileURLWithPath: "/n/two.md")],
+                                        here: here, exists: all).isEmpty)
+        XCTAssertFalse(RecentFiles.menu(stored: urls(["/n/old.md"]), openElsewhere: [],
+                                        here: here, exists: all).isEmpty)
+    }
+
+    /// A window on no file at all is a real state, and the menu is then simply
+    /// the list.
+    func testAWindowOnNothingShouldExcludeNothing() {
+        let menu = RecentFiles.menu(stored: urls(["/notes/a.md", "/notes/b.md"]),
+                                    openElsewhere: [], here: nil, exists: all)
+        XCTAssertEqual(menu.recent.count, 2)
+    }
 }

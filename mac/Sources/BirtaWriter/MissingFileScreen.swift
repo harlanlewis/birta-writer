@@ -2,11 +2,38 @@ import AppKit
 
 /// The panel, given over to saying the file is gone and offering the ways out.
 ///
-///     This file can't be found
-///     It may have been deleted or moved. What you were writing is
-///     still on screen and is not saved anywhere else.
+///     This file is in the Trash
+///     What you were writing is still on screen, and is not saved
+///     anywhere else.
 ///
-///     [Save It Back]  [Discard and Start New]  [Open Recent…]
+///     [Put It Back]  [Save It Back]  [Discard and Start New]  [Open Recent…]
+///
+/// ## Put It Back and Save It Back are different promises
+///
+/// They read alike and they are not alike, which is why both can be on the
+/// card at once and neither is named for the other.
+///
+/// Put It Back is a RESTORE, and the only one this app is in a position to
+/// offer. A trashed file is still on the disk, unchanged, at a path macOS
+/// handed over when it told this window the note had gone
+/// (`BirtaWriterCore.FileMove`), so moving it back returns the file as it was.
+/// It is macOS's own word for this gesture, from the Finder, and it means the
+/// same thing here.
+///
+/// Save It Back is not a restore and must never be called one. It writes what
+/// is ON SCREEN to the path the file came from, which is a different set of
+/// bytes whenever anything was unsaved, and the app holds no other copy of the
+/// file to restore FROM. Naming it Restore would claim a provenance nothing
+/// here has: the reader would be told their file was recovered while being
+/// handed their own buffer.
+///
+/// So the card offers whichever are true. With the file in the Trash and
+/// nothing unsaved, Put It Back is the whole answer, and that case used to
+/// offer no way back to the file at all. With unsaved text as well, both are
+/// live and they compose: put the file back, then save over it, and neither
+/// copy is lost. With nowhere to put it back FROM, the button is absent rather
+/// than disabled, because a control that cannot act is a question the reader
+/// has to answer about their own file system.
 ///
 /// A CARD in the middle of the window, rather than a strip along the bottom
 /// edge, and rather than the opaque full-bleed screen it was between them.
@@ -42,6 +69,8 @@ import AppKit
 /// controls.
 @MainActor
 final class MissingFileScreen: NSView {
+    /// Move the file out of the Trash, back to the path it came from.
+    var onPutItBack: (() -> Void)?
     /// Write the buffer back to the path it came from, recreating the file.
     var onSaveItBack: (() -> Void)?
     /// Throw the buffer away and start a fresh note.
@@ -51,6 +80,7 @@ final class MissingFileScreen: NSView {
 
     private let heading = NSTextField(labelWithString: "")
     private let body = NSTextField(labelWithString: "")
+    private let putBackButton = NSButton(title: "Put It Back", target: nil, action: nil)
     private let saveButton = NSButton(title: "Save It Back", target: nil, action: nil)
     private let newButton = NSButton(title: "", target: nil, action: nil)
     private let recentButton = NSButton(title: "Open Recent…", target: nil, action: nil)
@@ -147,10 +177,11 @@ final class MissingFileScreen: NSView {
         body.usesSingleLineMode = false
         body.lineBreakMode = .byWordWrapping
 
-        for button in [saveButton, newButton, recentButton] {
+        for button in [putBackButton, saveButton, newButton, recentButton] {
             button.bezelStyle = .rounded
             button.target = self
         }
+        putBackButton.action = #selector(putItBack)
         saveButton.action = #selector(saveItBack)
         newButton.action = #selector(newNote)
         recentButton.action = #selector(openRecent)
@@ -162,7 +193,10 @@ final class MissingFileScreen: NSView {
         // when the buffer is the only copy of the text, which makes it the
         // worst place in the app to take a key away.
 
-        let buttons = NSStackView(views: [saveButton, newButton, recentButton])
+        // Recovery first, then the ways of leaving the file behind. A row read
+        // left to right is read as least to most costly, and putting the file
+        // back costs nothing at all.
+        let buttons = NSStackView(views: [putBackButton, saveButton, newButton, recentButton])
         buttons.orientation = .horizontal
         buttons.spacing = 12
 
@@ -174,7 +208,7 @@ final class MissingFileScreen: NSView {
         // stays neatly inside both lanes saying nothing legible. Raised so the
         // card runs past the status corner instead, which is the outcome the
         // priorities on those constraints are ranked to produce.
-        for view in [heading, body, buttons] {
+        for view in [heading, body, buttons] as [NSView] {
             view.setContentCompressionResistancePriority(.required, for: .vertical)
         }
         stack.orientation = .vertical
@@ -263,13 +297,26 @@ final class MissingFileScreen: NSView {
     /// neither belongs: an offer to save an empty buffer writes an empty file,
     /// and a warning about discarding nothing is a warning people learn to
     /// click through.
-    func show(_ shown: Bool, hasUnsavedText: Bool = false) {
+    func show(_ shown: Bool, hasUnsavedText: Bool = false, isInTrash: Bool = false) {
         isHidden = !shown
         guard shown else { return }
-        heading.stringValue = "This file can't be found"
-        body.stringValue = hasUnsavedText
-            ? "It may have been deleted or moved. What you were writing is still on screen, and is not saved anywhere else."
-            : "It may have been deleted or moved."
+        // What is KNOWN, rather than the two guesses. "It may have been deleted
+        // or moved" was a hedge covering a case the app already handles: a move
+        // is followed live (`NoteWatcher`), so a window only reaches this screen
+        // because the file went, and when the app watched it go it knows the
+        // Trash is where. Naming that is what makes the Put It Back button
+        // legible, and it turns a card that guesses into one that reports.
+        heading.stringValue = isInTrash ? "This file is in the Trash" : "This file can't be found"
+        let where_ = isInTrash ? "" : "It may have been deleted or moved."
+        let risk = "What you were writing is still on screen, and is not saved anywhere else."
+        body.stringValue = [where_, hasUnsavedText ? risk : ""]
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
+        // With the file in the Trash and nothing unsaved, the whole card is
+        // the offer to fetch it, and a body repeating the heading would be a
+        // sentence nobody needs to read twice.
+        body.isHidden = body.stringValue.isEmpty
+        putBackButton.isHidden = !isInTrash
         saveButton.isHidden = !hasUnsavedText
         // Named for what it COSTS when there is a cost, and for what it makes
         // when there is not. A button called New Note beside unsaved text is a
@@ -301,15 +348,15 @@ final class MissingFileScreen: NSView {
     /// wrong three is the failure a count cannot see.
     var stateForMeasurement: (heading: String, body: String, buttons: [String]) {
         (heading.stringValue,
-         body.stringValue,
-         [saveButton, newButton, recentButton].filter { !$0.isHidden }.map(\.title))
+         body.isHidden ? "" : body.stringValue,
+         [putBackButton, saveButton, newButton, recentButton].filter { !$0.isHidden }.map(\.title))
     }
 
     /// One of the buttons by the title it is showing, so a check can press
     /// what a reader would press rather than reach for a stored property and
     /// press something that is not on screen.
     func buttonForMeasurement(titled title: String) -> NSButton? {
-        [saveButton, newButton, recentButton].first { !$0.isHidden && $0.title == title }
+        [putBackButton, saveButton, newButton, recentButton].first { !$0.isHidden && $0.title == title }
     }
 
     /// Whether each line of the card has room for what it says, for a check
@@ -346,6 +393,7 @@ final class MissingFileScreen: NSView {
         }
     }
 
+    @objc private func putItBack() { onPutItBack?() }
     @objc private func saveItBack() { onSaveItBack?() }
     @objc private func newNote() { onDiscardAndStartNew?() }
     @objc private func openRecent() { onOpenRecent?(recentButton) }

@@ -71,20 +71,126 @@ public enum RecentFiles {
     /// the moment its owner is least able to notice.
     public static func rows(from stored: [URL],
                             exists: (URL) -> Bool = { FileManager.default.fileExists(atPath: $0.path) }) -> [Row] {
-        let live = stored.filter(exists).prefix(capacity)
-        var counts: [String: Int] = [:]
-        for url in live { counts[url.lastPathComponent, default: 0] += 1 }
-        return live.map { url in
-            let name = url.lastPathComponent
-            guard counts[name, default: 0] > 1 else { return Row(url: url, title: name) }
-            let folder = url.deletingLastPathComponent().lastPathComponent
-            return Row(url: url, title: folder.isEmpty ? name : "\(name) (\(folder))")
-        }
+        titling(Array(stored.filter(exists).prefix(capacity)))
     }
 
     /// The rows split into the menu's own and More's. `more` is empty whenever
     /// everything fits, which is what tells a caller not to draw More at all.
     public static func pages(_ rows: [Row]) -> (first: [Row], more: [Row]) {
         (Array(rows.prefix(firstPage)), Array(rows.dropFirst(firstPage)))
+    }
+
+    /// The whole menu, once there can be more than one window.
+    ///
+    /// The list is one thing and the menu is another, and the difference is
+    /// what a row DOES. Every row here goes to the same place
+    /// (`WindowSet.openDocument`), which already brings a file's window forward
+    /// rather than opening a second one over it, so the grouping is not about
+    /// wiring: it is about what the reader is choosing between. Two of these
+    /// rows switch windows and the rest open files, and a flat list said
+    /// neither.
+    ///
+    ///     Open in Other Windows
+    ///       Meeting.md            ← switches to that window
+    ///       Draft.md
+    ///     ─────────
+    ///       Notes.md              ← opens the file
+    ///       …
+    ///
+    /// Three rules, and each is a claim about what the reader is looking at.
+    ///
+    /// The file THIS window is on is not offered at all, in either group. It
+    /// used to be listed with a checkmark, which is what a macOS menu does for
+    /// the row you are already on, and that reading does not survive several
+    /// windows: the mark answered "is this the app's active file" using an
+    /// app-wide setting, so with two windows open it could tick a row in the
+    /// wrong window's menu. The menu is a list of places to go, and where you
+    /// already are is not one of them.
+    ///
+    /// A file open in ANOTHER window appears once, in the group, and never
+    /// again below. Listed twice it would be two rows doing the same thing,
+    /// with only the group heading saying so.
+    ///
+    /// The group is built from the WINDOWS rather than filtered out of the
+    /// recents list, and existence is not asked of it. A window is a place to
+    /// go whatever has happened to its file: a note deleted underneath a window
+    /// leaves that window on screen showing the missing-file card, and a group
+    /// that dropped it would offer no way back to a buffer that may be the only
+    /// copy of the text. It also covers the file that has not joined the
+    /// recents list yet, which is every file currently open in its first
+    /// window.
+    public struct Menu: Equatable {
+        /// Open in other windows, most recently fronted first. Empty with one
+        /// window, which is what tells a caller to draw no group and no
+        /// divider.
+        public let elsewhere: [Row]
+        /// Everything else the list remembers, in recency order.
+        public let recent: [Row]
+
+        /// Whether the menu has nothing to offer at all.
+        ///
+        /// What the "No Recent Files" row is for, and it is asked of BOTH
+        /// groups. That row exists so an empty menu reads as an empty list
+        /// rather than as rows that failed to load, and a menu already showing
+        /// a group of windows is in no danger of being read that way: putting
+        /// the row there as well would say there is nothing here directly
+        /// underneath something.
+        public var isEmpty: Bool { elsewhere.isEmpty && recent.isEmpty }
+
+        public init(elsewhere: [Row], recent: [Row]) {
+            self.elsewhere = elsewhere
+            self.recent = recent
+        }
+    }
+
+    /// Build that menu.
+    ///
+    /// - Parameters:
+    ///   - stored: the remembered list, newest first.
+    ///   - openElsewhere: the files open in OTHER windows, most recently
+    ///     fronted first. The caller has already left this window's own file
+    ///     out, because only it knows which window raised the menu.
+    ///   - here: the file this window is on, or nil when it is on none.
+    ///   - exists: asked of the remembered list alone; see the type's note on
+    ///     why the group is not filtered.
+    ///
+    /// Titles are decided across BOTH groups at once, which is why this cannot
+    /// be two calls to `rows`. Two notes called the same thing, one open in
+    /// another window and one merely recent, are exactly the collision the
+    /// folder suffix exists for, and two lists disambiguated separately would
+    /// each conclude its own name was unique.
+    public static func menu(stored: [URL],
+                            openElsewhere: [URL],
+                            here: URL?,
+                            exists: (URL) -> Bool = { FileManager.default.fileExists(atPath: $0.path) }) -> Menu {
+        let key = { (url: URL) in url.standardizedFileURL.path }
+        let mine = here.map(key)
+        // Deduped on the way in: the same file cannot be open in two windows
+        // (`WindowSet.openDocument` refuses it), but a caller assembling this
+        // list is not the place to rely on that.
+        var seen = Set<String>()
+        if let mine { seen.insert(mine) }
+        var group: [URL] = []
+        for url in openElsewhere where seen.insert(key(url)).inserted {
+            group.append(url)
+        }
+        let rest = stored.filter { !seen.contains(key($0)) && exists($0) }.prefix(capacity)
+        let titles = titling(group + Array(rest))
+        return Menu(elsewhere: Array(titles.prefix(group.count)),
+                    recent: Array(titles.dropFirst(group.count)))
+    }
+
+    /// `urls` as rows, with a name that appears more than once carrying its
+    /// folder. The shared half of `rows` and `menu`, so the two cannot come to
+    /// disagree about when a row says more than a file name.
+    private static func titling(_ urls: [URL]) -> [Row] {
+        var counts: [String: Int] = [:]
+        for url in urls { counts[url.lastPathComponent, default: 0] += 1 }
+        return urls.map { url in
+            let name = url.lastPathComponent
+            guard counts[name, default: 0] > 1 else { return Row(url: url, title: name) }
+            let folder = url.deletingLastPathComponent().lastPathComponent
+            return Row(url: url, title: folder.isEmpty ? name : "\(name) (\(folder))")
+        }
     }
 }

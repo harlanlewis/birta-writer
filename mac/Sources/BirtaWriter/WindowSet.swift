@@ -86,6 +86,36 @@ final class WindowSet {
 
     var isAnyVisible: Bool { windows.contains(where: \.isVisible) }
 
+    /// A recents menu that knows which window is asking.
+    ///
+    /// Built here rather than by whoever raises it, because the two facts it
+    /// needs are the SET's and not any window's: which file the window in front
+    /// is on, so that row is not offered back to somebody already reading it,
+    /// and which files the other windows hold, so those become the group at the
+    /// top. Three surfaces raise this menu (the File menu's submenu, the
+    /// titlebar's clock button, and the missing-file card), and a menu built
+    /// three times from three answers is three menus that agree today.
+    ///
+    /// Read through closures rather than captured, because a menu rebuilds
+    /// itself every time it opens and the answer changes as windows come and
+    /// go: a list captured here would be the windows as they stood when the
+    /// menu bar was created. That is the same reason `RecentsMenu` reads its
+    /// file list lazily, stated one level up.
+    ///
+    /// Most recently fronted first: `windows` is kept oldest-first, so the
+    /// window somebody was last in is the one at the end, and it is the likeliest
+    /// place they mean to go back to.
+    func recentsMenu() -> RecentsMenu {
+        RecentsMenu(current: { [weak self] in self?.key?.boundFile },
+                    openElsewhere: { [weak self] in
+                        guard let self else { return [] }
+                        let here = self.key
+                        return self.windows.reversed()
+                            .filter { $0 !== here }
+                            .map(\.boundFile)
+                    })
+    }
+
     // MARK: making windows
 
     /// Adopt a window and give it the hooks that reach back to the app.
@@ -105,6 +135,7 @@ final class WindowSet {
         }
         coordinator.onHotkeyChanged = { [weak self] in self?.registerHotkey() ?? -1 }
         coordinator.onNewWindowRequest = { [weak self] in self?.newNote() }
+        coordinator.makeRecentsMenu = { [weak self] in self?.recentsMenu() ?? RecentsMenu() }
         coordinator.onOpenRequest = { [weak self] url in
             self?.openDocument(at: url)
             return self?.windows.count ?? 0

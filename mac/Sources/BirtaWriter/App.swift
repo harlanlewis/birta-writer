@@ -5,7 +5,7 @@ import BirtaWriterCore
 /// The app: status item, main menu, and the Coordinator that ties the hotkey,
 /// the panel, the web host and the store together.
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding {
     private var statusItem: NSStatusItem?
     private var statusMenu: NSMenu!
     /// The View menu, kept so `menuNeedsUpdate` can tell it from the other two
@@ -570,11 +570,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc func menuOpenRecent(_ sender: Any?) {
         guard let view = sender as? NSView else { return }
         NSApp.activate(ignoringOtherApps: true)
-        RecentsMenu().popUp(
+        windows.recentsMenu().popUp(
             positioning: nil,
             at: RecentsMenu.popUpOrigin(in: view.bounds, isFlipped: view.isFlipped),
             in: view)
     }
+
+    /// The same menu, for the two surfaces that cannot reach `windows`
+    /// themselves: the File menu's submenu, built by `AppMenu` from a table
+    /// that knows nothing about windows, and the missing-file card, which
+    /// belongs to one window and must not answer a question about the set.
+    func makeRecentsMenu() -> RecentsMenu { windows.recentsMenu() }
 
     /// One row of that list. The file travels in `representedObject`, and the
     /// open goes through the same method the Finder's Open With reaches, so a

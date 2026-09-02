@@ -21,13 +21,13 @@ final class FileMoveTests: XCTestCase {
     /// so without this the app follows the note into the Trash and the next write
     /// puts the buffer back into a file the user threw away.
     func testAMoveIntoTheHomeTrashShouldBeADelete() {
-        XCTAssertEqual(FileMove.classify(movedTo: URL(fileURLWithPath: "/Users/x/.Trash/Note.md")),
-                       .deleted)
+        let to = URL(fileURLWithPath: "/Users/x/.Trash/Note.md")
+        XCTAssertEqual(FileMove.classify(movedTo: to), .deleted(trashedTo: to))
     }
 
     func testAMoveIntoAVolumesTrashShouldBeADelete() {
-        XCTAssertEqual(FileMove.classify(movedTo: URL(fileURLWithPath: "/Volumes/Backup/.Trashes/501/Note.md")),
-                       .deleted)
+        let to = URL(fileURLWithPath: "/Volumes/Backup/.Trashes/501/Note.md")
+        XCTAssertEqual(FileMove.classify(movedTo: to), .deleted(trashedTo: to))
     }
 
     /// A folder dragged to the Trash takes the note with it, and then the
@@ -35,8 +35,8 @@ final class FileMoveTests: XCTestCase {
     /// an ancestor says what happened, which is why the check is over every
     /// component and not over the parent.
     func testANoteInsideAFolderThrownAwayShouldBeADelete() {
-        XCTAssertEqual(FileMove.classify(movedTo: URL(fileURLWithPath: "/Users/x/.Trash/Birta Writer/Note.md")),
-                       .deleted)
+        let to = URL(fileURLWithPath: "/Users/x/.Trash/Birta Writer/Note.md")
+        XCTAssertEqual(FileMove.classify(movedTo: to), .deleted(trashedTo: to))
     }
 
     /// A folder a person named "Trash" is not the Trash, and a note filed in
@@ -52,7 +52,7 @@ final class FileMoveTests: XCTestCase {
     /// are read, or a delete spelled that way reads as an ordinary move.
     func testAPathSpelledWithDotsShouldBeStandardizedBeforeJudging() {
         let to = URL(fileURLWithPath: "/Users/x/Documents/../.Trash/Note.md")
-        XCTAssertEqual(FileMove.classify(movedTo: to), .deleted)
+        XCTAssertEqual(FileMove.classify(movedTo: to), .deleted(trashedTo: to))
     }
 
     /// A trash component at ANY depth decides it, which is the rule the
@@ -67,7 +67,8 @@ final class FileMoveTests: XCTestCase {
             "/Volumes/Backup/.Trashes/501/a/b/Note.md",
         ]
         for path in deletions {
-            XCTAssertEqual(FileMove.classify(movedTo: URL(fileURLWithPath: path)), .deleted, path)
+            let to = URL(fileURLWithPath: path)
+            XCTAssertEqual(FileMove.classify(movedTo: to), .deleted(trashedTo: to), path)
         }
         XCTAssertEqual(deletions.count, 4)
     }
