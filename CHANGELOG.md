@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+---
+
+## [2026.903.0] - 2026, September 3
+
 ### Added
 
 - Syntax targets, in `birta.syntax.sets`: pick the publishing targets you write for, and the editor offers you the formatting each of them understands. Four are shipped and all four are on, so nothing changes until you narrow them: GitHub (tables, strikethrough, task lists, footnotes, math, `> [!NOTE]` alerts, Mermaid), Obsidian (wikilinks, `==highlights==`, callouts), Pandoc (footnotes, math, `:::` fenced divs) and Birta Writer's own (calculation and SVG blocks, Notion callouts). They are independent and overlap freely, so enabling two offers the union of what they spell.

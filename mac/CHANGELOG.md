@@ -12,6 +12,10 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ## [Unreleased]
 
+---
+
+## [2026.903.0] - 2026, September 3
+
 ### Changed
 
 - A Birta Writer for Mac window opens at a size taken from the screen it opens on. The opening size was fixed, and it was small enough that a first note filled several screens of a window that used a fraction of a laptop's display. It now opens as large as the app wants and no larger, shrinking to fit a small screen and never growing past a comfortable measure on a big one. A window whose size you have set yourself is untouched, and a second window still opens at the size of the one it came from.
