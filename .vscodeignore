@@ -11,6 +11,10 @@ packages/**
 # extension has no git repository and nothing that could run it.
 .githooks/**
 pnpm-workspace.yaml
+# Dependency patches (`pnpm.patchedDependencies`). pnpm applies them at install,
+# and the bundle in dist/ already carries the patched code; an installed
+# extension never runs an install.
+patches/**
 out/**
 coverage/**
 node_modules/**

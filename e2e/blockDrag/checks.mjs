@@ -70,7 +70,14 @@ export async function run({ page, check, baseUrl }) {
         return {
             escHint: pill?.textContent?.includes("esc to cancel") ?? false,
             tooltipSuppressed: !tip || getComputedStyle(tip).display === "none",
-            editorInert: getComputedStyle(document.querySelector(".milkdown .editor")).pointerEvents === "none",
+            // The interaction shield covers the page for the drag's life, so
+            // the editor never gets a hit test: what is under the pointer
+            // is the shield, and it carries the grabbing cursor.
+            editorInert: (() => {
+                const under = document.elementFromPoint(window.innerWidth / 2, window.innerHeight / 2);
+                return !!under?.classList.contains("interaction-shield")
+                    && getComputedStyle(under).cursor === "grabbing";
+            })(),
         };
     });
     check("pill teaches esc-to-cancel; hover chrome suppressed mid-drag",

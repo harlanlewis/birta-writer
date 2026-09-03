@@ -304,4 +304,58 @@ export async function run({ page, check, baseUrl }) {
     check("flyout drag: the flyout stays open mid-drag (doesn't retract)",
         flyoutDrag.flyoutStillOpen, JSON.stringify(flyoutDrag));
     await page.mouse.up();
+    await page.waitForTimeout(300);
+
+    // ── Refile into a HIDDEN outline: a document drag hovers the reveal tab,
+    // the flyout comes out under the pointer and takes the drop targeting.
+    // The interaction shield covers the page for the drag's life, so the tab
+    // (and then the panel) have to be holes in it, or the hover never
+    // reaches the tab and this flow is silently gone. ──
+    // The flyout the parity check left out retracts on its own once the
+    // pointer leaves it (a grace period, then hideFlyout); the hide button is
+    // the drawer's toggle and would OPEN the overlay drawer here.
+    await page.mouse.move(400, 600);
+    await page.waitForTimeout(700);
+    const hiddenState = await page.evaluate(() => ({
+        flyout: document.body.classList.contains("toc-flyout-open"),
+        overlay: document.body.classList.contains("toc-overlay-open"),
+        docked: document.body.classList.contains("toc-open"),
+        tabWidth: document.querySelector(".toc-toggle-tab")?.getBoundingClientRect().width ?? 0,
+    }));
+    check("the outline is hidden and its reveal tab is on screen before the tab-hover drag",
+        !hiddenState.flyout && !hiddenState.overlay && !hiddenState.docked && hiddenState.tabWidth > 0,
+        JSON.stringify(hiddenState));
+    const loose = await markerCenter(page, ".ProseMirror > p", "loose paragraph");
+    const tab = await page.$eval(".toc-toggle-tab", (el) => {
+        const r = el.getBoundingClientRect();
+        return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+    });
+    await page.mouse.move(loose.x, loose.y);
+    await page.mouse.down();
+    await page.mouse.move(loose.x + 8, loose.y + 8); // cross the threshold
+    await page.mouse.move(tab.x, tab.y, { steps: 8 });
+    await page.waitForTimeout(450);
+    const underTab = await page.evaluate(([x, y]) => ({
+        dragging: document.body.classList.contains("block-dragging"),
+        flyoutOut: document.body.classList.contains("toc-flyout-open"),
+        // What the pointer reaches through the shield's hole at the tab.
+        under: document.elementFromPoint(x, y)?.className ?? null,
+    }), [tab.x, tab.y]);
+    check("hovering the reveal tab mid-drag flies the outline out",
+        underTab.dragging && underTab.flyoutOut, JSON.stringify(underTab));
+    const betaRow = await tocItemBox(page, "Beta");
+    await page.mouse.move(betaRow.x, betaRow.y, { steps: 6 });
+    await page.waitForTimeout(150);
+    const overRow = await page.evaluate(() => {
+        const ind = document.querySelector(".block-drag-indicator");
+        return {
+            targeting: !!document.querySelector(".toc-item--drop-into")
+                || (!!ind && getComputedStyle(ind).display !== "none"),
+            flyoutOut: document.body.classList.contains("toc-flyout-open"),
+        };
+    });
+    check("the flown-out outline takes the drop targeting for a drag that opened it",
+        overRow.targeting && overRow.flyoutOut, JSON.stringify(overRow));
+    await page.keyboard.press("Escape");
+    await page.mouse.up();
 }

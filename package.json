@@ -2746,6 +2746,7 @@
         "perf:counts": "node e2e/perf-counts.mjs",
         "perf:typing": "node e2e/perf-typing.mjs",
         "perf:scroll": "node e2e/perf-scroll.mjs",
+        "perf:gesture": "node e2e/perf-gesture.mjs",
         "perf:typing:ab": "node e2e/perf-ab.mjs --typing",
         "notices": "node esbuild.mjs --production --metafile && node scripts/generate-third-party-notices.mjs",
         "notices:check": "node esbuild.mjs --production --metafile && node scripts/generate-third-party-notices.mjs --check",
@@ -2793,6 +2794,9 @@
     "pnpm": {
         "overrides": {
             "serialize-javascript": "^7.0.5"
+        },
+        "patchedDependencies": {
+            "@milkdown/transformer@7.22.0": "patches/@milkdown__transformer@7.22.0.patch"
         }
     }
 }

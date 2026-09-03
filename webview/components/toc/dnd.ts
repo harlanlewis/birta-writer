@@ -52,6 +52,13 @@ import {
 
 export interface TocDndDeps {
     panel: HTMLElement;
+    /**
+     * The element a hidden outline flies out from when hovered, read live:
+     * the reveal tab, or under the `tocToggleInBar` arrangement the toolbar
+     * button the bar registers later (`setFlyoutTrigger`), which is why this
+     * is a getter and not the element.
+     */
+    flyoutTrigger: () => HTMLElement;
     list: HTMLElement;
     getEditorView: () => EditorView | null;
     isOpen: () => boolean;
@@ -115,6 +122,10 @@ export function initTocDnd(deps: TocDndDeps): TocDnd {
     let measured: MeasuredTocSlot[] = [];
     let intoItems = new Map<number, HTMLElement>();
     let stale = false;
+    // The last measure skipped its layout reads because the panel was hidden
+    // (a session that started with the outline closed); a panel that flies
+    // out under the pointer mid-drag has to be measured on first targeting.
+    let measuredWhileClosed = false;
 
     // Chrome this provider currently draws. The indicator line is the
     // session-wide singleton, so hide it only when THIS zone drew it.
@@ -140,6 +151,7 @@ export function initTocDnd(deps: TocDndDeps): TocDnd {
         stale = false;
         measured = [];
         intoItems = new Map();
+        measuredWhileClosed = !deps.isOpen();
         const view = sessionView;
         // A list-item drag has no legal top-level boundary, and a closed
         // panel can never contain the pointer — skip the layout reads.
@@ -207,6 +219,13 @@ export function initTocDnd(deps: TocDndDeps): TocDnd {
         // its body — wherever the drag was grabbed. The document canvas keeps
         // the literal-block scope (see the header, and drag.ts's `scope`).
         scope: "outline",
+        zoneRect() {
+            // The panel while it is out; the reveal tab while it is not, so
+            // a drag can still hover the tab and fly the outline out to drop
+            // into it (scheduleFlyoutHide holds it open mid-drag). The drag
+            // re-reads this on every move, so the hole follows the flyout.
+            return deps.isOpen() ? deps.panel.getBoundingClientRect() : deps.flyoutTrigger().getBoundingClientRect();
+        },
         contains(x, y) {
             if (!deps.isOpen()) {
                 return false;
@@ -230,7 +249,10 @@ export function initTocDnd(deps: TocDndDeps): TocDnd {
             measure();
         },
         target(_x, y, range) {
-            if (stale) {
+            // Stale after a list rebuild; and unmeasured when the panel was
+            // hidden at sessionStart and has flown out under the pointer since
+            // (the tab-hover refile).
+            if (stale || (measuredWhileClosed && deps.isOpen())) {
                 measure();
             }
             const slot = tocDropTargetFor(measured, y, range, {

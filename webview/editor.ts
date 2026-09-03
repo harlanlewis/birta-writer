@@ -754,6 +754,14 @@ function installPerfProbes(editor: Editor, markdown: string): void {
     const host = globalThis as { __perfInit?: unknown; __birtaPerf?: unknown };
     if (host.__perfInit === undefined) return;
     host.__birtaPerf = {
+        /**
+         * The live view, for a harness that watches transactions or drives
+         * the editor directly. A gesture probe wraps `dispatch` on it to
+         * attribute every transaction a keystroke or a drop provokes.
+         */
+        view(): EditorView {
+            return editor.action((ctx) => getView(ctx));
+        },
         parseSplit(): { mdast: number; pm: number; chars: number } {
             const remark = editor.action((ctx) => ctx.get(remarkCtx));
             const t0 = performance.now();

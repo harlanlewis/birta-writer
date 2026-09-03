@@ -315,6 +315,51 @@ export async function run({ page, check, baseUrl }) {
             !(await page.evaluate(() => document.querySelector(".toc-panel").classList.contains("toc-panel--flyout"))),
             "the flyout stayed up");
 
+        // Mid-drag, the same hover must still fly it out: a block dragged with
+        // the sidebar put away is refiled into it by resting on the bar's
+        // button, and the interaction shield that covers the page for the
+        // drag has to leave that button open. The trigger differs per
+        // arrangement (the reveal tab elsewhere), so this pins the bar's.
+        const grip = await page.evaluate(() => {
+            const p = [...document.querySelectorAll(".ProseMirror > p")].find((el) => el.textContent.length > 8);
+            if (!p) return null;
+            const r = p.getBoundingClientRect();
+            return { x: r.x + r.width / 2, y: r.y + Math.min(14, r.height / 2) };
+        });
+        check("mac: the fixture has a paragraph to drag", !!grip);
+        if (grip) {
+            await page.mouse.move(grip.x, grip.y);
+            await page.waitForTimeout(150);
+            const handle = await page.evaluate(() => {
+                const p = [...document.querySelectorAll(".ProseMirror > p")].find((el) => el.textContent.length > 8);
+                const marker = p?.querySelector(".heading-fold-marker");
+                if (!marker) return null;
+                const r = marker.getBoundingClientRect();
+                const cx = r.x + r.width / 2;
+                const cy = r.y + r.height / 2;
+                return { x: cx, y: cy, hit: !!document.elementFromPoint(cx, cy)?.closest(".heading-fold-marker") };
+            });
+            check("mac: the paragraph's gutter handle is under the pointer", !!handle && handle.hit, JSON.stringify(handle));
+            if (handle && handle.hit) {
+                const btn = await tocButton.boundingBox();
+                await page.mouse.move(handle.x, handle.y);
+                await page.mouse.down();
+                await page.mouse.move(handle.x + 8, handle.y + 8); // cross the drag threshold
+                await page.mouse.move(btn.x + btn.width / 2, btn.y + btn.height / 2, { steps: 8 });
+                await page.waitForTimeout(450);
+                const midDrag = await page.evaluate(() => ({
+                    dragging: document.body.classList.contains("block-dragging"),
+                    flyout: document.querySelector(".toc-panel").classList.contains("toc-panel--flyout"),
+                }));
+                check("mac: resting on the bar's button MID-DRAG flies the sidebar out too",
+                    midDrag.dragging && midDrag.flyout, JSON.stringify(midDrag));
+                await page.keyboard.press("Escape");
+                await page.mouse.up();
+                await page.mouse.move(20, 400);
+                await page.waitForTimeout(600);
+            }
+        }
+
         // A toolbar dropdown opening takes the flyout down with it, rather
         // than being drawn across a panel that is still there. Both are the
         // editor answering "what else is here", and two of them on screen at

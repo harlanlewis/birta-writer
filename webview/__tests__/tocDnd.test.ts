@@ -119,6 +119,7 @@ function initDnd(v: EditorView, dom: { panel: HTMLElement; list: HTMLElement }):
         list: dom.list,
         getEditorView: () => v,
         isOpen: () => true,
+        flyoutTrigger: () => dom.panel,
         getHeadings: () => headingsOf(v),
     });
     disposers.push(dnd.dispose);

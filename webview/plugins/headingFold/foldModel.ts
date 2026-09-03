@@ -318,6 +318,13 @@ export function cachedFoldRanges(doc: any): Map<number, HeadingFoldRange | null>
  * The content range ONE heading owns (see computeFoldRanges for the map the
  * decoration pass uses). A direct scan — the block menu / drag handle call
  * this per action, sometimes in loops, so it mustn't build the whole map.
+ *
+ * Proportional to the SECTION, not the document: the walk starts at the
+ * heading's own index and stops at the first later heading of its rank or
+ * higher, so a reader that asks about one heading per keystroke (the sticky
+ * title's fold chevron) pays that heading's section and nothing after it.
+ * A `doc.forEach` here visited every top-level block and was the one
+ * document-sized walk left on a plain keystroke.
  */
 export function findHeadingFoldRange(doc: any, headingPos: number, headingLevel?: number): HeadingFoldRange | null {
     const headingNode = doc.nodeAt(headingPos);
@@ -327,14 +334,19 @@ export function findHeadingFoldRange(doc: any, headingPos: number, headingLevel?
     const level = headingLevel ?? getHeadingLevel(headingNode);
     const from = headingPos + headingNode.nodeSize;
     let to = doc.content.size;
-    doc.forEach((node: any, offset: number) => {
-        if (offset <= headingPos || !isHeadingNode(node)) {
-            return;
-        }
-        if (getHeadingLevel(node) <= level && to === doc.content.size) {
+    // The top-level blocks after the one holding the heading (the heading
+    // itself when it is top-level; its container when it is nested), in
+    // order, until the first heading of its rank or higher.
+    const { index, offset: ownOffset } = doc.childAfter(Math.min(headingPos, doc.content.size));
+    let offset = ownOffset + (index < doc.childCount ? doc.child(index).nodeSize : 0);
+    for (let i = index + 1; i < doc.childCount; i++) {
+        const node = doc.child(i);
+        if (isHeadingNode(node) && getHeadingLevel(node) <= level) {
             to = offset;
+            break;
         }
-    });
+        offset += node.nodeSize;
+    }
     return from < to ? { from, to } : null;
 }
 

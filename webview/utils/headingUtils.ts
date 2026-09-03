@@ -193,6 +193,20 @@ export function setStickyReservedHeight(px: number): void {
 export const SAFE_AREA_CHANGE_EVENT = "birta-safe-area-change";
 
 /**
+ * A smooth scroll farther than this many viewport heights snaps instead.
+ *
+ * The scroll window that decides which blocks carry gutter chrome
+ * (plugins/visibleRange.ts) recommits every half screen the page moves, and
+ * each recommit rebuilds the chrome and rescans the proofread window. A
+ * smooth scroll across a long document moves more than a screen per frame,
+ * so a jump from the outline to a far heading ran that rebuild on every
+ * frame of the animation: dozens of transactions and a stuttering page for a
+ * scroll the eye cannot follow anyway. Within a couple of screens the
+ * animation still reads as motion and stays.
+ */
+const SMOOTH_SCROLL_MAX_SCREENS = 2;
+
+/**
  * Scroll the window so `el` sits `margin` px below the topbar (or below the
  * viewport top when the toolbar is hidden). The single place for this offset
  * math — TOC clicks, anchor links, footnote jumps, find matches, and sticky
@@ -203,8 +217,10 @@ export function scrollElementBelowTopbar(
     margin: number = 8,
     behavior: ScrollBehavior = "smooth",
 ): void {
-    const top = el.getBoundingClientRect().top + window.scrollY - getTopbarBottom() - margin;
-    window.scrollTo({ top: Math.max(0, top), behavior });
+    const top = Math.max(0, el.getBoundingClientRect().top + window.scrollY - getTopbarBottom() - margin);
+    const viewport = window.innerHeight || document.documentElement.clientHeight || 0;
+    const far = viewport > 0 && Math.abs(top - window.scrollY) > viewport * SMOOTH_SCROLL_MAX_SCREENS;
+    window.scrollTo({ top, behavior: behavior === "smooth" && far ? "auto" : behavior });
 }
 
 /**

@@ -1,0 +1,45 @@
+diff --git a/lib/index.js b/lib/index.js
+index aa0cf0da162c5e4d20568180115de410068f8da3..0b1ece90bfbbcd684fce2a37e4034ab62ab39c2b 100644
+--- a/lib/index.js
++++ b/lib/index.js
+@@ -63,11 +63,19 @@ var ParserState = class extends Stack {
+ 		this.#maybeMerge = (a, b) => {
+ 			if (this.#hasText(a) && this.#hasText(b) && Mark.sameSet(a.marks, b.marks)) return this.schema.text(a.text + b.text, a.marks);
+ 		};
++		// PATCHED (birta-writer): the candidate list is the schema's own and fixed
++		// for the life of the state, so it is built on the first node and kept.
++		// Upstream spreads both schema maps into a fresh object and reads its
++		// values for EVERY node, once per node of the tree being built. Read
++		// lazily because `this.schema` is assigned after these closures are;
++		// the serializer below is where the cost was measured.
++		let matchTargets = null;
+ 		this.#matchTarget = (node) => {
+-			const result = Object.values({
++			matchTargets ??= Object.values({
+ 				...this.schema.nodes,
+ 				...this.schema.marks
+-			}).find((x) => {
++			});
++			const result = matchTargets.find((x) => {
+ 				return x.spec.parseMarkdown.match(node);
+ 			});
+ 			if (!result) throw parserMatchError(node);
+@@ -206,11 +214,16 @@ var SerializerState = class extends Stack {
+ 	constructor(schema) {
+ 		super();
+ 		this.#openMarks = [];
++		// PATCHED (birta-writer): same as the parser's above. Every node and
++		// every mark on every text node asked for this list; on a large document
++		// building it per call was the largest single piece of a serialize.
++		let matchTargets = null;
+ 		this.#matchTarget = (node) => {
+-			const result = Object.values({
++			matchTargets ??= Object.values({
+ 				...this.schema.nodes,
+ 				...this.schema.marks
+-			}).find((x) => {
++			});
++			const result = matchTargets.find((x) => {
+ 				return x.spec.toMarkdown.match(node);
+ 			});
+ 			if (!result) throw serializerMatchError(node.type);

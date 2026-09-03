@@ -27,7 +27,7 @@ const modules = readdirSync(e2eDir)
     .concat(readdirSync(join(e2eDir, "perf")).filter((f) => f.endsWith(".mjs")).map((f) => join("perf", f)));
 
 /** The runners that must refuse to start beside another harness. */
-const LOCKED = ["run.mjs", "perf.mjs", "perf-typing.mjs", "perf-scroll.mjs", "perf-ab.mjs"];
+const LOCKED = ["run.mjs", "perf.mjs", "perf-typing.mjs", "perf-scroll.mjs", "perf-gesture.mjs", "perf-ab.mjs"];
 
 /**
  * Deliberately unlocked, each for a stated reason (AGENTS.md, "One harness at a
