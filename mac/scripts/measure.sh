@@ -31,6 +31,10 @@
 # A figure this prints is a reading, not a record: quote it from a run on an
 # idle machine, never from a doc.
 #
+# It needs the screen unlocked and awake for the whole run, which is minutes.
+# The panel has to be on screen for any of this to mean anything, and the
+# refusals below say so rather than letting the arms invent explanations.
+#
 # If you write a quick probe of your own instead of extending this: WebKit's
 # content processes are not children of the app, so SIGKILL on the app orphans
 # them, and an orphan sits there at a fraction of a core for hours. This script
@@ -42,7 +46,29 @@ set -euo pipefail
 cd "$(dirname "$0")/../.."
 
 APP="mac/build/Birta Writer.app/Contents/MacOS/BirtaWriter"
-[ -x "$APP" ] || { echo "build first: bash mac/scripts/build-app.sh" >&2; exit 1; }
+# That the app EXISTS was the only thing asked here, and existence is not the
+# question: every arm below reports on the product, so a bundle from an earlier
+# checkout makes each of them a claim about a tree nobody is looking at.
+# `build-fresh.sh` carries the hops it checks and the failure that earned it.
+bash mac/scripts/build-fresh.sh
+
+# Every check here drives a panel that has to be ON SCREEN, so a locked screen
+# is not a slower machine, it is a different one. Nothing can take activation
+# past the login window, so `WindowSet.toggle` summons on every signal instead
+# of dismissing, the panel stays up and covered, and WebKit suspends idle
+# callbacks for it. The page goes on taking keys and autosaving, which is what
+# makes the wreckage so convincing: the early arms pass, and the first ones to
+# read anything the page schedules on idle report the product broken. The
+# spelling and grammar arms are those, and they blamed `NSSpellChecker` for a
+# screen that had gone to sleep partway through the run.
+screen_is_locked() {
+    ioreg -n Root -d1 -a 2>/dev/null | grep -A1 CGSSessionScreenIsLocked | grep -q "<true/>"
+}
+if screen_is_locked; then
+    echo "the screen is locked, and these checks drive a panel that has to be" >&2
+    echo "on screen. Nothing below would be about the product. Unlock and rerun." >&2
+    exit 1
+fi
 
 # A throwaway scratchpad: the probes below type into it, and the user's real
 # one is never touched.
@@ -118,6 +144,51 @@ last() { grep "^mac-measure $1 " "$LOG" | tail -1 | awk '{print $3}'; }
 delta() { awk -v a="$1" -v b="$2" 'BEGIN { printf "%.1f", b - a }'; }
 marks() { grep -c "^mac-measure $1 " "$LOG"; }
 
+# The lint line an arm CAUSED, and a wait for it.
+#
+# The two checks below used to sleep a fixed few seconds and then read the last
+# `lint` line in the log. Both halves of that are wrong in the same way, and
+# both fail toward a verdict about the wrong subject. A sleep is a timeout a
+# loaded machine can trip, and the arm then reports the system checker broken
+# because an answer had not arrived yet. Reading the LAST line reads whatever
+# the page most recently linted, which on a slow turn is the previous arm's
+# block: the spelling arm can pass on the typing arm's clean paragraph, and the
+# grammar arm can pass on the spelling arm's misspelling.
+#
+# Newest-since-I-started is not enough either, and the reason is the show that
+# each arm begins with: a panel coming back rescans what is on screen, so the
+# first line after the count was taken can be that rescan of the document's
+# existing, correctly spelled blocks. The arm would then read spelling=0 off a
+# working checker.
+#
+# So a line is matched by the LENGTH of what the arm typed, which is the one
+# property of its own block it knows before the answer exists. The text is
+# written once and both the keys and the length come from it, so the two cannot
+# drift apart.
+#
+# The wait's bound is patience rather than a budget, and it is not a figure to
+# tune against a machine: an answer to a page that is running arrives in the
+# time one round trip takes, and an answer to a page whose idle callbacks are
+# suspended never arrives at all. Nothing useful sits between those.
+lint_count() { grep -c "^birta-trace lint " "$LOG" || true; }
+lint_for_chars() { # lint_for_chars <count-before> <chars>
+    grep "^birta-trace lint " "$LOG" | tail -n "+$(( $1 + 1 ))" | grep -m1 " chars=$2 " || true
+}
+wait_for_lint() { # wait_for_lint <count-before> <chars> <timeout-s>
+    local n=0
+    while [ -z "$(lint_for_chars "$1" "$2")" ]; do
+        sleep 0.2; n=$((n+1))
+        if [ $n -gt $(( $3 * 5 )) ]; then return 1; fi
+    done
+}
+# The characters of <text> as the elements of a `__birtaKeys` array. Only ever
+# handed plain prose, which is why nothing here escapes a quote or a backslash.
+keys_json() { # keys_json <text>
+    local s="$1" out="" i
+    for (( i = 0; i < ${#s}; i++ )); do out="$out,\"${s:i:1}\""; done
+    echo "${out:1}"
+}
+
 # SIGUSR1 toggles the panel, and a toggle is not a direction. An accessory app
 # driven from a shell frequently cannot take activation (the paste check below
 # has the same warning for its own reason), and a panel whose app never came
@@ -134,12 +205,42 @@ marks() { grep -c "^mac-measure $1 " "$LOG"; }
 # title still said Edited and the failure read exactly like the title being
 # broken.
 hide_panel() { # hide_panel <settle-seconds>
-    local before after
+    local before after again
     before=$(marks visible)
     kill -USR1 $PID; sleep "${1:-1.5}"
     after=$(marks visible)
     if [ "$after" -gt "$before" ]; then
         kill -USR1 $PID; sleep "${1:-1.5}"
+        # One correction is a toggle that went the wrong way once. A SECOND
+        # show means the toggle has no wrong way left to go: `WindowSet.toggle`
+        # dismisses only while `NSApp.isActive`, so an app that cannot come
+        # forward summons on every signal, and the panel stays up and covered
+        # for the rest of the run.
+        #
+        # Fail here rather than carry on. A covered panel is not merely a panel
+        # in the wrong state: WebKit suspends idle callbacks for a window that
+        # is not on screen, so the page goes on taking keys and autosaving
+        # while nothing it schedules on idle ever runs. The proofread rescan is
+        # one of those, which is how this arrives at the spelling and grammar
+        # arms as a system checker that answered nothing.
+        again=$(marks visible)
+        if [ "$again" -gt "$after" ]; then
+            echo "activation           FAILED: the app cannot come forward, so the panel" >&2
+            echo "  will not dismiss and every check after this one would report on a" >&2
+            echo "  panel that is up and covered. Nothing below is about the product." >&2
+            if screen_is_locked; then
+                # The preflight passed, so the screen locked DURING the run.
+                # A full pass takes minutes, which is inside the display-sleep
+                # setting on an unattended machine, so this is the ordinary way
+                # a run dies rather than an exotic one.
+                echo "  The screen locked while this was running. Unlock it, keep it" >&2
+                echo "  awake for the length of a run, and rerun." >&2
+            else
+                echo "  Run this with the machine to itself, and do not take the front" >&2
+                echo "  window while it runs." >&2
+            fi
+            exit 1
+        fi
     fi
 }
 
@@ -203,16 +304,34 @@ rm -f "$SCRATCH_DIR/.debug-message.json"
 # Typed rather than written to the file, because it is the page's own rescan
 # that posts the blocks, and that is what the round trip starts from.
 show_panel
-printf '{"type":"__birtaKeys","keys":["End","Enter","t","e","h","c","i","e","f"," ","t","e","h","c","i","e","f"]}' \
+SPELL_TEXT="tehcief tehcief"
+BEFORE="$(lint_count)"
+printf '{"type":"__birtaKeys","keys":["End","Enter",%s]}' "$(keys_json "$SPELL_TEXT")" \
     > "$SCRATCH_DIR/.debug-message.json"
-kill -URG $PID; sleep 3
+kill -URG $PID
+LINT=""
+if wait_for_lint "$BEFORE" "${#SPELL_TEXT}" 20; then
+    LINT="$(lint_for_chars "$BEFORE" "${#SPELL_TEXT}")"
+fi
 hide_panel
 rm -f "$SCRATCH_DIR/.debug-message.json"
-LINT="$(grep "^birta-trace lint " "$LOG" | tail -1 || true)"
 LINT_COUNT="$(echo "$LINT" | sed -n 's/.*spelling=\([0-9]*\).*/\1/p')"
 if [ -z "$LINT" ]; then
+    # The page never asked, which is a different failure from the checker not
+    # answering, and it is not the checker's to explain. The rescan is
+    # scheduled on an idle callback, and WebKit suspends those for a page whose
+    # window is not on screen, so an accessory app that could not take
+    # activation goes on editing (the keys land, the buffer autosaves) while
+    # nothing idle ever runs. That is the same activation hazard `show_panel`
+    # and the paste check below both carry, reaching a third arm.
     echo "spelling             FAILED: the page asked for no lints at all" >&2
-    echo "  (the capability may not be declared, or the rescan never ran)" >&2; exit 1
+    echo "  The keys land either way, so check the page ran at all before" >&2
+    echo "  suspecting the checker: no 'birta-trace lint' AND no 'message" >&2
+    echo "  ignored: wordCount' in the log means no idle pass ran, and the" >&2
+    echo "  panel was most likely covered by another application's window." >&2
+    echo "  A declaration dropped from Prefs.bootConfig hostCapabilities" >&2
+    echo "  ('spellAndGrammar') withdraws the feature the same silent way." >&2
+    exit 1
 elif [ "${LINT_COUNT:-0}" -lt 1 ]; then
     echo "spelling             FAILED: the checker answered nothing for a misspelling" >&2
     echo "  $LINT" >&2; exit 1
@@ -241,18 +360,27 @@ fi
 # checker happens not to mind. This arm covers what that one cannot, which is
 # the round trip through the page, the bridge and back.
 show_panel
-printf '{"type":"__birtaKeys","keys":["End","Enter","I"," ","h","a","s"," ","a"," ","a","p","p","l","e","."]}' \
+GRAMMAR_TEXT="I has a apple."
+BEFORE="$(lint_count)"
+printf '{"type":"__birtaKeys","keys":["End","Enter",%s]}' "$(keys_json "$GRAMMAR_TEXT")" \
     > "$SCRATCH_DIR/.debug-message.json"
-kill -URG $PID; sleep 3
+kill -URG $PID
+LINT=""
+if wait_for_lint "$BEFORE" "${#GRAMMAR_TEXT}" 20; then
+    LINT="$(lint_for_chars "$BEFORE" "${#GRAMMAR_TEXT}")"
+fi
 hide_panel
 rm -f "$SCRATCH_DIR/.debug-message.json"
-LINT="$(grep "^birta-trace lint " "$LOG" | tail -1 || true)"
 GRAMMAR_COUNT="$(echo "$LINT" | sed -n 's/.*grammar=\([0-9]*\).*/\1/p')"
 if [ -z "$GRAMMAR_COUNT" ]; then
-    echo "grammar              FAILED: the lint trace carries no grammar count" >&2
+    # Reached only when this arm's own round trip never completed, since the
+    # line is read by position rather than as whatever was last.
+    echo "grammar              FAILED: the page never linted the sentence" >&2
+    echo "  The spelling arm above passed, so the chain works; read its note" >&2
+    echo "  about the idle pass before suspecting grammar in particular." >&2
     echo "  $LINT" >&2; exit 1
 elif [ "$GRAMMAR_COUNT" -lt 1 ]; then
-    echo "grammar              FAILED: the checker objected to nothing in 'I has a apple.'," >&2
+    echo "grammar              FAILED: the checker objected to nothing in '$GRAMMAR_TEXT'," >&2
     echo "  so the Check Grammar row may promise something no reader receives." >&2
     echo "  Run SpellServiceTests first: it sweeps a corpus for a floor, so it" >&2
     echo "  separates a broken chain from a sentence this checker does not mind." >&2
