@@ -25,6 +25,7 @@ import {
 import { BlockRangeSelection } from "../plugins/blockRange";
 import { foldPluginKey } from "../plugins/headingFold";
 import { dispatchMouseGesture } from "./helpers/pointerGesture";
+import { interactionShieldShown } from "../ui/interactionShield";
 
 let editors: Editor[] = [];
 let activeEditor: Editor | null = null;
@@ -273,9 +274,14 @@ describe("drag session robustness", () => {
         mouse(m, "mousedown", { button: 0, clientX: 10, clientY: 10, buttons: 1 });
         mouse(document, "mousemove", { clientX: 30, clientY: 30, buttons: 1 }); // threshold
         expect(document.body.classList.contains("block-dragging")).toBe(true);
+        // The shield goes up with the session and comes down with it: it is
+        // what carries the cursor and keeps hover off the page, so a session
+        // that ended with it still up would leave the page inert.
+        expect(interactionShieldShown()).toBe(true);
         // Next move arrives with no button held (released off-window).
         mouse(document, "mousemove", { clientX: 32, clientY: 32, buttons: 0 });
         expect(document.body.classList.contains("block-dragging")).toBe(false);
+        expect(interactionShieldShown()).toBe(false);
     });
 
     it("releasing an Escape-canceled drag suppresses THAT click; the next one opens the menu", async () => {

@@ -2,6 +2,7 @@ import './toc.css';
 import { bindActivate } from "@/ui/dom";
 import type { EditorView, Node as PmNode } from "@/pm";
 import { applyTooltip, hideTooltip } from "@/ui/tooltip";
+import { hideInteractionShield, showInteractionShield } from "@/ui/interactionShield";
 import { t } from "@/i18n";
 import { notifyTocWidth, notifyTocVisibility, notifySetTocPosition } from "@/messaging";
 import type { TocVisibility } from "../../../shared/messages";
@@ -589,7 +590,12 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         const startWidth = tocWidth;
         resizeHandle.classList.add("toc-resize-handle--active");
         document.body.classList.add("toc-resizing");
-        document.body.style.cursor = resizeCursor;
+        // The cursor and the selection guard for the drag's life live on the
+        // shield: written on the body, either one is inherited by every
+        // element and restyles the whole document on the way in and out
+        // (ui/interactionShield.ts). The body class stays for the tab's
+        // transition suppression, which is narrow.
+        showInteractionShield("resize", { cursor: resizeCursor });
         const onMove = (ev: MouseEvent): void => {
             const delta = tocRight ? startX - ev.clientX : ev.clientX - startX;
             setTocWidth(startWidth + delta);
@@ -599,7 +605,7 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
             document.removeEventListener("mouseup", onUp);
             resizeHandle.classList.remove("toc-resize-handle--active");
             document.body.classList.remove("toc-resizing");
-            document.body.style.cursor = "";
+            hideInteractionShield();
             if (tocWidth !== startWidth) {
                 notifyTocWidth(tocWidth);
             }
@@ -696,6 +702,9 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
     // falls through to the page (`flyoutOpen` is read lazily, at drag time).
     const dnd = initTocDnd({
         panel,
+        // Read at call time: under `tocToggleInBar` the trigger is the bar's
+        // button, registered after this init (`setFlyoutTrigger`).
+        flyoutTrigger: () => flyoutAnchor,
         list,
         getEditorView,
         isOpen: () => isOpen || flyoutOpen,

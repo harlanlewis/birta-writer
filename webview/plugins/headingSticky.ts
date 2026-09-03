@@ -9,6 +9,7 @@ import {
     foldPluginKey,
     wireMarkerButtonProtocol,
     type FoldMeta,
+    findHeadingFoldRange,
 } from "./headingFold";
 import { t } from "../i18n";
 import {
@@ -37,7 +38,20 @@ const HEADING_STICKY_ACTIVE_CHANGE_EVENT = "heading-sticky-active-change";
  */
 export function stickyHeadingFoldable(state: EditorState, headingPos: number): boolean {
     const foldState = foldPluginKey.getState(state);
-    return (foldState?.enabled ?? false) && foldHiddenRange(state.doc, headingPos) !== null;
+    if (!(foldState?.enabled ?? false)) {
+        return false;
+    }
+    // One heading's own section, never the whole map: this is asked on every
+    // doc change (updateSticky refreshes the bar's fold chevron), and the
+    // map is memoized per document, so on a keystroke it was a walk of every
+    // top-level block for one heading's answer. Only a top-level heading
+    // owns a section, which is what the map's keying by top-level offset
+    // said too; the sticky title mirrors top-level headings only.
+    const doc = state.doc;
+    if (doc.resolve(Math.min(headingPos, doc.content.size)).depth !== 0) {
+        return false;
+    }
+    return findHeadingFoldRange(doc, headingPos) !== null;
 }
 
 function scrollHeadingIntoStickyPosition(view: EditorView, headingPos: number): void {

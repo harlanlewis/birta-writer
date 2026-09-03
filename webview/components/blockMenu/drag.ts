@@ -60,7 +60,9 @@ import { isBlankParagraph } from "../../plugins/fingerprints";
 import { selectInto } from "./turnInto";
 import { hideRangeVeil, showRangeVeil } from "../../editing/rangeIndicator";
 import { hideTooltip } from "../../ui/tooltip";
+import { hideInteractionShield, setInteractionShieldHoles, showInteractionShield } from "../../ui/interactionShield";
 import { getTopbarBottom, scrollElementBelowTopbar } from "../../utils/headingUtils";
+import { blockDomResolver } from "../../utils/blockDom";
 import { stickyClearanceMargin } from "../../plugins/caretScrollMargin";
 import { t } from "../../i18n";
 
@@ -380,12 +382,17 @@ interface BoundaryPlan {
 export function planBoundaries(view: EditorView): BoundaryPlan[] {
     const { doc } = view.state;
     const plans: BoundaryPlan[] = [];
+    // One walk pairs every block with its element (utils/blockDom.ts). A
+    // `nodeDOM` per slot walked the view from the root each time, which made
+    // the plan quadratic in the block count and was most of a drag's start on
+    // a long document.
+    const domAt = blockDomResolver(view);
     for (const { pos, kind, ownerPos } of visibleBoundaryPositions(view.state)) {
         if (kind === "block" && pos === doc.content.size) {
             plans.push({ pos, kind, owned: false, dom: null, ownerDom: null, columnDom: null, isDocEnd: true });
             continue;
         }
-        const dom = view.nodeDOM(pos);
+        const dom = domAt(pos);
         if (dom instanceof HTMLElement) {
             if (inCollapsedCalloutBody(dom)) {
                 continue;
@@ -399,7 +406,7 @@ export function planBoundaries(view: EditorView): BoundaryPlan[] {
             // children's column (its last DIRECT child supplies the indent —
             // deriving from the last WALKED node let a nested list's column
             // shadow the outer slot's geometry entirely).
-            const ownerDom = view.nodeDOM(ownerPos);
+            const ownerDom = domAt(ownerPos);
             const ownerNode = doc.nodeAt(ownerPos);
             // A collapsed callout's own end slot sits inside its hidden
             // body; an owner buried in a collapsed ancestor is hidden too.
@@ -414,7 +421,7 @@ export function planBoundaries(view: EditorView): BoundaryPlan[] {
                 ownerNode.forEach((_child: ProseNode, childOffset: number) => {
                     lastChildOffset = childOffset;
                 });
-                const lastChildDom = view.nodeDOM(ownerPos + 1 + lastChildOffset);
+                const lastChildDom = domAt(ownerPos + 1 + lastChildOffset);
                 plans.push({
                     pos, kind, owned: true, dom: null, ownerDom,
                     columnDom: lastChildDom instanceof HTMLElement ? lastChildDom : ownerDom,
@@ -670,6 +677,14 @@ export interface DropZoneProvider {
      * range, the veil, and the pill as the pointer crosses in and out.
      */
     scope: "body" | "outline";
+    /**
+     * The viewport rectangle this zone occupies while it can take a drop, or
+     * null when it is not on screen. The interaction shield leaves it open,
+     * so the zone's own rows keep hover and the release's click, which an
+     * in-place micro-drag on a row relies on to navigate. Optional: a zone
+     * that answers only by coordinates needs nothing under the pointer.
+     */
+    zoneRect?(): DOMRectReadOnly | null;
     /** Whether the viewport point sits inside this zone. With multiple
      * providers registered, the FIRST one (in registration order) whose
      * `contains` hits takes the pointer — zones must not overlap, or
@@ -780,6 +795,16 @@ export interface DragSessionSource {
  * veil, and the moveBlocks commit. The source supplies only what varies per
  * handle kind, via DragSessionSource.
  */
+/** The viewport rectangles the interaction shield leaves open: every drop zone's own. */
+function zoneHoles(): DOMRectReadOnly[] {
+    const holes: DOMRectReadOnly[] = [];
+    for (const provider of dropZoneProviders) {
+        const rect = provider.zoneRect?.();
+        if (rect) holes.push(rect);
+    }
+    return holes;
+}
+
 export function startPointerDragSession(view: EditorView, source: DragSessionSource): void {
     // A block move is a document edit, so read-only never arms a session
     // (MAR-53). Refusing HERE rather than at each handle is what covers the
@@ -904,6 +929,7 @@ export function startPointerDragSession(view: EditorView, source: DragSessionSou
             hideRangeVeil();
         }
         document.body.classList.remove("block-dragging");
+        hideInteractionShield();
         document.removeEventListener("pointermove", onMove, true);
         document.removeEventListener("pointerup", onUp, true);
         document.removeEventListener("pointercancel", onCancel, true);
@@ -968,7 +994,12 @@ export function startPointerDragSession(view: EditorView, source: DragSessionSou
             startDoc = view.state.doc;
             closeBlockMenu();
             hideTooltip();
+            // The class is what the code reads (syncSelectionCover, the
+            // outline flyout's hold); what the PAGE shows for the drag, the
+            // cursor and the hover it suppresses, is the shield's, so the
+            // class carries no style (ui/interactionShield.ts says why).
             document.body.classList.add("block-dragging");
+            showInteractionShield("drag", { holes: zoneHoles() });
             sessionStarted = true;
             for (const provider of dropZoneProviders) {
                 provider.sessionStart(
@@ -979,6 +1010,10 @@ export function startPointerDragSession(view: EditorView, source: DragSessionSou
             }
         }
         move.preventDefault();
+        // A zone can appear or move mid-drag (the outline flying out under
+        // its hovered tab), and the shield's holes have to follow it or the
+        // pointer never reaches what just appeared. One rect per zone.
+        setInteractionShieldHoles(zoneHoles());
         // A drop zone containing the pointer takes over targeting: it draws
         // its own chrome, so the document indicator hides and document
         // edge-scroll goes quiet until the pointer leaves it again. Resolved

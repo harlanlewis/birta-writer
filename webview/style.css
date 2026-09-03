@@ -2746,8 +2746,8 @@ body.handles-rest-hover:where(:not(.handles-quiet)) .milkdown .editor :where(.he
     pointer-events: none;
 }
 
-/* Markers advertise dragability; the whole page shows a grabbing cursor
-   during a session so the affordance never flickers mid-drag.
+/* Markers advertise dragability; the interaction shield shows a grabbing
+   cursor for the whole session so the affordance never flickers mid-drag.
 
    `touch-action: none` is what lets a finger drag a block at all (MAR-340).
    Without it the browser claims a finger that moves off the handle as a page
@@ -2760,9 +2760,33 @@ body.handles-rest-hover:where(:not(.handles-quiet)) .milkdown .editor :where(.he
     touch-action: none;
 }
 
-body.block-dragging,
-body.block-dragging * {
-    cursor: grabbing !important;
+/* The cursor a drag shows, the hover it suppresses and the selection it
+   forbids all live on the interaction shield (ui/interactionShield.ts), a
+   transparent layer over the page for the gesture's life. NOTHING keyed on
+   `body.block-dragging` may set `cursor`, `pointer-events` or `user-select`,
+   nor end in `*`: each of those is inherited or universal, so the class flip
+   that starts the drag would restyle every element in the document, and
+   again on the drop. On a long document that recalc was most of what made
+   picking a block up stall (bodyClassRestyle.test.ts holds the shapes out;
+   the body class itself stays, for the code that reads it). */
+.interaction-shield {
+    position: fixed;
+    inset: 0;
+    /* Above every piece of chrome a pointer can hover, the toolbar and the
+       outline panel included; the drag pill and the drop line are
+       pointer-events: none and read through it. */
+    z-index: 10020;
+    user-select: none;
+    -webkit-user-select: none;
+    touch-action: none;
+}
+
+.interaction-shield--drag {
+    cursor: grabbing;
+}
+
+.interaction-shield--marquee {
+    cursor: default;
 }
 
 /* The dragged marker keeps full contrast even when the pointer leaves its
@@ -2770,10 +2794,6 @@ body.block-dragging * {
 .milkdown .editor :is(.block-gutter-host, .heading-fold-gutter--leaf) .heading-fold-marker--block.heading-fold-marker--dragging {
     opacity: 1;
     color: var(--vscode-foreground);
-}
-
-body.block-dragging .milkdown .editor {
-    user-select: none;
 }
 
 /* Quiet handles while typing: any keydown in the editor suppresses the
@@ -2900,15 +2920,11 @@ body.handles-quiet:not(.handles-rest-always) .milkdown .editor :is(.block-gutter
     caret-color: auto;
 }
 
-/* While a block drag is in flight the editor takes no pointer events — no
-   tooltips, link popups, or marker reveals can pop under the crossing
-   pointer. The session's own listeners live on document and are unaffected;
-   the dragged (--dragging) and covered (--covered) markers stay visible via
-   their class-based rules. */
-body.block-dragging .milkdown .editor,
-body.block-marqueeing .milkdown .editor {
-    pointer-events: none;
-}
+/* While a block drag or a marquee is in flight, the interaction shield
+   (above) takes the pointer events: no tooltips, link popups, or marker
+   reveals can pop under the crossing pointer. The session's own listeners
+   live on document and are unaffected; the dragged (--dragging) and covered
+   (--covered) markers stay visible via their class-based rules. */
 
 /* Landing flash: a brief accent tint over a moved run at its destination —
    "here's where it went" after a drop (especially post-auto-scroll). Below

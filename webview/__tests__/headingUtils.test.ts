@@ -108,6 +108,23 @@ describe("scrollElementBelowTopbar", () => {
         scrollElementBelowTopbar(elementAt(500), 60, "auto");
         expect(scrollTo).toHaveBeenCalledWith({ top: 500 + 100 - 40 - 60, behavior: "auto" });
     });
+
+    it("a smooth scroll farther than a couple of screens should land at once", () => {
+        // The scroll window recommits every half screen the page moves, and a
+        // smooth scroll across a long document moves more than a screen per
+        // frame: the animation was a gutter rebuild per frame. Near stays
+        // smooth; far snaps.
+        addTopbar({ height: 40, bottom: 40 });
+        vi.stubGlobal("innerHeight", 900);
+        scrollElementBelowTopbar(elementAt(1500));
+        expect(scrollTo).toHaveBeenLastCalledWith({ top: 1500 + 100 - 40 - 8, behavior: "smooth" });
+        scrollElementBelowTopbar(elementAt(5000));
+        expect(scrollTo).toHaveBeenLastCalledWith({ top: 5000 + 100 - 40 - 8, behavior: "auto" });
+        // Upward jumps snap by the same rule.
+        vi.stubGlobal("scrollY", 20000);
+        scrollElementBelowTopbar(elementAt(-15000));
+        expect(scrollTo).toHaveBeenLastCalledWith({ top: -15000 + 20000 - 40 - 8, behavior: "auto" });
+    });
 });
 
 // ── The scroll path ─────────────────────────────────────────

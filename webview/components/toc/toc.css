@@ -172,10 +172,10 @@
     background: var(--vscode-sash-hoverBorder, var(--vscode-focusBorder));
 }
 
-/* While dragging: suppress text selection */
-body.toc-resizing {
-    user-select: none;
-}
+/* While dragging, text selection and the resize cursor are the interaction
+   shield's (ui/interactionShield.ts): `user-select` on the body is inherited
+   by every element and restyled the whole document at the drag's start and
+   end. The body class remains for the tab's transition suppression below. */
 
 /* ─── Review tab strip (Contents / Proofreading / Notes) ─────────────────── */
 /* A fixed header row above the scrolling body, so it stays pinned while the
@@ -725,8 +725,11 @@ body.toc-resizing {
 
 /* ─── Drag-and-drop chrome (see ./dnd.ts) ─────────────── */
 /* Items wired as section drag handles (top-level rows only) advertise the
-   grab; nested rows keep the plain navigation pointer. The mid-drag grabbing
-   cursor is also enforced page-wide by body.block-dragging (style.css). */
+   grab; nested rows keep the plain navigation pointer. Mid-drag the panel is
+   a hole in the interaction shield (ui/interactionShield.ts), so the pointer
+   still reaches its rows and the rules below say what they show; every one
+   is keyed on a NARROW subject, so the drag's start restyles the panel's
+   rows and nothing else (bodyClassRestyle.test.ts). */
 .toc-item--draggable {
     cursor: grab;
 
@@ -735,13 +738,17 @@ body.toc-resizing {
     }
 }
 
+body.block-dragging .toc-panel {
+    cursor: grabbing;
+}
+
 /* The rendered row of an in-flight TOC-initiated drag: ghosted in place
    (the cursor pill names the payload; the row marks the origin). */
 .toc-item--drag-source {
     opacity: 0.4;
 }
 
-/* Mid-drag, hover is targeting noise — only a drop target may highlight. */
+/* Mid-drag, hover is targeting noise: only a drop target may highlight. */
 body.block-dragging .toc-item:hover {
     background: transparent;
 }

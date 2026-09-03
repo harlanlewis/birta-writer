@@ -22,12 +22,13 @@
  *     stray margin click doesn't flash chrome.
  */
 import type { EditorView } from "../../pm";
-import type { Node as ProseNode } from "../../pm";
 import { BlockRangeSelection } from "../../plugins/blockRange";
+import { topLevelBlockDoms } from "../../utils/blockDom";
 import { selectionCoverRange } from "../../plugins/headingFold";
 import { scrollVelocityFor } from "./drag";
 import { hideRangeVeil, showRangeVeil } from "../../editing/rangeIndicator";
 import { isReadOnly } from "../../readOnly";
+import { hideInteractionShield, showInteractionShield } from "../../ui/interactionShield";
 
 const MARQUEE_THRESHOLD = 4;
 
@@ -52,24 +53,28 @@ function hideRect(): void {
     }
 }
 
+// Both readers below pair every top-level block with its element through
+// utils/blockDom.ts, one walk for the document. A `nodeDOM` per block walked
+// the view from the root each time, quadratic in the block count, and a
+// margin click on a long document paid it before the marquee had drawn
+// anything.
+
 /** The horizontal band the document's blocks occupy (content column). */
 function contentBounds(view: EditorView): { left: number; right: number } | null {
     let left = Infinity;
     let right = -Infinity;
-    view.state.doc.forEach((_node: ProseNode, offset: number) => {
-        const dom = view.nodeDOM(offset);
-        if (dom instanceof HTMLElement) {
-            const rect = dom.getBoundingClientRect();
-            // Folded-away blocks (display:none) report all-zero rects — one
-            // collapsed section anywhere would drag `left` to 0 and kill
-            // left-margin arming for the whole document.
-            if (rect.width === 0 && rect.height === 0) {
-                return;
-            }
-            left = Math.min(left, rect.left);
-            right = Math.max(right, rect.right);
+    for (const { dom } of topLevelBlockDoms(view)) {
+        if (!dom) continue;
+        const rect = dom.getBoundingClientRect();
+        // Folded-away blocks (display:none) report all-zero rects — one
+        // collapsed section anywhere would drag `left` to 0 and kill
+        // left-margin arming for the whole document.
+        if (rect.width === 0 && rect.height === 0) {
+            continue;
         }
-    });
+        left = Math.min(left, rect.left);
+        right = Math.max(right, rect.right);
+    }
     return Number.isFinite(left) ? { left, right } : null;
 }
 
@@ -82,26 +87,23 @@ function coveredRange(
     let from: number | null = null;
     let to: number | null = null;
     let blocks = 0;
-    view.state.doc.forEach((node: ProseNode, offset: number) => {
-        const dom = view.nodeDOM(offset);
-        if (!(dom instanceof HTMLElement)) {
-            return;
-        }
+    for (const { node, pos, dom } of topLevelBlockDoms(view)) {
+        if (!dom) continue;
         const rect = dom.getBoundingClientRect();
         // Zero-rect (folded-hidden) blocks would count as "covered" whenever
         // the marquee reaches the viewport top (yTop <= 0) — exploding the
         // range across every hidden block in the document.
         if (rect.width === 0 && rect.height === 0) {
-            return;
+            continue;
         }
         if (rect.bottom >= yTop && rect.top <= yBottom) {
             if (from === null) {
-                from = offset;
+                from = pos;
             }
-            to = offset + node.nodeSize;
+            to = pos + node.nodeSize;
             blocks++;
         }
-    });
+    }
     return from === null || to === null ? null : { from, to, blocks };
 }
 
@@ -190,6 +192,7 @@ export function wireMarquee(view: EditorView): () => void {
                 scrollRaf = 0;
             }
             document.body.classList.remove("block-marqueeing");
+            hideInteractionShield();
             document.removeEventListener("mousemove", onMove, true);
             document.removeEventListener("mouseup", onUp, true);
             document.removeEventListener("keydown", onKey, true);
@@ -242,8 +245,11 @@ export function wireMarquee(view: EditorView): () => void {
                 active = true;
                 // Same suppression as drags: no tooltips/link popups/marker
                 // reveals popping under an active rubber-band, and no native
-                // text selection painting alongside it.
+                // text selection painting alongside it. The shield does both
+                // (ui/interactionShield.ts); the class is for the code that
+                // reads it and carries no style.
                 document.body.classList.add("block-marqueeing");
+                showInteractionShield("marquee");
             }
             move.preventDefault();
             lastClientX = move.clientX;

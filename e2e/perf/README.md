@@ -256,6 +256,24 @@ The scroll is driven from the page rather than through the input path on purpose
 
 The root-write count is on the list because it was the whole of the first finding. An inherited custom property written on `<html>` invalidates every element's style, so the restyle is proportional to the document and lands on the frame that wrote it; on `huge-outline` a single write cost a whole-document restyle in either engine, WebKit's two to three times Chromium's. Two such writes per heading passed (the sticky bar's published height and the caret insets that follow it) were the scroll jank, and the fix was to publish less and to register the root-only variables as non-inherited (`@property` in `style.css`). Off every gate, by name, like the other heavy readings: the number to hold it to is the count of root writes over a scroll, which is a count and reads the same on any machine.
 
+# Gesture-cost harness (`e2e/perf-gesture.mjs`)
+
+A structural edit is the gesture the other runners hold apart from: `pnpm perf:typing` types plain characters at a cadence below the sync window on purpose, so it reads the keystroke and never the block the keystroke made or the sync the pause after it bought. Enter at the end of a paragraph, Backspace on the empty block it left, a split, a join, and a block drag in its three parts (the pickup past the threshold, the moves, the drop) are each one gesture the writer feels as a unit, and each is a different shape: one transaction every decoration plugin treats as "structure changed", then the sync 300 ms into the pause; or a pointer session that is no transaction at all until the drop.
+
+```bash
+pnpm build && pnpm perf:gesture                      # huge-outline, 5 reps
+node e2e/perf-gesture.mjs xlarge --reps 3
+BIRTA_E2E_BROWSER=webkit node e2e/perf-gesture.mjs
+node esbuild.mjs && node e2e/perf-gesture.mjs --profile --only drag,drop   # --only takes name prefixes
+node e2e/perf-gesture.mjs --trace --json gesture.json
+```
+
+Per gesture, as medians over the reps: `dispatch` (the gesture's own doc-changing transactions, `mdw:tx-apply`), `paint` (keydown to the next frame, keyboard gestures), `longtask` (main-thread tasks of 50 ms or more inside the gesture's window, Chromium), `stall` (frame gaps of 50 ms or more in it), and every `countWork` counter the gesture stamped. The window includes the settle after the gesture, long enough for the trailing sync to land, so `longtask` and `stall` carry the sync and `dispatch` does not; a gesture that feels slow is usually the sync behind it, and the two columns say which.
+
+`--profile` (Chromium) takes a CPU profile per gesture and attributes self time to modules and functions through the `// path` comments a dev build carries (`node esbuild.mjs`, not `--production`), folding native self time into the nearest frame inside the bundle; on a production bundle the attribution is to chunks and lines. `--trace` sums the renderer's own events over the window (style recalculation, layout, hit testing, paint), which is how a cost that is the browser's work rather than the bundle's gets named: the first finding here was a drag start whose whole cost was a style recalculation of every element, from three inherited properties keyed on a body class, and no JavaScript profile could have shown it.
+
+Two hazards the runner is built around, both found by measuring the wrong thing first. On macOS in headless Chromium, End and Home scroll the page instead of moving the caret, and the smooth scroll drives the scroll-window observer into a rebuild per frame that reads as six gutter rebuilds per Enter; the caret is therefore placed through the view (`__birtaPerf.view()`, installed for the harness by `webview/editor.ts`) and never by key. And the harness page opens the outline docked over the gutter the drag grabs; the runner closes it, checks that a gutter handle is what is under the pointer, and discards a drag whose session never started or whose drop moved nothing, because a drag that did not happen measures nothing and reports a very good number.
+
 # Methodology rules
 
 Each of these has produced a confident, wrong conclusion here at least once.

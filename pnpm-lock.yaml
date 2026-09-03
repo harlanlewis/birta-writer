@@ -7,6 +7,11 @@ settings:
 overrides:
   serialize-javascript: ^7.0.5
 
+patchedDependencies:
+  '@milkdown/transformer@7.22.0':
+    hash: 03ed763edece8fa6f0b9cc3ffd947502dd8c95c97c684dd1c732f3a293ccb6cc
+    path: patches/@milkdown__transformer@7.22.0.patch
+
 importers:
 
   .:
@@ -40,7 +45,7 @@ importers:
         version: 7.22.0
       '@milkdown/transformer':
         specifier: 7.22.0
-        version: 7.22.0
+        version: 7.22.0(patch_hash=03ed763edece8fa6f0b9cc3ffd947502dd8c95c97c684dd1c732f3a293ccb6cc)
       '@milkdown/utils':
         specifier: 7.22.0
         version: 7.22.0
@@ -3912,7 +3917,7 @@ snapshots:
       '@milkdown/ctx': 7.22.0
       '@milkdown/exception': 7.22.0
       '@milkdown/prose': 7.22.0
-      '@milkdown/transformer': 7.22.0
+      '@milkdown/transformer': 7.22.0(patch_hash=03ed763edece8fa6f0b9cc3ffd947502dd8c95c97c684dd1c732f3a293ccb6cc)
       remark-parse: 11.0.0
       remark-stringify: 11.0.0
       unified: 11.0.5
@@ -3930,7 +3935,7 @@ snapshots:
       '@milkdown/core': 7.22.0
       '@milkdown/ctx': 7.22.0
       '@milkdown/prose': 7.22.0
-      '@milkdown/transformer': 7.22.0
+      '@milkdown/transformer': 7.22.0(patch_hash=03ed763edece8fa6f0b9cc3ffd947502dd8c95c97c684dd1c732f3a293ccb6cc)
       '@milkdown/utils': 7.22.0
     transitivePeerDependencies:
       - supports-color
@@ -3951,7 +3956,7 @@ snapshots:
       '@milkdown/ctx': 7.22.0
       '@milkdown/exception': 7.22.0
       '@milkdown/prose': 7.22.0
-      '@milkdown/transformer': 7.22.0
+      '@milkdown/transformer': 7.22.0(patch_hash=03ed763edece8fa6f0b9cc3ffd947502dd8c95c97c684dd1c732f3a293ccb6cc)
       '@milkdown/utils': 7.22.0
       remark-inline-links: 7.0.0
       unist-util-visit: 5.1.0
@@ -3966,7 +3971,7 @@ snapshots:
       '@milkdown/exception': 7.22.0
       '@milkdown/preset-commonmark': 7.22.0
       '@milkdown/prose': 7.22.0
-      '@milkdown/transformer': 7.22.0
+      '@milkdown/transformer': 7.22.0(patch_hash=03ed763edece8fa6f0b9cc3ffd947502dd8c95c97c684dd1c732f3a293ccb6cc)
       '@milkdown/utils': 7.22.0
       prosemirror-safari-ime-span: 1.0.2
       remark-gfm: 4.0.1
@@ -3990,7 +3995,7 @@ snapshots:
       prosemirror-transform: 1.12.0
       prosemirror-view: 1.42.2
 
-  '@milkdown/transformer@7.22.0':
+  '@milkdown/transformer@7.22.0(patch_hash=03ed763edece8fa6f0b9cc3ffd947502dd8c95c97c684dd1c732f3a293ccb6cc)':
     dependencies:
       '@milkdown/exception': 7.22.0
       '@milkdown/prose': 7.22.0
@@ -4005,7 +4010,7 @@ snapshots:
       '@milkdown/ctx': 7.22.0
       '@milkdown/exception': 7.22.0
       '@milkdown/prose': 7.22.0
-      '@milkdown/transformer': 7.22.0
+      '@milkdown/transformer': 7.22.0(patch_hash=03ed763edece8fa6f0b9cc3ffd947502dd8c95c97c684dd1c732f3a293ccb6cc)
       nanoid: 6.0.1
     transitivePeerDependencies:
       - supports-color

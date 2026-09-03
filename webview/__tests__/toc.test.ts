@@ -431,10 +431,16 @@ describe("TOC drag-to-resize", () => {
         const handle = getHandle(panel);
         handle.dispatchEvent(mouse("mousedown", 260));
         expect(document.body.classList.contains("toc-resizing")).toBe(true);
-        expect(document.body.style.cursor).toBe("ew-resize");
+        // The resize cursor rides the interaction shield, never the body: a
+        // cursor on the body is inherited by every element and restyles the
+        // whole document at the drag's start and end.
+        const shield = document.querySelector<HTMLElement>(".interaction-shield");
+        expect(shield?.hidden).toBe(false);
+        expect(shield?.style.cursor).toBe("ew-resize");
+        expect(document.body.style.cursor).toBe("");
         document.dispatchEvent(mouse("mouseup", 220));
         expect(document.body.classList.contains("toc-resizing")).toBe(false);
-        expect(document.body.style.cursor).toBe("");
+        expect(shield?.hidden).toBe(true);
     });
 
     it("mousemove after mouseup should not change the width", () => {
