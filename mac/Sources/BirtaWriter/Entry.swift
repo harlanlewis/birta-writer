@@ -10,11 +10,6 @@ import BirtaWriterCore
 @MainActor
 enum Entry {
     static func main() {
-        // Before the line below, and that is the whole of why it is here:
-        // AppKit reads these while `NSApplication` comes up, so a registration
-        // made from the delegate is read by nobody. `AppKitDefaults` says what
-        // is turned off and how to look at the result.
-        AppKitDefaults.register()
         let app = NSApplication.shared
         AppDelegate.applyActivationPolicy()
         let delegate = AppDelegate()

@@ -1,20 +1,41 @@
 import AppKit
 import BirtaWriterCore
 
-/// The scratchpad window. An NSPanel that joins every Space and is available
-/// over a fullscreen app, remembers its frame, and hides rather than closes.
+/// The scratchpad window. An NSPanel that behaves like any other window on the
+/// machine, remembers its frame, and hides rather than closes.
 ///
 /// Not `.nonactivatingPanel`: key equivalents (Cmd+S, Cmd+C/V/Z inside the
 /// WKWebView) route through the app's main menu, which needs the app active,
 /// so a panel that never activated could not run its own chords.
 ///
-/// At the ORDINARY window level, and `level` is assigned rather than left out.
-/// An `NSPanel` is `.floating` by default and `isFloatingPanel` is the setter
-/// for that level, so the level a panel ends up at is never the absence of a
-/// line, and a file that leaves it out is describing a level it does not set.
-/// A window that will not go behind anything is a window you fight, and
-/// the hotkey brings this one back in a keystroke. `measure.sh` reads the
-/// level, because prose asserting one is not a check.
+/// Like any other window is the whole of the window policy, and it is three
+/// assignments:
+///
+///   `level`               `.normal`, so anything can cover this window. One
+///                         that will not go behind anything is one you fight,
+///                         and the hotkey brings this one back in a keystroke.
+///   `hidesOnDeactivate`   false, so the window stays put when you click into
+///                         another app rather than vanishing on the click.
+///                         This is the one that overrides an `NSPanel`
+///                         default; the other two state what a plain window
+///                         would do anyway.
+///   `collectionBehavior`  which Space the window is on and whether it can
+///                         take a full screen of its own.
+///                         `BirtaWriterCore.WindowPolicy` decides that from the
+///                         Dock setting and says why; `collectionBehavior(for:)`
+///                         below is the mapping, re-applied when the setting
+///                         moves.
+///
+/// The level is written down even though it is what an unassigned window would
+/// have, and that is worth a line rather than a deletion: `isFloatingPanel`
+/// raises a panel's level without the word `level` appearing, so a file that
+/// leaves the level out is not a file whose level can be read by eye. This
+/// panel shipped once at `.floating`, pinned above every other application,
+/// with three comments and a changelog entry saying it was not.
+///
+/// `measure.sh` reads the level and the collection behaviour back off the live
+/// window, and `PanelWindowPolicyTests` off a built one, because prose
+/// asserting a window policy is not a check.
 @MainActor
 final class AppPanel: NSPanel {
     var onHideRequest: (() -> Void)?
@@ -59,17 +80,13 @@ final class AppPanel: NSPanel {
         title = AppFlavor.current.displayName
         titleVisibility = .hidden
         titlebarAppearsTransparent = true
+        // The window policy, all three lines of it. The header says what each
+        // one buys and why none of them can be left to the panel's default.
         level = .normal
-        // Both of these are assignments AppKit would otherwise make for us,
-        // and both defaults are the opposite of what this panel wants: an
-        // `NSPanel` is `.floating` and hides itself on deactivation unless
-        // told not to. The window stays put when you click into another app,
-        // and anything can cover it, which is the whole of the behaviour the
-        // removed float setting and its replacement were arguing about.
         hidesOnDeactivate = false
+        applyWindowPolicy()
         isReleasedWhenClosed = false
         becomesKeyOnlyIfNeeded = false
-        collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         // The system's own show and hide, not a chosen one.
         animationBehavior = .default
         minSize = PanelSize.minimum
@@ -80,6 +97,40 @@ final class AppPanel: NSPanel {
         // hand the user back a window the width of whatever it finished on.
         if remembersFrame, Prefs.isUserStore, !setFrameAutosaveName("AppPanel") {
             NSLog("Birta Writer: the panel frame autosave name was refused, so this window will not remember its size")
+        }
+    }
+
+    // MARK: window policy
+
+    /// Take the Spaces membership the Dock setting currently implies.
+    ///
+    /// Called from `init` and again whenever that setting moves
+    /// (`AppDelegate.applyActivationPolicy`), which is the only thing that can
+    /// change the answer. Assigning the whole behaviour rather than inserting
+    /// or removing one flag: a set built from the policy every time cannot
+    /// accumulate a flag an earlier answer wanted, which is the failure a
+    /// pair of `insert`/`remove` calls has and does not report.
+    func applyWindowPolicy() {
+        collectionBehavior = Self.collectionBehavior(
+            for: WindowPolicy.membership(showInDock: Prefs.showInDock))
+    }
+
+    /// `WindowPolicy`'s answer in AppKit's vocabulary.
+    ///
+    /// `.fullScreenPrimary` in both, so the green button offers Enter Full
+    /// Screen and the window takes a Space of its own. Its opposite number,
+    /// `.fullScreenAuxiliary`, is what drew this window over another
+    /// application's full screen and is in neither answer; nor is
+    /// `.canJoinAllSpaces`, which drew it on every Space at once.
+    /// `.moveToActiveSpace` is the near neighbour of that second one and is
+    /// not the same thing: the window is in ONE place at a time and merely
+    /// moves to where the reader is when the app is activated.
+    static func collectionBehavior(
+        for membership: WindowPolicy.SpaceMembership
+    ) -> NSWindow.CollectionBehavior {
+        switch membership {
+        case .ownSpace: return [.fullScreenPrimary]
+        case .followsReader: return [.moveToActiveSpace, .fullScreenPrimary]
         }
     }
 

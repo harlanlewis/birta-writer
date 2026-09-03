@@ -674,10 +674,9 @@ kill -URG $PID; sleep 0.8
 rm -f "$SCRATCH_DIR/.debug-message.json"
 
 # The panel sits at the ordinary window level, where anything else can cover
-# it. Read from the live window rather than from the source: `NSPanel` is
-# `.floating` by default and `isFloatingPanel` sets that level, so a panel's
-# level is never the absence of a line, and a release shipped floating while
-# three comments and a changelog entry said it did not. 0 is
+# it. Read from the LIVE window rather than from the source: `isFloatingPanel`
+# sets that level from a line that never says `level`, and a release shipped
+# floating while three comments and a changelog entry said it did not. 0 is
 # `NSWindow.Level.normal`; `.floating` is 3.
 LEVELTRACE="$(grep "^birta-trace windowlevel " "$LOG" | tail -1 || true)"
 WIN_LEVEL="$(echo "$LEVELTRACE" | sed -n 's/.*level=\([0-9-]*\).*/\1/p')"
@@ -689,6 +688,40 @@ if [ "$WIN_LEVEL" = "0" ]; then
 else
     echo "window level         FAILED: expected 0 (normal), got $WIN_LEVEL" >&2
     echo "$LEVELTRACE" >&2; exit 1
+fi
+
+# And it takes a Space like any other window. `AppPanel.collectionBehavior(for:)`
+# is the decision and `PanelWindowPolicyTests` reads it off a BUILT window;
+# this reads it off one that has been SHOWN, which is the half that file cannot
+# claim, because AppKit is free to add flags of its own once a window reaches
+# the screen. Each flag is asked for by name for the same reason: an equality
+# against the whole value would fail on a flag macOS added and nobody chose,
+# and the names come out of the app (`Coordinator.traceWindowLevel`) rather
+# than being decoded from bit constants written down here.
+flag() { echo "$LEVELTRACE" | sed -n "s/.*$1=\([a-z]*\).*/\1/p"; }
+if [ -z "$(flag ownFullScreen)" ]; then
+    echo "window spaces        FAILED: the window-level trace carried no collection behaviour" >&2
+    echo "$LEVELTRACE" >&2; exit 1
+fi
+if [ "$(flag othersFullScreen)" = "yes" ]; then
+    echo "window spaces        FAILED: the panel accompanies another app's full screen and draws over it" >&2
+    echo "$LEVELTRACE" >&2; exit 1
+fi
+if [ "$(flag allSpaces)" = "yes" ]; then
+    echo "window spaces        FAILED: the panel is drawn on every Space at once" >&2
+    echo "$LEVELTRACE" >&2; exit 1
+fi
+if [ "$(flag ownFullScreen)" != "yes" ]; then
+    echo "window spaces        FAILED: the window cannot take a full screen of its own" >&2
+    echo "$LEVELTRACE" >&2; exit 1
+fi
+# WHICH of the two answers a run measures depends on the Dock setting it has,
+# so it is reported rather than asserted; that the setting picks between them at
+# all is `WindowPolicyTests`.
+if [ "$(flag activeSpace)" = "yes" ]; then
+    echo "window spaces        ok: takes its own full screen, never another app's, and follows the reader between Spaces"
+else
+    echo "window spaces        ok: takes its own full screen, never another app's, and stays on one Space"
 fi
 
 # The window's own title. A titlebar accessory is placed by AppKit inside a

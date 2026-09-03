@@ -18,6 +18,10 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ### Changed
 
+- A Birta Writer for Mac window sits in Spaces and full screen the way any other window does. It used to be drawn on every Space at once and over the top of another application's full screen, so an open note covered whatever you went full screen into, with nothing in Settings to say so or turn it off. It now belongs to one Space, another app's full screen covers it like any other window, and the green button offers Enter Full Screen, which is also back in the View menu after being removed as a row that could never do anything.
+
+  Where the window is when you press the hotkey follows the Show in Dock setting, because that setting is already you saying which kind of program this is. With the Dock icon on it behaves as a normal app: the window stays on its own Space and the hotkey switches you to it. With the Dock icon off, which is the default, the window comes to the Space you are on, so the chord still reaches it from anywhere without moving you.
+
 - A Birta Writer for Mac window opens at a size taken from the screen it opens on. The opening size was fixed, and it was small enough that a first note filled several screens of a window that used a fraction of a laptop's display. It now opens as large as the app wants and no larger, shrinking to fit a small screen and never growing past a comfortable measure on a big one. A window whose size you have set yourself is untouched, and a second window still opens at the size of the one it came from.
 
 - Open Recent groups the files open in your other windows at the top, under a heading, and the file the window you are in is already on is no longer listed at all. Picking a file from the group switches to the window holding it rather than opening it again, which is what that row already did; the grouping is what says so. A file listed there is not repeated below the divider. With one window open the menu is unchanged apart from that window's own file leaving it.

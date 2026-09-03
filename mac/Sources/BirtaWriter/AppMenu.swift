@@ -49,6 +49,29 @@ enum AppMenu {
     enum Menu: String, CaseIterable {
         case app, file, edit, format, view, help
 
+        /// Whether macOS appends rows of its own to this menu.
+        ///
+        /// One does. A menu titled View gets Enter Full Screen appended by the
+        /// system, out of process, for an app with a window that can take a
+        /// full screen of its own. `AppPanel` is that window; the Settings and
+        /// About windows are not resizable and the row is dimmed while one of
+        /// them is in front, which is what every other app on the machine does
+        /// with a window that cannot go full screen. Those rows are never in
+        /// the `NSMenu` this file builds, cannot be seen by a delegate's
+        /// `menuNeedsUpdate` and cannot be read back by any check that walks
+        /// `NSMenu.items`, so this is the only place the fact can be written
+        /// down. `mac/scripts/menu-bar.sh` is the instrument that can see them.
+        ///
+        /// What it is FOR is the rule at the bottom of such a menu. The
+        /// appended row arrives carrying an IMAGE, and macOS aligns the titles
+        /// in a separator-delimited section against the widest image column in
+        /// it, so with no rule between them the app's last group is indented by
+        /// the width of a glyph none of its rows has. `add` authors that rule,
+        /// and `tidyRules` is why the fact needs stating twice: a trailing rule
+        /// is a line under nothing in every other menu, and here it is a line
+        /// under the system's.
+        var takesSystemRows: Bool { self == .view }
+
         /// The heading the keyboard cheatsheet prints above this menu's keys.
         ///
         /// Not the menu-bar title for the app menu: that title is the app's
@@ -275,6 +298,16 @@ enum AppMenu {
     /// What the recents submenu answers to, so a check can find it in a built
     /// menu without matching on a title a translation could change.
     static let recentsMenuIdentifier = NSUserInterfaceItemIdentifier("com.birtalabs.birta-writer.openRecent")
+
+    /// What the rule bracketing the system's appended rows answers to.
+    ///
+    /// The separator carries the reason it exists rather than the menu having
+    /// to be asked for it, which is what lets `tidyRules` spare it: that
+    /// function is handed an `NSMenu` and is never told which `Menu` it is, and
+    /// threading one through `applyState` would put the fact at every call site
+    /// instead of on the one item it is about.
+    static let systemRowsRuleIdentifier =
+        NSUserInterfaceItemIdentifier("com.birtalabs.birta-writer.systemRowsRule")
 
     /// The `.app` row that runs `selector`, for a control outside the menu bar
     /// that performs the same action.
@@ -635,15 +668,11 @@ enum AppMenu {
     /// arrive after and nothing to be bracketed by, and read as arbitrary.
     ///
     /// Zoom is what a double click on the titlebar already does
-    /// (`TitlebarDrag`). Enter Full Screen is deliberately absent, and it is
-    /// absent from the View menu too, which is where macOS puts it and where it
-    /// sat permanently dimmed until `BirtaWriterCore.AppKitDefaults` took it away.
-    /// Moving it here rather than removing it was the other option and it is
-    /// the wrong one: every window this app shows is a `AppPanel`, which is
-    /// `.fullScreenAuxiliary` and accompanies another window's full screen
-    /// rather than taking one of its own, so the row would be as dead in this
-    /// menu as it was in that one. A row that does nothing is worse than a row
-    /// that is not there.
+    /// (`TitlebarDrag`). Enter Full Screen is not authored here and must not
+    /// be: macOS appends it to the menu titled View, which is where it belongs
+    /// and where `Menu.takesSystemRows` reserves it a place. Authoring a copy
+    /// in this menu would be a second row for one command, carrying whatever
+    /// chord this file guessed.
     ///
     /// Targets stay nil so each row travels the responder chain to whichever
     /// window is in front, which is what makes them work for the Settings and
@@ -663,16 +692,19 @@ enum AppMenu {
 
     /// Append `menu`'s rows, with their chords and submenus, targeting `target`.
     ///
-    /// No menu ends with a rule, and none may: the system appends nothing after
-    /// these rows, so a trailing separator draws a line under nothing.
-    /// `BirtaWriterCore.AppKitDefaults` is what makes that true of the View menu,
-    /// the one menu macOS would otherwise add to, and a menu that starts taking
-    /// system rows again needs the separator back along with the reason.
-    /// `AppMenuTests` holds the rule.
+    /// A menu ends with a rule exactly when the system appends rows after ours,
+    /// which is `Menu.takesSystemRows` and is where the reason lives. Anywhere
+    /// else a trailing separator draws a line under nothing. `AppMenuTests`
+    /// holds the rule, in both directions.
     @MainActor
     static func add(_ menu: Menu, to nsMenu: NSMenu, target: AnyObject) {
         fill(nsMenu, with: rows.filter { $0.menu == menu && $0.submenu == nil },
              menu: menu, target: target)
+        if menu.takesSystemRows {
+            let rule = NSMenuItem.separator()
+            rule.identifier = systemRowsRuleIdentifier
+            nsMenu.addItem(rule)
+        }
     }
 
     /// Repaint the rows of `nsMenu`, and of its submenus, that draw live state:
@@ -736,6 +768,12 @@ enum AppMenu {
     /// line under nothing. Recomputed from scratch on every pass rather than
     /// toggled, because the rule that is stray depends on which rows are
     /// hidden this time.
+    ///
+    /// The one exception is the rule that brackets the system's own appended
+    /// rows, which are not in this `NSMenu` and so are invisible to the walk
+    /// below: it looks trailing here and has Enter Full Screen under it on
+    /// screen. It is spared by the identifier it carries rather than by asking
+    /// which menu this is, for the reason `systemRowsRuleIdentifier` gives.
     @MainActor
     private static func tidyRules(in nsMenu: NSMenu) {
         var rowSinceLastRule = false
@@ -750,7 +788,7 @@ enum AppMenu {
                 trailingRule = nil
             }
         }
-        trailingRule?.isHidden = true
+        if trailingRule?.identifier != systemRowsRuleIdentifier { trailingRule?.isHidden = true }
     }
 
     @MainActor

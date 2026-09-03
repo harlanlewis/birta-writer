@@ -42,6 +42,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding {
     /// true for a live toggle and false at launch and on the first-run screen,
     /// and the type says why the two differ.
     static func applyActivationPolicy(keepingFrontmost: Bool = false) {
+        // The Dock setting decides two things and this is both of them, which
+        // is why the windows are told here rather than at the switches: there
+        // are two of those (Settings and the first-run screen) and they both
+        // already call this. The second thing is which Space a window is on
+        // (`BirtaWriterCore.WindowPolicy`), and it is applied ABOVE the branch
+        // below rather than inside it, because that branch is skipped when the
+        // policy already matches and a window still has to be told.
+        shared?.windows.applyWindowPolicy()
         let action = DockPresence.action(showInDock: Prefs.showInDock,
                                          isRegular: NSApp.activationPolicy() == .regular,
                                          keepingFrontmost: keepingFrontmost)
