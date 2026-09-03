@@ -174,35 +174,78 @@ final class AppMenuTests: XCTestCase {
             "-", "Font", "Folding",
             "-", "Show Table of Contents",
             "-", "Proofreading",
+            // The bracket macOS's own Enter Full Screen lands under; see
+            // `AppMenu.Menu.takesSystemRows`.
+            "-",
         ])
         let folding = try XCTUnwrap(view.items.first { $0.title == "Folding" }?.submenu)
         XCTAssertEqual(titles(of: folding),
                        ["Fold", "Unfold", "-", "Fold All", "Unfold All"])
     }
 
-    /// No menu ends with a rule.
+    /// A menu ends with a rule exactly when the system appends rows after ours.
     ///
-    /// A trailing separator is only ever right under rows the system appends,
-    /// and it is right there because Enter Full Screen arrives carrying an
-    /// IMAGE: macOS aligns the titles in a separator-delimited section against
-    /// the widest image column in it, so without a rule between them the last
-    /// group is indented by the width of a glyph none of its rows has.
-    /// `AppKitDefaults` removes that row, so the separator that bracketed it
-    /// now draws a line under nothing. If a menu ever starts taking system rows
-    /// again, this is the check to change, along with `AppMenu.add`.
+    /// Both directions, because each is a real defect and they are opposite
+    /// ones. A rule at the bottom of a menu nothing follows draws a line under
+    /// nothing. A menu missing it where Enter Full Screen lands loses the
+    /// alignment `Menu.takesSystemRows` describes: that row arrives carrying an
+    /// image, and macOS aligns the titles in a separator-delimited section
+    /// against the widest image column in it, so with no rule between them the
+    /// app's last group is indented by the width of a glyph none of its rows
+    /// has.
     ///
     /// Derived from the enum, so a seventh menu joins with no edit here, and it
-    /// says what it reached: a sweep over no menus asserts nothing.
-    func testNoMenuShouldEndWithARule() {
+    /// says what it reached: a sweep over no menus asserts nothing. It also
+    /// asserts that the two answers are both REPRESENTED, because a sweep over
+    /// menus that all answered the same way would pass with the predicate
+    /// replaced by a constant.
+    func testAMenuShouldEndWithARuleExactlyWhenTheSystemAppendsToIt() {
         var swept = 0
+        var taking = 0
         for menu in AppMenu.Menu.allCases {
             let items = build(menu).items
-            XCTAssertFalse(items.last?.isSeparatorItem ?? false,
-                           "\(menu.rawValue) ends with a rule, which draws a line under nothing")
+            XCTAssertEqual(items.last?.isSeparatorItem ?? false, menu.takesSystemRows,
+                           "\(menu.rawValue) ends with a rule and \(menu.takesSystemRows ? "should" : "should not")")
             swept += 1
+            if menu.takesSystemRows { taking += 1 }
         }
         XCTAssertEqual(swept, AppMenu.Menu.allCases.count)
-        XCTAssertGreaterThan(swept, 0)
+        XCTAssertGreaterThan(taking, 0, "no menu takes system rows, so the true arm was never asked")
+        XCTAssertLessThan(taking, swept, "every menu takes system rows, so the false arm was never asked")
+    }
+
+    /// The rule the system's rows sit under survives a repaint.
+    ///
+    /// `tidyRules` hides a trailing separator on every opening of a menu, which
+    /// is right everywhere else and would take this one away the first time
+    /// somebody opened the View menu. The bracket is authored once and read
+    /// back after a repaint, because a rule that is correct only until the menu
+    /// is used is a rule nobody ever sees.
+    func testTheRuleUnderTheSystemsRowsShouldSurviveARepaint() {
+        let view = build(.view)
+        XCTAssertEqual(view.items.last?.identifier, AppMenu.systemRowsRuleIdentifier)
+        AppMenu.applyState(MenuState(), to: view)
+        XCTAssertEqual(view.items.last?.isHidden, false,
+                       "the rule bracketing Enter Full Screen was tidied away")
+    }
+
+    /// Nothing gates a top-level View row, which is why the check above is the
+    /// whole of what the bracket needs.
+    ///
+    /// Written as its own assertion rather than left implied, because it is
+    /// what makes the bracket's tidying trivial: with no top-level row that can
+    /// be withdrawn, the group above the rule can never empty out, so the rule
+    /// is only ever trailing with rows above it. A View row that starts
+    /// carrying `needs:` or a syntax gate breaks that, and `tidyRules` then has
+    /// a second case to answer for. This is the check that says so.
+    func testNoTopLevelViewRowShouldBeWithdrawableByState() {
+        let view = build(.view)
+        let all = view.items.count
+        AppMenu.applyState(MenuState(proofreadOptions: ["proofreading": false],
+                                     tocShown: false),
+                           syntaxSets: [], to: view)
+        XCTAssertEqual(view.items.filter { !$0.isHidden }.count, all,
+                       "a View row is now gated, so tidyRules has to answer for an emptied last group")
     }
 
     // MARK: open recent

@@ -462,6 +462,13 @@ final class WindowSet {
         windows.forEach { $0.quitIsUnattended = true }
     }
 
+    /// Every window re-reads the Spaces membership the Dock setting implies.
+    /// `BirtaWriterCore.WindowPolicy` is the rule and
+    /// `AppDelegate.applyActivationPolicy` is the one caller.
+    func applyWindowPolicy() {
+        windows.forEach { $0.applyWindowPolicy() }
+    }
+
     // MARK: summon and dismiss
 
     func toggle() {

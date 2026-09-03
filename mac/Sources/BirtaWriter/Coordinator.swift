@@ -1079,8 +1079,25 @@ final class Coordinator {
     /// windows were still on screen.
     func hide() {
         guard panel.isVisible else { return }
-        panel.orderOut(nil)
+        // A window in full screen is not taken off the screen. It owns a Space
+        // of its own, and what dismissal MEANS for such a window is leaving
+        // that Space rather than emptying it: `WindowSet.dismissAll` returns
+        // to the application the reader came from as its next move, which
+        // switches away, and the next summon switches back. The flush below is
+        // outside the branch on purpose, so the bytes are no less safe than on
+        // any other dismissal.
+        //
+        // Nothing in `mac/Tests` reaches this. Entering full screen is a
+        // window-server transition, so the instrument is the app: go full
+        // screen, press the hotkey, and the Space you left is the one you are
+        // in.
+        if !panel.styleMask.contains(.fullScreen) { panel.orderOut(nil) }
         flushThen(persisting: false) { [weak self] in self?.write(.panelHidden) }
+    }
+
+    /// Re-read the window policy, for the one setting that changes it.
+    func applyWindowPolicy() {
+        panel.applyWindowPolicy()
     }
 
     // MARK: bridge
@@ -3334,14 +3351,19 @@ final class Coordinator {
         dump(target, depth: 0)
     }
 
-    /// The panel's window level, for `mac/scripts/measure.sh`.
+    /// The panel's window level and collection behaviour, for
+    /// `mac/scripts/measure.sh`.
     ///
-    /// `NSPanel` starts at `.floating` and `isFloatingPanel` is a setter for
-    /// that level, so the level a panel ends up at is never the absence of a
-    /// line and cannot be read off the source by eye. Raw, not
-    /// compared to a constant here: the assertion belongs in the script, where
-    /// a wrong expectation shows up as a failing arm rather than as a probe
-    /// that agrees with itself.
+    /// Both are read off the LIVE window, which is the only reading that can
+    /// answer either question. `isFloatingPanel` raises a panel's level from a
+    /// line that never says `level`, and AppKit is free to add flags to a
+    /// collection behaviour once a window is on screen, so neither can be read
+    /// off the source by eye and neither is what a built-but-never-shown window
+    /// reports (`PanelWindowPolicyTests`, which is the cheaper half).
+    ///
+    /// Raw, not compared to a constant here: the assertion belongs in the
+    /// script, where a wrong expectation shows up as a failing arm rather than
+    /// as a probe that agrees with itself.
     private func traceWindowLevel() {
         guard measure.enabled else { return }
         // The frame goes out in TOP-LEFT screen coordinates, which is not the
@@ -3351,9 +3373,24 @@ final class Coordinator {
         // them doing it wrong.
         let screenHeight = NSScreen.screens.first?.frame.height ?? panel.frame.maxY
         let frame = panel.frame
+        // The collection behaviour goes out as NAMED flags as well as the raw
+        // value. Named, because the alternative is bit constants written into
+        // a shell script, where nothing relates them to the type they came
+        // from and a reader of the log has to decode them; raw as well,
+        // because that is what shows a flag AppKit added that nothing here
+        // asked for.
+        let behavior = panel.collectionBehavior
+        func has(_ flag: NSWindow.CollectionBehavior) -> String {
+            behavior.contains(flag) ? "yes" : "no"
+        }
         measure.trace(String(
-            format: "windowlevel level=%d hidesOnDeactivate=%@ rect=%.0f,%.0f,%.0f,%.0f",
+            format: "windowlevel level=%d hidesOnDeactivate=%@ behavior=%lu "
+                + "allSpaces=%@ activeSpace=%@ ownFullScreen=%@ othersFullScreen=%@ "
+                + "rect=%.0f,%.0f,%.0f,%.0f",
             panel.level.rawValue, panel.hidesOnDeactivate ? "yes" : "no",
+            behavior.rawValue,
+            has(.canJoinAllSpaces), has(.moveToActiveSpace),
+            has(.fullScreenPrimary), has(.fullScreenAuxiliary),
             frame.origin.x, screenHeight - frame.maxY, frame.width, frame.height))
     }
 
