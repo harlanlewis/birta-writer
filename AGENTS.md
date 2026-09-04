@@ -170,6 +170,7 @@ mac/Sources/BirtaWriter/AppMenu.swift            THE menu table: every menu buil
 mac/Sources/BirtaWriterCore/MenuState.swift      What a menu row draws of the state it toggles, and why an option nobody touched reads as on
 mac/Sources/BirtaWriterCore/StyleCategories.swift  The style-check vocabulary ported for the Style Options submenu; guarded against the page's own list
 mac/Sources/BirtaWriterCore/WindowPolicy.swift   Which Space a window belongs to, decided from whether the app has a Dock icon; what neither answer contains, and why that absence is the load-bearing part
+mac/Sources/BirtaWriterCore/SummonActivation.swift Why an activation has to be issued twice when bringing a window forward switches Space, and which Space change is the app's own rather than the reader's
 mac/Sources/BirtaWriter/TitlebarActions.swift    New Note, Open and Open Recent as titlebar buttons; which SF Symbol each takes, and why the near alternatives are wrong
 mac/Sources/BirtaWriter/RecentsMenu.swift        The Open Recent menu, filled by itself rather than by whichever of its three surfaces raised it
 mac/Sources/BirtaWriter/SpellService.swift       Spelling and grammar from NSSpellChecker: why it is sliced across run-loop turns, and why requestChecking is not usable

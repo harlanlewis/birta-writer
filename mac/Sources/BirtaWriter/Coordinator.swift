@@ -1066,6 +1066,16 @@ final class Coordinator {
         }
     }
 
+    /// Come forward again, with none of the rest of a summon.
+    ///
+    /// For a window that is already on screen and has lost the keyboard to
+    /// something that was not the reader. `WindowSet.reassertSummon` is the one
+    /// caller and states why it may not simply call `show`.
+    func raise() {
+        guard panel.isVisible else { return }
+        panel.makeKeyAndOrderFront(nil)
+    }
+
     /// Dismiss first, flush after. Hiding is not a teardown: the page stays
     /// mounted and answers the flush from behind the hidden panel, so there is
     /// nothing to wait for on screen. Waiting made the dismissal cost a
