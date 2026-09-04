@@ -12,6 +12,10 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ## [Unreleased]
 
+### Fixed
+
+- Bringing a Birta Writer for Mac window forward from inside another application's full screen leaves the app in front. macOS answers by switching to the Space the window is on, and the application that Space remembers was taking the front back as the switch landed, so the window was drawn for a moment and then something else finished in front of it. The window now comes forward again once the switch has finished. The summon hotkey is the usual way to meet this, and New Note, a row of Open Recent, and Open With from the Finder all did the same thing.
+
 ---
 
 ## [2026.904.0] - 2026, September 4

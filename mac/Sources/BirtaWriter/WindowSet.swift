@@ -61,6 +61,17 @@ final class WindowSet {
     private var lastEscape: TimeInterval = 0
     private var debugSignals: [DispatchSourceSignal] = []
 
+    /// Whether a Space change is still the last window-forward's to answer.
+    /// `BirtaWriterCore.SummonActivation` is the rule and says why one is owed.
+    private var summonActivation = SummonActivation()
+
+    /// The Space observer's token, held rather than discarded because
+    /// `NotificationCenter` retains a block observer for the life of the
+    /// process and this is the only handle on it. Nothing gives it back: it is
+    /// one registration for the app, alongside the hotkey and the Escape
+    /// monitor, and it outlives every window the way they do.
+    private var spaceObserver: NSObjectProtocol?
+
     /// The Settings window is the app's, not a window's, so it is dismissed
     /// when the whole set goes rather than when any one window does.
     var openPreferences: (() -> Void)?
@@ -128,7 +139,7 @@ final class WindowSet {
     @discardableResult
     func adopt(_ coordinator: Coordinator) -> Coordinator {
         coordinator.openPreferences = { [weak self] in self?.openPreferences?() }
-        coordinator.onWillShow = { [weak self] in self?.capturePreviousApp() }
+        coordinator.onWillShow = { [weak self] in self?.windowWillShow() }
         coordinator.onCloseRequest = { [weak self, weak coordinator] in
             guard let coordinator else { return }
             self?.close(coordinator)
@@ -482,6 +493,15 @@ final class WindowSet {
     /// Dismiss first, flush after, which is `Coordinator.hide`'s rule and the
     /// reason it is not a teardown.
     func dismissAll() {
+        // Dismissal is the whole reason the arm can be given back, and it is
+        // not a tidy-up. `returnToPreviousApp` below activates an application
+        // that may well be on another Space, which changes the Space and posts
+        // the very notification the arm answers: a dismissal that left the arm
+        // standing would pull the app forward again out of its own goodbye.
+        //
+        // Before the guard rather than after it, because the path that returns
+        // early leaves the arm to the reader's own next Space change.
+        summonActivation.disarm()
         guard isAnyVisible else { return }
         // Settings belongs to the app, not to a window. Left behind it is a
         // window with no editor to change the settings OF, floating over
@@ -489,6 +509,26 @@ final class WindowSet {
         hidePreferences?()
         windows.forEach { $0.hide() }
         returnToPreviousApp()
+    }
+
+    /// A window is about to come forward, whatever brought it: the hotkey, New
+    /// Note, the menu-bar item, a row of Open Recent, or Open With from the
+    /// Finder. Two things follow from that, and neither of them belongs to the
+    /// window that is showing.
+    private func windowWillShow() {
+        capturePreviousApp()
+        // Every one of those routes activates the app, and every one of them
+        // can be taken from inside another application's full screen, which is
+        // the place the activation needs defending. Armed here for the same
+        // reason `previousApp` is captured here rather than in `summonAll`:
+        // the hotkey is not the only way a window comes forward.
+        //
+        // Armed on a show that will not switch Space either, which is most of
+        // them. That arm answers nothing and expires; `NSWindow.isOnActiveSpace`
+        // looks like the way to narrow it and is not, because a window that has
+        // been ordered out is on no Space at all and would report the same
+        // thing in both cases.
+        summonActivation.summoned(at: ProcessInfo.processInfo.systemUptime)
     }
 
     private func capturePreviousApp() {
@@ -506,6 +546,32 @@ final class WindowSet {
         previousApp = nil
     }
 
+    /// The activation again, and nothing else about bringing a window forward.
+    ///
+    /// Deliberately not a `show`, and the difference is `previousApp`: showing
+    /// a window captures whatever application is frontmost, and here that is
+    /// the one the Space switch has just put in front, so a re-assertion routed
+    /// through `show` would leave dismissal returning the reader to it instead
+    /// of to the application they were in when they asked for this window.
+    ///
+    /// One window is raised rather than all of them, and it is `key`, the same
+    /// answer every other command in this file acts on. Activating an
+    /// application puts all of its windows back above the other application's,
+    /// keeping the order they already had among themselves, so the only thing
+    /// left to say is which of ours holds the keyboard. `onBecameKey` keeps
+    /// `windows` in most-recently-fronted order, so that is the one that was
+    /// coming forward whether a summon showed every window or New Note showed
+    /// one.
+    ///
+    /// Called a runloop turn after the Space change, and never on a timer of
+    /// its own: this runs at most once per arm, and the arm is spent by the
+    /// change that reached it.
+    private func reassertSummon() {
+        guard isAnyVisible else { return }
+        key?.raise()
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
     // MARK: process-wide registrations
 
     func start() {
@@ -514,7 +580,42 @@ final class WindowSet {
             NSLog("Birta Writer: hotkey \(Prefs.hotkey.spelling) registration failed (\(status)); another app may own it")
         }
         installEscapeMonitor()
+        observeSpaceChanges()
         if Measure.isEnabled { installDebugSignals() }
+    }
+
+    /// Answer the Space switch that bringing a window forward causes, once it
+    /// has landed. Installed once, from `start`, like the other process-wide
+    /// registrations around it.
+    ///
+    /// On `NSWorkspace`'s own centre, which is where a workspace notification
+    /// is posted; the default centre never sees this one.
+    ///
+    /// `BirtaWriterCore.SummonActivation` decides whether the change is this
+    /// app's, so nothing here is a rule: this is the observer and the
+    /// re-assertion, and the reason a re-assertion is owed at all lives with
+    /// the type.
+    private func observeSpaceChanges() {
+        spaceObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.activeSpaceDidChangeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self,
+                      self.summonActivation.spaceChanged(
+                        at: ProcessInfo.processInfo.systemUptime) else { return }
+                // A runloop turn later, for the reason
+                // `AppDelegate.applyActivationPolicy` gives about the other
+                // window-server transition this app makes: the notification is
+                // the head of the change rather than the end of it, and an
+                // activation issued in the same turn is undone by the tail of
+                // the transition it was meant to survive.
+                DispatchQueue.main.async { [weak self] in
+                    self?.reassertSummon()
+                }
+            }
+        }
     }
 
     /// Register or re-register the summon key. The Settings recorder and the
