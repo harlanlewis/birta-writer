@@ -6,6 +6,12 @@
 
 ---
 
+## [2026.904.0] - 2026, September 4
+
+_No user-visible changes; internal work only._
+
+---
+
 ## [2026.903.0] - 2026, September 3
 
 ### Added
