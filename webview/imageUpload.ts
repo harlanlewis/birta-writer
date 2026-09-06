@@ -11,6 +11,8 @@
  */
 
 import type { EditorView, Node as PMNode } from "./pm";
+import { hostHas } from "../shared/hostProfile";
+import { t } from "./i18n";
 import {
     notifyUploadImage,
     notifyGetProjectImages,
@@ -80,6 +82,17 @@ export async function handleGetProjectImages(
 }
 
 export async function handleImageFile(file: File, altText: string): Promise<string> {
+    // A host that declares no image store is never asked for one. The Insert
+    // Image command is already withdrawn under `imageUpload`, but a paste or
+    // a drop reaches this path without going through a command, and posting
+    // the bytes to a host that cannot answer leaves the progress pill up
+    // until the timeout below and then reports a timeout that was never the
+    // reason (the MAR-401 shape, on the paste path). Refusing here keeps the
+    // whole batch on its ordinary failure route: the pill says why, in place,
+    // at once, and the document is untouched.
+    if (!hostHas("imageUpload")) {
+        throw new Error(t("no image store on this host"));
+    }
     const id = `img_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
     return new Promise<string>((resolve, reject) => {
         _pendingUploads.set(id, { resolve, reject });
