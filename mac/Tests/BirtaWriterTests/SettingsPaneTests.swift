@@ -420,7 +420,10 @@ final class SettingsPaneTests: XCTestCase {
             onShowWelcome: {}, onCheckForUpdates: {})
         defer { controller.window?.close() }
 
-        let switches = syntaxSwitches(of: controller)
+        // The operable switches are the targets; the one a reader cannot move
+        // is the floor, and `testTheCommonMarkRowShouldBeOnAndNotOperable`
+        // is what asks about it.
+        let switches = syntaxSwitches(of: controller).filter(\.isEnabled)
         XCTAssertEqual(switches.count, SyntaxSet.allCases.count,
                        "the Markdown pane did not draw one switch per target")
         guard let first = switches.first else { return }
@@ -432,6 +435,48 @@ final class SettingsPaneTests: XCTestCase {
                           "the switch did not write the setting, so this checked nothing")
         XCTAssertEqual(everywhere, 1, "the change did not reach every window")
         XCTAssertEqual(frontOnly, 0, "the change went to the front window instead")
+    }
+
+    /// The CommonMark row is a statement rather than a question: its switch
+    /// is on and cannot be moved, because every flavor below it contains the
+    /// floor. Both halves are asserted, since a switch that is off and fixed
+    /// would say the opposite, and one that is on and operable would snap
+    /// back under the pointer and read as broken.
+    func testTheCommonMarkRowShouldBeOnAndNotOperable() {
+        let controller = makeController()
+        defer { controller.window?.close() }
+        let all = syntaxSwitches(of: controller)
+        let fixed = all.filter { !$0.isEnabled }
+        XCTAssertEqual(fixed.count, 1, "expected exactly one switch a reader cannot move")
+        XCTAssertEqual(fixed.first?.state, .on, "the floor's switch is drawn off")
+        // Above every target: the floor is read before the things built on it.
+        XCTAssertEqual(all.first?.isEnabled, false, "the floor is not the first row")
+    }
+
+    /// Every row that names a flavor somebody else defines links to that
+    /// definition, and to the page the vocabulary names rather than to a
+    /// paraphrase of it. Read off the live pane in order, so a row whose link
+    /// went missing, or a link that moved to the wrong row, both fail here.
+    func testEveryDocumentedFlavorShouldLinkToItsOwnPage() {
+        let controller = makeController()
+        defer { controller.window?.close() }
+        controller.selectTabForTesting("markdown")
+        guard let content = controller.window?.contentView else { return XCTFail("no window") }
+        content.layoutSubtreeIfNeeded()
+        let drawn = linkButtons(in: content).map(\.url)
+        let expected = [CommonMark.documentation.url]
+            + SyntaxSet.allCases.compactMap { $0.documentation?.url }
+        XCTAssertGreaterThan(expected.count, 1,
+                             "the vocabulary documents nothing, so this compares nothing")
+        XCTAssertEqual(drawn, expected, "the Markdown pane's links are not the vocabulary's, in order")
+    }
+
+    /// Every `LinkButton` under `view`, in drawing order.
+    private func linkButtons(in view: NSView) -> [LinkButton] {
+        var found: [LinkButton] = []
+        if let link = view as? LinkButton { found.append(link) }
+        for subview in view.subviews { found += linkButtons(in: subview) }
+        return found
     }
 
     private func agentPane(of controller: SettingsWindowController)

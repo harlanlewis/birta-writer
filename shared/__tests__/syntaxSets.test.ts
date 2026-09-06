@@ -221,6 +221,16 @@ describe("normalizeSyntaxSets", () => {
         expect(normalizeSyntaxSets(["gfm", "markdownExtra", 7, null])).toEqual(["gfm"]);
     });
 
+    it("a retired name should read as what it became, in vocabulary order", () => {
+        // `birta` shipped as one set and split in two. A settings.json still
+        // carrying it keeps both halves rather than losing the calculation
+        // block and Notion callouts on the next window, and the answer is in
+        // the vocabulary's order whatever order the stored list was in.
+        expect(normalizeSyntaxSets(["birta", "gfm"])).toEqual(["gfm", "notion", "calc"]);
+        // And the retired name never comes back out.
+        expect(normalizeSyntaxSets(["birta"])).not.toContain("birta");
+    });
+
     it("a duplicate should collapse", () => {
         expect(normalizeSyntaxSets(["gfm", "gfm"])).toEqual(["gfm"]);
     });

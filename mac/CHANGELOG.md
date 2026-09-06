@@ -12,6 +12,10 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ## [Unreleased]
 
+### Changed
+
+- The Markdown pane in Birta Writer for Mac's Settings says less and shows more. Its intro is two sentences. CommonMark is the first row, switched on and fixed, in place of a paragraph explaining why it was not in the list. The row named Birta Writer is now two rows, Notion and Calculation blocks, each saying what its switch withdraws, and SVG blocks have no row because no flavor governs them. Every row that names another tool's Markdown links to that tool's own page on it: GitHub Docs, Obsidian Help, the Pandoc manual, Notion Help, and the CommonMark reference.
+
 ---
 
 ## [2026.907.0] - 2026, September 7

@@ -26,7 +26,7 @@ import { insertCalloutCommand } from "../plugins/callouts";
 import { BlockRangeSelection } from "../plugins/blockRange";
 import { closeBlockMenu, openBlockMenuAtCaret, setBlockMenuContext } from "../components/blockMenu";
 import { createLinkFormatSwitch } from "../components/linkPopup/formatSwitch";
-import type { SyntaxSet } from "../../shared/syntaxSets";
+import { ALL_SYNTAX_SETS, type SyntaxSet } from "../../shared/syntaxSets";
 
 let editors: Editor[] = [];
 let activeEditor: Editor | null = null;
@@ -136,7 +136,7 @@ describe("the block menu's own-kind carve-out", () => {
     it("with every target on, a paragraph should be offered the gated rows too", async () => {
         const editor = await makeEditor("just a paragraph");
         const v = view(editor);
-        withSets(["gfm", "obsidian", "pandoc", "birta"], () => {
+        withSets(ALL_SYNTAX_SETS, () => {
             caretIn(v, 1);
             expect(openBlockMenuAtCaret(v)).toBe(true);
             const labels = turnIntoLabels();

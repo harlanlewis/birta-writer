@@ -5,8 +5,8 @@ import Foundation
 /// A port of `shared/syntaxSets.ts`, in the same family as `ProofreadFilter`,
 /// `AgentRequest` and `StyleCategories`: Swift cannot import TypeScript, so the
 /// vocabulary lives twice and `shared/__tests__/syntaxSetsPort.test.ts` reads
-/// both files and fails when they disagree on a set, a feature, a membership or
-/// a command.
+/// both files and fails when they disagree on a set, a feature, a membership,
+/// a command, a documentation link or a retired name.
 ///
 /// The app needs its own copy for one reason the page cannot serve: the menu
 /// bar belongs to the application, and AppKit takes a key equivalent before the
@@ -22,37 +22,90 @@ public enum SyntaxSet: String, CaseIterable, Sendable {
     case gfm
     case obsidian
     case pandoc
-    case birta
+    case notion
+    case calc
 
     /// What the Settings row says. The reader is picking a tool they publish
-    /// with, so the row names the tool rather than the specification.
+    /// with, so the row names the tool rather than the specification; the one
+    /// row that is this editor's own names the thing it writes, because a row
+    /// named for the product would say nothing about what its switch withdraws.
     public var label: String {
         switch self {
         case .gfm: return "GitHub"
         case .obsidian: return "Obsidian"
         case .pandoc: return "Pandoc"
-        case .birta: return "Birta Writer"
+        case .notion: return "Notion"
+        case .calc: return "Calculation blocks"
         }
     }
 
     /// The sentence under the row: what enabling it adds, in the syntax a
     /// reader would recognise rather than in feature names.
+    ///
+    /// Obsidian's names GitHub rather than relisting seven features, and that
+    /// is a claim Obsidian's own page makes (it supports CommonMark, GitHub
+    /// Flavored Markdown and LaTeX), so the membership table holds every GitHub
+    /// feature under Obsidian too. `syntaxSetDescriptions.test.ts` holds each
+    /// caption to naming only what its target provides.
     public var caption: String {
         switch self {
         case .gfm:
             return "Tables, ~~strikethrough~~, task lists, footnotes, math, > [!NOTE] alerts and Mermaid diagrams."
         case .obsidian:
-            return "Wikilinks, ==highlights== and callouts, over the GitHub set."
+            return "Everything in the GitHub row, plus [[wikilinks]], ==highlights== and callouts."
         case .pandoc:
             return "Footnotes, math and ::: fenced divs."
-        case .birta:
-            return "Calculation and SVG blocks, and Notion callouts. These render fully here and as a code block or plain HTML elsewhere."
+        case .notion:
+            return "Notion callouts, as an export writes them. Plain HTML anywhere else."
+        case .calc:
+            return "Calculations that work out their answers as you type. A plain code block anywhere else."
+        }
+    }
+
+    /// The target's own page on what its Markdown is, mirroring
+    /// `SYNTAX_SET_DOCUMENTATION`. Nil for the calculation block, which is this
+    /// editor's own and has no outside page to point at.
+    public var documentation: SyntaxDocumentation? {
+        switch self {
+        case .gfm: return SyntaxDocumentation("GitHub Docs", "https://docs.github.com/en/get-started/writing-on-github")
+        case .obsidian: return SyntaxDocumentation("Obsidian Help", "https://obsidian.md/help/obsidian-flavored-markdown")
+        case .pandoc: return SyntaxDocumentation("Pandoc Manual", "https://pandoc.org/MANUAL.html#pandocs-markdown")
+        case .notion: return SyntaxDocumentation("Notion Help", "https://www.notion.com/help/export-your-content")
+        case .calc: return nil
         }
     }
 }
 
+/// Where a target documents its own Markdown, for the settings row to link.
+public struct SyntaxDocumentation: Equatable, Sendable {
+    /// The link's text: the site's name, as its own readers know it.
+    public let title: String
+    public let url: URL
+
+    /// A literal URL, which is the only kind the vocabulary holds; a string
+    /// that does not parse is a typo in this file rather than a runtime case,
+    /// and `SettingsPaneTests` draws every one of these, so the typo crashes
+    /// a test run rather than shipping as a dead link.
+    public init(_ title: String, _ url: String) {
+        self.title = title
+        self.url = URL(string: url)!
+    }
+}
+
+/// The floor, for the one Settings row that shows it rather than switches it.
+///
+/// Not a `SyntaxSet`, and deliberately: every target contains CommonMark, so a
+/// set for it could never be turned off, and the row exists to SAY that rather
+/// than to ask. Mirrors `COMMONMARK_DOCUMENTATION`.
+public enum CommonMark {
+    public static let caption = "Supported everywhere."
+    public static let documentation = SyntaxDocumentation("CommonMark Reference", "https://commonmark.org/help/")
+}
+
 /// A syntax a target either supports or does not. Every member is beyond
-/// CommonMark, which is the floor and is never withdrawn.
+/// CommonMark, which is the floor and is never withdrawn; and none is a
+/// renderer's fence (`svg`, PlantUML, Graphviz), because drawing what a code
+/// block holds is rendering rather than syntax and no target can take it away.
 public enum SyntaxFeature: String, CaseIterable, Sendable {
     case table
     case strikethrough
@@ -65,7 +118,6 @@ public enum SyntaxFeature: String, CaseIterable, Sendable {
     case fencedDiv
     case notionCallout
     case mermaid
-    case svg
     case calc
 }
 
@@ -79,7 +131,8 @@ public enum SyntaxScope {
         case .obsidian: return [.table, .strikethrough, .taskList, .footnote, .math, .highlight,
                                 .wikiLink, .calloutAlert, .mermaid]
         case .pandoc: return [.table, .strikethrough, .footnote, .math, .fencedDiv]
-        case .birta: return [.calc, .svg, .notionCallout]
+        case .notion: return [.notionCallout]
+        case .calc: return [.calc]
         }
     }
 
@@ -124,15 +177,26 @@ public enum SyntaxScope {
     /// setting gets: the app as it was before targets existed.
     public static let all: Set<SyntaxSet> = Set(SyntaxSet.allCases)
 
+    /// Set names a stored list may still carry from before the vocabulary
+    /// changed, and what each reads as now. Mirrors `LEGACY_SYNTAX_SETS`: the
+    /// `birta` target split into `notion` and `calc`, and a list written under
+    /// the old name keeps the tools it had rather than losing two of them on
+    /// the next launch. The next write spells the list in the current
+    /// vocabulary, so the old name is read for as long as it is stored and
+    /// never written again.
+    public static let legacy: [String: [SyntaxSet]] = ["birta": [.notion, .calc]]
+
     /// A stored list back into a set, dropping anything the vocabulary does not
-    /// know.
+    /// know and reading a retired name as what it became.
     ///
     /// An EMPTY stored list is kept empty rather than read as "unset", because
     /// empty is the CommonMark-only target and is a thing a reader can choose.
     /// Only a MISSING value falls back to `all`, which is what `Prefs` decides
     /// and this function is deliberately not asked to.
     public static func sets(from stored: [String]) -> Set<SyntaxSet> {
-        Set(stored.compactMap(SyntaxSet.init(rawValue:)))
+        Set(stored.flatMap { name in
+            SyntaxSet(rawValue: name).map { [$0] } ?? legacy[name] ?? []
+        })
     }
 
     /// The stored spelling of a set, in the vocabulary's own order so the

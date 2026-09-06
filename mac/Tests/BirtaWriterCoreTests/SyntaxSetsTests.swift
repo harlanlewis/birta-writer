@@ -75,6 +75,16 @@ final class SyntaxSetsTests: XCTestCase {
         XCTAssertEqual(SyntaxScope.sets(from: ["gfm", "markdownExtra"]), [.gfm])
     }
 
+    func testARetiredStoredNameShouldReadAsWhatItBecame() {
+        // `birta` shipped as one target and split in two. A list stored under
+        // it keeps both halves, so a reader who narrowed to it does not lose
+        // the calculation block on the next launch; and the spelling written
+        // back is the current one, so the old name is read for as long as it
+        // is stored and never written again.
+        XCTAssertEqual(SyntaxScope.sets(from: ["gfm", "birta"]), [.gfm, .notion, .calc])
+        XCTAssertFalse(SyntaxScope.stored(SyntaxScope.sets(from: ["birta"])).contains("birta"))
+    }
+
     func testAnEmptyStoredListShouldStayEmptyRatherThanReadingAsUnset() {
         // This is the CommonMark-only target. Reading it as "nothing stored"
         // would put every tool back the next time the app launched, silently
