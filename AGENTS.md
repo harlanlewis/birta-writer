@@ -193,6 +193,7 @@ mac/Sources/BirtaWriterCore/UnsavedChanges.swift What the quit sheet says when a
 mac/Sources/BirtaWriterCore/AboutInfo.swift      What the About window says, and THE repository string its two GitHub links and the updater's release feed all derive from
 mac/Sources/BirtaWriterCore/UpdatePolicy.swift   When the app asks about a new version, and the one predicate that lets it replace itself with nobody asked
 mac/Sources/BirtaWriter/Updater.swift            Check, stage, arm: what happens on its own, what waits for an answer, and the seam that keeps a test off the network and off the swap script
+mac/Sources/BirtaWriter/UpdateCheckPrompt.swift  The answer to a check somebody ASKED for, live on arrival, against the unasked offer's held buttons; the words are UpdatePolicy.checkReport's
 mac/Sources/BirtaWriterCore/SystemRequirements.swift  Which Macs a build of the app runs on, decided off the bundle rather than off a floor written here; the two update paths' preflight
 mac/Sources/BirtaWriterCore/AgentRequest.swift   /ai command composition, a literal port of src/agentBridge/askAgent.ts; same test cases both sides
 mac/Sources/BirtaWriterCore/AgentReference.swift What Copy Reference puts on the clipboard, a port of src/agentBridge/format.ts; mirrored test cases, and its header names the two places the two deliberately differ

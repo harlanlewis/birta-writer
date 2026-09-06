@@ -84,6 +84,35 @@ public enum ReleaseFeed {
         return false
     }
 
+    /// The day a version was cut, read out of the version itself.
+    ///
+    /// The versions are CalVer, `YYYY.MDD.N`: the middle field is the month
+    /// times a hundred plus the day (`905` is September 5, `1105` November 5)
+    /// and the last counts the releases already cut that day. The release job
+    /// derives the number from the date, so the date can be read back out of
+    /// it, and that matters because a build carries no other record of when
+    /// it was made: this is how the offer can say how far behind a copy is.
+    ///
+    /// Midnight UTC, so two versions compare by whole days regardless of the
+    /// zone the reader is in. Nil for anything that is not a CalVer version,
+    /// which a checkout's `0.0.0` is not, and for a middle field that names no
+    /// real day, which is the guard against reading a semver's minor as a
+    /// month.
+    public static func releaseDay(of version: String) -> Date? {
+        guard let parts = fields(version), parts.count == 3 else { return nil }
+        let year = parts[0], monthDay = parts[1]
+        let month = monthDay / 100, day = monthDay % 100
+        guard year >= 2000, (1...12).contains(month), (1...31).contains(day) else { return nil }
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC")!
+        let components = DateComponents(year: year, month: month, day: day)
+        // A day the month does not have (February 30) is not a date, and
+        // `date(from:)` would quietly roll it into the next month.
+        guard let date = calendar.date(from: components),
+              calendar.component(.day, from: date) == day else { return nil }
+        return date
+    }
+
     private static func fields(_ version: String) -> [Int]? {
         let trimmed = version.hasPrefix("v") ? String(version.dropFirst()) : version
         guard !trimmed.isEmpty else { return nil }

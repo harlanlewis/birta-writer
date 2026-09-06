@@ -41,7 +41,11 @@ final class AboutWindowController: NSWindowController {
     ///
     /// Read once, here. The window says what the build was when it opened, and
     /// nothing about a build changes while it is running.
-    init(info: AboutInfo = .current) {
+    /// `onCheckForUpdates` is what the button under the version does. A
+    /// closure rather than a selector up the responder chain, so the window
+    /// can be built and pressed in a test with no delegate behind it, and so
+    /// the one thing this window can DO is legible at the call that opens it.
+    init(info: AboutInfo = .current, onCheckForUpdates: @escaping () -> Void = {}) {
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: Metrics.minColumnWidth, height: Metrics.icon),
             styleMask: [.titled, .closable], backing: .buffered, defer: false)
@@ -59,7 +63,7 @@ final class AboutWindowController: NSWindowController {
         super.init(window: window)
 
         let content = NSView()
-        let stack = Self.stack(info)
+        let stack = Self.stack(info, onCheckForUpdates: onCheckForUpdates)
         stack.translatesAutoresizingMaskIntoConstraints = false
         content.addSubview(stack)
         NSLayoutConstraint.activate([
@@ -77,7 +81,7 @@ final class AboutWindowController: NSWindowController {
     required init?(coder: NSCoder) { fatalError("not used") }
 
     /// The column, top to bottom.
-    private static func stack(_ info: AboutInfo) -> NSStackView {
+    private static func stack(_ info: AboutInfo, onCheckForUpdates: @escaping () -> Void) -> NSStackView {
         let iconView = NSImageView(image: appIcon())
         iconView.imageScaling = .scaleProportionallyUpOrDown
         // Before the size constraints: the stack sets this for an arranged
@@ -102,14 +106,39 @@ final class AboutWindowController: NSWindowController {
         version.alignment = .center
         version.isSelectable = true
 
-        let links = linkColumn()
+        // Under the version, because that is the number it is about: the
+        // question the button asks is whether the line above it is still the
+        // newest. Its own button rather than a row of the link column, since
+        // the links leave the app and this does not, and one width with them
+        // because the eye reads the column as one stack whatever the buttons
+        // do. `ActionButton` is what makes it reachable from a test.
+        let check = ActionButton(title: "Check for Updates…", action: onCheckForUpdates)
+        check.bezelStyle = .rounded
+        check.controlSize = .regular
+        check.font = .systemFont(ofSize: NSFont.systemFontSize)
 
-        let stack = NSStackView(views: [iconView, name, version, links])
+        let links = linkColumn()
+        // The widest TITLE among every button in the stack, so nothing here
+        // can be clipped by a number chosen in advance, taken before any
+        // width constraint exists: once one does, a button reports it back
+        // as its fitting size and this would be the column measuring itself.
+        let buttons = [check] + links.arrangedSubviews.compactMap { $0 as? NSButton }
+        let width = max(Metrics.minColumnWidth, buttons.map(\.intrinsicContentSize.width).max() ?? 0)
+        for button in buttons {
+            // As with the icon: the stack sets this for an arranged subview,
+            // and a view carrying both an autoresizing mask and a width has
+            // conflicting constraints until it does.
+            button.translatesAutoresizingMaskIntoConstraints = false
+            button.widthAnchor.constraint(equalToConstant: width).isActive = true
+        }
+
+        let stack = NSStackView(views: [iconView, name, version, check, links])
         stack.orientation = .vertical
         stack.alignment = .centerX
         stack.spacing = 6
         stack.setCustomSpacing(16, after: iconView)
-        stack.setCustomSpacing(22, after: version)
+        stack.setCustomSpacing(18, after: version)
+        stack.setCustomSpacing(18, after: check)
 
         // Drawn only when there is one. An empty label would reserve its line
         // and leave the window looking as though something failed to load.
@@ -124,11 +153,10 @@ final class AboutWindowController: NSWindowController {
         return stack
     }
 
-    /// The links, as buttons of one width stacked under each other.
-    ///
-    /// One width because they are a group and a ragged stack of three would
-    /// read as three unrelated controls; that width is the widest title's, so
-    /// nothing here can be clipped by a number chosen in advance.
+    /// The links, as buttons stacked under each other. Their one width is
+    /// set by the caller, with the button above them, because they are a
+    /// group and a ragged stack of three would read as three unrelated
+    /// controls.
     private static func linkColumn() -> NSStackView {
         let buttons = AboutLink.allCases.map { link -> LinkButton in
             let button = LinkButton(title: link.title, url: link.url)
@@ -144,18 +172,6 @@ final class AboutWindowController: NSWindowController {
             button.font = .systemFont(ofSize: NSFont.systemFontSize)
             return button
         }
-        // The widest TITLE, taken before any width constraint exists: once one
-        // does, a button reports it back as its fitting size and this would be
-        // the column measuring itself.
-        let width = max(Metrics.minColumnWidth, buttons.map(\.intrinsicContentSize.width).max() ?? 0)
-        for button in buttons {
-            // As with the icon: the stack sets this for an arranged subview,
-            // and a view carrying both an autoresizing mask and a width has
-            // conflicting constraints until it does.
-            button.translatesAutoresizingMaskIntoConstraints = false
-            button.widthAnchor.constraint(equalToConstant: width).isActive = true
-        }
-
         let column = NSStackView(views: buttons.map { $0 as NSView })
         column.orientation = .vertical
         column.alignment = .centerX
@@ -180,4 +196,24 @@ final class AboutWindowController: NSWindowController {
             ?? NSImage(named: NSImage.applicationIconName)
             ?? NSImage(size: NSSize(width: Metrics.icon, height: Metrics.icon))
     }
+}
+
+/// A bordered button that owns what it does, the way `LinkButton` owns its
+/// URL: a closure rather than a target and selector, so a test can press it
+/// and see the call without a responder chain to stand one up in.
+final class ActionButton: NSButton {
+    private let perform: () -> Void
+
+    init(title: String, action: @escaping () -> Void) {
+        perform = action
+        super.init(frame: .zero)
+        self.title = title
+        isBordered = true
+        target = self
+        self.action = #selector(fire)
+    }
+
+    required init?(coder: NSCoder) { fatalError("not used") }
+
+    @objc private func fire() { perform() }
 }

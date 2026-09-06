@@ -75,7 +75,32 @@ final class Updater {
         let work: URL
     }
 
-    /// Something newer exists, with the tag to name it.
+    /// How the app comes back after the swap.
+    ///
+    /// A swap somebody asked for reopens in front of them, which is where
+    /// they were looking. A swap that went in because nobody was there must
+    /// not take the front from whatever they left running, so it reopens
+    /// without activating: the whole claim of the unattended path is that a
+    /// person who walks away and comes back finds their machine as they left
+    /// it. And a swap they asked to have happen AFTER THEY QUIT does not
+    /// reopen at all: the next launch is theirs, and an app that came back on
+    /// its own after being quit is an app that did not quit.
+    enum Reopen: Equatable {
+        case front, background, none
+
+        /// The word the swap script is handed, and reads back by name.
+        var argument: String {
+            switch self {
+            case .front: return "front"
+            case .background: return "background"
+            case .none: return "none"
+            }
+        }
+    }
+
+    /// Something newer exists, with the tag to name it. Raised by the checks
+    /// the app makes on its own, never by one somebody pressed a button for:
+    /// that one answers the button instead.
     var onUpdateAvailable: ((String) -> Void)?
     /// Progress and outcome, for the status line.
     var onStatus: ((String) -> Void)?
@@ -94,6 +119,13 @@ final class Updater {
     private var checking = false
     /// A fetch-verify-unpack run is in flight.
     private var staging = false
+    /// Why the last staging run staged nothing, for a caller that has to put
+    /// the reason in front of somebody. Cleared by the next run that succeeds.
+    ///
+    /// The status line already carries it, and that is the problem: a person
+    /// who pressed Install on Next Launch in the About window is looking at
+    /// the About window, and the panel's status line is behind it or hidden.
+    private(set) var lastFailure: String?
     /// Callers waiting on that run. More than one, because the offer can be
     /// confirmed while the background staging it did not start is still going.
     private var waiting: [(Staged?) -> Void] = []
@@ -178,7 +210,7 @@ final class Updater {
         /// it started. Injected because the real one waits for this pid: run
         /// from a test it would wait for the test process and then move a
         /// bundle nobody asked it to.
-        var armSwap: (Staged, Bool) -> Bool = Updater.runSwap
+        var armSwap: (Staged, Reopen) -> Bool = Updater.runSwap
     }
 
     var environment = Environment()
@@ -245,7 +277,15 @@ final class Updater {
                    UpdatePolicy.shouldOffer(tag: release.tag, declined: self.environment.declined()) {
                     self.stage(release)
                 }
-                self.onUpdateAvailable?(release.tag)
+                // The offer is for a check nobody asked for. A forced check
+                // is a button, and the button's own completion carries the
+                // answer; raising the offer as well would put two sheets
+                // about one release on the same window. And not while a swap
+                // is armed: that swap runs at the next quit whatever is
+                // offered, so a Restart button here would reach `install`,
+                // be refused, and do nothing. The quit installs what was
+                // armed and the launch after it finds this release again.
+                if !force, !self.armed { self.onUpdateAvailable?(release.tag) }
                 done?(.found(release.tag))
             }
         }
@@ -270,10 +310,16 @@ final class Updater {
         check()
     }
 
-    /// The button in Settings, which says what happened either way.
-    func checkNow() {
+    /// A check somebody asked for: the menu row, or the button in Settings.
+    ///
+    /// Answers through `done`, and every outcome reaches it, because a press
+    /// that hears nothing back is a button that looks broken. What it says on
+    /// the status line is only that the check has started: the answer is the
+    /// caller's to put in front of the person, on the window they pressed
+    /// from, which the panel's status line may well be hidden behind.
+    func checkNow(then done: @escaping (CheckResult) -> Void) {
         guard AppFlavor.current.updatesItself else {
-            onStatus?("A development build does not replace itself.")
+            done(.refused)
             return
         }
         // Pressing the button is asking to be told, so a version this person
@@ -283,18 +329,7 @@ final class Updater {
         // the once-per-version rule that exists to stop the TIMER nagging.
         Prefs.updateDeclinedTag = nil
         onStatus?("Checking for updates…")
-        check(force: true) { [weak self] result in
-            switch result {
-            case .found: break                      // the offer says it
-            case .upToDate: self?.onStatus?("\(AppFlavor.current.displayName) is up to date.")
-            case .failed: self?.onStatus?("Could not check for updates.")
-            // A refusal is the flavour gate or a check already running. The
-            // button must still say something: the status line above it reads
-            // "Checking for updates…" until it is replaced, so falling through
-            // silently leaves the row claiming a check that is not happening.
-            case .refused: self?.onStatus?("Nothing to check right now.")
-            }
-        }
+        check(force: true, then: done)
     }
 
     // MARK: staging
@@ -453,6 +488,7 @@ final class Updater {
             try? FileManager.default.removeItem(at: previous.work)
         }
         staged = result
+        lastFailure = result == nil ? message : nil
         if let message { say(message) }
         let waiters = waiting
         waiting = []
@@ -492,7 +528,27 @@ final class Updater {
             guard let self else { return done(false) }
             defer { self.announcing = false }
             guard staged != nil else { return done(false) }
-            done(self.armStagedSwap(inBackground: false))
+            done(self.armStagedSwap(reopen: .front))
+        }
+    }
+
+    /// Stage if it is not staged already, then arm a swap that runs after
+    /// the next quit and reopens nothing.
+    ///
+    /// The other answer to the asked-for check. `done(true)` means the swap is
+    /// armed and will run whenever this process next goes; nothing quits here,
+    /// and nothing will reopen when it does, because the quit that triggers it
+    /// is the person's own. Between now and then the app goes on running the
+    /// copy it is, and the unattended path finds the swap already armed and
+    /// leaves it be.
+    func installOnQuit(_ release: ReleaseFeed.Release, then done: @escaping (Bool) -> Void) {
+        guard !armed else { return done(false) }
+        announcing = true
+        stage(release) { [weak self] staged in
+            guard let self else { return done(false) }
+            defer { self.announcing = false }
+            guard staged != nil else { return done(false) }
+            done(self.armStagedSwap(reopen: .none))
         }
     }
 
@@ -502,22 +558,43 @@ final class Updater {
     /// waits for this process to go, so by the time it does anything there is
     /// nobody here to be told. What the caller owes a true is a quit.
     ///
-    /// `inBackground` is how the app comes back afterwards. A swap somebody
-    /// asked for reopens in front of them, which is where they were looking. A
-    /// swap that went in because nobody was there must not take the front from
-    /// whatever they left running, so it reopens without activating: the whole
-    /// claim of the unattended path is that a person who walks away and comes
-    /// back finds their machine as they left it.
+    /// `reopen` is how the app comes back afterwards; `Reopen` says why each
+    /// answer exists. Only a swap somebody is waiting on announces itself:
+    /// the front one because they are about to watch the app restart, the
+    /// quit-time one because they need to know nothing happens until then.
     @discardableResult
-    func armStagedSwap(inBackground: Bool) -> Bool {
+    func armStagedSwap(reopen: Reopen) -> Bool {
         guard !armed, let staged else { return false }
-        guard environment.armSwap(staged, inBackground) else {
+        guard environment.armSwap(staged, reopen) else {
             say("Could not install the update.")
             return false
         }
         armed = true
-        if !inBackground { onStatus?("Installing \(staged.tag)…") }
+        switch reopen {
+        case .front: onStatus?("Installing \(staged.tag)…")
+        case .none:
+            onStatus?(UpdatePolicy.installOnQuitNotice(appName: AppFlavor.current.displayName,
+                                                       tag: staged.tag))
+        case .background: break
+        }
         return true
+    }
+
+    /// The file that turns an armed quit-time swap into a restart.
+    ///
+    /// The script is already running by the time anybody changes their mind,
+    /// and its reopen argument was fixed when it was armed, so the change
+    /// reaches it as a file beside the staged bundle: the script looks for
+    /// it the moment this process is gone, before it removes that directory.
+    nonisolated static let reopenMark = "reopen-front"
+
+    /// Ask an armed quit-time swap to reopen the app in front after all.
+    /// Answers whether the mark was written; false when nothing is armed.
+    @discardableResult
+    func reopenAfterArmedSwap() -> Bool {
+        guard armed, let staged else { return false }
+        return FileManager.default.createFile(
+            atPath: staged.work.appendingPathComponent(Self.reopenMark).path, contents: nil)
     }
 
     /// The swap itself: a script that waits for this pid, then replaces the
@@ -525,7 +602,7 @@ final class Updater {
     ///
     /// A static rather than a method because it is the injectable half of
     /// `Environment.armSwap` and reaches none of this type's state.
-    private nonisolated static func runSwap(_ staged: Staged, inBackground: Bool) -> Bool {
+    private nonisolated static func runSwap(_ staged: Staged, reopen: Reopen) -> Bool {
         // The swap happens AFTER this process is gone: an app cannot
         // reliably replace the bundle it is executing out of. A small
         // script waits for the pid, then does the move `install-app.sh`
@@ -539,7 +616,11 @@ final class Updater {
         // in a `sh -c` string.
         let script = """
         while kill -0 \(getpid()) 2>/dev/null; do sleep 0.2; done
-        staged="$1"; dest="$2"; work="$3"; background="$4"
+        staged="$1"; dest="$2"; work="$3"; reopen="$4"
+        # A change of mind after arming: Restart Now on a swap that was
+        # armed for the next quit. Read here, after the wait and before the
+        # work directory goes, which is the only window it can be read in.
+        [ -f "$work/\(reopenMark)" ] && reopen=front
         # Refuse rather than build a path out of nothing. Every `rm -rf`
         # below is rooted at "$dest", so an empty one turns them into
         # relative deletes in whatever directory this happens to inherit.
@@ -548,14 +629,16 @@ final class Updater {
         # An unattended swap reopens WITHOUT taking the front. The person is
         # somewhere else, or away from the machine entirely, and an app that
         # activates itself while nobody asked is exactly the interruption the
-        # unattended path exists not to be.
+        # unattended path exists not to be. A swap armed to run after the
+        # person's own quit reopens nothing: they quit, and the next launch
+        # is theirs.
         reopen() {
             [ -d "$dest" ] || return 0
-            if [ "$background" = "background" ]; then
-                /usr/bin/open -g "$dest"
-            else
-                /usr/bin/open "$dest"
-            fi
+            case "$reopen" in
+                background) /usr/bin/open -g "$dest" ;;
+                front) /usr/bin/open "$dest" ;;
+                *) ;;
+            esac
         }
         # Every failure below puts the app back on screen and takes its
         # own litter with it. This runs AFTER the app has quit, so a bare
@@ -581,7 +664,7 @@ final class Updater {
                           staged.bundle.path,
                           Bundle.main.bundleURL.path,
                           staged.work.path,
-                          inBackground ? "background" : "front"]
+                          reopen.argument]
         do {
             try swap.run()
             return true

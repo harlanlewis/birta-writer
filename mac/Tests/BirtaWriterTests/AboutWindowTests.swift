@@ -145,4 +145,35 @@ final class AboutWindowTests: XCTestCase {
         }
         return nil
     }
+
+    /// The button under the version, above the links, and what it does.
+    ///
+    /// Pressed rather than found: a button whose closure a test never fires
+    /// is a button that could be wired to nothing.
+    func testTheWindowShouldOfferToCheckForUpdatesUnderTheVersion() throws {
+        var pressed = 0
+        let controller = AboutWindowController(info: Self.info, onCheckForUpdates: { pressed += 1 })
+        let content = try laidOutContent(of: controller)
+        let button = try XCTUnwrap(buttons(in: content).first { $0.title == "Check for Updates…" })
+        XCTAssertTrue(button.isBordered)
+        // Above the links: the version line, then this, then the column.
+        let links = try XCTUnwrap(columnOfLinks(in: content))
+        let column = try XCTUnwrap(button.superview as? NSStackView)
+        let order = column.arrangedSubviews
+        let versionIndex = try XCTUnwrap(order.firstIndex { ($0 as? NSTextField)?.stringValue == Self.info.versionLine })
+        XCTAssertEqual(order.firstIndex(of: button), versionIndex + 1)
+        XCTAssertEqual(order.firstIndex(of: links), versionIndex + 2)
+        // One width with the links, so the column reads as one stack.
+        XCTAssertEqual(button.frame.width, links.arrangedSubviews.first?.frame.width)
+        button.performClick(nil)
+        XCTAssertEqual(pressed, 1)
+    }
+
+    private func buttons(in view: NSView) -> [NSButton] {
+        var found: [NSButton] = []
+        if let button = view as? NSButton { found.append(button) }
+        for subview in view.subviews { found += buttons(in: subview) }
+        return found
+    }
+
 }
