@@ -18,6 +18,7 @@ import { editorViewCtx } from "@milkdown/core";
 import { Editor } from "@milkdown/core";
 import { getMarkdown } from "@milkdown/utils";
 import { altFromHtmlFlavor, imageFilesFrom, imagePastePlugin } from "../plugins/imagePaste";
+import { imageUploadProgressPlugin, imageUploadProgressKey } from "../plugins/imageUploadProgress";
 import { makeCorpusEditor } from "./helpers/moveFuzz";
 import type { EditorView } from "../pm";
 
@@ -153,5 +154,69 @@ describe("imagePastePlugin — the props claim image payloads", () => {
             f(v, { dataTransfer: transfer({ text: "hi" }), clientX: 0, clientY: 0 } as unknown as DragEvent,
                 undefined as never, false)) ?? false;
         expect(handled).toBe(false);
+    });
+});
+
+/**
+ * A host that declares no image store (`imageUpload` absent from its
+ * profile). The command is withdrawn there already; this is the paste path,
+ * which reaches the save without a command. The payload is still CLAIMED, so
+ * ProseMirror never pastes the HTML flavor, and the save is refused in place
+ * rather than posted to a host that cannot answer it.
+ */
+describe("imagePastePlugin — a host with no image store", () => {
+    let editor: Editor;
+    let v: EditorView;
+    const posted = () =>
+        ((globalThis as { acquireVsCodeApi: () => { postMessage: ReturnType<typeof vi.fn> } })
+            .acquireVsCodeApi().postMessage.mock.calls as Array<[{ type: string }]>)
+            .map(([m]) => m.type);
+
+    beforeEach(async () => {
+        vi.useFakeTimers();
+        document.body.innerHTML = "";
+        vi.clearAllMocks();
+        // The progress plugin too: the refusal is REPORTED through its pill,
+        // and without it the failure route has nowhere to say anything.
+        editor = await makeCorpusEditor("start\n", [imagePastePlugin, imageUploadProgressPlugin]);
+        v = editor.action((ctx) => ctx.get(editorViewCtx));
+    });
+
+    afterEach(async () => {
+        vi.useRealTimers();
+        delete (window as { __i18n?: unknown }).__i18n;
+        await editor.destroy();
+    });
+
+    const paste = () =>
+        v.someProp("handlePaste", (f) =>
+            f(v, { clipboardData: transfer({ file: png(), html: "<img src='https://x/a.png' alt='alt'>" }) } as ClipboardEvent, undefined as never)) ?? false;
+    const pill = () => document.querySelector(".img-upload-pill")?.textContent ?? null;
+    // The plugin's own record of the batch, which is what the pill draws
+    // from. A failure always draws; a save in progress draws only once it
+    // has outlived the flicker threshold, so the control arm reads the
+    // state rather than waiting on that timer.
+    const uploads = () => imageUploadProgressKey.getState(v.state)?.uploads ?? [];
+
+    it("an image paste should be claimed, post nothing, and report the refusal in place", async () => {
+        window.__i18n = { translations: {}, isMac: false, host: { capabilities: [] } };
+        const before = editor.action(getMarkdown());
+        expect(paste()).toBe(true);
+        await vi.advanceTimersByTimeAsync(0);
+        expect(posted()).not.toContain("uploadImage");
+        expect(uploads()[0]?.error).toMatch(/no image store/);
+        expect(pill()).toMatch(/not saved/);
+        expect(pill()).toMatch(/no image store/);
+        expect(editor.action(getMarkdown())).toBe(before);
+    });
+
+    // The arm that keeps the gate honest: the same paste under the default
+    // (VS Code) profile is a save in progress, not a refusal.
+    it("the same paste under a host that declares the store should be a save in progress", async () => {
+        expect(paste()).toBe(true);
+        await vi.advanceTimersByTimeAsync(0);
+        expect(uploads()).toHaveLength(1);
+        expect(uploads()[0]?.error).toBeUndefined();
+        expect(pill()).toBeNull();
     });
 });
