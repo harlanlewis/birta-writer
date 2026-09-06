@@ -11,6 +11,20 @@
  * postMessage, and the host answers exactly what the contract says a host
  * must: `ready` with `init`, and nothing else unless it asks.
  *
+ * Every claim below is a DIFFERENCE between the two profile arms wherever a
+ * difference can carry it, rather than a list written here: a control that
+ * becomes host-gated joins this guard by being gated, and the pair of
+ * "declaring less only withdraws" plus "the two arms differ at all" is what a
+ * written list cannot say. That the arms differ is asserted before anything is
+ * read from the difference, so a build that gated nothing fails here instead
+ * of passing every comparison vacuously.
+ *
+ * Engine coverage: Chromium. The Mac app renders in WebKit and the repo's rule
+ * is that anything editing the document from the keyboard gets a
+ * `BIRTA_E2E_BROWSER=webkit` run, which this suite has not had. A frame embed
+ * has no WebKit host today, so the gap is a claim about the suite rather than
+ * about a shipped surface, and it closes the day an embedder renders in one.
+ *
  * What it holds, in order: the editor boots and edits in a frame of a page it
  * does not own; the edit reaches the host as `update` without the host being
  * asked anything; a host-driven `flushSave` returns the live bytes, which is
@@ -88,34 +102,61 @@ export async function run({ page, check, baseUrl }) {
 
     // ── setReadOnly: the host locks editing ────────────────────────────
     await page.click("#readonly");
+    // The MODE, waited for as a condition, before typing at it. Asserting only
+    // that a keystroke changed nothing cannot tell read-only from a keystroke
+    // that missed the editor, and there is no condition to wait on for a
+    // document that must not change.
+    const editable = () => frame.$eval(".ProseMirror", (el) => el.getAttribute("contenteditable"));
+    await frame.waitForFunction(
+        () => document.querySelector(".ProseMirror")?.getAttribute("contenteditable") === "false",
+        { timeout: 5000 },
+    ).catch(() => {});
+    check("frame: setReadOnly from the host puts the editor in read-only mode",
+        (await editable()) === "false", JSON.stringify(await editable()));
     await frame.locator(".ProseMirror").click();
     await page.keyboard.type("XYZ");
     await page.waitForTimeout(200);
-    check("frame: setReadOnly from the host stops a keystroke changing the document",
+    check("frame: and a keystroke then changes nothing",
         !/XYZ/.test(await frame.locator(".ProseMirror").textContent()));
     await page.click("#readonly");
+    await frame.waitForFunction(
+        () => document.querySelector(".ProseMirror")?.getAttribute("contenteditable") === "true",
+        { timeout: 5000 },
+    ).catch(() => {});
+    check("frame: and turning it back off makes the document editable again",
+        (await editable()) === "true", JSON.stringify(await editable()));
 
-    // ── The empty profile withdraws what names the host ────────────────
+    // ── What the empty profile withdraws, as a DIFFERENCE ──────────────
+    //
+    // Measured against the undeclared arm rather than written down here, so
+    // a newly gated control joins this guard by being gated. A hand-written
+    // list is one a new case never joins, and it also hides the case that
+    // passes for the wrong reason: `readOnly` is absent under BOTH profiles,
+    // because the VS Code profile has the capability and still keeps the item
+    // off the bar, so asserting its absence here discriminated nothing.
     const chrome = async () => frame.evaluate(() => ({
         items: [...document.querySelectorAll(".tb-item")].map((el) => el.dataset.itemId),
         toc: !!document.querySelector(".toc-panel"),
     }));
+    /** The gear menu's rows, opened and read, then closed. */
+    const GEAR_ROW = '[data-item-id="settings"] .tb-settings-menu .ui-menu-row';
+    async function gearRows() {
+        await frame.locator('[data-item-id="settings"] .tb-fmt-btn').click();
+        // The menu having rows is the condition; a clock here would read an
+        // empty menu as an empty menu on a slow machine.
+        await frame.waitForSelector(GEAR_ROW, { timeout: 5000 });
+        const rows = await frame.$$eval(GEAR_ROW, (els) => els.map((el) => el.textContent.trim()).filter(Boolean));
+        // The pointer is what closes it, not Escape. With no arrangement
+        // declared these menus open on HOVER, so a pointer left resting on the
+        // trigger reopens the menu the moment Escape dismisses it.
+        await page.mouse.move(5, 500);
+        // Hidden rather than detached: the rows stay in the DOM and the menu
+        // is display:none when shut, so a detached wait never returns.
+        await frame.waitForSelector(GEAR_ROW, { state: "hidden", timeout: 5000 });
+        return rows;
+    }
     const empty = await chrome();
-    const HOST_BOUND = ["image", "viewSource", "readOnly", "toc"];
-    check("empty profile: no toolbar item names something the host has not declared",
-        HOST_BOUND.every((id) => !empty.items.includes(id)) && !empty.toc, JSON.stringify(empty));
-    check("empty profile: the editor's own items are all still built",
-        ["format", "bold", "link", "table", "find", "settings"].every((id) => empty.items.includes(id)),
-        JSON.stringify(empty.items));
-    const gearBtn = frame.locator('[data-item-id="settings"] .tb-fmt-btn');
-    await gearBtn.click();
-    await page.waitForTimeout(250);
-    const gearRows = await frame.$$eval('[data-item-id="settings"] .tb-settings-menu .ui-menu-row',
-        (els) => els.map((el) => el.textContent.trim()).filter(Boolean));
-    check("empty profile: the gear menu offers no VS Code settings, keybindings or release-notes row",
-        gearRows.length > 0 && !gearRows.some((r) => /Settings|Keyboard Shortcuts$|What's New/.test(r) && !/Show Keyboard/.test(r)),
-        JSON.stringify(gearRows));
-    await page.keyboard.press("Escape");
+    const emptyGear = await gearRows();
 
     // ── A pasted image on a host with no image store ───────────────────
     //
@@ -129,8 +170,13 @@ export async function run({ page, check, baseUrl }) {
         dt.items.add(new File([png], "x.png", { type: "image/png" }));
         document.querySelector(".ProseMirror").dispatchEvent(new ClipboardEvent("paste", { clipboardData: dt, bubbles: true, cancelable: true }));
     });
-    await page.waitForTimeout(400);
-    const pill = await frame.locator(".img-upload-pill").textContent().catch(() => null);
+    // Reach first, verdict second. Without this the one failure message
+    // covers both "the editor reported the wrong thing" and "the paste never
+    // reached the plugin", and only the first is a defect in the editor.
+    const reached = await frame.waitForSelector(".img-upload-pill", { timeout: 5000 })
+        .then(() => true, () => false);
+    check("empty profile: the pasted image reached the save path at all", reached);
+    const pill = reached ? await frame.locator(".img-upload-pill").textContent() : null;
     check("empty profile: a pasted image is refused in place, naming the reason",
         pill !== null && /not saved/.test(pill) && /no image store/.test(pill), JSON.stringify(pill));
     check("empty profile: and the host is never posted an upload it cannot answer",
@@ -138,18 +184,50 @@ export async function run({ page, check, baseUrl }) {
 
     // ── The undeclared profile is the VS Code one ──────────────────────
     //
-    // The arm that keeps the checks above a difference: an embedder that
+    // The arm every check above is a difference against: an embedder that
     // declares nothing inherits every capability, and is then asked for all
     // of them. `lintBlocks` at boot is the visible half of that.
     frame = await open("?profile=absent");
     const absent = await chrome();
-    // `readOnly` is not among them: the VS Code profile has the capability and
-    // does not put the item on the bar by default, so its presence would test
-    // the layout rather than the gate.
-    check("undeclared profile: the host-bound items and the sidebar are all built",
-        ["image", "viewSource", "toc"].every((id) => absent.items.includes(id)) && absent.toc, JSON.stringify(absent));
+    const absentGear = await gearRows();
     check("undeclared profile: the editor asks the host to lint, because the VS Code profile says it can",
         (await postedTypes()).includes("lintBlocks"));
+
+    const withdrawnItems = absent.items.filter((id) => !empty.items.includes(id));
+    const gainedItems = empty.items.filter((id) => !absent.items.includes(id));
+    const withdrawnRows = absentGear.filter((r) => !emptyGear.includes(r));
+    const gainedRows = emptyGear.filter((r) => !absentGear.includes(r));
+
+    // The instrument reached something. A build that gated nothing would
+    // leave both differences empty and every claim below vacuously true.
+    check("the two profiles differ at all, so the comparisons below mean something",
+        withdrawnItems.length > 0 && withdrawnRows.length > 0,
+        JSON.stringify({ withdrawnItems, withdrawnRows }));
+
+    // The invariant a written list cannot express: declaring LESS may only
+    // take chrome away. Anything appearing under the empty profile and not
+    // the VS Code one is a control built for a host that never claimed it.
+    check("declaring less only ever withdraws: the empty profile gains no item and no gear row",
+        gainedItems.length === 0 && gainedRows.length === 0,
+        JSON.stringify({ gainedItems, gainedRows }));
+
+    // The floor under the difference, so the guard still makes a specific
+    // claim rather than only a shape one.
+    check("the withdrawn items are the ones that name a host: an image store and a text editor",
+        ["image", "viewSource"].every((id) => withdrawnItems.includes(id)), JSON.stringify(withdrawnItems));
+    check("the sidebar is the host's too, and goes with them",
+        absent.toc && !empty.toc && withdrawnItems.includes("toc"),
+        JSON.stringify({ emptyToc: empty.toc, absentToc: absent.toc }));
+    check("the withdrawn gear rows are VS Code's settings, keybindings and release notes",
+        withdrawnRows.length === 3 && withdrawnRows.every((r) => /Settings|Keyboard Shortcuts|What's New/.test(r)),
+        JSON.stringify(withdrawnRows));
+    check("and the rows the editor owns survive, so the menu is not simply empty",
+        emptyGear.some((r) => /Customize Toolbar/.test(r)) && emptyGear.some((r) => /Show Keyboard Shortcuts/.test(r)),
+        JSON.stringify(emptyGear));
+    check("the editor's own toolbar items are built under both profiles",
+        ["format", "bold", "link", "table", "find", "settings"]
+            .every((id) => empty.items.includes(id) && absent.items.includes(id)),
+        JSON.stringify(empty.items));
 
     check("no page errors in either frame", errors.length === 0, JSON.stringify(errors));
 }
