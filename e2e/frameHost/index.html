@@ -1,0 +1,98 @@
+<!doctype html>
+<!-- The HOST half of a frame embed: an ordinary application page that is not
+     an editor and owns no file. It holds the document's bytes in a variable,
+     shows them in a plain textarea so the round trip is visible, and answers
+     the editor over postMessage: `ready` with `init`, and nothing else unless
+     asked. Everything the editor posts is recorded on window.__log with the
+     time it arrived, which is what the suite and the MAR-451 probe read.
+
+     The frame's page is editor.html beside this one; its query string is
+     passed through from this page's own (`?profile=absent`, `?readOnly=1`). -->
+<meta charset="utf-8">
+<title>An application that is not an editor</title>
+<style>
+  body { margin: 0; font: 14px system-ui, sans-serif; background: #f4f1ea; color: #222; }
+  header { padding: 12px 16px; background: #d9d2c0; }
+  main { display: grid; grid-template-columns: 1fr 320px; gap: 12px; padding: 12px; height: calc(100vh - 70px); box-sizing: border-box; }
+  iframe { width: 100%; height: 100%; border: 1px solid #b8ad92; background: #1e1e1e; }
+  aside { display: flex; flex-direction: column; gap: 8px; }
+  textarea { flex: 1; font: 12px ui-monospace, monospace; }
+</style>
+<header>
+  <label>Title <input id="title" value="Untitled note"></label>
+  <button id="save">Save</button>
+  <button id="replace">Replace content</button>
+  <button id="readonly">Toggle read-only</button>
+</header>
+<main>
+  <iframe id="frame" title="Birta Writer"></iframe>
+  <aside>
+    <span id="status">not saved</span>
+    <textarea id="mirror" readonly></textarea>
+  </aside>
+</main>
+<script>
+  const frame = document.getElementById("frame");
+  const mirror = document.getElementById("mirror");
+  const status = document.getElementById("status");
+  frame.src = "editor.html" + location.search;
+
+  // The bytes. Seeded from the query so the suite can pick a document per
+  // case; the default has a heading so the outline has something to show.
+  const q = new URLSearchParams(location.search);
+  let content = q.get("doc") ?? "# Hello\n\nA paragraph in a host that is not an editor.\n";
+  let syncVersion = 1;
+  mirror.value = content;
+
+  window.__log = [];
+  const send = (msg) => { window.__log.push({ dir: "in", t: performance.now(), msg }); frame.contentWindow.postMessage(msg, "*"); };
+  window.__send = send;
+
+  let flushSeq = 0;
+  const pendingFlush = new Map();
+  window.addEventListener("message", (event) => {
+    if (event.source !== frame.contentWindow) { return; }
+    const msg = event.data;
+    window.__log.push({ dir: "out", t: performance.now(), msg });
+    switch (msg.type) {
+      case "ready":
+        send({ type: "init", content, syncVersion });
+        break;
+      case "update":
+        content = msg.content;
+        mirror.value = content;
+        status.textContent = "unsaved edit";
+        break;
+      case "flushResult": {
+        content = msg.content;
+        mirror.value = content;
+        pendingFlush.get(msg.id)?.(content);
+        pendingFlush.delete(msg.id);
+        break;
+      }
+    }
+  });
+
+  // The save-before-persist half of the contract: ask the editor for its
+  // freshest bytes, and persist those rather than the last `update`.
+  window.__flush = () => new Promise((resolve) => {
+    const id = `flush-${++flushSeq}`;
+    pendingFlush.set(id, resolve);
+    send({ type: "flushSave", id });
+  });
+  document.getElementById("save").onclick = async () => {
+    const bytes = await window.__flush();
+    status.textContent = `saved ${bytes.length} bytes`;
+  };
+  document.getElementById("replace").onclick = () => {
+    content = "# Replaced\n\nThe host set this.\n";
+    syncVersion += 1;
+    send({ type: "externalUpdate", content, syncVersion });
+    mirror.value = content;
+  };
+  let readOnly = q.get("readOnly") === "1";
+  document.getElementById("readonly").onclick = () => {
+    readOnly = !readOnly;
+    send({ type: "setReadOnly", readOnly });
+  };
+</script>

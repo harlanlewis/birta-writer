@@ -24,6 +24,7 @@ const POLICIES: ReadonlyArray<[what: string, file: string]> = [
     ["the corpus harness page", "e2e/corpus/index.html"],
     ["the mdx harness page", "e2e/mdx/index.html"],
     ["the verify worker harness page", "e2e/verifyWorker/index.html"],
+    ["the frame embed's frame page", "e2e/frameHost/editor.html"],
 ];
 
 describe("the verify worker's CSP grant", () => {

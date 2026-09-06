@@ -1,0 +1,52 @@
+<!doctype html>
+<!-- The FRAME half of a frame embed: the page an embedding application puts
+     in an <iframe>. It is the whole of what a frame page has to be, and
+     docs/HOSTING.md is the prose form of the same contract: the palette in
+     place of the workbench's, the boot blob on window.__i18n with a `host`
+     profile declared, the bundle at a URL ending in dist/webview.js, and an
+     acquireVsCodeApi whose postMessage carries every outbound message to the
+     parent page. Inbound messages need no relay: the bundle listens on this
+     window, and the parent posts straight into it.
+
+     Query string: `profile=absent` leaves `host` undeclared, which reads as the
+     VS Code profile (the arm an embedder that forgot to declare anything
+     lands on); anything else declares an EMPTY profile, a host with nothing.
+     `readOnly=1` seeds read-only mode. -->
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy"
+  content="default-src 'none';
+           style-src 'self' 'unsafe-inline';
+           script-src 'nonce-framehost' 'self';
+           worker-src blob:;
+           img-src 'self' data:;
+           font-src 'self' data:;">
+<link rel="stylesheet" href="dist/hostPalette.css">
+<link rel="stylesheet" href="dist/webview.css">
+<style>
+  html, body { margin: 0; height: 100%; background: var(--vscode-editor-background); color: var(--vscode-editor-foreground); }
+  .editor-topbar { min-height: 40px; box-sizing: border-box; }
+</style>
+<script nonce="framehost">
+  const q = new URLSearchParams(location.search);
+  // The smallest blob a page can boot on: the profile, and nothing else.
+  // Every settings field has a default, and `translations` absent is English.
+  window.__i18n = {};
+  if (q.get("readOnly") === "1") { window.__i18n.readOnly = true; }
+  if (q.get("profile") !== "absent") {
+    window.__i18n.host = { capabilities: [], arrangements: [], shortcuts: [] };
+  }
+  // The state bag lives with the stub: folds, scroll and table widths the
+  // editor remembers go here and nowhere else, so a host that wants them to
+  // survive a reload has to give this object a store of its own.
+  let state;
+  window.acquireVsCodeApi = () => ({
+    postMessage: (msg) => window.parent.postMessage(msg, "*"),
+    getState: () => state,
+    setState: (s) => { state = s; },
+  });
+</script>
+<body class="vscode-dark">
+<div class="editor-topbar"></div>
+<div id="editor"></div>
+<script type="module" nonce="framehost" src="dist/webview.js"></script>
+</body>

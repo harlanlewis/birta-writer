@@ -198,6 +198,7 @@ mac/Sources/BirtaWriterCore/AgentRequest.swift   /ai command composition, a lite
 mac/Sources/BirtaWriterCore/AgentReference.swift What Copy Reference puts on the clipboard, a port of src/agentBridge/format.ts; mirrored test cases, and its header names the two places the two deliberately differ
 mac/scripts/update.sh                     The other-machine path: fetch the app off the newest GitHub Release, verify, install (ad-hoc signed, so it clears quarantine)
 e2e/enterCaret/                               Return must leave the caret in the block it just made; the WebKit-only class of defect that gate exists for
+e2e/frameHost/                                The editor in a frame of a page that is not an editor: the host contract docs/HOSTING.md describes, run against the real bundle
 ```
 
 ## Architecture constraints
@@ -215,7 +216,7 @@ Outside VS Code the palette is `webview/ui/hostPalette.css`, emitted as its own 
 
 ### Hosts other than VS Code
 
-The webview has one entry and one composition root. A host that is not VS Code (the Mac app, the e2e harness) is a page that stubs `acquireVsCodeApi`, sets `window.__i18n`, answers `ready` with `init`, and links the host palette. What differs per host is declared, not forked, and `shared/hostProfile.ts` is where a host declares it: ONE key, `window.__i18n.host`, holding three kinds of fact. Absent means the VS Code profile, so the extension page and every existing harness page are unchanged.
+The webview has one entry and one composition root. A host that is not VS Code (the Mac app, the e2e harness) is a page that stubs `acquireVsCodeApi`, sets `window.__i18n`, answers `ready` with `init`, and links the host palette. What differs per host is declared, not forked, and `shared/hostProfile.ts` is where a host declares it: ONE key, `window.__i18n.host`, holding three kinds of fact. Absent means the VS Code profile, so the extension page and every existing harness page are unchanged. `docs/HOSTING.md` is the page-and-protocol contract written out for a host that is none of these, and `e2e/frameHost` runs it.
 
 Four rules hold this together, and a new difference between surfaces should reach for them in this order rather than adding a fifth mechanism.
 
