@@ -408,19 +408,19 @@ final class UpdaterTests: XCTestCase {
         let bytes = try archive(containing: "\(AppFlavor.current.displayName).app")
         serve(made, archive: bytes, sum: sha256(bytes))
         made.environment.compatibility = { _ in .compatible }
-        var arms: [Bool] = []
-        made.environment.armSwap = { _, background in arms.append(background); return true }
+        var arms: [Updater.Reopen] = []
+        made.environment.armSwap = { _, reopen in arms.append(reopen); return true }
         var armed: Bool?
         let done = expectation(description: "installed")
         made.install(release()) { armed = $0; done.fulfill() }
         wait(for: [done], timeout: 10)
         cleanUpAfter(made)
         XCTAssertEqual(armed, true)
-        XCTAssertEqual(arms, [false], "a confirmed restart must reopen in front of the person")
+        XCTAssertEqual(arms, [.front], "a confirmed restart must reopen in front of the person")
         // A second arm would be a second script waking on the same pid and
         // racing the first over one destination.
-        XCTAssertFalse(made.armStagedSwap(inBackground: true))
-        XCTAssertEqual(arms, [false])
+        XCTAssertFalse(made.armStagedSwap(reopen: .background))
+        XCTAssertEqual(arms, [.front])
     }
 
     /// The unattended swap reopens WITHOUT taking the front. The person is
@@ -431,11 +431,11 @@ final class UpdaterTests: XCTestCase {
         let bytes = try archive(containing: "\(AppFlavor.current.displayName).app")
         serve(made, archive: bytes, sum: sha256(bytes))
         made.environment.compatibility = { _ in .compatible }
-        var arms: [Bool] = []
-        made.environment.armSwap = { _, background in arms.append(background); return true }
+        var arms: [Updater.Reopen] = []
+        made.environment.armSwap = { _, reopen in arms.append(reopen); return true }
         XCTAssertNotNil(stage(made, release()))
-        XCTAssertTrue(made.armStagedSwap(inBackground: true))
-        XCTAssertEqual(arms, [true])
+        XCTAssertTrue(made.armStagedSwap(reopen: .background))
+        XCTAssertEqual(arms, [.background])
         XCTAssertTrue(made.armed)
     }
 
@@ -443,7 +443,7 @@ final class UpdaterTests: XCTestCase {
         let made = updater()
         // `armSwap` fails the test if it is reached, so this asserts twice:
         // the answer is no, and nothing was spawned to produce it.
-        XCTAssertFalse(made.armStagedSwap(inBackground: true))
+        XCTAssertFalse(made.armStagedSwap(reopen: .background))
         XCTAssertFalse(made.armed)
     }
 
@@ -529,4 +529,114 @@ final class UpdaterTests: XCTestCase {
         XCTAssertTrue(idle.isFinite, "\(idle)")
         XCTAssertGreaterThanOrEqual(idle, 0)
     }
+
+    // MARK: the check somebody asked for
+
+    /// The offer is for the checks the app makes on its own. A check somebody
+    /// pressed for answers the press, and raising the offer as well would put
+    /// two sheets about one release on the same window.
+    func testOnlyAnUnaskedCheckShouldRaiseTheOffer() {
+        var offered: [String] = []
+        let asked = updater(body: feed(tag: "v2026.821.0"))
+        asked.onUpdateAvailable = { offered.append($0) }
+        XCTAssertEqual(result(of: asked, force: true), .found("v2026.821.0"))
+        XCTAssertEqual(offered, [], "a forced check raised the offer as well as answering")
+        let unasked = updater(body: feed(tag: "v2026.821.0"))
+        unasked.onUpdateAvailable = { offered.append($0) }
+        XCTAssertEqual(result(of: unasked, force: false), .found("v2026.821.0"))
+        XCTAssertEqual(offered, ["v2026.821.0"])
+    }
+
+    func testCheckNowShouldAnswerEveryOutcomeToItsCaller() {
+        let cases: [(Data?, Int, Updater.CheckResult)] = [
+            (feed(tag: "v2026.821.0"), 200, .found("v2026.821.0")),
+            (feed(tag: "v2026.800.0"), 200, .upToDate),
+            (nil, 0, .failed),
+        ]
+        for (body, code, expected) in cases {
+            let made = updater(body: body, code: code)
+            var outcome: Updater.CheckResult?
+            let done = expectation(description: "answered")
+            made.checkNow { outcome = $0; done.fulfill() }
+            wait(for: [done], timeout: 2)
+            XCTAssertEqual(outcome, expected)
+        }
+    }
+
+    /// Install on Next Launch: the bytes arrive now, the swap is armed to
+    /// reopen NOTHING, and this process goes on running.
+    func testInstallingOnQuitShouldStageThenArmASwapThatReopensNothing() throws {
+        let made = updater()
+        let bytes = try archive(containing: "\(AppFlavor.current.displayName).app")
+        serve(made, archive: bytes, sum: sha256(bytes))
+        made.environment.compatibility = { _ in .compatible }
+        var arms: [Updater.Reopen] = []
+        var said: [String] = []
+        made.onStatus = { said.append($0) }
+        made.environment.armSwap = { _, reopen in arms.append(reopen); return true }
+        var armed: Bool?
+        let done = expectation(description: "armed")
+        made.installOnQuit(release()) { armed = $0; done.fulfill() }
+        wait(for: [done], timeout: 10)
+        cleanUpAfter(made)
+        XCTAssertEqual(armed, true)
+        XCTAssertEqual(arms, [.none])
+        XCTAssertTrue(made.armed)
+        XCTAssertTrue(said.contains { $0.contains("after you next quit") },
+                      "nothing said when the swap will happen: \(said)")
+        // Asked again, it refuses rather than arming a second script.
+        var again: Bool?
+        made.installOnQuit(release()) { again = $0 }
+        XCTAssertEqual(again, false)
+    }
+
+    /// Restart Now on a swap armed for the next quit: the script's argument
+    /// is fixed, so the change of mind is a file beside the staged bundle.
+    func testAChangeOfMindShouldLeaveTheMarkTheScriptReads() throws {
+        let made = updater()
+        XCTAssertFalse(made.reopenAfterArmedSwap(), "nothing armed, nothing to mark")
+        let bytes = try archive(containing: "\(AppFlavor.current.displayName).app")
+        serve(made, archive: bytes, sum: sha256(bytes))
+        made.environment.compatibility = { _ in .compatible }
+        made.environment.armSwap = { _, _ in true }
+        let staged = try XCTUnwrap(stage(made, release()))
+        XCTAssertTrue(made.armStagedSwap(reopen: .none))
+        XCTAssertTrue(made.reopenAfterArmedSwap())
+        let mark = staged.work.appendingPathComponent(Updater.reopenMark)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: mark.path))
+    }
+
+    /// A swap armed for the next quit runs whatever is offered meanwhile,
+    /// and `install` refuses while one is armed, so an offer raised then
+    /// would be a Restart button that does nothing.
+    func testNoOfferShouldBeRaisedWhileASwapIsArmed() throws {
+        let made = updater(body: feed(tag: "v2026.821.0"))
+        let bytes = try archive(containing: "\(AppFlavor.current.displayName).app")
+        serve(made, archive: bytes, sum: sha256(bytes))
+        made.environment.compatibility = { _ in .compatible }
+        made.environment.armSwap = { _, _ in true }
+        XCTAssertNotNil(stage(made, release()))
+        XCTAssertTrue(made.armStagedSwap(reopen: .none))
+        var offered: [String] = []
+        made.onUpdateAvailable = { offered.append($0) }
+        // A newer release than the one armed, found by the daily check.
+        made.environment.fetch = { _, done in done(self.feed(tag: "v2026.822.0"), 200) }
+        XCTAssertEqual(result(of: made, force: false), .found("v2026.822.0"))
+        XCTAssertEqual(offered, [], "an offer whose Restart cannot arm anything")
+    }
+
+    /// The reason a run staged nothing is kept for a caller that has to put
+    /// it in front of somebody, and cleared by the run that succeeds.
+    func testAFailedStagingRunShouldKeepItsReasonUntilOneSucceeds() throws {
+        let made = updater()
+        serve(made, archive: nil, sum: nil)
+        XCTAssertNil(stage(made, release()))
+        XCTAssertEqual(made.lastFailure, "Could not download the update.")
+        let bytes = try archive(containing: "\(AppFlavor.current.displayName).app")
+        serve(made, archive: bytes, sum: sha256(bytes))
+        made.environment.compatibility = { _ in .compatible }
+        XCTAssertNotNil(stage(made, release()))
+        XCTAssertNil(made.lastFailure)
+    }
+
 }

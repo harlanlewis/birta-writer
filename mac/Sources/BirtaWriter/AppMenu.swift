@@ -337,9 +337,14 @@ enum AppMenu {
 
     // MARK: app
 
+    /// Settings and the update check share a group, which is where the Mac
+    /// apps that check for their own updates put the row: under Settings,
+    /// above the rule, with no chord.
     private static let appRows: [Row] = [
         .init(title: "Settings…", key: ",", modifiers: [.command],
               action: .app(#selector(AppDelegate.menuOpenSettings)), menu: .app),
+        .init(title: "Check for Updates…",
+              action: .app(#selector(AppDelegate.menuCheckForUpdates)), menu: .app),
     ]
 
     // MARK: file

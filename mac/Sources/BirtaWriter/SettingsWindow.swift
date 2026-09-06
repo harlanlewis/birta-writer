@@ -1430,7 +1430,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         let availability = RowAvailability.startAtLogin(state)
         loginSwitch.state = state.isOn ? .on : .off
         loginSwitch.isEnabled = availability.isEnabled
-        loginSettingsButton.isHidden = state != .blocked
+        loginSettingsButton.isHidden = !state.wantsSystemSettings
         rowViews[.startAtLogin]?.apply(availability)
     }
 

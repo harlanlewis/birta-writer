@@ -127,6 +127,17 @@ describe("the Mac app's About window", () => {
         }
     });
 
+    it("should offer the update check from the menu-bar item's menu as well", () => {
+        // The app menu's row is in the table `AppMenuTests` reads back. The
+        // status menu's is not, for the reason the About row's is not, and
+        // the same argument puts it there: with no Dock icon this menu is the
+        // only one most installs ever open, and an update they cannot ask
+        // for is an update they wait a day for.
+        const body = swiftFunctionBody(app, "buildStatusMenu");
+        expect(body).toContain("#selector(menuCheckForUpdates)");
+        expect(body).toContain('addItem(withTitle: "Check for Updates…"');
+    });
+
     it("should have a copyright in the bundle to draw", () => {
         const copyright = plistString("NSHumanReadableCopyright");
         expect(copyright).toBeDefined();

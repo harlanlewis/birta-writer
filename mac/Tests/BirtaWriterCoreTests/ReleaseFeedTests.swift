@@ -122,4 +122,29 @@ final class ReleaseFeedTests: XCTestCase {
         // empty, because every name starts with "".
         XCTAssertFalse(ReleaseFeed.assetPrefix.isEmpty)
     }
+
+    // MARK: the day in the version
+
+    private func day(_ year: Int, _ month: Int, _ day: Int) -> Date {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC")!
+        return calendar.date(from: DateComponents(year: year, month: month, day: day))!
+    }
+
+    func testACalVerVersionShouldSayWhichDayItWasCut() {
+        XCTAssertEqual(ReleaseFeed.releaseDay(of: "2026.905.0"), day(2026, 9, 5))
+        XCTAssertEqual(ReleaseFeed.releaseDay(of: "v2026.1105.2"), day(2026, 11, 5))
+        XCTAssertEqual(ReleaseFeed.releaseDay(of: "2026.1231.0"), day(2026, 12, 31))
+    }
+
+    func testAVersionThatIsNotADateShouldSayNothing() {
+        // A checkout's sentinel, a semver whose minor would read as month
+        // zero, a month that does not exist, and a day the month does not
+        // have: none of these is a day, and `date(from:)` would have rolled
+        // the last one into March.
+        for version in ["0.0.0", "1.2.3", "2026.1332.0", "2026.230.0", "2026.905", "later"] {
+            XCTAssertNil(ReleaseFeed.releaseDay(of: version), version)
+        }
+    }
+
 }

@@ -64,4 +64,19 @@ final class LoginItemStateTests: XCTestCase {
         XCTAssertEqual(Set(states.map(\.isOn)).count, 2, "on and off must both be reachable")
         XCTAssertEqual(states, [.on, .off, .blocked, .unavailable])
     }
+
+    /// Both problem states are finished in System Settings, so both offer the
+    /// button into it, and the unregistrable one says what to do there: this
+    /// is the state a copy the system will not register from here lands in,
+    /// and the only way it starts at login is the person adding it to the
+    /// system's own list.
+    func testTheStatesTheSystemHasToFinishShouldSendThePersonToSystemSettings() {
+        XCTAssertTrue(LoginItemState.blocked.wantsSystemSettings)
+        XCTAssertTrue(LoginItemState.unavailable.wantsSystemSettings)
+        XCTAssertFalse(LoginItemState.on.wantsSystemSettings)
+        XCTAssertFalse(LoginItemState.off.wantsSystemSettings)
+        XCTAssertTrue(LoginItemState.unavailable.caption.contains("System Settings > General > Login Items"))
+        XCTAssertTrue(LoginItemState.unavailable.caption.contains("Add it yourself"))
+    }
+
 }

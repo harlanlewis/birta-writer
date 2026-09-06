@@ -279,4 +279,146 @@ public enum UpdatePolicy {
     public static func installedNotice(appName: String, tag: String) -> String {
         "\(appName) updated to \(tag) in the background."
     }
+
+    // MARK: the check somebody asked for
+
+    /// What a check that somebody PRESSED A BUTTON FOR found.
+    ///
+    /// Distinct from `Updater.CheckResult`, which is what the network said:
+    /// this is what the person is told, and the two differ where the answer
+    /// depends on facts the network never sees. A refusal is "not this build"
+    /// when the build cannot replace itself and "busy" when it can, and a find
+    /// carries whether the bytes are already here, because the sheet says so.
+    public enum CheckAnswer: Equatable, Sendable {
+        /// Something newer, by tag, and whether its bytes have already arrived.
+        case found(latest: String, staged: Bool)
+        case upToDate
+        /// The release host could not be reached or did not answer.
+        case unreachable
+        /// A check is already running.
+        case busy
+        /// A build that does not replace itself: the development flavour.
+        case notThisBuild
+        /// A swap already armed to run after the next quit, by tag. Answered
+        /// without a request, because the question is no longer what is
+        /// newest but whether to take it now.
+        case armed(latest: String)
+        /// An install somebody asked for staged nothing, with the updater's
+        /// own reason: the download did not arrive, did not match its
+        /// checksum, or is a build this Mac cannot run.
+        case couldNotInstall(reason: String)
+    }
+
+    /// What the answer sheet draws: a title, the sentence under it, and the
+    /// buttons in order. The first button is the default, the last dismisses.
+    public struct CheckReport: Equatable, Sendable {
+        public let title: String
+        public let detail: String
+        public let buttons: [String]
+    }
+
+    public static let installNowTitle = "Install Now"
+    public static let installOnQuitTitle = "Install on Next Launch"
+    public static let notNowTitle = "Not Now"
+    public static let restartNowTitle = "Restart Now"
+
+    /// The sheet for `answer`, worded for the person who asked.
+    ///
+    /// Every outcome is a sentence, including the ones that are not news,
+    /// because a check somebody asked for and heard nothing back from is a
+    /// button that looks broken. Unlike the unasked offer, nothing here is
+    /// dead on arrival: the person is at the keyboard and pressed for this,
+    /// so a keystroke in flight is not the hazard it is there.
+    public static func checkReport(_ answer: CheckAnswer, appName: String,
+                                   current: String) -> CheckReport {
+        switch answer {
+        case let .found(latest, staged):
+            let arrived = staged
+                ? "It has already been downloaded and checked."
+                : "Installing it downloads it first and checks it against its published checksum."
+            let ways = "\(installNowTitle) writes your note, restarts \(appName) as the new version "
+                + "and reopens this note. \(installOnQuitTitle) puts it in after you quit, so the "
+                + "next time you open \(appName) it is the new one."
+            let gap = newerBy(current: current, latest: latest).map { $0 + " " } ?? ""
+            // Its own title rather than the unasked offer's, so the version
+            // is spelled the way the About window and the sentence under it
+            // spell it, without the tag's `v`.
+            return CheckReport(
+                title: "\(appName) \(plain(latest)) is available.",
+                detail: gap + arrived + " " + ways,
+                buttons: [installNowTitle, installOnQuitTitle, notNowTitle])
+        case .upToDate:
+            return CheckReport(
+                title: "\(appName) is up to date.",
+                detail: "You have \(plain(current)), which is the newest version.",
+                buttons: ["OK"])
+        case .unreachable:
+            return CheckReport(
+                title: "Could not check for updates.",
+                detail: "\(appName) could not reach its release page. Check your connection and try again.",
+                buttons: ["OK"])
+        case .busy:
+            return CheckReport(
+                title: "Checking for updates…",
+                detail: "A check is already running. Try again in a moment.",
+                buttons: ["OK"])
+        case .notThisBuild:
+            return CheckReport(
+                title: "A development build does not replace itself.",
+                detail: "The copy in Applications checks for updates and installs them; this build is here to be looked at.",
+                buttons: ["OK"])
+        case let .armed(latest):
+            return CheckReport(
+                title: "\(plain(latest)) is ready to install.",
+                detail: "It has been downloaded and checked, and goes in after you next quit \(appName). "
+                    + "\(restartNowTitle) puts it in now: it writes your note, restarts \(appName) as "
+                    + "the new version and reopens this note.",
+                buttons: [restartNowTitle, "OK"])
+        case let .couldNotInstall(reason):
+            return CheckReport(
+                title: "Could not install the update.",
+                detail: reason + " \(appName) is still the version you had.",
+                buttons: ["OK"])
+        }
+    }
+
+    /// How far behind `current` is, as a sentence, or nil when either version
+    /// carries no date.
+    ///
+    /// "Newer" is answered in days rather than in releases, because the days
+    /// are in the two versions and the releases between them are not: the
+    /// feed answers with the newest release alone, and counting the rest
+    /// would be a second request spent on a number nobody acts on. The day is
+    /// what tells somebody whether they are a night behind or a month.
+    public static func newerBy(current: String, latest: String) -> String? {
+        guard let from = ReleaseFeed.releaseDay(of: current),
+              let to = ReleaseFeed.releaseDay(of: latest) else { return nil }
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC")!
+        let days = calendar.dateComponents([.day], from: from, to: to).day ?? 0
+        let sameYear = calendar.component(.year, from: from) == calendar.component(.year, from: to)
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = calendar.timeZone
+        formatter.dateFormat = sameYear ? "MMMM d" : "MMMM d, yyyy"
+        let gap: String
+        switch days {
+        case ..<1: gap = "cut the same day"
+        case 1: gap = "a day newer"
+        default: gap = "\(days) days newer"
+        }
+        return "You have \(plain(current)), from \(formatter.string(from: from)). "
+            + "\(plain(latest)) is from \(formatter.string(from: to)), \(gap)."
+    }
+
+    /// What the panel says once a swap is armed to run after the next quit.
+    public static func installOnQuitNotice(appName: String, tag: String) -> String {
+        "\(plain(tag)) goes in after you next quit \(appName)."
+    }
+
+    /// A version as a person reads it: the tag's leading `v` is the
+    /// repository's convention, and a bundle version never carries one.
+    private static func plain(_ version: String) -> String {
+        version.hasPrefix("v") ? String(version.dropFirst()) : version
+    }
 }

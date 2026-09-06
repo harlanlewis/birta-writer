@@ -690,4 +690,30 @@ final class AppMenuTests: XCTestCase {
             return [item] + allItems(of: submenu)
         }
     }
+
+    /// Check for Updates…, beside Settings: same group, no rule between,
+    /// bound to the delegate's own method rather than to the responder chain.
+    func testTheAppMenuShouldOfferCheckForUpdatesBesideSettings() throws {
+        let delegate = AppDelegate()
+        let appMenu = try XCTUnwrap(delegate.mainMenu().menu.items.first?.submenu)
+        let titles = appMenu.items.map { $0.isSeparatorItem ? "-" : $0.title }
+        let settings = try XCTUnwrap(titles.firstIndex(of: "Settings…"))
+        XCTAssertEqual(titles[settings + 1], "Check for Updates…")
+        let check = appMenu.items[settings + 1]
+        XCTAssertEqual(check.action, #selector(AppDelegate.menuCheckForUpdates))
+        XCTAssertTrue(check.target === delegate)
+        XCTAssertEqual(check.keyEquivalent, "", "a check is not a chord")
+    }
+
+    /// The About row draws no icon. The clear every other row gets did not
+    /// hold for it under macOS 26; an image the app set is not one the
+    /// system substitutes for, and an image with no size is a column of no
+    /// width.
+    func testTheAboutRowShouldCarryAnEmptyImageOfItsOwn() throws {
+        let appMenu = try XCTUnwrap(AppDelegate().mainMenu().menu.items.first?.submenu)
+        let about = try XCTUnwrap(appMenu.items.first { $0.title.hasPrefix("About ") })
+        let image = try XCTUnwrap(about.image, "nil is what macOS decorates")
+        XCTAssertEqual(image.size, .zero)
+    }
+
 }

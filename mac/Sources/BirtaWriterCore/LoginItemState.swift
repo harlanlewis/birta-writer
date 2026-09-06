@@ -57,11 +57,18 @@ public enum LoginItemState: Equatable, Sendable {
         case .blocked:
             return "Waiting for your approval in System Settings, under Login Items."
         case .unavailable:
-            return "macOS will not register this copy. Open the one in Applications."
+            return "macOS will not register this copy from here. "
+                + "Add it yourself in System Settings > General > Login Items."
         }
     }
 
     /// Whether the caption is reporting a problem rather than describing the
     /// setting.
     public var isWarning: Bool { self == .blocked || self == .unavailable }
+
+    /// Whether the row offers the button into System Settings. Both problem
+    /// states do, because both are finished there: an approval the system is
+    /// holding, and a registration the system will not take from here and
+    /// will take from its own Login Items list.
+    public var wantsSystemSettings: Bool { isWarning }
 }

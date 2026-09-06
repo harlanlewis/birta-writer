@@ -293,4 +293,90 @@ final class UpdatePolicyTests: XCTestCase {
                            "the swap went in with \(name)")
         }
     }
+
+    // MARK: the check somebody asked for
+
+    private func report(_ answer: UpdatePolicy.CheckAnswer,
+                        current: String = "2026.826.0") -> UpdatePolicy.CheckReport {
+        UpdatePolicy.checkReport(answer, appName: "Birta Writer", current: current)
+    }
+
+    func testHowMuchNewerShouldBeReadOutOfTheTwoVersionsThemselves() {
+        XCTAssertEqual(
+            UpdatePolicy.newerBy(current: "2026.826.0", latest: "v2026.905.0"),
+            "You have 2026.826.0, from August 26. 2026.905.0 is from September 5, 10 days newer.")
+        XCTAssertEqual(
+            UpdatePolicy.newerBy(current: "2026.904.0", latest: "v2026.905.0"),
+            "You have 2026.904.0, from September 4. 2026.905.0 is from September 5, a day newer.")
+        // A second release the same day is a patch, and "newer by zero days"
+        // is a sentence nobody says.
+        XCTAssertEqual(
+            UpdatePolicy.newerBy(current: "2026.905.0", latest: "v2026.905.1"),
+            "You have 2026.905.0, from September 5. 2026.905.1 is from September 5, cut the same day.")
+    }
+
+    func testAGapAcrossAYearShouldNameTheYears() {
+        XCTAssertEqual(
+            UpdatePolicy.newerBy(current: "2025.1230.0", latest: "v2026.102.0"),
+            "You have 2025.1230.0, from December 30, 2025. 2026.102.0 is from January 2, 2026, 3 days newer.")
+    }
+
+    func testAVersionWithNoDateInItShouldLeaveTheGapUnsaid() {
+        // A checkout's version carries no date, and a sentence built on one
+        // would be a sentence about nothing.
+        XCTAssertNil(UpdatePolicy.newerBy(current: "0.0.0", latest: "v2026.905.0"))
+        XCTAssertNil(UpdatePolicy.newerBy(current: "2026.905.0", latest: "later"))
+        let found = report(.found(latest: "v2026.905.0", staged: false), current: "0.0.0")
+        XCTAssertFalse(found.detail.contains("You have"))
+        XCTAssertFalse(found.detail.hasPrefix(" "), "the gap left a leading space behind")
+    }
+
+    func testAFindShouldSayHowFarBehindWhetherTheBytesAreHereAndWhatEachButtonDoes() {
+        let waiting = report(.found(latest: "v2026.905.0", staged: false))
+        XCTAssertEqual(waiting.title, "Birta Writer 2026.905.0 is available.")
+        XCTAssertFalse(waiting.detail.contains("v2026"), "the body and the title spell the version one way")
+        XCTAssertTrue(waiting.detail.contains("10 days newer"))
+        XCTAssertTrue(waiting.detail.contains("downloads it first"))
+        XCTAssertTrue(waiting.detail.contains(UpdatePolicy.installNowTitle))
+        XCTAssertTrue(waiting.detail.contains(UpdatePolicy.installOnQuitTitle))
+        XCTAssertEqual(waiting.buttons, [UpdatePolicy.installNowTitle,
+                                         UpdatePolicy.installOnQuitTitle,
+                                         UpdatePolicy.notNowTitle])
+        let arrived = report(.found(latest: "v2026.905.0", staged: true))
+        XCTAssertTrue(arrived.detail.contains("already been downloaded"))
+        XCTAssertFalse(arrived.detail.contains("downloads it first"))
+    }
+
+    func testEveryOutcomeShouldBeASentenceWithAWayOut() {
+        // Including the ones that are not news: a press that hears nothing
+        // back is a button that looks broken, whatever the network said.
+        let answers: [UpdatePolicy.CheckAnswer] = [
+            .found(latest: "v2026.905.0", staged: false), .found(latest: "v2026.905.0", staged: true),
+            .upToDate, .unreachable, .busy, .notThisBuild, .armed(latest: "v2026.905.0"),
+            .couldNotInstall(reason: "The update did not arrive intact. Nothing was installed."),
+        ]
+        for answer in answers {
+            let made = report(answer)
+            XCTAssertFalse(made.title.isEmpty, "\(answer)")
+            XCTAssertFalse(made.detail.isEmpty, "\(answer)")
+            XCTAssertFalse(made.buttons.isEmpty, "\(answer)")
+            XCTAssertFalse(made.buttons.last!.isEmpty, "\(answer)")
+        }
+        XCTAssertEqual(report(.upToDate).detail, "You have 2026.826.0, which is the newest version.")
+        XCTAssertEqual(report(.upToDate).buttons, ["OK"])
+        // A failure carries the updater's own reason, and the reason leads.
+        let failed = report(.couldNotInstall(reason: "Could not download the update."))
+        XCTAssertTrue(failed.detail.hasPrefix("Could not download the update."))
+        XCTAssertEqual(failed.buttons, ["OK"])
+    }
+
+    func testAnArmedSwapShouldOfferToRestartNowRatherThanToCheckAgain() {
+        let made = report(.armed(latest: "v2026.905.0"))
+        XCTAssertEqual(made.title, "2026.905.0 is ready to install.")
+        XCTAssertTrue(made.detail.contains("after you next quit Birta Writer"))
+        XCTAssertEqual(made.buttons, [UpdatePolicy.restartNowTitle, "OK"])
+        XCTAssertEqual(UpdatePolicy.installOnQuitNotice(appName: "Birta Writer", tag: "v2026.905.0"),
+                       "2026.905.0 goes in after you next quit Birta Writer.")
+    }
+
 }

@@ -375,6 +375,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding {
         let about = appMenu.addItem(withTitle: "About \(AppFlavor.current.displayName)",
                                     action: #selector(menuOpenAbout), keyEquivalent: "")
         about.target = self
+        // An EMPTY image of its own. `suppressAutomaticIcons` clears the
+        // symbol macOS 26 puts beside Quit, and the same clear did not hold
+        // for this row: it went on drawing an information symbol. An image
+        // the app set is not one the system substitutes for, an image with
+        // no size takes nothing from the column, and this row is alone in
+        // its section, so nothing beside it is aligned against it.
+        about.image = NSImage(size: .zero)
         appMenu.addItem(.separator())
         AppMenu.add(.app, to: appMenu, target: self)
         appMenu.addItem(.separator())
@@ -478,6 +485,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding {
         // in both places rather than in the one an accessory app rarely shows.
         menu.addItem(withTitle: "About \(AppFlavor.current.displayName)", action: #selector(menuOpenAbout), keyEquivalent: "")
         menu.addItem(withTitle: "Settings…", action: #selector(menuOpenSettings), keyEquivalent: "")
+        // Beside Settings here for the same reason About is: with no Dock
+        // icon this menu is the only one most installs ever open.
+        menu.addItem(withTitle: "Check for Updates…", action: #selector(menuCheckForUpdates), keyEquivalent: "")
         menu.addItem(.separator())
         menu.addItem(withTitle: "Quit \(AppFlavor.current.displayName)", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "")
         for item in menu.items where item.action != nil && item.action != #selector(NSApplication.terminate(_:)) {
@@ -721,11 +731,112 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding {
             //
             // NOT `prepareToTerminate` directly either: `applicationShouldTerminate`
             // is its only caller, and calling it here would run the flush twice.
-            guard ok else { return }
-            // The swap script is already staged and polling for this pid, so
-            // this quit has nothing to ask and nobody waiting to answer.
-            self.windows.quitUnattended()
-            NSApp.perform(#selector(NSApplication.terminate(_:)), with: nil, afterDelay: 0)
+            guard ok else {
+                self.reportInstallFailure()
+                return
+            }
+            self.restartForSwap()
+        }
+    }
+
+    /// Say why an install somebody asked for staged nothing, as a sheet.
+    ///
+    /// The status line has already said it, to a panel that may be hidden
+    /// behind the window the press came from. Silent when the updater has no
+    /// reason to give, which is the refusal of a swap already armed: that
+    /// state answers itself the next time the menu row is used.
+    private func reportInstallFailure() {
+        guard let reason = updater.lastFailure else { return }
+        reportCheck(.couldNotInstall(reason: reason))
+    }
+
+    /// Quit so an armed swap can run, through the ordinary terminate path.
+    ///
+    /// The swap script is already staged and polling for this pid, so this
+    /// quit has nothing to ask and nobody waiting to answer; the buffer is
+    /// still flushed and written on the way out, as every quit is.
+    private func restartForSwap() {
+        windows.quitUnattended()
+        NSApp.perform(#selector(NSApplication.terminate(_:)), with: nil, afterDelay: 0)
+    }
+
+    /// Check for Updates…: the app menu, the menu-bar menu, and Check Now in
+    /// Settings all come here, and every outcome is a sheet on the window it
+    /// was asked from.
+    ///
+    /// A swap already armed for the next quit is answered without a request:
+    /// the question then is not what is newest but whether to take it now,
+    /// and the bytes are already here.
+    @objc func menuCheckForUpdates() {
+        if updater.armed, let staged = updater.staged {
+            reportCheck(.armed(latest: staged.tag))
+            return
+        }
+        updater.checkNow { [weak self] result in
+            guard let self else { return }
+            let answer: UpdatePolicy.CheckAnswer
+            switch result {
+            case let .found(tag): answer = .found(latest: tag, staged: self.updater.staged?.tag == tag)
+            case .upToDate: answer = .upToDate
+            case .failed: answer = .unreachable
+            case .refused: answer = AppFlavor.current.updatesItself ? .busy : .notThisBuild
+            }
+            // Off the completion's own drain before anything modal, for the
+            // reason `onUpdateAvailable` gives above.
+            RunLoop.main.perform(inModes: [.common]) {
+                MainActor.assumeIsolated { self.reportCheck(answer) }
+            }
+        }
+    }
+
+    /// Put the answer to an asked-for check in front of the person.
+    ///
+    /// On the window they pressed from where there is one, and otherwise on
+    /// the panel, summoned for the purpose: an answer to a press has to land
+    /// where they are looking, and the panel's status line, which is where
+    /// the checks nobody asked for report, is hidden most of the time and
+    /// behind Settings the rest of it.
+    private func reportCheck(_ answer: UpdatePolicy.CheckAnswer) {
+        let report = UpdatePolicy.checkReport(answer, appName: AppFlavor.current.displayName,
+                                              current: updater.environment.currentVersion())
+        if promptHost == nil { windows.summonAll() }
+        guard let host = promptHost else {
+            // The set always holds a window, so this is the answer to a
+            // press with nowhere to attach, not the ordinary path: a modal
+            // rather than silence, because a button that says nothing back
+            // is a button that looks broken.
+            NSApp.activate(ignoringOtherApps: true)
+            answerCheck(report, choice: UpdateCheckPrompt.choice(
+                for: report, response: UpdateCheckPrompt.build(report).runModal()))
+            return
+        }
+        // One sheet about this app at a time, and no swap underneath it:
+        // the flag the unasked offer raises does both, and this is the same
+        // question on the same window.
+        offering = true
+        UpdateCheckPrompt.present(report, on: host) { [weak self] choice in
+            guard let self else { return }
+            self.offering = false
+            self.answerCheck(report, choice: choice)
+        }
+    }
+
+    private func answerCheck(_ report: UpdatePolicy.CheckReport, choice: UpdateCheckPrompt.Choice) {
+        switch choice {
+        case .installNow:
+            installUpdate()
+        case .installOnQuit:
+            guard let release = updater.available else { return }
+            // The status line says what was armed; a failure comes back as
+            // a sheet, because the status line is not where they are looking.
+            updater.installOnQuit(release) { [weak self] ok in
+                if !ok { self?.reportInstallFailure() }
+            }
+        case .restartNow:
+            guard updater.reopenAfterArmedSwap() else { return }
+            restartForSwap()
+        case .dismiss:
+            break
         }
     }
 
@@ -759,7 +870,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding {
                 hasUnwrittenBytes: windows.windows.contains(where: \.hasUnwrittenBytes),
                 idle: Updater.systemIdleSeconds()))
         guard UpdatePolicy.mayInstallUnattended(state) else { return }
-        guard updater.armStagedSwap(inBackground: true) else { return }
+        guard updater.armStagedSwap(reopen: .background) else { return }
         // Written BEFORE the quit, because after it there is no process left
         // to write anything, and this is the only record that the swap was
         // ever attempted. It is not yet a claim that the swap WORKED:
@@ -825,7 +936,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding {
     private var aboutWindow: AboutWindowController?
 
     @objc func menuOpenAbout() {
-        if aboutWindow == nil { aboutWindow = AboutWindowController() }
+        if aboutWindow == nil {
+            aboutWindow = AboutWindowController(
+                onCheckForUpdates: { [weak self] in self?.menuCheckForUpdates() })
+        }
         // An accessory app is not frontmost when its status menu is used, and
         // an ordinary-level window ordered front from a background app opens
         // behind whatever is in front of it.
@@ -845,7 +959,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding {
                 onChange: { [weak self] work in self?.front?.preferencesChanged(beforeReload: work) },
                 onChangeEverywhere: { [weak self] in self?.windows.preferencesChangedEverywhere() },
                 onShowWelcome: { [weak self] in self?.showWelcome() },
-                onCheckForUpdates: { [weak self] in self?.updater.checkNow() })
+                onCheckForUpdates: { [weak self] in self?.menuCheckForUpdates() })
         }
         NSApp.activate(ignoringOtherApps: true)
         settingsWindow?.showWindow(nil)
