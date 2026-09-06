@@ -19,11 +19,14 @@
  * read from the difference, so a build that gated nothing fails here instead
  * of passing every comparison vacuously.
  *
- * Engine coverage: Chromium. The Mac app renders in WebKit and the repo's rule
- * is that anything editing the document from the keyboard gets a
- * `BIRTA_E2E_BROWSER=webkit` run, which this suite has not had. A frame embed
- * has no WebKit host today, so the gap is a claim about the suite rather than
- * about a shipped surface, and it closes the day an embedder renders in one.
+ * Engine coverage: both, locally. Chromium is the sweep every suite here runs
+ * under, and this one also gets a `BIRTA_E2E_BROWSER=webkit` run before a
+ * push, the engine the Mac app renders in, because it edits the document from
+ * the keyboard. It is not in mac-app.yml's WebKit list: that job runs the
+ * suites that speak for the Mac panel, and a frame embed has no WebKit host
+ * today. The one place the engines answer differently is focus at boot, and
+ * that check holds each engine to its own answer, so a change in either
+ * direction is a red rather than a pass for the wrong reason.
  *
  * What it holds, in order: the editor boots and edits in a frame of a page it
  * does not own; the edit reaches the host as `update` without the host being
@@ -33,10 +36,11 @@
  * control that names something the host does not have while an undeclared
  * one inherits the VS Code profile's controls; the messages the editor posts
  * on its own are the short list the doc names; a pasted image on a host with
- * no image store is refused in place rather than posted; and the frame keeps
- * its hands off the host's focus at boot.
+ * no image store is refused in place rather than posted; and what the
+ * editor's own `window.focus()` at init does to a field of the host's, which
+ * is the one answer that differs by engine.
  */
-export async function run({ page, check, baseUrl }) {
+export async function run({ page, check, baseUrl, browserName }) {
     const errors = [];
     page.on("pageerror", (e) => errors.push(e.message));
     page.on("console", (m) => { if (m.type() === "error") { errors.push(m.text()); } });
@@ -63,8 +67,24 @@ export async function run({ page, check, baseUrl }) {
     let frame = await open();
     const bootTypes = distinct(await postedTypes());
     check("frame: the editor boots inside a page that is not an editor", await frame.locator(".milkdown .ProseMirror").count() === 1);
-    check("frame: the host's own field keeps focus through the editor's boot",
-        (await page.evaluate(() => document.activeElement?.id)) === "title");
+    // Focus at boot, the one claim here with an engine-specific answer. `init`
+    // ends in `window.focus()` (webview/messageHandlers.ts), and the engines
+    // read it differently when a field of the host's own already holds focus:
+    // Chromium refuses the call and the field keeps its cursor; WebKit takes
+    // the frame, the field loses its cursor, and nothing inside the frame
+    // gains one. With the call removed neither engine moves focus, so the call
+    // is the whole difference. Each engine is held to its own answer, so a
+    // change in either direction is a red here rather than a silent pass.
+    const hostFocus = await page.evaluate(() => `${document.activeElement?.tagName}#${document.activeElement?.id}`);
+    const frameFocus = await frame.evaluate(() => `${document.activeElement?.tagName}.${document.activeElement?.className.split(" ")[0]}`);
+    const focusDetail = JSON.stringify({ hostFocus, frameFocus });
+    if (browserName === "webkit") {
+        check("frame (WebKit): init's window.focus() takes the frame from the host's own field, and nothing inside the frame gains it",
+            hostFocus === "IFRAME#frame" && frameFocus === "BODY.vscode-dark", focusDetail);
+    } else {
+        check("frame (Chromium): the host's own field keeps focus through the editor's boot",
+            hostFocus === "INPUT#title", focusDetail);
+    }
 
     // What a host is told without asking. The list is the contract's, and a
     // new member is a new thing every embedder has to be told to expect.

@@ -49,7 +49,7 @@ What a host consumes:
 | `update { content, seq, baseSyncVersion }` | On a typing pause, and at a bounded wait during continuous typing (`webview/syncScheduler.ts`) | Hold it as the document's current bytes. In VS Code this is what hot exit backs up, so it is the crash-safety window, and a host that persists on its own cadence persists these |
 | `focusState { focused }` | Focus enters or leaves the frame | Optional. VS Code gates document-mutating keybindings on it |
 | `wordCount { doc, selection }` | After an edit, debounced | Optional. A status line, if the host has one |
-| `viewState { state }` | The view-state bag changed | Optional. VS Code keeps the last bag per document in memory and hands it back in `init` as `viewState` |
+| `viewState { state }` | The view-state bag changed | Optional. VS Code keeps the last bag per document, in memory and in workspace state, and hands it back in `init` as `viewState` |
 
 What a host sends, when it wants to:
 
@@ -69,7 +69,7 @@ Everything else the editor posts is a request for something the host provides, a
 
 Keystrokes inside the frame stay inside it. The editor handles what it binds, ProseMirror handles the rest of the text, and a chord neither of them claims goes to the browser's own defaults. Cmd+S is the one that matters: inside VS Code the workbench sees it, inside the Mac app the menu does, and inside a frame in a browser it opens the browser's Save Page dialog. The `shortcuts` list in the profile prints a host's keys in the cheatsheet and does nothing else; a host that wants a key inside the frame to reach it has no message for that yet, and this is the first thing an embedder will meet.
 
-Focus stays where the host put it. Boot does not move focus into the frame when a field of the host's own already has it (`e2e/frameHost` holds this), so a page can put the editor below a form without the form losing its cursor.
+Focus at boot depends on the engine. `init` ends in the editor calling `window.focus()` (`webview/messageHandlers.ts`), and the engines read that call differently when a field of the host's own already has focus. Chromium refuses it, so the field keeps its cursor and a page can put the editor below a form without the form losing it. WebKit takes the frame, so the field loses its cursor and nothing inside the editor gains one until it is clicked. `e2e/frameHost` holds each engine to its own answer. A host that needs its field to keep focus through boot in WebKit has no message for that yet.
 
 Inbound messages are trusted. The editor listens on its own window for `message` events and applies whatever arrives, from any source, because inside VS Code only the extension can post to it. A frame in a web page can be posted to by any script on that page or in any other frame with a reference to it; treat the frame page as part of the host's own trust boundary rather than as a sandbox.
 
