@@ -808,9 +808,10 @@ enum Prefs {
     /// The release tag the user last said no to.
     ///
     /// One offer per version. Without it the re-check interval becomes a nag:
-    /// somebody who declines an update is asked again every day until they
-    /// give in, which teaches people to turn the setting off rather than to
-    /// take the update. A NEWER tag still asks, because that is different news.
+    /// somebody who declines an update is asked again at every check until
+    /// they give in, which teaches people to turn the setting off rather than
+    /// to take the update. A NEWER tag still asks, because that is different
+    /// news.
     static var updateDeclinedTag: String? {
         get {
             let tag = d.string(forKey: Key.updateDeclinedTag.rawValue) ?? ""

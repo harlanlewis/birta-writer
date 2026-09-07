@@ -132,7 +132,8 @@ describe("the Mac app's About window", () => {
 
     it("should offer the update check from the menu-bar item's menu as well", () => {
         // With no Dock icon this menu is the only one most installs ever open,
-        // and an update they cannot ask for is an update they wait a day for.
+        // and an update they cannot ask for is an update they wait for the
+        // recheck timer to find.
         //
         // The row is the table's, and the section adds the table's rows to
         // whichever menu it is building, which is what puts one row on both
