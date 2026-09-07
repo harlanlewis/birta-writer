@@ -14,7 +14,13 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ### Changed
 
+- Birta Writer for Mac asks the release page whether there is a newer version every couple of hours while it is running, rather than about once a day. A fix published in the morning used to reach a copy that had been left open since the day before only at the next day's check, and this is an app people leave running for weeks. What it asks more often is the release page, not you: a check that finds nothing says nothing, and the timer does not raise a version you have declined until a newer one exists. Pressing Check for Updates yourself does clear that decline, so a version you said no to and then asked about is offered again; that is what keeps the button from looking broken when it finds the update it was pressed to find.
+
 - The Markdown pane in Birta Writer for Mac's Settings says less and shows more. Its intro is two sentences. CommonMark is the first row, switched on and fixed, in place of a paragraph explaining why it was not in the list. The row named Birta Writer is now two rows, Notion and Calculation blocks, each saying what its switch withdraws, and SVG blocks have no row because no flavor governs them. Every row that names another tool's Markdown links to that tool's own page on it: GitHub Docs, Obsidian Help, the Pandoc manual, Notion Help, and the CommonMark reference.
+
+### Fixed
+
+- The About row draws no icon and lines up with every other row, on the Birta Writer menu and on the menu-bar icon's menu. It was the one decorated row in an otherwise plain menu under macOS 26, which reads as a mistake rather than as a system convention, and the first fix for that took the icon away but left the row indented by the width of the icon it no longer drew.
 
 ---
 
@@ -26,8 +32,6 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ### Changed
 
-- Birta Writer for Mac asks the release page whether there is a newer version every couple of hours while it is running, rather than about once a day. A fix published in the morning used to reach a copy that had been left open since the day before only at the next day's check, and this is an app people leave running for weeks. What it asks more often is the release page, not you: a check that finds nothing says nothing, and a version you have declined is not raised again until a newer one exists, so the offer still comes at most once per release.
-
 - The menu-bar icon's menu holds the same rows as the Birta Writer menu, in the same order: About, then Settings… and Check for Updates…, then the row that puts the app away, then Quit. Show and Hide used to sit at the top of it with About below, so the two menus disagreed about where every row was for anyone who has both. The row that shows and hides the panel still carries the summon hotkey, and it is still the only chord that menu prints, because a chord read from the menu bar acts on whichever app is in front rather than on this one.
 
 - Check Now in Settings answers in the same dialog, on the Settings window. It used to answer on the panel's status line, which is hidden most of the time and behind the Settings window the rest of it, and a newer version came as the ordinary offer, with its buttons held for a moment against a keystroke in flight. A check you pressed for is answered where you pressed, with its buttons live.
@@ -36,7 +40,7 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ### Fixed
 
-- The About row draws no icon and lines up with every other row, on the Birta Writer menu and on the menu-bar icon's menu. It was the one decorated row in an otherwise plain menu under macOS 26, which reads as a mistake rather than as a system convention, and the first fix for that took the icon away but left the row indented by the width of the icon it no longer drew.
+- The About row on the Birta Writer menu no longer draws an information icon beside it. The clear that keeps every other row plain under macOS 26 did not hold for that one, and one decorated row in a plain menu read as a mistake.
 
 ---
 

@@ -90,6 +90,17 @@ export const ALL_SYNTAX_SETS: readonly SyntaxSet[] = ["gfm", "obsidian", "pandoc
  * rather than silently losing two of them on the next launch. Both readers
  * of a stored list (`normalizeSyntaxSets`, and `SyntaxScope.sets(from:)` in
  * the Swift port) consult this, and the port guard holds the two tables equal.
+ *
+ * This table is permanent, and the two hosts differ on why. The Mac app
+ * writes the whole list back through `SyntaxScope.stored` whenever a switch
+ * moves, which spells only current names, so a retired one is gone the first
+ * time somebody touches the pane. Nothing in the extension ever WRITES
+ * `birta.syntax.sets`: the config write-back seam is never called with that
+ * key. So on VS Code a retired name is stored until the reader deletes it
+ * themselves, and an entry here can never be dropped on the grounds that
+ * stored values have had time to migrate. Whether editing the setting in the
+ * settings UI happens to drop it is VS Code's business and not a thing to
+ * rely on either way; what this side controls is that it never writes.
  */
 export const LEGACY_SYNTAX_SETS: Readonly<Record<string, readonly SyntaxSet[]>> = {
     birta: ["notion", "calc"],

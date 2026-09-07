@@ -356,11 +356,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding {
         // searches menu items, which is how a reader finds a row buried in a
         // submenu of Format.
         NSApp.helpMenu = built.help
-        // Once over the whole tree, submenus included. The file, view and
-        // status menus also clear theirs on every opening through
-        // `menuNeedsUpdate`, which is where a menu whose ITEMS change needs
-        // it; these are built once and do not change, so once is where it
-        // belongs.
+        // Once over the whole tree, submenus included, which is the floor and
+        // not the whole of it: every menu that carries this delegate clears
+        // again on each opening through `menuNeedsUpdate`, because macOS
+        // decorates when it pleases and a menu cleared once is a menu
+        // decorated after the clear. Rows that never change do not exempt a
+        // menu from that; whether the ROWS change and whether the CLEAR holds
+        // are different questions.
         AppDelegate.suppressAutomaticIcons(in: built.menu)
         NSApp.mainMenu = built.menu
     }
@@ -999,8 +1001,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding {
 
 extension AppDelegate: NSMenuDelegate, NSMenuItemValidation {
     func menuNeedsUpdate(_ menu: NSMenu) {
-        // Three menus share this delegate and each wants a different thing, so
-        // which one arrived has to be the first question. Answer it by identity
+        // Every menu that carries this delegate arrives here, and they want
+        // different things, so which one arrived has to be the first question.
+        // Only the sweep at the end is owed to all of them. Answer it by identity
         // rather than by what a menu contains: the status item's retitle and
         // the View menu's repaint are both writes, and a write made on the
         // wrong opening is invisible until somebody reads the menu it landed

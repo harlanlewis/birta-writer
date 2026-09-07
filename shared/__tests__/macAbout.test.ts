@@ -40,10 +40,58 @@ function swiftConstant(name: string): string {
 }
 
 /**
- * One Swift function's body, brace-matched from its signature.
+ * Swift source with its line comments removed.
+ *
+ * An assertion about what the CODE says has to be made against the code. A
+ * `toContain` is satisfied by a comment naming the thing, so a row commented
+ * out reads as present; a `not.toContain` is tripped by a comment quoting the
+ * literal it forbids, so documenting a sentinel reds a guard whose subject is
+ * untouched. The two failures point opposite ways and the same line causes
+ * both, which is why this is stripped once here rather than argued about per
+ * assertion. Block comments are not stripped, because nothing in this tree
+ * writes one around a menu row or a literal.
+ */
+function withoutComments(source: string): string {
+    return source.split("\n").map((line) => {
+        const trimmed = line.trim();
+        return trimmed.startsWith("//") ? "" : line;
+    }).join("\n");
+}
+
+/**
+ * One Swift `let <name>: [...] = [ ... ]` table's body, bracket-matched.
+ *
+ * The sibling of `swiftFunctionBody` and for the same reason: an assertion
+ * made against a whole FILE is satisfied by a comment mentioning the thing,
+ * so a row deleted from the table and named in the prose above it reads as
+ * present. A rename throws rather than returning an empty string.
+ */
+function swiftTableBody(source: string, name: string): string {
+    const declaration = new RegExp(`let ${name}\\s*:[^=]*=\\s*\\[`).exec(source);
+    if (!declaration) {
+        throw new Error(`no Swift source read here declares a table named ${name}`);
+    }
+    const open = declaration.index + declaration[0].length - 1;
+    let depth = 0;
+    for (let i = open; i < source.length; i++) {
+        if (source[i] === "[") depth += 1;
+        if (source[i] === "]") {
+            depth -= 1;
+            if (depth === 0) { return withoutComments(source.slice(open + 1, i)); }
+        }
+    }
+    throw new Error(`the table ${name} is not bracket-balanced`);
+}
+
+/**
+ * One Swift function's body, brace-matched from its signature, comments out.
  *
  * A rename is a thrown error naming the function rather than an empty string
- * quietly satisfying every assertion made about it.
+ * quietly satisfying every assertion made about it. The comments go for the
+ * reason `withoutComments` gives: scoping an assertion to one function stops
+ * a mention ELSEWHERE in the file from satisfying it, and stops nothing about
+ * a mention inside the function itself, which is what a row commented out in
+ * place is.
  */
 function swiftFunctionBody(source: string, name: string): string {
     const signature = source.indexOf(`func ${name}(`);
@@ -56,7 +104,7 @@ function swiftFunctionBody(source: string, name: string): string {
         if (source[i] === "{") depth += 1;
         if (source[i] === "}") {
             depth -= 1;
-            if (depth === 0) return source.slice(open + 1, i);
+            if (depth === 0) return withoutComments(source.slice(open + 1, i));
         }
     }
     throw new Error(`${name} has no closing brace`);
@@ -82,8 +130,8 @@ describe("the Mac app's About window", () => {
     it("should leave the updater with no repository string of its own", () => {
         // A second literal would be free to drift from the first, and the app
         // would update from one repository and file issues against another.
-        expect(updater).toContain("AboutInfo.repository");
-        expect(updater).not.toContain(`"${swiftConstant("repository")}"`);
+        expect(withoutComments(updater)).toContain("AboutInfo.repository");
+        expect(withoutComments(updater)).not.toContain(`"${swiftConstant("repository")}"`);
     });
 
     it("should leave the updater with no unstamped-version string of its own", () => {
@@ -94,8 +142,8 @@ describe("the Mac app's About window", () => {
         // published release against it. Two literals are free to drift, and
         // the day one moved the window would name a version the updater did
         // not recognise as unstamped.
-        expect(updater).toContain("AboutInfo.unstampedVersion");
-        expect(updater).not.toContain(`"${swiftConstant("unstampedVersion")}"`);
+        expect(withoutComments(updater)).toContain("AboutInfo.unstampedVersion");
+        expect(withoutComments(updater)).not.toContain(`"${swiftConstant("unstampedVersion")}"`);
     });
 
     it("should link to an https website", () => {
@@ -138,7 +186,12 @@ describe("the Mac app's About window", () => {
         // The row is the table's, and the section adds the table's rows to
         // whichever menu it is building, which is what puts one row on both
         // surfaces rather than a copy on each.
-        expect(appMenu).toContain("#selector(AppDelegate.menuCheckForUpdates)");
+        //
+        // Read out of the TABLE, not out of the file. `toContain` over the
+        // whole source is satisfied by a comment naming the selector, so the
+        // row could be deleted and the mention left behind with this green.
+        expect(swiftTableBody(appMenu, "appRows"))
+            .toContain("#selector(AppDelegate.menuCheckForUpdates)");
         expect(swiftFunctionBody(appMenu, "addAppSection")).toContain("add(.app, to: nsMenu");
     });
 

@@ -109,6 +109,31 @@ describe("the Mac app's version spelling", () => {
             .toEqual([]);
     });
 
+    it("should still be reading a vocabulary the tree uses", () => {
+        // The floor the other two arms cannot supply. Both of them are
+        // satisfied by a pattern that matches nothing in this repository: the
+        // sweep's offender list is empty, and the discriminating arm below
+        // tests the pattern against string LITERALS written here rather than
+        // against the tree. So rename `Release.tag`, or stop spelling the
+        // word `version`, and the pattern goes on discriminating the test's
+        // own examples while matching not one real line, which is a guard
+        // that is dead with nothing to say so.
+        //
+        // `UpdatePolicy` is the one file that SHOULD trip the pattern, being
+        // where every version sentence is written, so it is the place to ask.
+        // The floor is far under what is there: it rules out a vocabulary
+        // that has stopped meeting the tree, not a sentence added or removed.
+        const authority = files.find((f) => f.name === AUTHORITY);
+        expect(authority, `no ${AUTHORITY} to read`).toBeDefined();
+        const matched = authority!.text.split("\n")
+            .filter((line) => !line.trim().startsWith("//"))
+            .filter((line) => SPELLS_A_VERSION.test(line));
+        expect(matched.length, `${SPELLS_A_VERSION} matches nothing in ${AUTHORITY}, so the sweep `
+            + `above is reading a vocabulary this tree no longer uses and would pass whatever any `
+            + `other file said; widen the pattern to the names now in use`)
+            .toBeGreaterThan(2);
+    });
+
     it("should still catch a sentence written outside UpdatePolicy", () => {
         // The arm that proves the pattern discriminates. Without it the check
         // above passes just as well with a regex that matches nothing, which
