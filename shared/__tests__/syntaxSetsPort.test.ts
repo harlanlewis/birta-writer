@@ -18,6 +18,9 @@ import { resolve } from "node:path";
 import {
     ALL_SYNTAX_FEATURES,
     ALL_SYNTAX_SETS,
+    COMMONMARK_DOCUMENTATION,
+    LEGACY_SYNTAX_SETS,
+    SYNTAX_SET_DOCUMENTATION,
     SYNTAX_SET_FEATURES,
     type SyntaxFeature,
     type SyntaxSet,
@@ -54,6 +57,37 @@ function commandArms(): Map<string, string> {
     if (!fn) { return arms; }
     for (const m of fn[1]!.matchAll(/case "(\w+)": return \.(\w+)/g)) {
         arms.set(m[1]!, m[2]!);
+    }
+    return arms;
+}
+
+/**
+ * `case .set: return SyntaxDocumentation("Title", "url")` and `case .set:
+ * return nil` arms of `documentation`, as the TypeScript shape.
+ */
+function documentationArms(): Map<string, { title: string; url: string } | undefined> {
+    const fn = /public var documentation: SyntaxDocumentation\? \{([\s\S]*?)\n {4}\}/.exec(swift);
+    const arms = new Map<string, { title: string; url: string } | undefined>();
+    if (!fn) { return arms; }
+    for (const m of fn[1]!.matchAll(/case \.(\w+): return (?:SyntaxDocumentation\("([^"]+)", "([^"]+)"\)|nil)/g)) {
+        arms.set(m[1]!, m[2] === undefined ? undefined : { title: m[2], url: m[3]! });
+    }
+    return arms;
+}
+
+/** The floor's own link, out of the `CommonMark` namespace. */
+function commonMarkDocumentation(): { title: string; url: string } | undefined {
+    const m = /public static let documentation = SyntaxDocumentation\("([^"]+)", "([^"]+)"\)/.exec(swift);
+    return m ? { title: m[1]!, url: m[2]! } : undefined;
+}
+
+/** `"old": [.a, .b]` pairs of `SyntaxScope.legacy`. */
+function legacyArms(): Map<string, string[]> {
+    const table = /public static let legacy: \[String: \[SyntaxSet\]\] = \[([^\n]*)\]/.exec(swift);
+    const arms = new Map<string, string[]>();
+    if (!table) { return arms; }
+    for (const m of table[1]!.matchAll(/"(\w+)": \[([^\]]*)\]/g)) {
+        arms.set(m[1]!, [...m[2]!.matchAll(/\.(\w+)/g)].map((f) => f[1]!));
     }
     return arms;
 }
@@ -97,6 +131,29 @@ describe("the Swift port of the syntax-target vocabulary", () => {
         expect([...arms.keys()].sort()).toEqual([...tsCommandSyntax.keys()].sort());
         for (const [id, feature] of tsCommandSyntax) {
             expect(arms.get(id), `${id}`).toBe(feature);
+        }
+    });
+
+    it("each set should link to the same page under the same title", () => {
+        // The Settings row and the VS Code description both send a reader to
+        // the target's own definition of its Markdown; two copies of a URL
+        // drift the day one host moves its help site, which Obsidian has done.
+        const arms = documentationArms();
+        expect([...arms.keys()].sort()).toEqual([...ALL_SYNTAX_SETS].sort());
+        for (const set of ALL_SYNTAX_SETS) {
+            expect(arms.get(set), `${set} documentation`).toEqual(SYNTAX_SET_DOCUMENTATION[set]);
+        }
+        expect(commonMarkDocumentation()).toEqual(COMMONMARK_DOCUMENTATION);
+    });
+
+    it("the same retired names should read as the same sets", () => {
+        // A stored list is read by both hosts, and a name one of them still
+        // honours and the other drops is a reader losing tools on one surface.
+        const arms = legacyArms();
+        expect(arms.size).toBeGreaterThan(0);
+        expect([...arms.keys()].sort()).toEqual(Object.keys(LEGACY_SYNTAX_SETS).sort());
+        for (const [name, sets] of Object.entries(LEGACY_SYNTAX_SETS)) {
+            expect(arms.get(name), `${name}`).toEqual([...sets]);
         }
     });
 });

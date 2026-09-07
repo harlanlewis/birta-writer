@@ -239,7 +239,7 @@ export const SLASH_MENU_ITEMS: readonly SlashMenuItem[] = [
     // row this one is a place to paste markup rather than a language to write.
     // Search-revealed, like the parity rows above: someone reaching for it knows
     // the word, and the browse list already carries a diagram row.
-    { id: "svgBlock", group: "insert", label: t("SVG"), icon: IconImage, keywords: ["svg", "vector", "graphic", "drawing", "diagram", "illustration"], commandId: "insertCodeBlock", args: "svg", syntax: "svg", detail: t("paste vector markup"), searchOnly: true },
+    { id: "svgBlock", group: "insert", label: t("SVG"), icon: IconImage, keywords: ["svg", "vector", "graphic", "drawing", "diagram", "illustration"], commandId: "insertCodeBlock", args: "svg", detail: t("paste vector markup"), searchOnly: true },
     // Inline math is a real node; a math BLOCK is a LaTeX-language code block
     // (same mechanism as Mermaid), otherwise reachable only by typing "$$ ".
     { id: "math", group: "insert", label: t("Inline Math"), icon: IconMath, hint: "$", keywords: ["math", "latex", "katex", "equation", "formula", "inline"], commandId: "insertMath" },

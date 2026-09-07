@@ -74,8 +74,10 @@ final class SettingsFormTests: XCTestCase {
     func testEveryPublishingTargetShouldHaveItsOwnSettingsRow() {
         let rows = SyntaxSet.allCases.map(SettingsForm.row(for:))
         XCTAssertEqual(Set(rows).count, rows.count, "two targets share a row")
-        XCTAssertEqual(rows, SettingsForm.rows(of: SettingsForm.markdown),
-                       "the Markdown pane is not the targets, in vocabulary order")
+        // The floor first, then the targets in the vocabulary's order: a reader
+        // meets what every flavor contains before the flavors.
+        XCTAssertEqual([.commonMark] + rows, SettingsForm.rows(of: SettingsForm.markdown),
+                       "the Markdown pane is not the floor and then the targets, in vocabulary order")
         // The label a reader sees is the target's own, spelled once.
         XCTAssertEqual(rows.map(\.rawValue), SyntaxSet.allCases.map(\.label))
     }

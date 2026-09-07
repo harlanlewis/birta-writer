@@ -16,10 +16,10 @@
  * every target in the list already contains, so a set for it would be a set
  * that can never be turned off, and a row in the settings UI that does nothing
  * is worse than no row. Every set below is an independent opt-in on top of it:
- * they overlap freely (three of the four provide footnotes), and a feature is
+ * they overlap freely (three of the five provide footnotes), and a feature is
  * offered when ANY enabled set provides it. Turning them all off leaves the
  * CommonMark floor, which is the strict target spelled as the absence of
- * every extension rather than as a fifth mutually exclusive choice.
+ * every extension rather than as one more mutually exclusive choice.
  *
  * A FEATURE is a syntax a target either has or does not, never a button. The
  * distinction decides what belongs here: `table` is a feature because GitHub
@@ -65,18 +65,69 @@ export type SyntaxSet =
      */
     | "pandoc"
     /**
-     * The syntaxes only this editor renders: living-calculation fences, SVG
-     * fences, and Notion's `<aside>` callouts as they arrive from an export.
-     *
-     * A real target rather than a courtesy entry. Their output degrades
-     * legibly elsewhere (a calc or svg fence is a code block, an `<aside>` is
-     * inline HTML), so writing them is a deliberate choice to keep a document
-     * that only reads fully here, and that is exactly the choice a target is
-     * for.
+     * Notion: the `<aside>` callouts a Markdown export writes, which Notion's
+     * own export notes are HTML because Markdown has no callout. A real
+     * target rather than a courtesy entry: writing one is a deliberate choice
+     * to keep a document that reads fully here and in Notion and as inline
+     * HTML elsewhere, and that is exactly the choice a target is for.
      */
-    | "birta";
+    | "notion"
+    /**
+     * Calculation blocks, this editor's own: a `calc` fence evaluated as a
+     * living worksheet, which is a plain code block anywhere else. Its own
+     * target rather than a line under a row named for the product, because a
+     * row named "Birta Writer" says nothing about what its switch withdraws.
+     */
+    | "calc";
 
-export const ALL_SYNTAX_SETS: readonly SyntaxSet[] = ["gfm", "obsidian", "pandoc", "birta"];
+export const ALL_SYNTAX_SETS: readonly SyntaxSet[] = ["gfm", "obsidian", "pandoc", "notion", "calc"];
+
+/**
+ * Set names a stored value may still carry from before the vocabulary
+ * changed, and what each reads as now. `birta` was one target holding
+ * calculation blocks, SVG blocks and Notion callouts; it split into `notion`
+ * and `calc`, and a list written under the old name keeps the tools it had
+ * rather than silently losing two of them on the next launch. Both readers
+ * of a stored list (`normalizeSyntaxSets`, and `SyntaxScope.sets(from:)` in
+ * the Swift port) consult this, and the port guard holds the two tables equal.
+ */
+export const LEGACY_SYNTAX_SETS: Readonly<Record<string, readonly SyntaxSet[]>> = {
+    birta: ["notion", "calc"],
+};
+
+/** Where a target documents its own Markdown, for a settings UI to link. */
+export interface SyntaxDocumentation {
+    /** The link's text: the site's name, as its own readers know it. */
+    readonly title: string;
+    readonly url: string;
+}
+
+/**
+ * The floor's own reference, for the settings row that shows CommonMark is
+ * always on. Not a `SyntaxSet` (see above), so not in the table below.
+ */
+export const COMMONMARK_DOCUMENTATION: SyntaxDocumentation = {
+    title: "CommonMark Reference",
+    url: "https://commonmark.org/help/",
+};
+
+/**
+ * Each target's own page on what its Markdown is, hosted by the target, so
+ * the settings row can send a reader to the authority rather than to a
+ * paraphrase of it. The calculation block is this editor's own and has no
+ * outside page to point at, which is what the `undefined` says.
+ */
+export const SYNTAX_SET_DOCUMENTATION: Record<SyntaxSet, SyntaxDocumentation | undefined> = {
+    // The section root rather than its "basic writing and formatting" page,
+    // which is the one everybody links: that page documents neither math nor
+    // Mermaid, and the row names both. The root holds every article the
+    // caption draws on.
+    gfm: { title: "GitHub Docs", url: "https://docs.github.com/en/get-started/writing-on-github" },
+    obsidian: { title: "Obsidian Help", url: "https://obsidian.md/help/obsidian-flavored-markdown" },
+    pandoc: { title: "Pandoc Manual", url: "https://pandoc.org/MANUAL.html#pandocs-markdown" },
+    notion: { title: "Notion Help", url: "https://www.notion.com/help/export-your-content" },
+    calc: undefined,
+};
 
 /**
  * A syntax a target either supports or does not.
@@ -85,6 +136,13 @@ export const ALL_SYNTAX_SETS: readonly SyntaxSet[] = ["gfm", "obsidian", "pandoc
  * feature: it is the floor, and a tool for it is never withdrawn. So there is
  * no `heading`, no `bulletList`, no `codeBlock` and no `link` here, and adding
  * one would be adding a feature no set could ever fail to provide.
+ *
+ * Nor is there an `svg`. An `svg` fence is a code block in every Markdown
+ * there is, and that this editor draws the picture is rendering rather than
+ * syntax: a target says which tools a writer is offered, and a renderer's
+ * fence is not a tool any target can take away. PlantUML and Graphviz sit
+ * outside the vocabulary for the same reason, and `syntaxSetDescriptions`
+ * holds all three out of every description.
  */
 export type SyntaxFeature =
     /** GFM pipe tables. */
@@ -109,8 +167,6 @@ export type SyntaxFeature =
     | "notionCallout"
     /** A `mermaid` fenced block, rendered as a diagram. */
     | "mermaid"
-    /** An `svg` fenced block, rendered as the picture its source draws. */
-    | "svg"
     /** A `calc` fenced block, evaluated as a living worksheet. */
     | "calc";
 
@@ -126,7 +182,6 @@ export const ALL_SYNTAX_FEATURES: readonly SyntaxFeature[] = [
     "fencedDiv",
     "notionCallout",
     "mermaid",
-    "svg",
     "calc",
 ];
 
@@ -154,7 +209,8 @@ export const SYNTAX_SET_FEATURES: Record<SyntaxSet, readonly SyntaxFeature[]> = 
         "mermaid",
     ],
     pandoc: ["table", "strikethrough", "footnote", "math", "fencedDiv"],
-    birta: ["calc", "svg", "notionCallout"],
+    notion: ["notionCallout"],
+    calc: ["calc"],
 };
 
 /**
@@ -168,10 +224,11 @@ export const DEFAULT_SYNTAX_SETS: readonly SyntaxSet[] = ALL_SYNTAX_SETS;
 /**
  * A settings.json value is free text, and the enum only constrains the UI, so
  * a typo would otherwise reach the gate as a set nothing provides. Unknown
- * entries are dropped and duplicates collapse; an EMPTY result is kept as
- * empty, because that is the CommonMark-only target rather than a mistake.
- * A non-array (a bare string, null, a stale object) is the shape that cannot
- * mean anything, and falls back to the default.
+ * entries are dropped and duplicates collapse, and a name the vocabulary has
+ * retired reads as what it became (`LEGACY_SYNTAX_SETS`); an EMPTY result is
+ * kept as empty, because that is the CommonMark-only target rather than a
+ * mistake. A non-array (a bare string, null, a stale object) is the shape
+ * that cannot mean anything, and falls back to the default.
  */
 export function normalizeSyntaxSets(value: unknown): readonly SyntaxSet[] {
     if (!Array.isArray(value)) {
@@ -179,8 +236,12 @@ export function normalizeSyntaxSets(value: unknown): readonly SyntaxSet[] {
     }
     const seen = new Set<SyntaxSet>();
     for (const entry of value) {
-        if (typeof entry === "string" && (ALL_SYNTAX_SETS as readonly string[]).includes(entry)) {
+        if (typeof entry !== "string") { continue; }
+        if ((ALL_SYNTAX_SETS as readonly string[]).includes(entry)) {
             seen.add(entry as SyntaxSet);
+        }
+        for (const set of LEGACY_SYNTAX_SETS[entry] ?? []) {
+            seen.add(set);
         }
     }
     return ALL_SYNTAX_SETS.filter((set) => seen.has(set));

@@ -192,6 +192,10 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     /// an omission.
     private let syntaxSwitches: [SyntaxSet: NSSwitch] =
         Dictionary(uniqueKeysWithValues: SyntaxSet.allCases.map { ($0, NSSwitch()) })
+    /// The floor's switch: on, and never operable. It is a statement drawn in
+    /// the shape of the rows under it, so nothing wires it and no `Prefs`
+    /// value stands behind it.
+    private let commonMarkSwitch = NSSwitch()
     private let loginSwitch = NSSwitch()
     private let loginCaption = Caption(LoginItemState.off.caption)
     private let loginSettingsButton = NSButton(title: "Open System Settings…", target: nil, action: nil)
@@ -623,6 +627,14 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
             control.target = self
             control.action = #selector(toggleSyntaxSet(_:))
         }
+        // Disabled rather than merely unwired: an unwired switch still flips
+        // under the pointer and snaps back, which reads as a broken control
+        // rather than a fixed one. The row's label keeps its ordinary ink,
+        // because the row is not unavailable in the `RowAvailability` sense;
+        // it is answered.
+        commonMarkSwitch.controlSize = .small
+        commonMarkSwitch.state = .on
+        commonMarkSwitch.isEnabled = false
         syncControlsFromPrefs()
     }
 
@@ -908,7 +920,12 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
             return (Self.trailingControls([agentTestButton, agentPresetPopup]),
                     [agentField, link],
                     Caption("Terminal command executed by /ai in Birta Writer."))
-        case .syntaxGfm, .syntaxObsidian, .syntaxPandoc, .syntaxBirta:
+        case .commonMark:
+            return (commonMarkSwitch,
+                    [Self.captionRow(Caption(CommonMark.caption)),
+                     Self.link(CommonMark.documentation.title, to: CommonMark.documentation.url)],
+                    nil)
+        case .syntaxGfm, .syntaxObsidian, .syntaxPandoc, .syntaxNotion, .syntaxCalc:
             // The switch is found by the target rather than by the row, which
             // is the direction that stays derived: `SettingsForm.row(for:)` is
             // exhaustive over the vocabulary, so the lookup below can only miss
@@ -917,7 +934,17 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
                   let control = syntaxSwitches[set] else {
                 return (NSView(), [], nil)
             }
-            return (control, [], Caption(set.caption))
+            // The sentence goes in `below` rather than as the row's caption so
+            // the link can follow it on its own line, the way the note-name
+            // row's reference does; `below` is arranged above the caption
+            // slot, so a caption there would put the link above the sentence
+            // it belongs to. Nothing dims these rows, so the row-level caption
+            // slot is not needed for `RowAvailability`.
+            var below: [NSView] = [Self.captionRow(Caption(set.caption))]
+            if let documentation = set.documentation {
+                below.append(Self.link(documentation.title, to: documentation.url))
+            }
+            return (control, below, nil)
         case .resetSettings:
             return (resetButton, [],
                     Caption("Revert \(flavour.displayName) to default settings. Will not "

@@ -26,10 +26,23 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { ALL_SYNTAX_SETS, SYNTAX_SET_FEATURES, type SyntaxFeature, type SyntaxSet } from "../syntaxSets";
+import {
+    ALL_SYNTAX_SETS,
+    DEFAULT_SYNTAX_SETS,
+    SYNTAX_SET_DOCUMENTATION,
+    SYNTAX_SET_FEATURES,
+    type SyntaxFeature,
+    type SyntaxSet,
+} from "../syntaxSets";
 
 const root = resolve(__dirname, "../..");
 const nls = JSON.parse(readFileSync(resolve(root, "package.nls.json"), "utf8")) as Record<string, string>;
+const manifest = JSON.parse(readFileSync(resolve(root, "package.json"), "utf8")) as {
+    contributes: {
+        configuration: { properties: Record<string, { items?: { enum?: string[] }; default?: unknown }> }
+            | { properties: Record<string, { items?: { enum?: string[] }; default?: unknown }> }[];
+    };
+};
 const swift = readFileSync(resolve(root, "mac/Sources/BirtaWriterCore/SyntaxSets.swift"), "utf8");
 
 /** How a person spells each feature, longest phrase first. */
@@ -47,17 +60,18 @@ const PHRASES: readonly (readonly [string, SyntaxFeature])[] = [
     ["table", "table"],
     ["alert", "calloutAlert"],
     ["math", "math"],
-    ["svg", "svg"],
     ["calc", "calc"],
 ];
 
 /**
  * Renderers this editor has that NO target governs, so naming one in a
- * target's description is a claim no set can make. PlantUML and Graphviz draw
- * inside a fence and have no insert tool, which is why they are absent from
- * `SyntaxFeature` rather than members of the Birta Writer set.
+ * target's description is a claim no set can make. PlantUML, Graphviz and SVG
+ * draw inside a fence that is a code block in every other Markdown, which is
+ * why they are absent from `SyntaxFeature` rather than members of any set;
+ * SVG was a member once, and a description that still lists it is the shape
+ * this catches.
  */
-const FOREIGN = ["plantuml", "graphviz"];
+const FOREIGN = ["plantuml", "graphviz", "svg"];
 
 /** Every feature a description names, by consuming the longest phrase first. */
 function featuresNamed(description: string): Set<SyntaxFeature> {
@@ -132,6 +146,38 @@ describe("the syntax-target descriptions", () => {
                 ).toEqual([]);
             }
         }
+    });
+
+    it("each VS Code description should link to the page the vocabulary names", () => {
+        // The Mac row draws its link from `SyntaxSet.documentation`, which the
+        // port guard holds equal to the table; the VS Code description is
+        // prose, so the only way its link agrees is to check it here.
+        let linked = 0;
+        for (const set of ALL_SYNTAX_SETS) {
+            const documentation = SYNTAX_SET_DOCUMENTATION[set];
+            const links = [...vscodeDescription(set).matchAll(/\[([^\]]+)\]\(([^)]+)\)/g)]
+                .map((m) => ({ title: m[1]!, url: m[2]! }));
+            if (documentation === undefined) {
+                expect(links, `${set} links somewhere the vocabulary does not`).toEqual([]);
+                continue;
+            }
+            linked += 1;
+            expect(links, `${set}`).toEqual([documentation]);
+        }
+        expect(linked).toBeGreaterThan(0);
+    });
+
+    it("the manifest should enumerate the vocabulary, and default to it", () => {
+        // `package.json` is JSON and cannot import the table, so its enum is
+        // the third copy of the set list; a set added to the vocabulary and
+        // not here is one VS Code's settings UI refuses to store.
+        const sections = Array.isArray(manifest.contributes.configuration)
+            ? manifest.contributes.configuration
+            : [manifest.contributes.configuration];
+        const property = sections.map((s) => s.properties["birta.syntax.sets"]).find(Boolean);
+        expect(property, "no birta.syntax.sets contribution").toBeDefined();
+        expect(property!.items?.enum).toEqual([...ALL_SYNTAX_SETS]);
+        expect(property!.default).toEqual([...DEFAULT_SYNTAX_SETS]);
     });
 
     it("the two surfaces should name the same syntaxes for the same set", () => {

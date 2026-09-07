@@ -2448,13 +2448,15 @@
                             "gfm",
                             "obsidian",
                             "pandoc",
-                            "birta"
+                            "notion",
+                            "calc"
                         ],
-                        "enumDescriptions": [
+                        "markdownEnumDescriptions": [
                             "%config.syntax.sets.gfm%",
                             "%config.syntax.sets.obsidian%",
                             "%config.syntax.sets.pandoc%",
-                            "%config.syntax.sets.birta%"
+                            "%config.syntax.sets.notion%",
+                            "%config.syntax.sets.calc%"
                         ]
                     },
                     "uniqueItems": true,
@@ -2462,7 +2464,8 @@
                         "gfm",
                         "obsidian",
                         "pandoc",
-                        "birta"
+                        "notion",
+                        "calc"
                     ],
                     "markdownDescription": "%config.syntax.sets.description%"
                 },

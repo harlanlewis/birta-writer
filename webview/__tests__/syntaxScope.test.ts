@@ -149,7 +149,7 @@ describe("the slash menu under a narrowed target", () => {
         }
     });
 
-    it("the four rows that share insertCodeBlock should go by their OWN syntax", () => {
+    it("the rows that share insertCodeBlock should go by their OWN syntax", () => {
         // `insertCodeBlock` writes a plain fence and is CommonMark, so its
         // command can carry no answer for these. Without the row-level field
         // they would all survive a CommonMark-only target while every other
@@ -157,18 +157,21 @@ describe("the slash menu under a narrowed target", () => {
         declare([]);
         const ids = allOffered();
         expect(ids).toContain("codeBlock");
-        for (const id of ["mermaid", "svgBlock", "mathBlock", "calcBlock"]) {
+        for (const id of ["mermaid", "mathBlock", "calcBlock"]) {
             expect(ids, `/${id} should be withdrawn`).not.toContain(id);
         }
+        // And the SVG row is NOT among them: an svg fence is a code block in
+        // every Markdown, and that this editor draws it is rendering rather
+        // than syntax, so no target governs it and none can take it away.
+        expect(ids).toContain("svgBlock");
     });
 
     it("each of those rows should come back with the target that spells it", () => {
         declare(["gfm"]);
         expect(allOffered()).toContain("mermaid");
         expect(allOffered()).not.toContain("calcBlock");
-        declare(["birta"]);
+        declare(["calc"]);
         expect(allOffered()).toContain("calcBlock");
-        expect(allOffered()).toContain("svgBlock");
         expect(allOffered()).not.toContain("mermaid");
     });
 

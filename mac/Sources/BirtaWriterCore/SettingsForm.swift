@@ -20,19 +20,26 @@ public enum SettingsRow: String, CaseIterable, Sendable {
     case newNoteName = "File name"
     case agentEnabled = "Enable /ai commands"
     case agentCommand = "Terminal command"
-    // One row per publishing target (`SyntaxSets.swift`). Four cases rather
-    // than one row holding four boxes, because the form's whole model is one
-    // row per question and these are four independent questions: the targets
-    // are not exclusive, and enabling two offers the union of what they spell.
+    // The floor, drawn as a row so the list reads as complete: a switch that
+    // is on and cannot be moved says "every flavor below contains this" in
+    // the place a reader would otherwise look for the missing row. Not a
+    // `SyntaxSet` (see `SyntaxSets.swift`), so it is spelled here by hand.
+    case commonMark = "CommonMark"
+    // One row per publishing target (`SyntaxSets.swift`). One case each
+    // rather than one row holding every box, because the form's whole model
+    // is one row per question and these are independent questions: the
+    // targets are not exclusive, and enabling two offers the union of what
+    // they spell.
     //
     // A hand-written list is a list a new target never joins, so
     // `SettingsFormTests` compares these raw values against
-    // `SyntaxSet.allCases` labels: a fifth target fails to build a pane until
+    // `SyntaxSet.allCases` labels: a new target fails to build a pane until
     // it has a row here.
     case syntaxGfm = "GitHub"
     case syntaxObsidian = "Obsidian"
     case syntaxPandoc = "Pandoc"
-    case syntaxBirta = "Birta Writer"
+    case syntaxNotion = "Notion"
+    case syntaxCalc = "Calculation blocks"
     case resetSettings = "Reset all settings"
     case welcomeScreen = "Welcome screen"
 }
@@ -182,19 +189,23 @@ public enum SettingsForm {
     /// Its own pane rather than a card on General, because General is what the
     /// app IS (how you reach it, where it puts your bytes) and this is about
     /// the writing. It earns an intro under the same rule the AI Agent pane
-    /// does: what these switches do is not guessable from their labels, and the
-    /// thing a reader most needs told is the thing the switches cannot say,
-    /// which is that none of it touches what a document renders.
+    /// does: what these switches do is not guessable from their labels. The
+    /// intro is two sentences because that is all the rows cannot say for
+    /// themselves, that there are flavors and that a switch governs what is
+    /// offered. What each flavor is, and where it is defined, belongs to its
+    /// own row.
+    ///
+    /// The floor is the first row, on and fixed, rather than a sentence
+    /// explaining its absence: a reader scanning a list of flavors for
+    /// CommonMark finds it where they looked, and the switch they cannot move
+    /// says the rest.
     public static let markdown = SettingsPane(
         intro: [
-            "Choose which publishing targets you write for. Birta Writer offers you the "
-                + "formatting each target understands, in the toolbar, the / menu and the block menu.",
-            "This never changes what a document renders. Every note opens with everything it "
-                + "contains drawn in full, whatever is selected here.",
-            "CommonMark is always available and is not in this list, because every target below "
-                + "includes it. Turn all four off to write CommonMark alone.",
+            "Birta Writer can render many flavors of Markdown. Choose the ones you write for, "
+                + "and the toolbar and menus offer only their formatting.",
         ],
-        groups: [SettingsGroup(rows: [.syntaxGfm, .syntaxObsidian, .syntaxPandoc, .syntaxBirta])])
+        groups: [SettingsGroup(rows: [.commonMark, .syntaxGfm, .syntaxObsidian, .syntaxPandoc,
+                                      .syntaxNotion, .syntaxCalc])])
 
     /// The row that carries a target, in the vocabulary's own order.
     ///
@@ -207,7 +218,8 @@ public enum SettingsForm {
         case .gfm: return .syntaxGfm
         case .obsidian: return .syntaxObsidian
         case .pandoc: return .syntaxPandoc
-        case .birta: return .syntaxBirta
+        case .notion: return .syntaxNotion
+        case .calc: return .syntaxCalc
         }
     }
 
