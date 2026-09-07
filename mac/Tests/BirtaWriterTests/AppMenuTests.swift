@@ -827,6 +827,43 @@ final class AppMenuTests: XCTestCase {
         XCTAssertGreaterThan(swept, 10, "the sweep reached almost nothing")
     }
 
+    /// A zero-size image still takes the icon column, which is the premise the
+    /// sweep having no exception rests on.
+    ///
+    /// The About row used to carry an image of no size so the sweep would
+    /// spare it, and the comment beside it said an image with no size takes
+    /// nothing from the column. That was believed exactly as firmly as its
+    /// negation is believed now, and neither was ever put to AppKit: the row's
+    /// title sat a glyph's width right of its neighbours the whole time, with
+    /// a green suite. Both readings are load-bearing and unfalsifiable from a
+    /// test that only asserts `image` is nil, because nil is what BOTH
+    /// designs leave behind; what tells them apart is the width.
+    ///
+    /// So this measures rather than restates. It asks the menu, because an
+    /// `NSMenuItem` has no width of its own to read and `attached` style
+    /// questions answer whether AppKit accepted a thing rather than whether it
+    /// occupies anything.
+    func testAZeroSizeImageShouldStillTakeTheIconColumn() throws {
+        let delegate = AppDelegate()
+        let menu = try XCTUnwrap(delegate.mainMenu().menu.items.first?.submenu)
+        AppDelegate.suppressAutomaticIcons(in: menu)
+        let about = try XCTUnwrap(menu.items.first { $0.title.hasPrefix("About ") })
+        XCTAssertNil(about.image, "the sweep left an image, so the plain width is not plain")
+
+        let plain = menu.size.width
+        // A menu that measured nothing makes both readings equal and the
+        // comparison below vacuous.
+        XCTAssertGreaterThan(plain, 0, "the menu measured nothing, so neither width means anything")
+
+        about.image = NSImage(size: .zero)
+        let decorated = menu.size.width
+        about.image = nil
+
+        XCTAssertGreaterThan(decorated, plain,
+                             "a zero-size image took no column, so the About row was never "
+                             + "indented by one and the sweep could have kept its exception")
+    }
+
     /// Both surfaces of the app menu clear on every opening, not just one.
     ///
     /// The status menu always had the delegate; the app menu was swept once at

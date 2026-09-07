@@ -75,9 +75,19 @@ function documentationArms(): Map<string, { title: string; url: string } | undef
     return arms;
 }
 
-/** The floor's own link, out of the `CommonMark` namespace. */
+/**
+ * The floor's own link, out of the `CommonMark` namespace.
+ *
+ * Anchored inside that enum's body the way `enumCases` anchors itself, and
+ * not merely searched for in the file: `public static let documentation` is a
+ * shape any type here could grow, and an unanchored search takes the first
+ * one, so a second declaration above this enum would silently move the guard
+ * onto a link nobody was asking about while the real one went unchecked.
+ */
 function commonMarkDocumentation(): { title: string; url: string } | undefined {
-    const m = /public static let documentation = SyntaxDocumentation\("([^"]+)", "([^"]+)"\)/.exec(swift);
+    const body = /public enum CommonMark \{([\s\S]*?)\n\}/.exec(swift);
+    if (!body) { return undefined; }
+    const m = /public static let documentation = SyntaxDocumentation\("([^"]+)", "([^"]+)"\)/.exec(body[1]!);
     return m ? { title: m[1]!, url: m[2]! } : undefined;
 }
 
@@ -107,6 +117,9 @@ describe("the Swift port of the syntax-target vocabulary", () => {
         expect(enumCases("SyntaxFeature").length).toBeGreaterThan(0);
         expect(featureArms().size).toBeGreaterThan(0);
         expect(commandArms().size).toBeGreaterThan(0);
+        expect(documentationArms().size).toBeGreaterThan(0);
+        expect(legacyArms().size).toBeGreaterThan(0);
+        expect(commonMarkDocumentation()).toBeDefined();
     });
 
     it("the sets should match, in the same order", () => {

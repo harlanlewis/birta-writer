@@ -27,6 +27,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import {
+    ALL_SYNTAX_FEATURES,
     ALL_SYNTAX_SETS,
     DEFAULT_SYNTAX_SETS,
     SYNTAX_SET_DOCUMENTATION,
@@ -37,17 +38,33 @@ import {
 
 const root = resolve(__dirname, "../..");
 const nls = JSON.parse(readFileSync(resolve(root, "package.nls.json"), "utf8")) as Record<string, string>;
+interface ManifestProperty {
+    items?: { enum?: string[]; markdownEnumDescriptions?: string[] };
+    default?: unknown;
+}
+interface ManifestSection { properties: Record<string, ManifestProperty> }
 const manifest = JSON.parse(readFileSync(resolve(root, "package.json"), "utf8")) as {
     contributes: {
-        configuration: { properties: Record<string, { items?: { enum?: string[] }; default?: unknown }> }
-            | { properties: Record<string, { items?: { enum?: string[] }; default?: unknown }> }[];
+        configuration: ManifestSection | ManifestSection[];
     };
 };
 const swift = readFileSync(resolve(root, "mac/Sources/BirtaWriterCore/SyntaxSets.swift"), "utf8");
 
-/** How a person spells each feature, longest phrase first. */
+/**
+ * How a person spells each feature, longest phrase first.
+ *
+ * Hand-written, because these are the words prose uses and no type holds
+ * them, so the one thing that can be derived is derived: the test below
+ * fails when a feature in the vocabulary is spelled by nothing here, which
+ * is the case where a description could name it and the sweep would not see
+ * it. A SECOND spelling of a feature already covered is still invisible until
+ * somebody adds it, and `<aside>` is the one that was: the Notion row's
+ * syntax is an `<aside>` element, and a description naming it read as naming
+ * no feature at all.
+ */
 const PHRASES: readonly (readonly [string, SyntaxFeature])[] = [
     ["notion callout", "notionCallout"],
+    ["<aside>", "notionCallout"],
     ["fenced div", "fencedDiv"],
     ["task list", "taskList"],
     ["calculation", "calc"],
@@ -90,6 +107,16 @@ function vscodeDescription(set: SyntaxSet): string {
     const value = nls[`config.syntax.sets.${set}`];
     expect(value, `no nls string for ${set}`).toBeDefined();
     return value!;
+}
+
+/** The `birta.syntax.sets` contribution, or a failure that says it is gone. */
+function syntaxSetsContribution(): ManifestProperty {
+    const sections = Array.isArray(manifest.contributes.configuration)
+        ? manifest.contributes.configuration
+        : [manifest.contributes.configuration];
+    const property = sections.map((s) => s.properties["birta.syntax.sets"]).find(Boolean);
+    expect(property, "no birta.syntax.sets contribution").toBeDefined();
+    return property!;
 }
 
 /** The Swift Settings caption for a set, out of the `caption` switch. */
@@ -167,17 +194,39 @@ describe("the syntax-target descriptions", () => {
         expect(linked).toBeGreaterThan(0);
     });
 
+    it("every feature in the vocabulary should have a spelling this sweep knows", () => {
+        // The sweep reads descriptions through `PHRASES`, so a feature no
+        // phrase spells is a feature a description can claim with nothing
+        // reading it. That is invisible on a green run, and it is exactly what
+        // adding a feature to `SyntaxFeature` and not here would do.
+        const spelled = new Set(PHRASES.map(([, feature]) => feature));
+        expect([...ALL_SYNTAX_FEATURES].filter((f) => !spelled.has(f))).toEqual([]);
+    });
+
     it("the manifest should enumerate the vocabulary, and default to it", () => {
         // `package.json` is JSON and cannot import the table, so its enum is
         // the third copy of the set list; a set added to the vocabulary and
         // not here is one VS Code's settings UI refuses to store.
-        const sections = Array.isArray(manifest.contributes.configuration)
-            ? manifest.contributes.configuration
-            : [manifest.contributes.configuration];
-        const property = sections.map((s) => s.properties["birta.syntax.sets"]).find(Boolean);
-        expect(property, "no birta.syntax.sets contribution").toBeDefined();
-        expect(property!.items?.enum).toEqual([...ALL_SYNTAX_SETS]);
-        expect(property!.default).toEqual([...DEFAULT_SYNTAX_SETS]);
+        const property = syntaxSetsContribution();
+        expect(property.items?.enum).toEqual([...ALL_SYNTAX_SETS]);
+        expect(property.default).toEqual([...DEFAULT_SYNTAX_SETS]);
+    });
+
+    it("each enum value should carry its own description, in the same position", () => {
+        // `markdownEnumDescriptions` is paired with `items.enum` BY POSITION
+        // and by nothing else, so two entries can be swapped and every other
+        // check here still passes: the nls keys all still resolve, each
+        // description still names only what its own set provides, and the
+        // enum still lists the vocabulary in order. What breaks is the one
+        // thing none of them reads, which is which description VS Code draws
+        // against which value.
+        const property = syntaxSetsContribution();
+        const descriptions = property.items?.markdownEnumDescriptions;
+        expect(descriptions, "no markdownEnumDescriptions").toBeDefined();
+        expect(descriptions).toEqual(ALL_SYNTAX_SETS.map((set) => `%config.syntax.sets.${set}%`));
+        for (const set of ALL_SYNTAX_SETS) {
+            expect(nls[`config.syntax.sets.${set}`], `no nls string for ${set}`).toBeDefined();
+        }
     });
 
     it("the two surfaces should name the same syntaxes for the same set", () => {
