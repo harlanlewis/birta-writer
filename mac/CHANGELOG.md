@@ -12,6 +12,10 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ## [Unreleased]
 
+---
+
+## [2026.907.0] - 2026, September 7
+
 ### Added
 
 - Check for Updates…, on the Birta Writer menu under Settings…, on the menu-bar icon's menu, and as a button under the version in the About window. It asks the release page and answers in a dialog on the window you asked from, whatever it found: that Birta Writer for Mac is up to date, naming the version you have; that it could not reach the page; or that a newer version exists. That last one says how far behind you are, in days read from the two version numbers, whether the download has already arrived, and offers Install Now, which writes your note, restarts and reopens it, or Install on Next Launch, which downloads and checks the update now and puts it in after you next quit, so the next time you open the app it is the new one. If the download fails, the dialog says so and why, and nothing is installed. Not Now is not a decline: the automatic offer still asks in its own time. Check for Updates on a version already waiting for your next quit offers Restart Now instead of asking the page again.
