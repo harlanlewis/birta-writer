@@ -10,7 +10,7 @@
 import type { EditorView } from "@/pm";
 import { t } from "@/i18n";
 import { notifyReviewGroupByType } from "@/messaging";
-import { getProofreadConfig, listProofreadFindings } from "@/plugins/proofread";
+import { blockTextReader, getProofreadConfig, listProofreadFindings } from "@/plugins/proofread";
 import { styleCategoryRank } from "@/utils/styleCategories";
 import { initReviewList, type ReviewResult } from "./reviewList";
 
@@ -31,14 +31,17 @@ type Label = { label: string; emphasis?: { start: number; end: number } };
  *  can't identify itself — a lone em dash, a curly quote — this shows both where
  *  the finding is and WHAT is flagged, instead of 30 identical "—" rows. */
 function contextLabel(view: EditorView, from: number, to: number): Label {
-    const $from = view.state.doc.resolve(from);
-    const blockStart = $from.start();
-    const blockEnd = $from.end();
+    // Every read here is within the finding's own block, through the shared
+    // index: a root `resolve` and three root `textBetween` calls per row each
+    // walk the document from its first block, which is what made a long
+    // document's list cost rows times blocks (MAR-437).
+    const text = blockTextReader(view.state.doc);
+    const { start: blockStart, end: blockEnd } = text.blockRange(from);
     const winA = Math.max(blockStart, from - 28);
     const winB = Math.min(blockEnd, to + 28);
-    let before = view.state.doc.textBetween(winA, from, " ", " ").replace(/\s+/g, " ");
-    const flag = view.state.doc.textBetween(from, to, " ", " ").replace(/\s+/g, " ");
-    let after = view.state.doc.textBetween(to, winB, " ", " ").replace(/\s+/g, " ");
+    let before = text.textBetween(winA, from, " ", " ").replace(/\s+/g, " ");
+    const flag = text.textBetween(from, to, " ", " ").replace(/\s+/g, " ");
+    let after = text.textBetween(to, winB, " ", " ").replace(/\s+/g, " ");
     // Trim a partial word at each cut edge; add an ellipsis when we cut.
     before = winA > blockStart ? "…" + before.replace(/^\s*\S*\s+/, "") : before.replace(/^\s+/, "");
     after = winB < blockEnd ? after.replace(/\s+\S*\s*$/, "") + "…" : after.replace(/\s+$/, "");
