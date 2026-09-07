@@ -25,6 +25,7 @@ import { revealPosition } from "@/editing/blockOps";
 import type { EventManager } from "@/eventManager";
 import { computeLineMap } from "../../../shared/lineMap";
 import { ensureFindHighlightStyles } from "./highlightStyles";
+import { observeVisibleWindow, type VisibleWindow } from "@/plugins/visibleRange";
 import {
     buildQuery,
     escapeRegExp,
@@ -588,6 +589,15 @@ export function initFindBar(
      */
     let scannedDoc: unknown = null;
     let staleRescanTimer: ReturnType<typeof setTimeout> | null = null;
+
+    /**
+     * The scroll window, or null for "the whole document" (no layout engine,
+     * or the observer has not measured yet). Highlights are registered only
+     * for matches inside it — see `updateHighlights`.
+     */
+    let highlightWindow: VisibleWindow | null = null;
+    let windowObserver: ReturnType<typeof observeVisibleWindow> | null = null;
+    let observedView: EditorView | null = null;
     /**
      * Editor selection observed after the last search/navigation. While the
      * selection stays here, next/prev step through matches in order; once it
@@ -613,6 +623,12 @@ export function initFindBar(
         visible = true;
         bar.classList.add("find-bar--visible");
         escapeLayerOff ??= registerEscapeLayer(close);
+        // Track the scroll window only while the bar is open: a closed find
+        // bar registers no scroll listener and measures nothing.
+        const view = getEditorView();
+        if (view) {
+            bindWindowObserver(view);
+        }
     }
 
     // ── Highlight updates ────────────────────────────────
@@ -725,14 +741,95 @@ export function initFindBar(
         }
     }
 
+    /**
+     * Bind (or rebind) the scroll-window observer to the live view, so
+     * `highlightWindow` tracks what the reader can see.
+     *
+     * Only while the bar is open: a closed find bar registers no listener and
+     * measures nothing. The view is replaced wholesale on a re-init, so the
+     * binding is re-checked by identity rather than captured once (the
+     * `lineNumbers` idiom).
+     */
+    function bindWindowObserver(view: EditorView): void {
+        if (windowObserver && observedView === view) {
+            return;
+        }
+        windowObserver?.destroy();
+        observedView = view;
+        highlightWindow = null;
+        // `start()` measures synchronously and calls back before it returns,
+        // so the repaint is suppressed for that first callback only: whoever
+        // is binding paints once itself, with the window already recorded.
+        let binding = true;
+        windowObserver = observeVisibleWindow(view, (next) => {
+            highlightWindow = next;
+            if (!binding) {
+                updateHighlights();
+            }
+        });
+        windowObserver.start();
+        binding = false;
+    }
+
+    function releaseWindowObserver(): void {
+        windowObserver?.destroy();
+        windowObserver = null;
+        observedView = null;
+        highlightWindow = null;
+    }
+
+    /**
+     * Is this match's range near enough the viewport to be worth painting?
+     *
+     * A null window means "the whole document" — no layout engine (jsdom), a
+     * detached editor, or the observer has not measured yet — and every
+     * consumer of `visibleRange` reads it that way.
+     */
+    function inHighlightWindow(from: number, to: number): boolean {
+        const win = highlightWindow;
+        return win === null || (to >= win.from && from <= win.to);
+    }
+
+    /**
+     * Paint the match highlights.
+     *
+     * Only the matches inside the scroll window get a DOM range, because
+     * mapping one is not free: `domRange` calls `view.domAtPos` twice, and
+     * `domAtPos` walks the top-level view descs from the start on every call,
+     * so an unwindowed pass costs two walks per match. On a large document
+     * with a common query that is tens of thousands of walks per keystroke
+     * (MAR-436).
+     *
+     * Windowing is invisible to the reader for the same reason it is safe for
+     * the block gutter (MAR-215): both highlight channels are paint-only —
+     * `::highlight()` sets `background-color` and `.find-match-el` an
+     * `outline` — so a range that is not registered cannot move anything, and
+     * `observeVisibleWindow` keeps two screens of margin registered ahead of
+     * the scroll.
+     *
+     * The CURRENT match is always mapped, whatever the window says. Navigation
+     * calls this BEFORE it scrolls, so the window has not caught up yet, and
+     * skipping it would leave the match the user just jumped to unpainted for
+     * a frame.
+     */
     function updateHighlights() {
         const view = getEditorView();
         clearElementHighlights();
+        // The view is replaced wholesale on a re-init, which would leave the
+        // window measured against a document that is gone. Re-checked by
+        // identity here rather than captured once at open (the `lineNumbers`
+        // idiom); it is a pointer comparison on every other call.
+        if (view && visible && observedView !== view) {
+            bindWindowObserver(view);
+        }
 
         if (view) {
             for (let i = 0; i < matches.length; i++) {
                 const m = matches[i];
                 if (m.kind === "text") {
+                    continue;
+                }
+                if (i !== currentIdx && !inHighlightWindow(sortPos(m), sortPos(m))) {
                     continue;
                 }
                 const el = matchElement(view, m);
@@ -758,6 +855,9 @@ export function initFindBar(
             for (let i = 0; i < matches.length; i++) {
                 const m = matches[i];
                 if (m.kind !== "text") {
+                    continue;
+                }
+                if (i !== currentIdx && !inHighlightWindow(m.from, m.to)) {
                     continue;
                 }
                 const r = textMatchRange(view, m);
@@ -1587,6 +1687,7 @@ export function initFindBar(
             staleRescanTimer = null;
         }
         clearHighlights();
+        releaseWindowObserver();
         matches = [];
         count.textContent = "";
         hint.textContent = "";
