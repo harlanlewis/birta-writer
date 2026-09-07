@@ -110,9 +110,10 @@ describe("the Mac app's About window", () => {
         // Both menus draw ONE section, built by `AppMenu.addAppSection`, so
         // this reads the row where it is written and then reads that both
         // builders ask for it. `AppMenuTests` reads the two built menus back
-        // and holds their rows equal; this is the half of that pair CI runs,
-        // because the Swift suite is `mac/scripts/test.sh` and no workflow
-        // calls it.
+        // and holds their rows equal, which is the stronger check of WHAT the
+        // rows are and cannot see that there is one builder: two that agree
+        // today satisfy an equality, and drift the day one is edited. That is
+        // what this half holds, and it is why both are kept.
         //
         // FOLLOW THE NAME. `buildStatusMenu` and not `buildStatusItem`: the
         // menu-bar ITEM comes and goes with a setting while the menu it shows
