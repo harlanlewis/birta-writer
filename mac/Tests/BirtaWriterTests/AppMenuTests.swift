@@ -749,6 +749,11 @@ final class AppMenuTests: XCTestCase {
         XCTAssertEqual(row(named: "Settings…", in: appMenu)?.keyEquivalent, ",")
         XCTAssertEqual(row(named: "Settings…", in: status)?.keyEquivalent, "")
         XCTAssertTrue(status.items.allSatisfy { $0.keyEquivalent.isEmpty })
+        // The strip reaches the rows of this menu and not the rows of a
+        // submenu, so a section that grew one would print chords again from
+        // inside it. There is none, and this is what says so out loud rather
+        // than a comment nobody reads.
+        XCTAssertTrue(status.items.allSatisfy { $0.submenu == nil })
         // The summon hotkey is the exception, and it is written on the toggle
         // at every opening rather than at build: a Carbon registration that
         // fires whatever has focus is the one chord true where this is read.
