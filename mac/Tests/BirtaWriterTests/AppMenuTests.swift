@@ -800,36 +800,61 @@ final class AppMenuTests: XCTestCase {
         menu.items.first { $0.title == title }
     }
 
-    /// The About row draws no icon, on both menus that carry it. The clear
-    /// every other row gets did not hold for it under macOS 26; an image the
-    /// app set is not one the system substitutes for, and an image with no
-    /// size is a column of no width.
+    /// EVERY row is left with no image, About included, on both menus.
     ///
-    /// Read AFTER `suppressAutomaticIcons`, which is the only state that
-    /// ships: the app menu goes through it before it is installed and the
-    /// status menu on every opening. Read before it, this passed while the
-    /// sweep put the row back to the nil macOS decorates.
-    func testTheAboutRowShouldCarryAnEmptyImageOfItsOwn() throws {
+    /// The About row used to be the exception: it carried a zero-size image of
+    /// its own so the sweep would spare it. AppKit reserves the icon column
+    /// for any image whatever its size, so that row's title sat a glyph's
+    /// width right of every other row in the menu, which is the one-row-unlike
+    /// -its-neighbours this sweep exists to prevent, reached from the other
+    /// side. There is no exception now, which is why this asserts over every
+    /// row rather than over every row but one.
+    func testEveryRowShouldBeLeftWithNoImage() throws {
+        let delegate = AppDelegate()
+        let appMenu = try XCTUnwrap(delegate.mainMenu().menu.items.first?.submenu)
+        let status = delegate.buildStatusMenu()
+        var swept = 0
+        for menu in [appMenu, status] {
+            AppDelegate.suppressAutomaticIcons(in: menu)
+            for item in allItems(of: menu) {
+                XCTAssertNil(item.image, item.title)
+                swept += 1
+            }
+            XCTAssertNotNil(menu.items.first { $0.title.hasPrefix("About ") },
+                            "no About row, so the row this is about was never swept")
+        }
+        // A sweep over an empty menu asserts nothing and passes.
+        XCTAssertGreaterThan(swept, 10, "the sweep reached almost nothing")
+    }
+
+    /// Both surfaces of the app menu clear on every opening, not just one.
+    ///
+    /// The status menu always had the delegate; the app menu was swept once at
+    /// build, on the grounds that its rows do not change. Whether the rows
+    /// change and whether the CLEAR holds are different questions, and the
+    /// second is the one that matters here, because macOS decorates a menu
+    /// when it pleases rather than when the app finishes building it.
+    ///
+    /// Two halves, and only one of them is the app's: that each menu names
+    /// this delegate, and that the delegate clears when it is asked. AppKit
+    /// calling it on display is AppKit's contract rather than something to
+    /// assert here, and `NSMenu.update()` turns out not to route through it at
+    /// all, so a test written that way fails on the status menu, which has
+    /// carried the delegate the whole time. That is a check going red for a
+    /// reason with nothing to do with its subject.
+    func testBothMenusShouldClearTheirIconsOnEveryOpening() throws {
         let delegate = AppDelegate()
         let appMenu = try XCTUnwrap(delegate.mainMenu().menu.items.first?.submenu)
         let status = delegate.buildStatusMenu()
         for menu in [appMenu, status] {
-            AppDelegate.suppressAutomaticIcons(in: menu)
+            XCTAssertTrue(menu.delegate === delegate,
+                          "\(menu.title) is swept only when it is built")
+            // Something to clear, so a sweep that never ran is told apart from
+            // one that ran and found nothing.
             let about = try XCTUnwrap(menu.items.first { $0.title.hasPrefix("About ") })
-            let image = try XCTUnwrap(about.image, "nil is what macOS decorates")
-            XCTAssertEqual(image.size, .zero)
-        }
-    }
-
-    /// And every other row is left with none, which is what the sweep is for:
-    /// keeping the About row's image must not become keeping the symbol macOS
-    /// puts beside Quit.
-    func testEveryOtherRowShouldBeLeftWithNoImage() throws {
-        let delegate = AppDelegate()
-        let appMenu = try XCTUnwrap(delegate.mainMenu().menu.items.first?.submenu)
-        AppDelegate.suppressAutomaticIcons(in: appMenu)
-        for item in allItems(of: appMenu) where !item.title.hasPrefix("About ") {
-            XCTAssertNil(item.image, item.title)
+            about.image = NSImage(size: NSSize(width: 16, height: 16))
+            delegate.menuNeedsUpdate(menu)
+            XCTAssertNil(about.image, "\(menu.title) did not clear when it was asked")
         }
     }
 

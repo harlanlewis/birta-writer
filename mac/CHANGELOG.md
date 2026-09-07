@@ -32,7 +32,7 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ### Fixed
 
-- The About row on the Birta Writer menu no longer draws an information icon beside it. The clear that keeps every other row plain under macOS 26 did not hold for that one, and one decorated row in a plain menu read as a mistake.
+- The About row draws no icon and lines up with every other row, on the Birta Writer menu and on the menu-bar icon's menu. It was the one decorated row in an otherwise plain menu under macOS 26, which reads as a mistake rather than as a system convention, and the first fix for that took the icon away but left the row indented by the width of the icon it no longer drew.
 
 ---
 
