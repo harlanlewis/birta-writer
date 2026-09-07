@@ -705,15 +705,119 @@ final class AppMenuTests: XCTestCase {
         XCTAssertEqual(check.keyEquivalent, "", "a check is not a chord")
     }
 
-    /// The About row draws no icon. The clear every other row gets did not
-    /// hold for it under macOS 26; an image the app set is not one the
-    /// system substitutes for, and an image with no size is a column of no
-    /// width.
+    // MARK: the menu-bar item's menu
+
+    /// The rows a reader sees on a right click of the menu-bar item, and the
+    /// rules between them.
+    ///
+    /// Written out rather than only compared with the app menu below, because
+    /// two menus built by one builder agree with each other whatever that
+    /// builder does: an equality between them says they match and never says
+    /// what they hold.
+    func testTheMenuBarItemsMenuShouldHoldTheAppRowsInOrder() {
+        let name = AppFlavor.current.displayName
+        XCTAssertEqual(shape(of: AppDelegate().buildStatusMenu()),
+                       ["About \(name)", "-", "Settings…", "Check for Updates…",
+                        "-", "<put away>", "Quit \(name)"])
+    }
+
+    /// The same rows as the app menu, in the same order.
+    ///
+    /// An accessory app's app menu is invisible while another app is in front,
+    /// so most installs only ever open this one; a row that reached one menu
+    /// and not the other would be a row half the readers of this app do not
+    /// have.
+    func testTheMenuBarItemsMenuShouldMatchTheAppMenu() throws {
+        let delegate = AppDelegate()
+        let appMenu = try XCTUnwrap(delegate.mainMenu().menu.items.first?.submenu)
+        XCTAssertEqual(shape(of: delegate.buildStatusMenu()), shape(of: appMenu))
+    }
+
+    /// No chord is drawn there. A status item's menu is not searched for key
+    /// equivalents and a click on the item does not activate the app, so a
+    /// chord printed there is one that does nothing where it is read.
+    ///
+    /// Settings is asserted on both surfaces, because a status menu with no
+    /// chords passes this on its own the day the app menu stops printing any.
+    func testTheMenuBarItemsMenuShouldPrintNoChords() throws {
+        let delegate = AppDelegate()
+        let status = delegate.buildStatusMenu()
+        let appMenu = try XCTUnwrap(delegate.mainMenu().menu.items.first?.submenu)
+        let hide = try XCTUnwrap(appMenu.items.first { $0.title.hasPrefix("Hide ") })
+        XCTAssertEqual(hide.keyEquivalent, "h")
+        XCTAssertEqual(hide.keyEquivalentModifierMask, .command, "Cmd+H is the chord every app binds")
+        XCTAssertEqual(row(named: "Settings…", in: appMenu)?.keyEquivalent, ",")
+        XCTAssertEqual(row(named: "Settings…", in: status)?.keyEquivalent, "")
+        XCTAssertTrue(status.items.allSatisfy { $0.keyEquivalent.isEmpty })
+        // The summon hotkey is the exception, and it is written on the toggle
+        // at every opening rather than at build: a Carbon registration that
+        // fires whatever has focus is the one chord true where this is read.
+    }
+
+    /// Every row there carries a target, except the one that terminates.
+    ///
+    /// A status item's menu is not in the responder chain, so a nil target
+    /// finds nobody; `NSApplication` is the exception, because it is what
+    /// `terminate` was always going to reach.
+    func testTheMenuBarItemsMenuShouldTargetTheDelegate() {
+        let delegate = AppDelegate()
+        let quit = #selector(NSApplication.terminate(_:))
+        for item in delegate.buildStatusMenu().items where !item.isSeparatorItem {
+            if item.action == quit {
+                XCTAssertNil(item.target, "terminate is NSApplication's")
+            } else {
+                XCTAssertTrue(item.target === delegate, item.title)
+            }
+        }
+    }
+
+    /// A menu's rows, with the one row the two app sections do not share
+    /// reduced to what it does rather than what it says: the app menu hides an
+    /// app that is in front, the menu-bar item's toggles a panel that is as
+    /// often away and says which way it will go.
+    private func shape(of menu: NSMenu) -> [String] {
+        menu.items.map { item in
+            if item.isSeparatorItem { return "-" }
+            if item.title.hasPrefix("Hide ") || item.title.hasPrefix("Show ") { return "<put away>" }
+            return item.title
+        }
+    }
+
+    private func row(named title: String, in menu: NSMenu) -> NSMenuItem? {
+        menu.items.first { $0.title == title }
+    }
+
+    /// The About row draws no icon, on both menus that carry it. The clear
+    /// every other row gets did not hold for it under macOS 26; an image the
+    /// app set is not one the system substitutes for, and an image with no
+    /// size is a column of no width.
+    ///
+    /// Read AFTER `suppressAutomaticIcons`, which is the only state that
+    /// ships: the app menu goes through it before it is installed and the
+    /// status menu on every opening. Read before it, this passed while the
+    /// sweep put the row back to the nil macOS decorates.
     func testTheAboutRowShouldCarryAnEmptyImageOfItsOwn() throws {
-        let appMenu = try XCTUnwrap(AppDelegate().mainMenu().menu.items.first?.submenu)
-        let about = try XCTUnwrap(appMenu.items.first { $0.title.hasPrefix("About ") })
-        let image = try XCTUnwrap(about.image, "nil is what macOS decorates")
-        XCTAssertEqual(image.size, .zero)
+        let delegate = AppDelegate()
+        let appMenu = try XCTUnwrap(delegate.mainMenu().menu.items.first?.submenu)
+        let status = delegate.buildStatusMenu()
+        for menu in [appMenu, status] {
+            AppDelegate.suppressAutomaticIcons(in: menu)
+            let about = try XCTUnwrap(menu.items.first { $0.title.hasPrefix("About ") })
+            let image = try XCTUnwrap(about.image, "nil is what macOS decorates")
+            XCTAssertEqual(image.size, .zero)
+        }
+    }
+
+    /// And every other row is left with none, which is what the sweep is for:
+    /// keeping the About row's image must not become keeping the symbol macOS
+    /// puts beside Quit.
+    func testEveryOtherRowShouldBeLeftWithNoImage() throws {
+        let delegate = AppDelegate()
+        let appMenu = try XCTUnwrap(delegate.mainMenu().menu.items.first?.submenu)
+        AppDelegate.suppressAutomaticIcons(in: appMenu)
+        for item in appMenu.items where !item.title.hasPrefix("About ") {
+            XCTAssertNil(item.image, item.title)
+        }
     }
 
 }

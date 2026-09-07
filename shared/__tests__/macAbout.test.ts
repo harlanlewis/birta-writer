@@ -26,6 +26,7 @@ const REPO = join(__dirname, "..", "..");
 const about = readFileSync(join(REPO, "mac/Sources/BirtaWriterCore/AboutInfo.swift"), "utf8");
 const updater = readFileSync(join(REPO, "mac/Sources/BirtaWriter/Updater.swift"), "utf8");
 const app = readFileSync(join(REPO, "mac/Sources/BirtaWriter/App.swift"), "utf8");
+const appMenu = readFileSync(join(REPO, "mac/Sources/BirtaWriter/AppMenu.swift"), "utf8");
 const plist = readFileSync(join(REPO, "mac/Resources/Info.plist"), "utf8");
 const pkg = JSON.parse(readFileSync(join(REPO, "package.json"), "utf8"));
 
@@ -47,7 +48,7 @@ function swiftConstant(name: string): string {
 function swiftFunctionBody(source: string, name: string): string {
     const signature = source.indexOf(`func ${name}(`);
     if (signature === -1) {
-        throw new Error(`App.swift no longer declares ${name}`);
+        throw new Error(`no Swift source read here declares ${name}`);
     }
     const open = source.indexOf("{", signature);
     let depth = 0;
@@ -106,12 +107,12 @@ describe("the Mac app's About window", () => {
         // the route most installs actually have: lose it and there is no way to
         // the window at all.
         //
-        // The status menu is built by nothing any XCTest constructs, which is
-        // why this reads the source. The APP menu is different now, and
-        // `AppMenuTests` reads the built one for the same row, so this is the
-        // half of that pair that survives being reformatted and the Swift one
-        // is the half that survives being renamed. Keeping both is the point:
-        // either alone leaves one of the two rows checked in one way only.
+        // Both menus draw ONE section, built by `AppMenu.addAppSection`, so
+        // this reads the row where it is written and then reads that both
+        // builders ask for it. `AppMenuTests` reads the two built menus back
+        // and holds their rows equal; this is the half of that pair CI runs,
+        // because the Swift suite is `mac/scripts/test.sh` and no workflow
+        // calls it.
         //
         // FOLLOW THE NAME. `buildStatusMenu` and not `buildStatusItem`: the
         // menu-bar ITEM comes and goes with a setting while the menu it shows
@@ -120,22 +121,23 @@ describe("the Mac app's About window", () => {
         // without assigning `NSApp.windowsMenu`, and this check followed it
         // rather than being weakened. A guard that names a function is a guard
         // a rename empties, with nothing to say it is reading no rows.
+        const section = swiftFunctionBody(appMenu, "addAppSection");
+        expect(section).toContain("#selector(AppDelegate.menuOpenAbout)");
+        expect(section).toContain('addItem(withTitle: "About ');
         for (const builder of ["mainMenu", "buildStatusMenu"]) {
-            const body = swiftFunctionBody(app, builder);
-            expect(body, builder).toContain("#selector(menuOpenAbout)");
-            expect(body, builder).toContain('addItem(withTitle: "About ');
+            expect(swiftFunctionBody(app, builder), builder).toContain("AppMenu.addAppSection(");
         }
     });
 
     it("should offer the update check from the menu-bar item's menu as well", () => {
-        // The app menu's row is in the table `AppMenuTests` reads back. The
-        // status menu's is not, for the reason the About row's is not, and
-        // the same argument puts it there: with no Dock icon this menu is the
-        // only one most installs ever open, and an update they cannot ask
-        // for is an update they wait a day for.
-        const body = swiftFunctionBody(app, "buildStatusMenu");
-        expect(body).toContain("#selector(menuCheckForUpdates)");
-        expect(body).toContain('addItem(withTitle: "Check for Updates…"');
+        // With no Dock icon this menu is the only one most installs ever open,
+        // and an update they cannot ask for is an update they wait a day for.
+        //
+        // The row is the table's, and the section adds the table's rows to
+        // whichever menu it is building, which is what puts one row on both
+        // surfaces rather than a copy on each.
+        expect(appMenu).toContain("#selector(AppDelegate.menuCheckForUpdates)");
+        expect(swiftFunctionBody(appMenu, "addAppSection")).toContain("add(.app, to: nsMenu");
     });
 
     it("should have a copyright in the bundle to draw", () => {
