@@ -262,19 +262,31 @@ public enum UpdatePolicy {
     /// on screen. Both arms are true when they are written: one says a
     /// download is still to come, and a restart does wait for it; the other
     /// says the bytes are already here and checked.
-    public static func detail(hasUnwrittenBytes: Bool, staged: Bool) -> String {
+    ///
+    /// Named rather than spelled, like every sibling here. The offer only
+    /// ever appears on the flavour whose name is the bare product name, so
+    /// this changes no string today; what it removes is the one sentence in
+    /// this type that could not follow the app it is about, sitting in the
+    /// same sheet as a title that can.
+    public static func detail(appName: String, hasUnwrittenBytes: Bool, staged: Bool) -> String {
         let common = staged
-            ? "Birta Writer has already downloaded the update and checked it. Restarting replaces "
+            ? "\(appName) has already downloaded the update and checked it. Restarting replaces "
                 + "this copy and reopens this note."
-            : "Birta Writer will download the update, check it, replace itself and reopen this note."
+            : "\(appName) will download the update, check it, replace itself and reopen this note."
         return hasUnwrittenBytes
             ? common + " Your unsaved changes are written to disk first."
             : common
     }
 
     /// The offer's title.
+    ///
+    /// Through `plain`, like every other sentence in this type. This and
+    /// `checkReport`'s `.found` title are one sentence about one fact, raised
+    /// by two surfaces that a person can meet in either order, so spelling
+    /// the version two ways here is the reader's problem rather than the
+    /// caller's.
     public static func title(appName: String, tag: String) -> String {
-        "\(appName) \(tag) is available."
+        "\(appName) \(plain(tag)) is available."
     }
 
     /// What the panel says after a swap that happened on its own.
@@ -289,7 +301,7 @@ public enum UpdatePolicy {
     /// the app in front of the reader is the new one, and there is nothing
     /// pending and nothing to wait for.
     public static func installedNotice(appName: String, tag: String) -> String {
-        "\(appName) updated to \(tag) in the background."
+        "\(appName) updated to \(plain(tag)) in the background."
     }
 
     // MARK: the check somebody asked for
@@ -428,8 +440,47 @@ public enum UpdatePolicy {
         "\(plain(tag)) goes in after you next quit \(appName)."
     }
 
+    /// The status line while the archive is coming down.
+    ///
+    /// Here rather than written at the `Updater` call site, and that is the
+    /// rule this pair exists to state: a sentence naming a version lives in
+    /// this type, whatever draws it. Both were spelled at the call site from
+    /// the raw tag, on the same status line `installOnQuitNotice` writes to,
+    /// and Install on Next Launch runs them back to back: this one, then the
+    /// swap armed. So the panel read "Downloading v2026.905.0…" and then
+    /// "2026.905.0 goes in after you next quit", one version spelled two ways
+    /// seconds apart in one place. Keeping the sentence out here is not a
+    /// style preference; it is what puts it inside the sweep in
+    /// `UpdatePolicyTests`, which is the only thing that can see a pair
+    /// disagree.
+    public static func downloadingNotice(tag: String) -> String {
+        "Downloading \(plain(tag))…"
+    }
+
+    /// The status line while the swap is being put in, with a restart to come.
+    public static func installingNotice(tag: String) -> String {
+        "Installing \(plain(tag))…"
+    }
+
     /// A version as a person reads it: the tag's leading `v` is the
     /// repository's convention, and a bundle version never carries one.
+    ///
+    /// THE spelling, and every sentence in this type goes through it. That
+    /// matters because the surfaces are many and one person meets several.
+    /// The About window is the reference, since it shows the bundle's own
+    /// version and a bundle version never carries a `v`. The offer and the
+    /// answer sheet are then the same sentence about the same fact, raised by
+    /// whichever of the two the person met first. And the panel writes two of
+    /// these to one status line back to back, which is where the disagreement
+    /// was actually visible: Install on Next Launch says "Downloading …" and
+    /// then "… goes in after you next quit". Two spellings across that set is
+    /// a reader working out whether they are two releases.
+    ///
+    /// It stays PRIVATE so a caller cannot forget it. The function applies it;
+    /// nobody hands it in. `UpdatePolicyTests` sweeps every sentence here for
+    /// the `v`, and its sweep over `CheckAnswer` is an exhaustive switch, so a
+    /// new answer joins it the day it is added rather than the day somebody
+    /// remembers.
     private static func plain(_ version: String) -> String {
         version.hasPrefix("v") ? String(version.dropFirst()) : version
     }

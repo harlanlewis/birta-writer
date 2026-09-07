@@ -130,8 +130,10 @@ enum UpdatePrompt {
     /// sheet keeps making after it stopped holding.
     static func build(tag: String, hasUnwrittenBytes: Bool, staged: Bool) -> Offer {
         let alert = NSAlert()
-        alert.messageText = UpdatePolicy.title(appName: AppFlavor.current.displayName, tag: tag)
-        alert.informativeText = UpdatePolicy.detail(hasUnwrittenBytes: hasUnwrittenBytes,
+        let appName = AppFlavor.current.displayName
+        alert.messageText = UpdatePolicy.title(appName: appName, tag: tag)
+        alert.informativeText = UpdatePolicy.detail(appName: appName,
+                                                    hasUnwrittenBytes: hasUnwrittenBytes,
                                                     staged: staged)
             + "\n\n" + UpdatePolicy.armingNote
         alert.alertStyle = .informational

@@ -138,7 +138,8 @@ final class UpdatePromptTests: XCTestCase {
         let built = offer(hasUnwrittenBytes: true)
 
         let said = built.alert.informativeText
-        XCTAssertTrue(said.contains(UpdatePolicy.detail(hasUnwrittenBytes: true, staged: false)),
+        XCTAssertTrue(said.contains(UpdatePolicy.detail(appName: AppFlavor.current.displayName,
+                                                        hasUnwrittenBytes: true, staged: false)),
                       said)
         XCTAssertTrue(said.contains(UpdatePolicy.armingNote), said)
         XCTAssertTrue(said.hasSuffix(UpdatePolicy.armingNote),
@@ -160,7 +161,8 @@ final class UpdatePromptTests: XCTestCase {
         let coming = offer(staged: false).alert.informativeText
         let here = offer(staged: true).alert.informativeText
         XCTAssertNotEqual(coming, here)
-        XCTAssertTrue(here.contains(UpdatePolicy.detail(hasUnwrittenBytes: false, staged: true)),
+        XCTAssertTrue(here.contains(UpdatePolicy.detail(appName: AppFlavor.current.displayName,
+                                                        hasUnwrittenBytes: false, staged: true)),
                       here)
     }
 }
