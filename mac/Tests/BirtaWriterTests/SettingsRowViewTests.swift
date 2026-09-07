@@ -239,6 +239,45 @@ final class SettingsRowViewTests: XCTestCase {
     /// reached for: `updateSwitch` and `updateButton` are the window's own,
     /// and a check holding them directly would pass whether or not either had
     /// ever been put on screen.
+    /// Check Now reaches the same place the menu row and the About button do.
+    ///
+    /// The other two surfaces were each held to this and the third was not:
+    /// `AboutWindowTests` presses its button and asserts the closure fired,
+    /// and the menu row's selector is asserted by `AppMenuTests` and again
+    /// from the page side by `shared/__tests__/macAbout.test.ts`. Nothing
+    /// pressed this one. The row test above counts two controls and reads
+    /// their enabled state, which a button wired to nothing passes, so the
+    /// most-used route to a check was the one route whose wiring no run could
+    /// falsify.
+    ///
+    /// Sent rather than clicked, because `performClick` on a control inside a
+    /// window that was never ordered front is the gesture this suite cannot
+    /// make; the action and target are what the click would have used.
+    func testCheckNowShouldAskTheAppForACheck() {
+        var asked = 0
+        let controller = SettingsWindowController(
+            flavour: .release, onHotkeyChange: { 0 }, onChange: { _ in },
+            onChangeEverywhere: {}, onShowWelcome: {}, onCheckForUpdates: { asked += 1 })
+        defer { controller.window?.close() }
+        controller.selectTabForTesting("advanced")
+        guard let row = controller.rowForTesting(.autoUpdate) else {
+            return XCTFail("the Advanced pane draws no auto-update row")
+        }
+        guard let button = controls(in: row).compactMap({ $0 as? NSButton })
+            .first(where: { $0.title == "Check Now" }) else {
+            return XCTFail("the auto-update row draws no Check Now button")
+        }
+        // Guarded rather than force-unwrapped, because the defect this test
+        // exists for is exactly a nil action: unwrapping it would take the
+        // whole test PROCESS down with a fatal error, and one crash reports
+        // nothing about the hundreds of tests that never ran after it.
+        guard let action = button.action else {
+            return XCTFail("Check Now is a button wired to nothing")
+        }
+        _ = NSApp.sendAction(action, to: button.target, from: button)
+        XCTAssertEqual(asked, 1, "pressing Check Now did not ask for a check")
+    }
+
     private func controls(in view: NSView) -> [NSControl] {
         var found: [NSControl] = []
         if let control = view as? NSControl, !(control is NSTextField) { found.append(control) }

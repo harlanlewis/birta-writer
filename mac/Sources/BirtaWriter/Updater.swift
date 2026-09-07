@@ -373,7 +373,7 @@ final class Updater {
             finish(nil, saying: "That release published no checksum, so it was not installed.")
             return
         }
-        say("Downloading \(release.tag)…")
+        say(UpdatePolicy.downloadingNotice(tag: release.tag))
         environment.download(release.appURL) { [weak self] archive in
             Task { @MainActor in
                 guard let self else { return }
@@ -571,7 +571,7 @@ final class Updater {
         }
         armed = true
         switch reopen {
-        case .front: onStatus?("Installing \(staged.tag)…")
+        case .front: onStatus?(UpdatePolicy.installingNotice(tag: staged.tag))
         case .none:
             onStatus?(UpdatePolicy.installOnQuitNotice(appName: AppFlavor.current.displayName,
                                                        tag: staged.tag))

@@ -812,9 +812,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding {
             // press with nowhere to attach, not the ordinary path: a modal
             // rather than silence, because a button that says nothing back
             // is a button that looks broken.
+            //
+            // It raises `offering` for the same reason the sheet below does,
+            // and the reason is the same on both paths: an answer somebody
+            // pressed for must not have the app quit and replace itself
+            // underneath it. The modal is safe today for a reason nobody
+            // chose, which is that `updateTimer` is a default-mode timer and
+            // a nested modal run loop does not service it, and `runModal` is
+            // also the one answer `isAnyWindowVisible` cannot see, since it
+            // counts the panel, Settings and About and an alert is none of
+            // those. Two accidents holding one invariant up is one accident
+            // away from not holding it.
             NSApp.activate(ignoringOtherApps: true)
-            answerCheck(report, choice: UpdateCheckPrompt.choice(
-                for: report, response: UpdateCheckPrompt.build(report).runModal()))
+            offering = true
+            let choice = UpdateCheckPrompt.choice(
+                for: report, response: UpdateCheckPrompt.build(report).runModal())
+            offering = false
+            answerCheck(report, choice: choice)
             return
         }
         // One sheet about this app at a time, and no swap underneath it:

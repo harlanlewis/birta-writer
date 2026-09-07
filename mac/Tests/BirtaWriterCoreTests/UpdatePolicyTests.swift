@@ -9,6 +9,10 @@ import XCTest
 /// between checks, and what a no means.
 final class UpdatePolicyTests: XCTestCase {
     private let now = Date(timeIntervalSince1970: 1_787_227_200)
+    /// The name every sentence here is asked to use. A literal rather than
+    /// `AppFlavor.current.displayName`, so a suite run out of a development
+    /// bundle checks the words rather than the bundle it happens to be in.
+    private let app = "Birta Writer"
 
     func testAnAppThatHasNeverCheckedShouldCheck() {
         XCTAssertTrue(UpdatePolicy.shouldCheck(now: now, lastCheck: nil))
@@ -73,15 +77,15 @@ final class UpdatePolicyTests: XCTestCase {
     /// direction that matters: somebody would decline an update to protect
     /// bytes that were never at risk.
     func testTheDetailShouldPromiseAWriteWithoutPromisingThatCancelSavesAnything() {
-        let dirty = UpdatePolicy.detail(hasUnwrittenBytes: true, staged: false)
-        let clean = UpdatePolicy.detail(hasUnwrittenBytes: false, staged: false)
+        let dirty = UpdatePolicy.detail(appName: app, hasUnwrittenBytes: true, staged: false)
+        let clean = UpdatePolicy.detail(appName: app, hasUnwrittenBytes: false, staged: false)
         XCTAssertTrue(dirty.contains("written to disk first"))
         XCTAssertFalse(clean.contains("unsaved"))
         // Every arm of both axes, so a wording change to one of the four
         // cannot quietly reintroduce the claim these rule out.
         for unwritten in [true, false] {
             for staged in [true, false] {
-                let text = UpdatePolicy.detail(hasUnwrittenBytes: unwritten, staged: staged)
+                let text = UpdatePolicy.detail(appName: app, hasUnwrittenBytes: unwritten, staged: staged)
                 XCTAssertFalse(text.lowercased().contains("lose"), text)
                 XCTAssertFalse(text.lowercased().contains("cancel"), text)
             }
@@ -97,8 +101,8 @@ final class UpdatePolicyTests: XCTestCase {
     /// is ready when it is still arriving makes a restart look instant, and
     /// then the app sits there.
     func testTheDetailShouldSayWhetherTheBytesHaveAlreadyArrived() {
-        let coming = UpdatePolicy.detail(hasUnwrittenBytes: false, staged: false)
-        let here = UpdatePolicy.detail(hasUnwrittenBytes: false, staged: true)
+        let coming = UpdatePolicy.detail(appName: app, hasUnwrittenBytes: false, staged: false)
+        let here = UpdatePolicy.detail(appName: app, hasUnwrittenBytes: false, staged: true)
         XCTAssertNotEqual(coming, here)
         XCTAssertTrue(coming.contains("will download"), coming)
         XCTAssertTrue(here.contains("already downloaded"), here)
@@ -106,8 +110,8 @@ final class UpdatePolicyTests: XCTestCase {
     }
 
     func testTheTitleShouldNameTheAppAndTheVersion() {
-        XCTAssertEqual(UpdatePolicy.title(appName: "Birta Writer", tag: "v2026.821.0"),
-                       "Birta Writer v2026.821.0 is available.")
+        XCTAssertEqual(UpdatePolicy.title(appName: app, tag: "v2026.821.0"),
+                       "Birta Writer 2026.821.0 is available.")
     }
 
     // MARK: saying what the wait is
@@ -246,7 +250,7 @@ final class UpdatePolicyTests: XCTestCase {
 
     func testTheNoticeShouldNameTheVersionAndSayNobodyWasAsked() {
         let said = UpdatePolicy.installedNotice(appName: "Birta Writer", tag: "v2026.902.0")
-        XCTAssertEqual(said, "Birta Writer updated to v2026.902.0 in the background.")
+        XCTAssertEqual(said, "Birta Writer updated to 2026.902.0 in the background.")
     }
 
     /// Past tense, because by the time it is read the swap is done and the app
@@ -395,6 +399,91 @@ final class UpdatePolicyTests: XCTestCase {
         XCTAssertEqual(made.buttons, [UpdatePolicy.restartNowTitle, "OK"])
         XCTAssertEqual(UpdatePolicy.installOnQuitNotice(appName: "Birta Writer", tag: "v2026.905.0"),
                        "2026.905.0 goes in after you next quit Birta Writer.")
+    }
+
+    // MARK: one version, one spelling, whichever surface raised it
+
+    /// The tag as the repository writes it, and as a person should read it.
+    private static let sweptTag = "v2026.905.0"
+    private static let sweptVersion = "2026.905.0"
+
+    /// An answer's case name, from a switch with no `default`.
+    ///
+    /// This is what makes the sweep below something a new answer JOINS rather
+    /// than a list it never reaches: adding a case to `CheckAnswer` takes this
+    /// red, and whoever fixes it is standing in this file with the sweep in
+    /// front of them. The names are also what a failure says, so a red names
+    /// the surface instead of an index.
+    private func name(of answer: UpdatePolicy.CheckAnswer) -> String {
+        switch answer {
+        case .found: return "checkReport.found"
+        case .upToDate: return "checkReport.upToDate"
+        case .unreachable: return "checkReport.unreachable"
+        case .busy: return "checkReport.busy"
+        case .notThisBuild: return "checkReport.notThisBuild"
+        case .armed: return "checkReport.armed"
+        case .couldNotInstall: return "checkReport.couldNotInstall"
+        }
+    }
+
+    /// Every sentence this type puts in front of a person spells a version
+    /// one way, and it is the way the About window spells it.
+    ///
+    /// The tag carries a `v` because that is the release convention.
+    /// `CFBundleShortVersionString` never does, so the About window never
+    /// does, and a sheet that adds one asks somebody to work out whether
+    /// v2026.905.0 and 2026.905.0 are one release. The surfaces are many and
+    /// met in any order: the offer and the answer sheet are the same sentence
+    /// raised two ways, and the panel can carry the armed notice and then the
+    /// installed one about a single version minutes apart. Both of those
+    /// pairs disagreed before this.
+    ///
+    /// `plain` is private, so the check is on the OUTPUT and not on the call:
+    /// what it proves is that the sentence went through it, however it was
+    /// written.
+    func testEverySentenceShouldSpellAVersionTheWayTheAboutWindowDoes() {
+        let answers: [UpdatePolicy.CheckAnswer] = [
+            .found(latest: Self.sweptTag, staged: false),
+            .found(latest: Self.sweptTag, staged: true),
+            .armed(latest: Self.sweptTag),
+            .upToDate,
+            .unreachable,
+            .busy,
+            .notThisBuild,
+            .couldNotInstall(reason: "Could not download the update."),
+        ]
+        XCTAssertEqual(Set(answers.map(name(of:))).count, 7,
+                       "a CheckAnswer case has no sample here, so the sweep never reaches it")
+
+        var swept = answers.map { answer -> (surface: String, text: String) in
+            let made = UpdatePolicy.checkReport(answer, appName: app, current: Self.sweptTag)
+            return (name(of: answer), made.title + " " + made.detail)
+        }
+        swept.append(("title", UpdatePolicy.title(appName: app, tag: Self.sweptTag)))
+        swept.append(("installedNotice",
+                      UpdatePolicy.installedNotice(appName: app, tag: Self.sweptTag)))
+        swept.append(("installOnQuitNotice",
+                      UpdatePolicy.installOnQuitNotice(appName: app, tag: Self.sweptTag)))
+        swept.append(("newerBy",
+                      UpdatePolicy.newerBy(current: "v2026.904.0", latest: Self.sweptTag) ?? ""))
+        swept.append(("downloadingNotice", UpdatePolicy.downloadingNotice(tag: Self.sweptTag)))
+        swept.append(("installingNotice", UpdatePolicy.installingNotice(tag: Self.sweptTag)))
+
+        for (surface, text) in swept {
+            XCTAssertFalse(text.contains("v" + Self.sweptVersion),
+                           "\(surface) spells the version with the tag's v: \(text)")
+        }
+
+        // A sweep over sentences that stopped naming a version would pass by
+        // saying nothing, so what could not be reached is NAMED rather than
+        // counted away. These four carry no version at all; a change that
+        // gives one of them a version takes this red rather than slipping
+        // past the check above.
+        let silent = swept.filter { !$0.text.contains(Self.sweptVersion) }.map(\.surface).sorted()
+        XCTAssertEqual(silent, ["checkReport.busy", "checkReport.couldNotInstall",
+                                "checkReport.notThisBuild", "checkReport.unreachable"])
+        XCTAssertEqual(swept.count - silent.count, 10,
+                       "fewer sentences named a version than this sweep was written to cover")
     }
 
 }
