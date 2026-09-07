@@ -7,6 +7,12 @@
 ### Changed
 
 - `birta.syntax.sets` names five flavors of Markdown instead of four. The target named for Birta Writer itself is gone, and what it held is now two targets: `notion`, for the callouts a Notion export writes, and `calc`, for calculation blocks. A stored `birta` still reads as both, so a list you had narrowed keeps the tools it had. Nothing rewrites the setting for you, so the old name stays in your settings and goes on being read as both until you replace it yourself. SVG blocks are no longer governed by any target, because an svg fence is a code block in every Markdown and drawing it here is rendering rather than syntax; the SVG row, which the slash menu shows when you type its name, is there under every setting, CommonMark alone included. Each flavor that belongs to another tool now links, from its description in the settings UI, to that tool's own page on its Markdown.
+- The find bar paints the matches near the screen and follows the scroll, instead of mapping every match in the document to a highlight on each keystroke and each Enter. On a long document searched for a common word, that mapping was the reason a query letter and a press of Enter each held the editor for a fraction of a second. Which matches are found, counted and stepped through is unchanged, and the match you are on is always painted.
+- Opening the review sidebar's Proofreading tab on a long document draws its list as the check's answers arrive, rather than rebuilding the whole list once for each answer. Each listed finding also reads its own text from the paragraph it sits in rather than from the start of the document. The tab is asked for the same document and reports the same findings; what changed is how often the list is rebuilt on the way there.
+
+### Fixed
+
+- Find highlights appear on a long document. Typing a common word into the find bar could leave every match unpainted while the counter went on reporting them, because the editor registered a highlight for every match in one call and a document with tens of thousands of matches exceeded what that call can take. The matches near the screen are now what gets registered, so the call stays well inside it.
 
 ---
 
