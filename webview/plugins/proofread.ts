@@ -21,7 +21,11 @@
  * document-wide: the config, the suppressions, and the review sidebar's list,
  * which is answered from whole-document walks of its own rather than from the
  * windowed sets, and which asks the host for the blocks nothing has asked
- * about yet, in slices, when it is opened. Code blocks, inline code, and
+ * about yet, in slices, when it is opened. Those slices are one question, so
+ * their answers are drawn on a cadence rather than one per reply, and the text
+ * of each listed finding is read inside its own block (`blockTextReader`):
+ * together, what a tab click costs is the document once rather than the
+ * findings times the blocks, once per slice. Code blocks, inline code, and
  * tech-like tokens are excluded.
  */
 import type { EditorView } from "../pm";
@@ -79,6 +83,16 @@ const WINDOW_LINT_DELAY_MS = 150;
 // unwrapped paragraphs; `birta-trace lint` on the Mac is where the real cost
 // per slice is read. A single block always goes whole, whatever its length.
 const REVIEW_SLICE_CHARS = 8000;
+// How often the review sweep's answers are drawn while it is still running. The
+// sweep is ONE question asked in pieces, so a piece's answer is not news of its
+// own: drawing each one rebuilds the sidebar's whole document-wide list once per
+// slice, and the slice count is the document's unknown text over
+// REVIEW_SLICE_CHARS, so on a long document one tab click paid for the list
+// again and again (MAR-437). The slice that drains the queue draws at once, so
+// the list is complete the moment the sweep is; this only bounds how often the
+// ones before it do, so a long sweep still fills the list in visible steps
+// rather than sitting still for as long as the host takes.
+const REVIEW_REDRAW_MS = 300;
 
 /**
  * True when proofreading is active: the master gate is on AND at least one
@@ -994,6 +1008,9 @@ export const proofreadPlugin = $prose(() => {
             // still to send. `askReview` fills the queue; a reply sends the next.
             let reviewRequest: { id: number; blocks: LintBlock[] } | null = null;
             let reviewQueue: LintBlock[][] = [];
+            // The sweep's cadence timer: pending means an answered slice is
+            // waiting to be drawn (see REVIEW_REDRAW_MS).
+            let reviewRedrawTimer: ReturnType<typeof setTimeout> | null = null;
             // The window path's coalescing timer, and the latch that keeps it
             // closed until the first pass has asked for its own window.
             let windowLintTimer: ReturnType<typeof setTimeout> | null = null;
@@ -1073,6 +1090,28 @@ export const proofreadPlugin = $prose(() => {
                 reviewRequest = { id: post(slice), blocks: slice };
             };
 
+            /** Slices still out or still queued: the sweep has more to say. */
+            const sweepRunning = () => reviewRequest !== null || reviewQueue.length > 0;
+
+            /**
+             * Draw what is now known, on the sweep's cadence rather than per
+             * slice. The redraw a pending timer already owes covers every slice
+             * answered before it fires, so a burst of replies costs one.
+             */
+            const redrawOnSweepCadence = () => {
+                if (reviewRedrawTimer !== null) { return; }
+                reviewRedrawTimer = setTimeout(() => {
+                    reviewRedrawTimer = null;
+                    redrawLints();
+                }, REVIEW_REDRAW_MS);
+            };
+
+            /** Draw at once, taking any redraw the sweep's cadence still owed with it. */
+            const redrawNow = () => {
+                if (reviewRedrawTimer !== null) { clearTimeout(reviewRedrawTimer); reviewRedrawTimer = null; }
+                redrawLints();
+            };
+
             currentReviewer = (unknown) => {
                 if (destroyed || view.isDestroyed) { return; }
                 // What an open request is already asking about is left to it.
@@ -1091,11 +1130,13 @@ export const proofreadPlugin = $prose(() => {
             currentApplier = (id, results) => {
                 if (destroyed || view.isDestroyed) { return; }
                 let asked = lintRequests.get(id);
+                let fromSweep = false;
                 if (asked) {
                     lintRequests.delete(id);
                 } else if (reviewRequest?.id === id) {
                     asked = reviewRequest.blocks;
                     reviewRequest = null;
+                    fromSweep = true;
                 }
                 // No open request under this id: one this view never made, one
                 // already answered (the entry is deleted above, so a duplicate
@@ -1114,8 +1155,11 @@ export const proofreadPlugin = $prose(() => {
                 // Drawn for the window the reader is on now, over the document
                 // as it is now. A reply the reader has scrolled away from still
                 // moves `revision`, which is what tells the review sidebar its
-                // document-wide list has more to show.
-                redrawLints();
+                // document-wide list has more to show — so a sweep still in
+                // flight draws on its cadence, and everything else at once: a
+                // window's answer is what the reader is looking at, and an
+                // ignore or a learn is their own gesture.
+                if (fromSweep && sweepRunning()) { redrawOnSweepCadence(); } else { redrawNow(); }
             };
 
             // MAR-425: the style decorations are built for the scroll window,
@@ -1293,6 +1337,7 @@ export const proofreadPlugin = $prose(() => {
                     hideLintPopup();
                     if (scanTimer !== null) { clearTimeout(scanTimer); }
                     if (windowLintTimer !== null) { clearTimeout(windowLintTimer); }
+                    if (reviewRedrawTimer !== null) { clearTimeout(reviewRedrawTimer); }
                 },
             };
         },
@@ -1339,6 +1384,79 @@ export interface ProofreadFindingRow extends ProofreadFinding {
 }
 
 /**
+ * Reading a finding's text, and finding the block it sits in, without touching
+ * the rest of the document.
+ *
+ * `doc.textBetween(from, to)` walks the root fragment from child 0 until it
+ * passes `to` (`Fragment.nodesBetween`), so one read for a finding near the end
+ * touches every top-level block, and listing every finding costs findings times
+ * blocks. `doc.resolve(pos)` is the same walk (`Fragment.findIndex` also scans
+ * from child 0), so asking each finding which block it is in is no cheaper than
+ * the read. Both are answered here from ONE walk of the document's textblocks:
+ * a lookup is a binary search, and the text comes out of the block's own
+ * fragment, whose cost is that block. This is the same move `utils/blockDom.ts`
+ * makes for elements, for the same reason.
+ *
+ * Memoized on the document, so the review sidebar's repeated rebuilds while the
+ * host answers a sweep share one index.
+ */
+export interface BlockTextReader {
+    /** The content range of the textblock holding `pos`. */
+    blockRange(pos: number): { start: number; end: number };
+    /** `doc.textBetween`, answered inside one textblock wherever the span is in one. */
+    textBetween(from: number, to: number, blockSeparator?: string, leafText?: string): string;
+}
+
+let blockTexts: { doc: ProseNode; reader: BlockTextReader } | null = null;
+
+export function blockTextReader(doc: ProseNode): BlockTextReader {
+    if (blockTexts?.doc === doc) { return blockTexts.reader; }
+    const starts: number[] = [];
+    const ends: number[] = [];
+    const nodes: ProseNode[] = [];
+    doc.descendants((node, pos) => {
+        if (!node.isTextblock) { return true; }
+        starts.push(pos + 1);
+        ends.push(pos + 1 + node.content.size);
+        nodes.push(node);
+        return false;
+    });
+    /** The textblock whose content holds `pos`, or -1 for a position between blocks. */
+    const blockAt = (pos: number): number => {
+        let lo = 0;
+        let hi = starts.length - 1;
+        let found = -1;
+        while (lo <= hi) {
+            const mid = (lo + hi) >> 1;
+            if (starts[mid] <= pos) { found = mid; lo = mid + 1; } else { hi = mid - 1; }
+        }
+        return found >= 0 && pos <= ends[found] ? found : -1;
+    };
+    const reader: BlockTextReader = {
+        blockRange(pos) {
+            const i = blockAt(pos);
+            if (i >= 0) { return { start: starts[i], end: ends[i] }; }
+            // Not inside a textblock: the caller's own position, so answer it
+            // the way `resolve` would rather than guess.
+            const $pos = doc.resolve(pos);
+            return { start: $pos.start(), end: $pos.end() };
+        },
+        textBetween(from, to, blockSeparator, leafText) {
+            const i = blockAt(from);
+            // A finding never spans two textblocks (style hits and lints are
+            // both built inside one), so the root read below is the answer to a
+            // question this module does not ask, kept because a truncated
+            // string would be worse than a slow one.
+            return i >= 0 && to <= ends[i]
+                ? nodes[i].textBetween(from - starts[i], to - starts[i], blockSeparator, leafText)
+                : doc.textBetween(from, to, blockSeparator, leafText);
+        },
+    };
+    blockTexts = { doc, reader };
+    return reader;
+}
+
+/**
  * Resolve a proofreading decoration set into the review list's findings —
  * document order (narrowest span first at a shared start, as the popup picker
  * does), duplicates sharing a (from, to, kind) identity collapsed. PURE: no
@@ -1346,6 +1464,10 @@ export interface ProofreadFindingRow extends ProofreadFinding {
  * risky ordering / dedup / routing is unit-testable against a hand-built
  * DecorationSet. `listProofreadFindings` is the thin wrapper that binds the
  * ignore/learn actions to a live view.
+ *
+ * `getText` is called once per finding, so a live caller passes the block-local
+ * reader above rather than `doc.textBetween`, which walks the document from its
+ * first block on every call.
  */
 export function describeFindings(
     combined: DecorationSet,
@@ -1547,7 +1669,8 @@ export function listProofreadFindings(view: EditorView): ProofreadFindingRow[] {
     const review = documentLintReview(view, state.config);
     if (review.unknown.length > 0) { currentReviewer?.(review.unknown); }
     const combined = combine(view.state.doc, documentStyleSet(view, state.config), review.set);
-    return describeFindings(combined, (from, to) => view.state.doc.textBetween(from, to)).map((f) => ({
+    const text = blockTextReader(view.state.doc);
+    return describeFindings(combined, (from, to) => text.textBetween(from, to)).map((f) => ({
         ...f,
         ignore: () => {
             if (f.domain === "style") { ignoreStyleSession(f.kind as StyleCategory, f.text); }
