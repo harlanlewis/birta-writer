@@ -743,9 +743,6 @@ final class AppMenuTests: XCTestCase {
         let delegate = AppDelegate()
         let status = delegate.buildStatusMenu()
         let appMenu = try XCTUnwrap(delegate.mainMenu().menu.items.first?.submenu)
-        let hide = try XCTUnwrap(appMenu.items.first { $0.title.hasPrefix("Hide ") })
-        XCTAssertEqual(hide.keyEquivalent, "h")
-        XCTAssertEqual(hide.keyEquivalentModifierMask, .command, "Cmd+H is the chord every app binds")
         XCTAssertEqual(row(named: "Settings…", in: appMenu)?.keyEquivalent, ",")
         XCTAssertEqual(row(named: "Settings…", in: status)?.keyEquivalent, "")
         XCTAssertTrue(status.items.allSatisfy { $0.keyEquivalent.isEmpty })
@@ -757,6 +754,17 @@ final class AppMenuTests: XCTestCase {
         // The summon hotkey is the exception, and it is written on the toggle
         // at every opening rather than at build: a Carbon registration that
         // fires whatever has focus is the one chord true where this is read.
+    }
+
+    /// The app menu's own hide row keeps the chord every app on the machine
+    /// binds. It is built by the caller rather than by the table, which is
+    /// exactly the row a refactor can drop a modifier from and nobody notices
+    /// until Cmd+H stops hiding.
+    func testTheAppMenusHideRowShouldBindTheConventionalChord() throws {
+        let appMenu = try XCTUnwrap(AppDelegate().mainMenu().menu.items.first?.submenu)
+        let hide = try XCTUnwrap(appMenu.items.first { $0.title.hasPrefix("Hide ") })
+        XCTAssertEqual(hide.keyEquivalent, "h")
+        XCTAssertEqual(hide.keyEquivalentModifierMask, .command)
     }
 
     /// Every row there carries a target, except the one that terminates.
@@ -820,7 +828,7 @@ final class AppMenuTests: XCTestCase {
         let delegate = AppDelegate()
         let appMenu = try XCTUnwrap(delegate.mainMenu().menu.items.first?.submenu)
         AppDelegate.suppressAutomaticIcons(in: appMenu)
-        for item in appMenu.items where !item.title.hasPrefix("About ") {
+        for item in allItems(of: appMenu) where !item.title.hasPrefix("About ") {
             XCTAssertNil(item.image, item.title)
         }
     }
