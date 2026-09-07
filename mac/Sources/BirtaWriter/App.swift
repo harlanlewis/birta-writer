@@ -377,6 +377,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding {
         let hide = NSMenuItem(title: "Hide \(AppFlavor.current.displayName)",
                               action: #selector(hidePanel), keyEquivalent: "h")
         AppMenu.addAppSection(to: appMenu, hide: hide, printsChords: true, target: self)
+        // Cleared on every opening, like the status menu that draws the same
+        // rows. This menu's rows do not change, so it was cleared once at
+        // build and that is a different question from whether the CLEAR
+        // holds: macOS decorates when it pleases, and a menu cleared once is
+        // a menu decorated after the clear.
+        appMenu.delegate = self
         let appItem = NSMenuItem(); appItem.submenu = appMenu; main.addItem(appItem)
 
         // The conventional File menu, with the conventional chords: Cmd+S
@@ -550,25 +556,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding {
     /// 27 hides symbol images by default and adds `preferredImageVisibility`,
     /// so this covers the versions in between and is harmless on both sides.
     ///
-    /// A ZERO-SIZE image is the app's own and is put back; anything else is
-    /// the system's and is what this clears. One row sets one, About, because
-    /// the clear did not hold for it, and a sweep that ended with nil undid
-    /// exactly the fix it was running on behalf of. Nothing said so: the menu
-    /// the test read back had not been through this function, so it asserted a
-    /// state no build ever shipped, and the row went on drawing an information
-    /// symbol.
+    /// EVERY row ends with no image, with no exception for any of them, and
+    /// the exception this used to carry is why the rule is worth stating.
+    /// About was given a zero-size image of its own and this sweep put it
+    /// back, because the clear was thought not to hold for that row. An image
+    /// is an image to AppKit however big it is: the row reserved the icon
+    /// column and drew its title a glyph's width right of every other row in
+    /// the menu, on both surfaces, which is the same "one row unlike its
+    /// neighbours" the sweep exists to prevent, arrived at from the other
+    /// side.
     ///
-    /// The size is what tells the two apart, and it is decidable rather than a
-    /// guess: the substituted symbol IS the item's `image` by the time the menu
-    /// is built, at the size macOS drew it (`AppMenuTests` reads one back), and
-    /// no image the app sets here has a size at all. Preserving on nothing
-    /// finer than "it has an image" hands Quit its symbol back, which is the
-    /// row this whole function exists for.
+    /// What replaced the exception is WHEN this runs rather than what it
+    /// spares. The app menu was swept once, at build, on the grounds that its
+    /// rows do not change; but whether the rows change and whether the CLEAR
+    /// holds are different questions, and macOS decorates when it pleases. It
+    /// now carries the delegate the status menu always had, so both surfaces
+    /// of this one menu are swept on every opening.
     static func suppressAutomaticIcons(in menu: NSMenu) {
         for item in menu.items {
-            let own = item.image?.size == .zero ? item.image : nil
+            // Giving an item an image and taking it away again is what clears
+            // the automatic one; nothing else does.
             item.image = NSImage(size: NSSize(width: 1, height: 1))
-            item.image = own
+            item.image = nil
             if let submenu = item.submenu { suppressAutomaticIcons(in: submenu) }
         }
     }

@@ -727,13 +727,14 @@ enum AppMenu {
         let about = nsMenu.addItem(withTitle: "About \(AppFlavor.current.displayName)",
                                    action: #selector(AppDelegate.menuOpenAbout), keyEquivalent: "")
         about.target = target
-        // An EMPTY image of its own. `AppDelegate.suppressAutomaticIcons`
-        // clears the symbol macOS 26 puts beside Quit, and the same clear did
-        // not hold for this row: it went on drawing an information symbol. An
-        // image the app set is not one the system substitutes for, an image
-        // with no size takes nothing from the column, and this row is alone in
-        // its section, so nothing beside it is aligned against it.
-        about.image = NSImage(size: .zero)
+        // No image, like every other row. It carried an empty one of its own
+        // so `AppDelegate.suppressAutomaticIcons` would leave it alone, and
+        // that cost the alignment it was protecting: AppKit reserves the icon
+        // column for any image, a zero-size one included, so this row's title
+        // sat a glyph's width right of Settings, Check for Updates, Hide and
+        // Quit. The clear is what keeps the symbol off it now, run on every
+        // opening of both menus rather than once when this one is built.
+        about.image = nil
         nsMenu.addItem(.separator())
         add(.app, to: nsMenu, target: target)
         nsMenu.addItem(.separator())
