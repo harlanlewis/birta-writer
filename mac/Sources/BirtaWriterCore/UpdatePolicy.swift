@@ -21,11 +21,23 @@ import Foundation
 public enum UpdatePolicy {
     /// How long between asking the release host.
     ///
-    /// A day. The check used to run once per launch and never again, which is
-    /// fine for an app you quit, and this app is not one: it is a menu-bar
+    /// Two hours. The check is periodic at all because this is a menu-bar
     /// scratchpad that stays running for weeks, so a launch-only check stops
-    /// happening for exactly the people who use it most.
-    public static let recheckInterval: TimeInterval = 24 * 60 * 60
+    /// happening for exactly the people who use it most. What the number
+    /// itself sets is how long a shipped fix sits unnoticed on a machine that
+    /// is already running the app, and the only thing pushing back on it is
+    /// the cost of asking: one unauthenticated GET carrying nothing of the
+    /// user's, so the pacing answers to how soon a fix should arrive rather
+    /// than to the request.
+    ///
+    /// It does not set how often anybody is INTERRUPTED, which is why it can
+    /// be short. A check that finds nothing says nothing, a version already
+    /// declined is not raised again by `shouldOffer`, and with automatic
+    /// updates on it is `pollInterval` and `unattendedIdle` that pace the
+    /// swap. So shortening this buys a fix FOUND within a couple of hours of
+    /// shipping rather than on the following day, and buys nobody a second
+    /// prompt.
+    public static let recheckInterval: TimeInterval = 2 * 60 * 60
 
     /// How often the app asks itself whether anything is due.
     ///
@@ -205,9 +217,9 @@ public enum UpdatePolicy {
     /// Whether a version somebody has already declined should be raised again.
     ///
     /// One offer per version. Without this the re-check interval becomes a
-    /// nag: a person who says no is asked again tomorrow and every day after,
-    /// which teaches people to switch updates off rather than to take one. A
-    /// DIFFERENT tag is different news and asks.
+    /// nag: a person who says no is asked again at the next check and at
+    /// every one after it, which teaches people to switch updates off rather
+    /// than to take one. A DIFFERENT tag is different news and asks.
     public static func shouldOffer(tag: String, declined: String?) -> Bool {
         guard let declined else { return true }
         return tag != declined

@@ -22,6 +22,24 @@ final class UpdatePolicyTests: XCTestCase {
         XCTAssertTrue(UpdatePolicy.shouldCheck(now: now, lastCheck: now.addingTimeInterval(-interval * 30)))
     }
 
+    /// The interval itself, held to the words two documents say it in.
+    ///
+    /// The test above derives its arms from the constant, so it passes at any
+    /// value, a month included. That is right for the RULE it checks and
+    /// leaves the number itself with nothing on it, while `mac/README.md` and
+    /// `docs/NETWORK_POSTURE.md` both state the cadence in prose and neither
+    /// can go red. This is what couples them: the number cannot move without
+    /// taking a test with it, and the test names the sentences to go and fix.
+    ///
+    /// The second arm is the one that says why a short interval is allowed at
+    /// all. Asking the release host and watching for a quiet machine are
+    /// different questions on different clocks, and collapsing them would put
+    /// a network request on `pollInterval`.
+    func testTheRecheckIntervalShouldBeTheTwoHoursTheDocsPromise() {
+        XCTAssertEqual(UpdatePolicy.recheckInterval, 2 * 60 * 60)
+        XCTAssertGreaterThan(UpdatePolicy.recheckInterval, UpdatePolicy.pollInterval)
+    }
+
     func testAClockThatWentBackwardsShouldNotStopTheAppCheckingForever() {
         // A stamp in the future is a clock that moved, not a check that has
         // not come round. Read the other way, an app whose user corrected a

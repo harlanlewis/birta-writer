@@ -619,7 +619,7 @@ final class UpdaterTests: XCTestCase {
         XCTAssertTrue(made.armStagedSwap(reopen: .none))
         var offered: [String] = []
         made.onUpdateAvailable = { offered.append($0) }
-        // A newer release than the one armed, found by the daily check.
+        // A newer release than the one armed, found by the recheck timer.
         made.environment.fetch = { _, done in done(self.feed(tag: "v2026.822.0"), 200) }
         XCTAssertEqual(result(of: made, force: false), .found("v2026.822.0"))
         XCTAssertEqual(offered, [], "an offer whose Restart cannot arm anything")

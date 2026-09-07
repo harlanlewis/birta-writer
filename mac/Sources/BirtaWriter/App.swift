@@ -659,18 +659,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding {
     ///
     /// Two things decide WHEN it is asked, and both are about not interrupting
     /// a person who did not summon this. A version already declined is not
-    /// raised again until a newer one exists, or the day timer turns the offer
-    /// into a nag and teaches people to switch updates off. And a panel that
+    /// raised again until a newer one exists, or the recheck timer turns the
+    /// offer into a nag and teaches people to switch updates off. And a panel
+    /// that
     /// is not on screen means the person is in another app entirely, so the
     /// offer waits for the next summon instead of taking the screen from
     /// whatever they are actually doing.
     private func offerUpdate(_ tag: String) {
         guard updater.available != nil else { return }
-        // One offer on screen at a time. The launch check and the day timer
-        // are separate callers, and a sheet left up on an unattended machine
-        // outlives the interval between them, so without this a second sheet
-        // queues behind the first and the person answers the same question
-        // twice.
+        // One offer on screen at a time. The launch check and the recheck
+        // timer are separate callers, and a sheet left up on an unattended
+        // machine routinely outlives `UpdatePolicy.recheckInterval`, so
+        // without this a second sheet queues behind the first and the person
+        // answers the same question twice. Load-bearing rather than
+        // defensive, and more so the shorter that interval is.
         guard !offering else { return }
         guard UpdatePolicy.shouldOffer(tag: tag, declined: Prefs.updateDeclinedTag) else { return }
         guard let host = promptHost else {

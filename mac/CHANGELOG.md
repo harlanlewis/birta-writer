@@ -22,6 +22,8 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ### Changed
 
+- Birta Writer for Mac asks the release page whether there is a newer version every couple of hours while it is running, rather than about once a day. A fix published in the morning used to reach a copy that had been left open since the day before only at the next day's check, and this is an app people leave running for weeks. What it asks more often is the release page, not you: a check that finds nothing says nothing, and a version you have declined is not raised again until a newer one exists, so the offer still comes at most once per release.
+
 - The menu-bar icon's menu holds the same rows as the Birta Writer menu, in the same order: About, then Settings… and Check for Updates…, then the row that puts the app away, then Quit. Show and Hide used to sit at the top of it with About below, so the two menus disagreed about where every row was for anyone who has both. The row that shows and hides the panel still carries the summon hotkey, and it is still the only chord that menu prints, because a chord read from the menu bar acts on whichever app is in front rather than on this one.
 
 - Check Now in Settings answers in the same dialog, on the Settings window. It used to answer on the panel's status line, which is hidden most of the time and behind the Settings window the rest of it, and a newer version came as the ordinary offer, with its buttons held for a moment against a keystroke in flight. A check you pressed for is answered where you pressed, with its buttons live.
