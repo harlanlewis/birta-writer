@@ -370,23 +370,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding {
         let main = NSMenu()
 
         let appMenu = NSMenu(title: AppFlavor.current.displayName)
-        // Targeted at the delegate, so it opens the app's own About window
-        // rather than travelling up to `NSApplication`'s standard panel.
-        let about = appMenu.addItem(withTitle: "About \(AppFlavor.current.displayName)",
-                                    action: #selector(menuOpenAbout), keyEquivalent: "")
-        about.target = self
-        // An EMPTY image of its own. `suppressAutomaticIcons` clears the
-        // symbol macOS 26 puts beside Quit, and the same clear did not hold
-        // for this row: it went on drawing an information symbol. An image
-        // the app set is not one the system substitutes for, an image with
-        // no size takes nothing from the column, and this row is alone in
-        // its section, so nothing beside it is aligned against it.
-        about.image = NSImage(size: .zero)
-        appMenu.addItem(.separator())
-        AppMenu.add(.app, to: appMenu, target: self)
-        appMenu.addItem(.separator())
-        appMenu.addItem(withTitle: "Hide \(AppFlavor.current.displayName)", action: #selector(hidePanel), keyEquivalent: "h")
-        appMenu.addItem(withTitle: "Quit \(AppFlavor.current.displayName)", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        // The rows themselves are `AppMenu.addAppSection`'s, which the
+        // menu-bar item's menu builds from too; what is this menu's own is the
+        // hide row, which hides an app that is in front rather than toggling a
+        // panel that may be away.
+        let hide = NSMenuItem(title: "Hide \(AppFlavor.current.displayName)",
+                              action: #selector(hidePanel), keyEquivalent: "h")
+        AppMenu.addAppSection(to: appMenu, hide: hide, printsChords: true, target: self)
         let appItem = NSMenuItem(); appItem.submenu = appMenu; main.addItem(appItem)
 
         // The conventional File menu, with the conventional chords: Cmd+S
@@ -474,27 +464,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding {
     /// goes with `Prefs.showInMenuBar` while this does not change at all.
     /// `showItem` is retitled on every opening rather than rebuilt, so it has
     /// to outlive any particular item.
-    private func buildStatusMenu() {
+    ///
+    /// Returns what it built, for the same reason `mainMenu` is a function
+    /// that returns one: a menu no test can read back is a menu whose rows are
+    /// checked by reading the source that writes them.
+    @discardableResult
+    func buildStatusMenu() -> NSMenu {
         let menu = NSMenu()
-        // The panel toggle, and nothing about where files live: that belongs in
-        // the window, next to the note it would act on.
-        showItem = menu.addItem(withTitle: "Show \(AppFlavor.current.displayName)", action: #selector(togglePanel), keyEquivalent: "")
-        menu.addItem(.separator())
-        // With no Dock icon the app menu is invisible, so this menu is the only
-        // route to About for most people who have the app: the row belongs
-        // in both places rather than in the one an accessory app rarely shows.
-        menu.addItem(withTitle: "About \(AppFlavor.current.displayName)", action: #selector(menuOpenAbout), keyEquivalent: "")
-        menu.addItem(withTitle: "Settings…", action: #selector(menuOpenSettings), keyEquivalent: "")
-        // Beside Settings here for the same reason About is: with no Dock
-        // icon this menu is the only one most installs ever open.
-        menu.addItem(withTitle: "Check for Updates…", action: #selector(menuCheckForUpdates), keyEquivalent: "")
-        menu.addItem(.separator())
-        menu.addItem(withTitle: "Quit \(AppFlavor.current.displayName)", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "")
-        for item in menu.items where item.action != nil && item.action != #selector(NSApplication.terminate(_:)) {
-            item.target = self
-        }
+        // The app section, from the builder the app menu uses, so the two
+        // menus cannot drift: a row added to one is added to both, in the
+        // place both draw it.
+        //
+        // The panel toggle is this menu's hide row, and nothing here is about
+        // where files live: that belongs in the window, next to the note it
+        // would act on.
+        showItem = NSMenuItem(title: "Show \(AppFlavor.current.displayName)",
+                              action: #selector(togglePanel), keyEquivalent: "")
+        AppMenu.addAppSection(to: menu, hide: showItem, printsChords: false, target: self)
         menu.delegate = self
         statusMenu = menu
+        return menu
     }
 
     /// The menu-bar mark. A template image, so macOS draws it from its alpha
@@ -560,10 +549,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding {
     /// image and taking it away again is what clears the automatic one. macOS
     /// 27 hides symbol images by default and adds `preferredImageVisibility`,
     /// so this covers the versions in between and is harmless on both sides.
+    ///
+    /// A ZERO-SIZE image is the app's own and is put back; anything else is
+    /// the system's and is what this clears. One row sets one, About, because
+    /// the clear did not hold for it, and a sweep that ended with nil undid
+    /// exactly the fix it was running on behalf of. Nothing said so: the menu
+    /// the test read back had not been through this function, so it asserted a
+    /// state no build ever shipped, and the row went on drawing an information
+    /// symbol.
+    ///
+    /// The size is what tells the two apart, and it is decidable rather than a
+    /// guess: the substituted symbol IS the item's `image` by the time the menu
+    /// is built, at the size macOS drew it (`AppMenuTests` reads one back), and
+    /// no image the app sets here has a size at all. Preserving on nothing
+    /// finer than "it has an image" hands Quit its symbol back, which is the
+    /// row this whole function exists for.
     static func suppressAutomaticIcons(in menu: NSMenu) {
         for item in menu.items {
+            let own = item.image?.size == .zero ? item.image : nil
             item.image = NSImage(size: NSSize(width: 1, height: 1))
-            item.image = nil
+            item.image = own
             if let submenu = item.submenu { suppressAutomaticIcons(in: submenu) }
         }
     }

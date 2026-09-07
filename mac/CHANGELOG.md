@@ -18,6 +18,8 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ### Changed
 
+- The menu-bar icon's menu holds the same rows as the Birta Writer menu, in the same order: About, then Settings… and Check for Updates…, then the row that puts the app away, then Quit. Show and Hide used to sit at the top of it with About below, so the two menus disagreed about where every row was for anyone who has both. The row that shows and hides the panel still carries the summon hotkey, and it is still the only chord that menu prints, because a chord read from the menu bar acts on whichever app is in front rather than on this one.
+
 - Check Now in Settings answers in the same dialog, on the Settings window. It used to answer on the panel's status line, which is hidden most of the time and behind the Settings window the rest of it, and a newer version came as the ordinary offer, with its buttons held for a moment against a keystroke in flight. A check you pressed for is answered where you pressed, with its buttons live.
 
 - The Start at login row, when macOS will not register the copy from inside the app, now says to add it yourself in System Settings > General > Login Items, and offers the Open System Settings… button that the waiting-for-approval state already had. It used to say to open the copy in Applications, which does not help when that is the copy already running.

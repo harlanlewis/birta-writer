@@ -695,6 +695,68 @@ enum AppMenu {
         return menu
     }
 
+    /// The app section, as both surfaces that draw it draw it: About, a rule,
+    /// the table's own rows, a rule, the row that puts the app away, Quit.
+    ///
+    /// One builder because the two are one menu on two surfaces. An accessory
+    /// app's app menu is invisible while any other app is in front, so the
+    /// menu-bar item's menu is the only route most installs ever have to
+    /// About, Settings and the update check; a reader with a Dock icon has
+    /// both, and must not have to learn where a row went. Built twice rather
+    /// than shared, because an `NSMenu` can be in one place at a time.
+    ///
+    /// `hide` is the caller's, and is the one row that genuinely differs. The
+    /// app menu hides an app that is by definition in front of the reader; the
+    /// menu-bar item is as often reached with the panel away, so its row is a
+    /// toggle that says which way it will go, and it carries the summon
+    /// hotkey. Its title is repainted on every opening, which is why the caller
+    /// owns the item rather than a title being passed in.
+    ///
+    /// `printsChords` is false for that surface. A status item's menu is not
+    /// searched for key equivalents, and a click on the item does not activate
+    /// the app, so a chord drawn there is one that does nothing where it is
+    /// read. The hide row is the exception and the reason it is the caller's:
+    /// the summon hotkey is a Carbon registration that fires whatever has
+    /// focus.
+    @MainActor
+    static func addAppSection(to nsMenu: NSMenu, hide: NSMenuItem,
+                              printsChords: Bool, target: AnyObject) {
+        let first = nsMenu.numberOfItems
+        // Targeted at the delegate, so it opens the app's own About window
+        // rather than travelling up to `NSApplication`'s standard panel.
+        let about = nsMenu.addItem(withTitle: "About \(AppFlavor.current.displayName)",
+                                   action: #selector(AppDelegate.menuOpenAbout), keyEquivalent: "")
+        about.target = target
+        // An EMPTY image of its own. `AppDelegate.suppressAutomaticIcons`
+        // clears the symbol macOS 26 puts beside Quit, and the same clear did
+        // not hold for this row: it went on drawing an information symbol. An
+        // image the app set is not one the system substitutes for, an image
+        // with no size takes nothing from the column, and this row is alone in
+        // its section, so nothing beside it is aligned against it.
+        about.image = NSImage(size: .zero)
+        nsMenu.addItem(.separator())
+        add(.app, to: nsMenu, target: target)
+        nsMenu.addItem(.separator())
+        // Targeted here rather than by each caller: a status item's menu is
+        // outside the responder chain, so a row that arrived with no target
+        // there would draw correctly and do nothing.
+        hide.target = target
+        nsMenu.addItem(hide)
+        // Quit keeps no target: terminating is `NSApplication`'s, and the row
+        // reaches it whether or not the menu is in the bar.
+        nsMenu.addItem(withTitle: "Quit \(AppFlavor.current.displayName)",
+                       action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        // Stripped after the fact rather than never authored, because the
+        // rows in the middle are the table's and the table carries their
+        // chords: a second path that built them without one would be the
+        // duplicate this function exists to remove.
+        guard !printsChords else { return }
+        for item in nsMenu.items[first...] where item !== hide {
+            item.keyEquivalent = ""
+            item.keyEquivalentModifierMask = []
+        }
+    }
+
     /// Append `menu`'s rows, with their chords and submenus, targeting `target`.
     ///
     /// A menu ends with a rule exactly when the system appends rows after ours,
