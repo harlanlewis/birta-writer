@@ -12,6 +12,10 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ## [Unreleased]
 
+---
+
+## [2026.908.0] - 2026, September 8
+
 ### Changed
 
 - Birta Writer for Mac asks the release page whether there is a newer version every couple of hours while it is running, rather than about once a day. A fix published in the morning used to reach a copy that had been left open since the day before only at the next day's check, and this is an app people leave running for weeks. What it asks more often is the release page, not you: a check that finds nothing says nothing, and the timer does not raise a version you have declined until a newer one exists. Pressing Check for Updates yourself does clear that decline, so a version you said no to and then asked about is offered again; that is what keeps the button from looking broken when it finds the update it was pressed to find.
