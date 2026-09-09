@@ -1160,3 +1160,4 @@ The first public release, and Birta Writer's first version on the VS Code Market
 ---
 
 Versions before `2026.731.0` predate the Marketplace listing and were never publicly installable. Their history is kept in [`docs/CHANGELOG-PRE-MARKETPLACE.md`](docs/CHANGELOG-PRE-MARKETPLACE.md).
+
