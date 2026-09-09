@@ -2796,6 +2796,7 @@
     },
     "pnpm": {
         "overrides": {
+            "fast-uri": "^3.1.7",
             "serialize-javascript": "^7.0.5"
         },
         "patchedDependencies": {
