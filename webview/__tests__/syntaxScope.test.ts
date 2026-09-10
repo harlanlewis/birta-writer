@@ -109,7 +109,17 @@ describe("the floating palette under a narrowed target", () => {
     });
 });
 
-describe("the slash menu under a narrowed target", () => {
+// A timeout sized from this block rather than from the project default.
+// Every case here builds a real slash menu and reads its rows off the DOM,
+// and `allOffered` builds one per row in the registry, so the block is
+// DOM-bound and grows with the menu. Alone it is comfortably inside the
+// default; queued behind the rest of the suite on a machine running anything
+// else it is slower by more than an order of magnitude, which made the
+// project-wide 5 s a limit a loaded machine could trip. A red that reports
+// the load rather than the code teaches the next reader to re-run instead of
+// read, which is how a real intermittent gets buried. Read the current cost
+// with `pnpm vitest run webview/__tests__/syntaxScope.test.ts --reporter=verbose`.
+describe("the slash menu under a narrowed target", { timeout: 30_000 }, () => {
     /**
      * The rows a menu built NOW actually renders, read off its DOM.
      *
