@@ -8,6 +8,10 @@
 
 - An image you attach to an `/ai` request shows its thumbnail on the chip. The chip, the file name and the request were all correct, and the picture was simply an empty box: the editor's own security policy did not permit the kind of URL a preview of a not-yet-saved file uses, so the browser refused to draw it. Nothing else was affected, then or now, and there is nothing to redo: the file was always attached, written and named in the request. If you dropped a screenshot into `/ai`, saw nothing, and attached it again to be sure, that is the bug and it is gone.
 
+### Security
+
+- An embedded player can no longer send the editor messages that pass for the host's. Playing an embed puts a frame from the provider inside the editor's own page, and some of the providers serve whatever their author published, so the script in that frame is a stranger's. The editor accepted any message posted to its window, two of which carry replacement content for the document, so that script could have overwritten what you were editing and the replacement would have been saved to your file like any other edit. It could not read your document, reach the network, or send anything to VS Code on your behalf, all of which the frame's existing containment already refused. Reaching it at all took `birta.network.enabled` on, which is off by default, `birta.embeds.enabled` on, and a click on an embed's play button, so a default install was never exposed. The editor now accepts a message only from the window hosting it or its own.
+
 ---
 
 ## [2026.908.0] - 2026, September 8
