@@ -19,6 +19,31 @@ function makeButton(label: string): HTMLButtonElement {
     return btn;
 }
 
+/**
+ * Focus the way a keyboard user does, which is the only focus these cases mean.
+ *
+ * Every case here that focuses must go through this, including the two that
+ * assert the tooltip does NOT appear. `isKeyboardFocus` in `ui/tooltip.ts` asks
+ * `:focus-visible`, and a bare `focus()` is pointer focus, so a case that
+ * focuses directly is answering "was this keyboard" rather than the question it
+ * names. For the negative cases that is the dangerous direction: they pass
+ * either way, and stop depending on the text being empty or untruncated at all.
+ *
+ * Input modality is document-wide and outlives a case, so any case that
+ * dispatches a MouseEvent leaves the ones after it in pointer modality. That is
+ * the second reason focus goes through here rather than being called directly:
+ * it makes each case state its own modality instead of inheriting one.
+ */
+function keyboardFocus(el: HTMLElement): void {
+    // The Tab keydown is what does the work. jsdom drives `:focus-visible` from
+    // the document's last input modality and ignores `focus({focusVisible})`,
+    // so putting the document back into keyboard modality is the only way to
+    // ask for the focus these cases mean. It is also what really happens: a
+    // keyboard user arrives at a control by pressing Tab.
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", bubbles: true }));
+    el.focus();
+}
+
 describe("applyTooltip", () => {
     beforeEach(() => {
         vi.clearAllMocks();
@@ -113,7 +138,7 @@ describe("applyTooltip", () => {
     it("keyboard focus should show the tooltip", () => {
         const btn = makeButton("a");
         applyTooltip(btn, "Focus text");
-        btn.focus();
+        keyboardFocus(btn);
         expect(tipVisible()).toBe(true);
         expect(tip()!.textContent).toBe("Focus text");
     });
@@ -121,7 +146,7 @@ describe("applyTooltip", () => {
     it("blur should hide the tooltip", () => {
         const btn = makeButton("a");
         applyTooltip(btn, "Focus text");
-        btn.focus();
+        keyboardFocus(btn);
         btn.blur();
         expect(tipVisible()).toBe(false);
     });
@@ -131,9 +156,9 @@ describe("applyTooltip", () => {
         const b = makeButton("b");
         applyTooltip(a, "First");
         applyTooltip(b, "Second");
-        a.focus();
+        keyboardFocus(a);
         expect(tip()!.textContent).toBe("First");
-        b.focus(); // fires blur on a, then focus on b
+        keyboardFocus(b); // fires blur on a, then focus on b
         expect(tipVisible()).toBe(true);
         expect(tip()!.textContent).toBe("Second");
     });
@@ -141,7 +166,7 @@ describe("applyTooltip", () => {
     it("Escape should dismiss the tooltip without claiming the key", () => {
         const btn = makeButton("a");
         applyTooltip(btn, "Focus text");
-        btn.focus();
+        keyboardFocus(btn);
         const e = new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true });
         btn.dispatchEvent(e);
         expect(tipVisible()).toBe(false);
@@ -153,7 +178,7 @@ describe("applyTooltip", () => {
         const hovered = makeButton("b");
         applyTooltip(focused, "Owner");
         applyTooltip(hovered, "Bystander");
-        focused.focus();
+        keyboardFocus(focused);
         // the mouse drifting off an unrelated control must not dismiss it
         hovered.dispatchEvent(new MouseEvent("mouseleave"));
         expect(tipVisible()).toBe(true);
@@ -164,14 +189,14 @@ describe("applyTooltip", () => {
         // jsdom reports scrollWidth === offsetWidth === 0, i.e. untruncated
         const btn = makeButton("a");
         applyTooltip(btn, "Truncated text", { truncatedOnly: true });
-        btn.focus();
+        keyboardFocus(btn);
         expect(tipVisible()).toBe(false);
     });
 
     it("empty text should not show on focus", () => {
         const btn = makeButton("a");
         applyTooltip(btn, "");
-        btn.focus();
+        keyboardFocus(btn);
         expect(tipVisible()).toBe(false);
     });
 
@@ -179,14 +204,14 @@ describe("applyTooltip", () => {
         const btn = makeButton("a");
         const handle = applyTooltip(btn, "Before");
         handle.setText("After");
-        btn.focus();
+        keyboardFocus(btn);
         expect(tip()!.textContent).toBe("After");
     });
 
     it("blur after a programmatic handle.show should hide the tooltip", () => {
         const btn = makeButton("a");
         const handle = applyTooltip(btn, "Copied!");
-        btn.focus();
+        keyboardFocus(btn);
         handle.show();
         expect(tipVisible()).toBe(true);
         btn.blur();

@@ -118,7 +118,15 @@ describe("caretScrollMargin insets", () => {
         addTopbar(40);
         addSticky(36);
         const line = bodyLineHeightPx();
-        vi.stubGlobal("innerHeight", 150);
+        // The viewport is derived from `line`, never written down, because this
+        // case is about the MIDDLE regime: short enough that the bottom band
+        // must give way, roomy enough that hard occlusion still survives. That
+        // window is `(81 + 3*line, 76 + 5.5*line)`, which moves with whatever
+        // line-height the environment computes, so a fixed number sits inside it
+        // for one line-height and silently slides into the pathological regime
+        // the next case already covers for any other.
+        const viewport = Math.round(76 + line * 4);
+        vi.stubGlobal("innerHeight", viewport);
         try {
             const { top, bottom } = computeInsets();
             // Hard occlusion (topbar + sticky) keeps priority...
@@ -127,8 +135,12 @@ describe("caretScrollMargin insets", () => {
             // of free space so ProseMirror's top/bottom corrections cannot
             // oscillate on consecutive keystrokes.
             expect(bottom).toBeLessThan(Math.round(line * 2.5));
-            expect(top + bottom).toBeLessThanOrEqual(Math.ceil(150 - line * 2) + 1);
+            expect(top + bottom).toBeLessThanOrEqual(Math.ceil(viewport - line * 2) + 1);
             expect(bottom).toBeGreaterThanOrEqual(5);
+            // The regime is asserted, not assumed: if the derived viewport ever
+            // drifts into the pathological band, `bottom` bottoms out at its
+            // floor and this case silently becomes a copy of the next one.
+            expect(bottom).toBeGreaterThan(5);
         } finally {
             vi.unstubAllGlobals();
         }

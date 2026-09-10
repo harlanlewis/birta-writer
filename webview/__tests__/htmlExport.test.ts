@@ -110,9 +110,41 @@ describe("selectorApplies", () => {
         expect(selectorApplies(".gone:hover", root)).toBe(false);
     });
 
-    it("a selector the document cannot parse should be kept", () => {
-        expect(selectorApplies("::highlight(find-match)", root)).toBe(true);
-        expect(selectorApplies(":host(.x)", root)).toBe(true);
+    // A selector the ENGINE refuses is kept, on the reasoning that a rule
+    // should not be pruned because the thing asked to evaluate it could not.
+    //
+    // Assert that branch through a root that throws, never through a selector
+    // some engine happens to reject. Which selectors an engine rejects is not a
+    // fixed set and not the same set across engines: Chromium throws on none of
+    // `::highlight()`, `:host()` or `::slotted()`, and jsdom's answer for them
+    // has moved between majors. A case written on one of those names is pinning
+    // the test environment's parser while claiming to cover product behaviour,
+    // and goes red on an environment bump for a reason unrelated to this code.
+    //
+    // Written this way it holds whatever any engine's parser decides next.
+    /** A root that refuses every selector, the way an engine without it would. */
+    const refusingRoot = () => ({
+        matches: () => { throw new SyntaxError("unsupported selector"); },
+        querySelector: () => { throw new SyntaxError("unsupported selector"); },
+    } as unknown as Element);
+
+    /** The same shape, answering instead of refusing. */
+    const answeringRoot = () => ({
+        matches: () => false,
+        querySelector: () => null,
+    } as unknown as Element);
+
+    it("a selector the engine refuses to evaluate should be kept", () => {
+        expect(selectorApplies("::whatever-an-engine-rejects(x)", refusingRoot())).toBe(true);
+    });
+
+    it("the same selector on a root that answers should be dropped", () => {
+        // The control, and it is the reason the pair is written with two roots
+        // rather than two selectors: the ONLY difference between these cases is
+        // throw against answer, so a `true` above cannot come from the selector
+        // string, and neither case can be moved by an engine changing its mind
+        // about what it parses.
+        expect(selectorApplies("::whatever-an-engine-rejects(x)", answeringRoot())).toBe(false);
     });
 });
 
