@@ -36,7 +36,9 @@ const extensionBuild = {
     entryPoints: ['src/extension.ts'],
     outfile: 'dist/extension.js',
     platform: 'node',
-    target: 'node18',
+    // The extension host's Node, which `engines.vscode` fixes: VS Code 1.95
+    // ships Node 20.18. Raise this only when that floor rises.
+    target: 'node20',
     format: 'cjs',
     external: ['vscode'],
     alias: {
