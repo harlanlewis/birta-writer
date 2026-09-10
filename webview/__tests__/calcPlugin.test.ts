@@ -303,6 +303,36 @@ describe("inline calc inside an inline-code span", () => {
         });
     });
 
+    it("confirming at the span's END boundary should keep the span, not flatten it", async () => {
+        // The regression the Milkdown 7.22.1 bump introduced, and the reason
+        // `applyCalcResult` sets its own stored marks. `inlineCode` is
+        // `inclusive: false`, so `tr.insertText(text, from, to)` derived NO
+        // marks for a range ending at the span's boundary and rewrote `2+3=`
+        // as plain text: the answer was misplaced and the user's backticks
+        // were gone with it. e2e/notesFeatures drives the same gesture through
+        // a real selection.
+        vi.useRealTimers();
+        editor = await makeEditor("`2+3=`\n");
+        vi.useFakeTimers();
+        v = view(editor);
+
+        // The end boundary: after the "=", where marks() reports no code mark.
+        const at = v.state.doc.firstChild!.content.size + 1;
+        v.dispatch(v.state.tr.setSelection(TextSelection.create(v.state.doc, at)));
+        expect(v.state.selection.$from.marks().some((m) => m.type.spec.code)).toBe(false);
+
+        await vi.advanceTimersByTimeAsync(250);
+        expect(optionTexts()).toEqual(["5"]);
+        v.dom.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", bubbles: true }));
+
+        expect(v.state.doc.textContent).toBe("2+3= 5");
+        // Still ONE code-marked run holding all of it: the span survived and
+        // the answer joined it.
+        const para = v.state.doc.firstChild!;
+        expect(para.childCount).toBe(1);
+        expect(para.firstChild!.marks.some((m) => m.type.spec.code)).toBe(true);
+    });
+
     it("`=>` should still refuse inside inline code, unlike `=`", async () => {
         // Not an oversight — the reason is a design constraint, so it is pinned.
         // An accepted `=>` answer is MAINTAINED (calcRefresh updates it,

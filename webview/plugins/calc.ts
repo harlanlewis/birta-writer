@@ -149,6 +149,41 @@ const calcSuggestSpec: CaretSuggestSpec = {
 };
 
 /**
+ * Replace `[start, end)` with `replacement`, keeping the marks the region
+ * already carried.
+ *
+ * `tr.insertText(text, from, to)` derives the marks for its new text node from
+ * `$from.marksAcross($to)`, and that DROPS any mark whose spec is
+ * `inclusive: false` when the range ends at that mark's own end boundary.
+ * `inlineCode` is one, and so is `link` (plugins/linkBoundary.ts). Confirming
+ * an answer at the end of a `2+3=` code span therefore rewrote the span as
+ * plain text and took the user's backticks with it, which is a fidelity loss
+ * rather than a placement one. Pinned by e2e/notesFeatures and by
+ * calcPlugin.test.ts.
+ *
+ * The region's own marks are what "rewrite this expression in place" means, so
+ * they are read off the node the region starts in and set as the transaction's
+ * stored marks, which is the one input `insertText` prefers over its own
+ * derivation. Everything else about the call stays upstream's.
+ *
+ * Setting stored marks leaves nothing behind: `Transaction.addStep` nulls them
+ * once the step is applied, so this decides the new text node's marks and not
+ * what the user's next keystroke carries.
+ */
+function replaceKeepingMarks(
+    view: EditorView,
+    start: number,
+    end: number,
+    replacement: string,
+): void {
+    const $start = view.state.doc.resolve(start);
+    const marks = $start.nodeAfter?.marks ?? $start.marks();
+    view.dispatch(
+        view.state.tr.setStoredMarks(marks).insertText(replacement, start, end).scrollIntoView(),
+    );
+}
+
+/**
  * Answer the matched span, form-aware (the region's own shape says which):
  * - trailing `<expr> =` → `<expr> = <result>` (spacing after `=` normalized);
  * - leading `=<expr>` → `<result>=<expr>` — the region starts with `=`, and
@@ -165,7 +200,7 @@ function applyCalcResult(view: EditorView, start: number, caret: number, result:
     // re-accepting at `expr =| old` replaces the old number (the leading
     // form writes BEFORE the `=`, where nothing stale can sit).
     const end = leading ? caret : caret + staleResultLengthAfter(view.state, caret);
-    view.dispatch(view.state.tr.insertText(replacement, start, end).scrollIntoView());
+    replaceKeepingMarks(view, start, end, replacement);
 }
 
 /** Advisory inline-calc plugin (registered beside the other caret suggestions). */
@@ -418,7 +453,7 @@ function applyArrowResult(
     const region = reading === undefined ? text : disambiguate(text, reading);
     const replacement = region.replace(/=>[ \t]*$/, `=> ${result}`);
     const end = caret + staleResultLengthAfter(view.state, caret);
-    view.dispatch(view.state.tr.insertText(replacement, start, end).scrollIntoView());
+    replaceKeepingMarks(view, start, end, replacement);
 }
 
 /**
