@@ -201,6 +201,7 @@ mac/Sources/BirtaWriterCore/AgentReference.swift What Copy Reference puts on the
 mac/scripts/update.sh                     The other-machine path: fetch the app off the newest GitHub Release, verify, install (ad-hoc signed, so it clears quarantine)
 e2e/enterCaret/                               Return must leave the caret in the block it just made; the WebKit-only class of defect that gate exists for
 e2e/frameHost/                                The editor in a frame of a page that is not an editor: the host contract docs/HOSTING.md describes, run against the real bundle
+e2e/agentAttachPreview/                       The one suite whose page carries a CSP in order to be TESTED under it; why a thumbnail check needs an engine and what a refused image looks like
 ```
 
 ## Architecture constraints

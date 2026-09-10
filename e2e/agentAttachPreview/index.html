@@ -1,0 +1,83 @@
+<!doctype html>
+<!-- e2e harness for the agent composer's attachment thumbnail.
+
+     This page exists to carry a POLICY, which is the whole point of it. Most
+     harness pages declare no content-security-policy at all, and a thumbnail
+     test on one of those would pass whatever the extension's policy said,
+     because the preview is an object URL and an unconstrained page loads one
+     happily. So the `img-src` head below is a restatement of the extension's
+     (src/webviewHtml.ts), held to it by shared/__tests__/cspDirectives.test.ts,
+     and the check beside this file is only evidence about the product for as
+     long as that stays true.
+
+     `webview.cspSource` has no literal spelling outside VS Code, so `'self'`
+     stands in for it: this page is served from the harness origin and loads
+     its own bundle from it, which is the same relationship. Everything after
+     it is copied. -->
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy"
+  content="default-src 'none';
+           style-src 'self' 'unsafe-inline';
+           script-src 'nonce-attachharness' 'self' 'wasm-unsafe-eval';
+           worker-src blob:;
+           img-src 'self' data: blob: https://i.ytimg.com;
+           font-src 'self' data:;">
+<style>
+  :root {
+    --vscode-editor-background: #1e1e1e;
+    --vscode-editor-foreground: #d4d4d4;
+    --vscode-foreground: #cccccc;
+    --vscode-descriptionForeground: #999999;
+    --vscode-editorWidget-background: #252526;
+    --vscode-editorHoverWidget-background: #252526;
+    --vscode-editorHoverWidget-border: #454545;
+    --vscode-editorWidget-border: #454545;
+    --vscode-input-background: #3c3c3c;
+    --vscode-input-foreground: #cccccc;
+    --vscode-focusBorder: #007fd4;
+    --vscode-editor-selectionBackground: #264f78;
+    --vscode-toolbar-hoverBackground: rgba(90, 93, 94, 0.31);
+    --vscode-panel-border: rgba(128, 128, 128, 0.2);
+    --vscode-textBlockQuote-background: rgba(128, 128, 128, 0.08);
+    --vscode-textCodeBlock-background: rgba(128, 128, 128, 0.1);
+  }
+  body { background: var(--vscode-editor-background); color: var(--vscode-editor-foreground); }
+  .editor-topbar { min-height: 48px; }
+</style>
+<script nonce="attachharness">
+  window.__i18n = { translations: {}, isMac: true, toolbar: { placements: {}, order: [] } };
+  window.__posted = [];
+  const BODY = "A paragraph to put the caret in.\n";
+  window.acquireVsCodeApi = () => ({
+    postMessage: (msg) => {
+      window.__posted.push(msg);
+      if (msg.type === "ready") {
+        window.postMessage({ type: "init", content: BODY, syncVersion: 1 }, "*");
+      }
+      // The composer writes each attachment's bytes through the host and waits
+      // on the reply before the chip stops saying it is pending. Answered here
+      // so the panel reaches its settled state; the thumbnail itself is built
+      // from the File the picker handed over and never from this path, which
+      // is why the check beside this file is about the policy rather than
+      // about the save.
+      if (msg.type === "agentAttachment") {
+        window.postMessage({
+          type: "agentAttachmentSaved", id: msg.id, path: `/tmp/${msg.name}`,
+        }, "*");
+      }
+      // The composer asks what the configured harness supports as it opens.
+      // Answered with nothing, which is a real answer: it means no model or
+      // effort control is offered, and the chips this file is about are
+      // unaffected either way.
+      if (msg.type === "requestAgentCapabilities") {
+        window.postMessage({ type: "agentCapabilities" }, "*");
+      }
+    },
+    getState: () => undefined,
+    setState: () => {},
+  });
+</script>
+<link rel="stylesheet" href="dist/webview.css">
+<div class="editor-topbar"></div>
+<div id="editor"></div>
+<script type="module" nonce="attachharness" src="dist/webview.js"></script>
