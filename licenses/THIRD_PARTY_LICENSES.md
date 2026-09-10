@@ -31,11 +31,11 @@ Embedded components below.
 
 ## Summary
 
-193 bundled packages.
+194 bundled packages.
 
 | License | Packages |
 | --- | ---: |
-| MIT | 154 |
+| MIT | 155 |
 | ISC | 32 |
 | Apache-2.0 | 4 |
 | BSD-3-Clause | 2 |
@@ -133,7 +133,7 @@ SOFTWARE.
 
 </details>
 
-### @hpcc-js/wasm-graphviz@1.28.0
+### @hpcc-js/wasm-graphviz@1.29.0
 
 - License: Apache-2.0
 - Source: https://hpcc-systems.github.io/hpcc-js-wasm/
@@ -347,7 +347,7 @@ Apache License
 
 </details>
 
-### @iconify/utils@3.1.4
+### @iconify/utils@3.1.7
 
 - License: MIT
 - Source: https://iconify.design/docs/libraries/utils/
@@ -416,7 +416,7 @@ SOFTWARE.
 
 </details>
 
-### @mermaid-js/parser@1.2.0
+### @mermaid-js/parser@1.2.1
 
 - License: MIT
 - Source: https://github.com/mermaid-js/mermaid/tree/develop/packages/mermaid/parser/#readme
@@ -1204,7 +1204,7 @@ SOFTWARE.
 
 </details>
 
-### cytoscape@3.34.0
+### cytoscape@3.34.3
 
 - License: MIT
 - Source: http://js.cytoscape.org
@@ -2237,7 +2237,7 @@ THE SOFTWARE.
 
 </details>
 
-### dayjs@1.11.21
+### dayjs@1.11.23
 
 - License: MIT
 - Source: https://day.js.org
@@ -2403,7 +2403,7 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 </details>
 
-### dompurify@3.4.13
+### dompurify@3.4.15
 
 - License: Apache-2.0
 - Source: https://github.com/cure53/DOMPurify
@@ -2616,7 +2616,7 @@ Apache License
 
 </details>
 
-### es-toolkit@1.50.0
+### es-toolkit@1.52.0
 
 - License: MIT
 - Source: https://es-toolkit.dev
@@ -2803,6 +2803,41 @@ NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
 LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
 OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+```
+
+</details>
+
+### fastdom@1.0.12
+
+- License: MIT
+- Source: https://github.com/wilsonpage/fastdom
+
+_This package ships no license file and no source header. The text below is the standard MIT license with the attribution this package declares — reconstructed, not verbatim from the project._
+
+<details><summary>License text</summary>
+
+```
+MIT License
+
+Copyright (c) Wilson Page
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
 ```
 
 </details>
@@ -4434,7 +4469,7 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 </details>
 
-### mermaid@11.16.1
+### mermaid@11.17.2
 
 - License: MIT
 - Source: https://github.com/mermaid-js/mermaid
@@ -5768,7 +5803,7 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 </details>
 
-### prosemirror-changeset@2.4.1
+### prosemirror-changeset@2.4.2
 
 - License: MIT
 - Source: https://code.haverbeke.berlin/prosemirror/prosemirror-changeset
@@ -5800,10 +5835,10 @@ THE SOFTWARE.
 
 </details>
 
-### prosemirror-commands@1.7.1
+### prosemirror-commands@1.7.2
 
 - License: MIT
-- Source: git://github.com/prosemirror/prosemirror-commands
+- Source: https://code.haverbeke.berlin/prosemirror/prosemirror-commands
 - Copyright (C) 2015-2017 by Marijn Haverbeke <marijn@haverbeke.berlin> and others
 
 <details><summary>License text</summary>
@@ -6122,10 +6157,10 @@ THE SOFTWARE.
 
 </details>
 
-### prosemirror-transform@1.12.0
+### prosemirror-transform@1.12.1
 
 - License: MIT
-- Source: git://github.com/prosemirror/prosemirror-transform
+- Source: https://code.haverbeke.berlin/prosemirror/prosemirror-transform
 - Copyright (C) 2015-2017 by Marijn Haverbeke <marijn@haverbeke.berlin> and others
 
 <details><summary>License text</summary>
@@ -6154,7 +6189,7 @@ THE SOFTWARE.
 
 </details>
 
-### prosemirror-view@1.42.2
+### prosemirror-view@1.42.3
 
 - License: MIT
 - Source: https://code.haverbeke.berlin/prosemirror/prosemirror-view
@@ -7014,7 +7049,7 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 </details>
 
-### uuid@14.0.1
+### uuid@14.0.2
 
 - License: MIT
 - Source: https://github.com/uuidjs/uuid
