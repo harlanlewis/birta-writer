@@ -2876,11 +2876,11 @@ SOFTWARE.
 
 </details>
 
-### harper.js@2.7.0
+### harper.js@2.10.0
 
 - License: Apache-2.0
 - Source: https://writewithharper.com
-- Copyright 2024 Elijah Potter
+- Copyright 2024 Automattic Inc.
 
 <details><summary>License text</summary>
 
@@ -3073,7 +3073,7 @@ Apache License
       same "printed page" as the copyright notice for easier
       identification within third-party archives.
 
-   Copyright 2024 Elijah Potter
+   Copyright 2024 Automattic Inc.
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.

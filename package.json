@@ -2758,7 +2758,7 @@
     "devDependencies": {
         "@types/jsdom": "^21.1.7",
         "@types/mocha": "^10.0.10",
-        "@types/node": "^20.19.9",
+        "@types/node": "^20.19.43",
         "@types/vscode": "1.95.0",
         "@vitest/coverage-v8": "^4.1.11",
         "@vscode/test-electron": "^3.1.0",
@@ -2785,7 +2785,7 @@
         "@milkdown/transformer": "7.22.1",
         "@milkdown/utils": "7.22.1",
         "dompurify": "^3.4.15",
-        "harper.js": "^2.7.0",
+        "harper.js": "^2.10.0",
         "katex": "^0.16.47",
         "mathjs": "^15.2.0",
         "mermaid": "^11.17.2",
