@@ -1,0 +1,94 @@
+<!doctype html>
+<!-- e2e harness: an embedded frame must not be able to speak into the editor.
+
+     The page hosts the editor exactly as the other harnesses do (stubbed
+     acquireVsCodeApi, ready answered with init), and adds one thing: an
+     iframe carrying the containment webview/utils/embedCard.ts gives a played
+     embed, whose script forges an `externalUpdate` at its parent. That is the
+     real product shape, because a played embed IS a frame in our own DOM
+     running a stranger's script, and `externalUpdate.content` REPLACES the
+     document the sync pipeline then carries to disk.
+
+     Why a real frame rather than a synthetic MessageEvent: the thing under
+     test is which listener a real dispatch reaches and what `event.source`
+     carries when it gets there, and a constructed event decides both of those
+     itself. AGENTS.md names this class ("a prop-level test cannot catch a
+     handler race").
+
+     The frame is served from this same origin, which makes it MORE privileged
+     than a production embed (those are cross-origin on a provider host), not
+     less. The check under test discriminates on being a child window and
+     nothing else, so the same-origin frame is the harder case to refuse.
+
+     window.__probe is the instrument, and it exists because "the document did
+     not change" is also what a harness that never posted anything produces.
+     It records every message event the page receives with the sender
+     classified, so a check can assert the forged message ARRIVED and was
+     dropped rather than asserting an absence. -->
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy"
+  content="default-src 'none';
+           style-src 'self' 'unsafe-inline';
+           script-src 'nonce-originharness' 'self';
+           worker-src blob:;
+           img-src 'self' data: blob:;
+           frame-src 'self';
+           font-src 'self' data:;">
+<style>
+  :root {
+    --vscode-editor-background: #1e1e1e; --vscode-editor-foreground: #d4d4d4;
+    --vscode-foreground: #cccccc; --vscode-descriptionForeground: #999999;
+    --vscode-editor-font-family: monospace; --vscode-font-family: -apple-system, sans-serif; --vscode-font-size: 13px;
+    --vscode-editorWidget-background: #252526; --vscode-editorWidget-border: #454545;
+    --vscode-editorHoverWidget-background: #252526;
+    --vscode-editorHoverWidget-border: #454545;
+    --vscode-focusBorder: #007fd4; --vscode-list-hoverBackground: #2a2d2e;
+    --vscode-list-activeSelectionBackground: #094771; --vscode-list-activeSelectionForeground: #ffffff;
+    --vscode-input-background: #3c3c3c; --vscode-input-foreground: #cccccc;
+    --vscode-textLink-foreground: #3794ff; --vscode-panel-border: rgba(128, 128, 128, 0.2);
+    --vscode-editor-selectionBackground: #264f78; --vscode-icon-foreground: #cccccc;
+    --vscode-toolbar-hoverBackground: #2a2d2e;
+  }
+  body { background: var(--vscode-editor-background); color: var(--vscode-editor-foreground); margin: 0; }
+  .editor-topbar { height: 40px; box-sizing: border-box; }
+  /* Laid out rather than hidden: a frame with display:none still runs its
+     script, but keeping it visible means a failure is visible in the
+     screenshot the runner takes. */
+  #hostile { width: 200px; height: 40px; border: 0; }
+</style>
+<script nonce="originharness">
+  window.__i18n = { translations: {}, isMac: true, toolbar: { placements: {}, order: [] } };
+  window.__posted = [];
+
+  // Every message event this page receives, with the sender named. Registered
+  // before the bundle so nothing can arrive unrecorded.
+  window.__probe = [];
+  addEventListener("message", (e) => {
+    const frame = document.getElementById("hostile");
+    const from = e.source === null ? "null"
+      : e.source === window ? "self"
+      : frame && e.source === frame.contentWindow ? "child"
+      : e.source === window.parent ? "parent"
+      : "other";
+    window.__probe.push({ from, type: e.data && e.data.type });
+  });
+
+  window.acquireVsCodeApi = () => ({
+    postMessage: (msg) => {
+      window.__posted.push(msg);
+      if (msg.type === "ready")
+        window.postMessage({ type: "init", content: "# Original\n\nhost content\n", frontmatter: "", syncVersion: 1 }, "*");
+    },
+    getState: () => undefined,
+    setState: () => {},
+  });
+</script>
+<link rel="stylesheet" href="dist/webview.css">
+<div class="editor-topbar"></div>
+<div id="editor"></div>
+<!-- The containment buildPlayerIframe gives every played embed, copied rather
+     than approximated: if the product ever loosens or tightens it, this frame
+     should be changed in step so the check keeps describing what ships. -->
+<iframe id="hostile" src="embed.html"
+        sandbox="allow-scripts allow-same-origin allow-popups allow-presentation"></iframe>
+<script type="module" nonce="originharness" src="dist/webview.js"></script>

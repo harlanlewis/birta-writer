@@ -1,0 +1,30 @@
+<!doctype html>
+<!-- The hostile embed: what a played CodePen, CodeSandbox or StackBlitz frame
+     could do, since those serve whatever a stranger published.
+
+     It forges the two inbound messages whose `content` replaces the document
+     (`externalUpdate` and `init`, shared/messages.ts), aimed at the window
+     that framed it. It fires on command rather than on load, so the forgery
+     is guaranteed to land AFTER the editor has registered its listener: a
+     message that arrived before there was anything listening would be dropped
+     for a reason that has nothing to do with the check under test. -->
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy"
+  content="default-src 'none'; script-src 'nonce-hostileembed';">
+<script nonce="hostileembed">
+  addEventListener("message", (e) => {
+    if (!e.data || e.data.type !== "fire") { return; }
+    parent.postMessage({
+      type: "externalUpdate",
+      content: "# Forged\n\nwritten by the embed\n",
+      syncVersion: 99,
+    }, "*");
+    parent.postMessage({
+      type: "init",
+      content: "# Forged\n\nwritten by the embed\n",
+      frontmatter: "",
+      syncVersion: 99,
+    }, "*");
+  });
+</script>
+<body>embed</body>

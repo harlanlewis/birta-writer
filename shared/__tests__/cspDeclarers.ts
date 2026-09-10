@@ -95,16 +95,39 @@ function harnessPages(): string[] {
 }
 
 /**
- * The shipped hosts and every harness page that declares `default-src 'none'`.
+ * The shipped hosts and every harness page that MIRRORS one: it declares
+ * `default-src 'none'` and it loads the bundle.
  *
  * A harness page with no policy at all is not a declarer and is not judged;
  * `e2e/svgRender/index.html` is the deliberate one, and its own header says
- * why. Declaring `default-src 'none'` is what makes a page a mirror of the
- * shipped surfaces rather than merely a page that loads the bundle.
+ * why.
+ *
+ * The bundle half applies to the harness pages ALONE, and that scoping is not
+ * incidental. A shipped host serves the page rather than being it:
+ * `WebHost.swift` injects its policy into `mac/Resources/index.html`, which
+ * the walk never reads, and names no bundle itself. Requiring the bundle of
+ * the shipped hosts too would therefore drop the Mac app out of the declarer
+ * set, which is one of the two surfaces that actually ships. It would fail
+ * loudly rather than quietly, since `POLICY_REQUIRED` names both hosts and
+ * `assertReached` holds them, but it would fail for a reason nobody reading
+ * the harness pages could see.
+ *
+ * Both halves of the predicate are load-bearing, and the second one is the
+ * later of the two to earn its place. A page can carry a policy because it is
+ * the SUBJECT of a test rather than because it stands in for a host, and such
+ * a page owes the shipped surfaces' grants nothing: `e2e/hostMessageOrigin`
+ * serves a deliberately hostile frame under the tightest policy it can be
+ * given, so requiring it to grant a Blob worker would hand the adversary a
+ * capability to satisfy a guard, which is backwards. Every page that really
+ * does stand in for a host loads `dist/webview.js`, because standing in for
+ * one is what it is for, so the bundle is what tells the two apart.
  */
 export function cspDeclarers(): CspDeclarer[] {
-    return [...SHIPPED_HOSTS, ...harnessPages()]
-        .map((file) => ({ file, source: readFileSync(join(REPO_ROOT, file), "utf8") }))
+    const read = (file: string): CspDeclarer =>
+        ({ file, source: readFileSync(join(REPO_ROOT, file), "utf8") });
+    const hostsTheEditor = ({ source }: CspDeclarer): boolean =>
+        source.includes("dist/webview.js");
+    return [...SHIPPED_HOSTS.map(read), ...harnessPages().map(read).filter(hostsTheEditor)]
         .filter(({ source }) => source.includes("default-src 'none'"));
 }
 
