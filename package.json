@@ -2760,7 +2760,7 @@
         "@types/mocha": "^10.0.10",
         "@types/node": "^20.19.43",
         "@types/vscode": "1.95.0",
-        "@vitest/coverage-v8": "^4.1.11",
+        "@vitest/coverage-v8": "^5.0.0",
         "@vscode/test-electron": "^3.1.0",
         "@vscode/vsce": "^3.9.2",
         "esbuild": "^0.28.2",
@@ -2769,7 +2769,7 @@
         "ovsx": "1.2.0",
         "playwright": "^1.63.0",
         "typescript": "^5.9.3",
-        "vitest": "^4.1.11",
+        "vitest": "^5.0.0",
         "vscode-uri": "^3.2.0"
     },
     "dependencies": {
@@ -2801,6 +2801,11 @@
         },
         "patchedDependencies": {
             "@milkdown/transformer@7.22.1": "patches/@milkdown__transformer@7.22.1.patch"
+        },
+        "peerDependencyRules": {
+            "allowedVersions": {
+                "vitest>@types/node": "20"
+            }
         }
     }
 }
