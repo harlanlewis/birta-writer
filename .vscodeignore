@@ -70,6 +70,7 @@ dist/hostPalette.css
 .gitignore
 .editorconfig
 .prettierignore
+.nvmrc
 AGENTS.md
 CLAUDE.md
 tsconfig*.json

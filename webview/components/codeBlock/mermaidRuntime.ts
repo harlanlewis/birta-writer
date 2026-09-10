@@ -112,8 +112,21 @@ async function ensureMermaid(): Promise<typeof import("mermaid")["default"]> {
         startOnLoad: false,
         theme: currentTheme,
         securityLevel: "strict",
+        // Layout engine and shape vocabulary are stated, never inherited. Both
+        // are Mermaid-wide defaults, so a version bump can move them, and the
+        // consequence is that every diagram in every document the user already
+        // has redraws: a different layout engine places nodes and routes edges
+        // differently, and a different look changes the shapes it draws them
+        // with. Neither is a decision an upgrade gets to make. Changing either
+        // is a product change, made here on purpose.
+        layout: "dagre",
+        look: "classic",
         // Disable Mermaid setting max-width:100% on the SVG, to avoid conflicting with the fixed width/height attributes we write back
-        flowchart: { useMaxWidth: false },
+        // wrappingWidth is the width a node label wraps at, so it decides how
+        // tall and wide every labelled node is and, through them, the size of
+        // the whole diagram. It belongs with layout and look above: a default
+        // that moves redraws documents that have not changed.
+        flowchart: { useMaxWidth: false, wrappingWidth: 200 },
         sequence: { useMaxWidth: false },
         gantt: { useMaxWidth: false },
     });
