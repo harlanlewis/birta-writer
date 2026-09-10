@@ -169,6 +169,12 @@ const calcSuggestSpec: CaretSuggestSpec = {
  * Setting stored marks leaves nothing behind: `Transaction.addStep` nulls them
  * once the step is applied, so this decides the new text node's marks and not
  * what the user's next keystroke carries.
+ *
+ * A region spanning more than one marked run flattens to the first run's marks,
+ * so `**2**+3=` confirms to a wholly bold `2+3= 5`. That is not new: upstream's
+ * `marksAcross` returns one mark set too, and keeps an inclusive mark such as
+ * `strong` for exactly the same span. Preserving each run would mean rebuilding
+ * the region rather than replacing it, which is a different job from this one.
  */
 function replaceKeepingMarks(
     view: EditorView,
