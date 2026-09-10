@@ -125,6 +125,70 @@ const plantUmlWasmPlugin = {
 };
 
 /**
+ * Keep elkjs out of the shipped bundle.
+ *
+ * Mermaid 12 bundles the former `@mermaid-js/layout-elk` instead of leaving it
+ * an opt-in peer, so `elkjs` reaches `dist/` at about 1.4 MB. Two reasons not
+ * to ship it, and the licence is the one that decides it. elkjs is EPL-2.0,
+ * which `ALLOWED_LICENSES` deliberately excludes because source-availability
+ * terms impose duties the attribution appendix alone does not discharge; see
+ * the header on EMBEDDED_COMPONENTS in scripts/generate-third-party-notices.mjs.
+ * The bytes are the second reason and would not have been enough on their own.
+ *
+ * Nothing here asks for ELK. `mermaidRuntime.ts` states `layout: "dagre"`, and
+ * that pin is held by webview/__tests__/mermaidInitConfig.test.ts. The layout
+ * loaders Mermaid registers are lazy (`async () => await import(...)`), so
+ * registration never reaches elkjs and only a render that selects ELK would.
+ *
+ * Upstream does the same thing: its "tiny" build drops elkjs for size and
+ * documents the fallback (https://mermaid.js.org/config/layouts.html). We
+ * cannot flip that build flag from here, so the specifier is redirected to a
+ * module that throws instead. A document that explicitly asks for ELK
+ * therefore lands on Mermaid's error card, which is what it already does
+ * today: 11.17.2 has no ELK either, and asking for it raises "Unknown layout
+ * algorithm". So this is not a behaviour change, and the throw says what to do.
+ *
+ * The specifier is asserted at build time, like the PlantUML mapping above. If
+ * Mermaid stops depending on elkjs, or moves it, this plugin must fail loudly
+ * rather than quietly stop applying to a package that is no longer there.
+ */
+const ELKJS_SPECIFIER = 'elkjs/lib/elk.bundled.js';
+const elkjsExcludePlugin = {
+    name: 'elkjs-exclude',
+    setup(build) {
+        // Asserted against Mermaid's manifest rather than a chunk filename,
+        // which carries a content hash and a version and would break on every
+        // patch bump for no reason.
+        const manifest = path.resolve('./node_modules/mermaid/package.json');
+        const deps = JSON.parse(fs.readFileSync(manifest, 'utf8')).dependencies ?? {};
+        if (!deps.elkjs) {
+            throw new Error(
+                `elkjs-exclude: mermaid no longer depends on elkjs, so this plugin is redirecting a ` +
+                `specifier nothing imports. Delete it, and re-check whether anything EPL-licensed ` +
+                `still reaches dist/ before assuming the exclusion is still needed.`,
+            );
+        }
+        build.onResolve({ filter: /^elkjs(\/|$)/ }, () => ({
+            path: ELKJS_SPECIFIER,
+            namespace: 'elkjs-stub',
+        }));
+        build.onLoad({ filter: /.*/, namespace: 'elkjs-stub' }, () => ({
+            contents: `
+                // Build-time stub. See the elkjs-exclude plugin in esbuild.mjs.
+                function refuse() {
+                    throw new Error(
+                        "This build ships without the ELK layout engine. Use Mermaid's default " +
+                        "layout, or set layout: 'dagre' explicitly.",
+                    );
+                }
+                export default class ELK { constructor() { refuse(); } layout() { refuse(); } }
+            `,
+            loader: 'js',
+        }));
+    },
+};
+
+/**
  * The save pipeline's verify worker (webview/workers/verifyWorker.ts),
  * bundled self-contained and inlined AS A STRING into the webview bundle in
  * place of the stub `webview/workers/verifyWorkerSource.ts`.
@@ -196,7 +260,7 @@ const webviewBuild = {
     alias: {
         '@': path.resolve('./webview'),
     },
-    plugins: [refractorSingletonPlugin, plantUmlWasmPlugin, verifyWorkerPlugin],
+    plugins: [refractorSingletonPlugin, plantUmlWasmPlugin, elkjsExcludePlugin, verifyWorkerPlugin],
     metafile: withMetafile,
 };
 
