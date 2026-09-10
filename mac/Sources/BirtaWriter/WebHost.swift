@@ -136,26 +136,48 @@ final class BirtaSchemeHandler: NSObject, WKURLSchemeHandler {
         }
     }
 
-    /// The CSP mirrors src/webviewHtml.ts in shape: nothing by default, our
-    /// own origin for scripts and styles, inline styles (ProseMirror and the
-    /// components set them), wasm for the lazy engines, data: for the fonts
-    /// esbuild inlines, and a Blob worker for the save pipeline's verifying
-    /// reparse (webview/utils/verifyOracle.ts says why it is a Blob and not a
-    /// file under dist/). The network opt-in widens img/frame/connect to
-    /// https:, which is what link cards and embeds need and what
-    /// NETWORK_POSTURE.md calls the user's consent.
+    /// The CSP mirrors src/webviewHtml.ts in shape, and in REMOTE reach
+    /// exactly: nothing by default, our own origin for scripts and styles,
+    /// inline styles (ProseMirror and the components set them), wasm for the
+    /// lazy engines, data: for the fonts esbuild inlines, and a Blob worker
+    /// for the save pipeline's verifying reparse (webview/utils/verifyOracle.ts
+    /// says why it is a Blob and not a file under dist/).
+    ///
+    /// Two grants here have no counterpart in the extension's policy and both
+    /// are local. `blob:` on `img-src` is the agent panel's attachment
+    /// thumbnail, which is an object URL over a file the user just dropped;
+    /// `'self'` on `connect-src` and `media-src` is this page's own origin,
+    /// where the extension leaves both to `default-src 'none'`. Neither
+    /// reaches the network, which is what makes "the same reach" a claim about
+    /// remote hosts rather than about the whole policy.
+    ///
+    /// The network opt-in widens exactly two directives, and only to the
+    /// provider hosts an embed card can actually reach (`EmbedHosts`, held to
+    /// the extension's own list). It is a consent about what happens to a URL
+    /// the user typed, so it must not become a grant over every host a
+    /// document can name: the extension pins these, and the app shipping zero
+    /// behaviour the extension lacks is the invariant that says this surface
+    /// pins them too.
+    ///
+    /// Nothing widens `connect-src` or `media-src`, because nothing in the
+    /// bundle asks for either. The page makes no request of its own on any
+    /// surface: link cards, paste-unfurl and metadata are fetched host-side in
+    /// Swift, and both wasm engines are inlined into their own lazy chunk
+    /// rather than fetched, which is the reason `default-src 'none'` can cover
+    /// connect in the extension at all.
     func csp() -> String {
-        let net = networkEnabled ? " https:" : ""
+        let frameSrc = networkEnabled ? EmbedHosts.frameSrc.joined(separator: " ") : "'none'"
+        let imgHosts = networkEnabled ? " " + EmbedHosts.imgSrc.joined(separator: " ") : ""
         return [
             "default-src 'none'",
             "style-src 'self' 'unsafe-inline'",
             "script-src 'self' 'wasm-unsafe-eval'",
             "worker-src blob:",
-            "img-src 'self' data: blob:\(net)",
+            "img-src 'self' data: blob:\(imgHosts)",
             "font-src 'self' data:",
-            "connect-src 'self'\(net)",
-            "frame-src\(networkEnabled ? " https:" : " 'none'")",
-            "media-src 'self' data:\(net)",
+            "connect-src 'self'",
+            "frame-src \(frameSrc)",
+            "media-src 'self' data:",
         ].joined(separator: "; ")
     }
 
@@ -199,7 +221,7 @@ final class WebHost: NSObject, WKScriptMessageHandler, WKNavigationDelegate, WKU
         webView.navigationDelegate = self
         webView.uiDelegate = self
         webView.allowsMagnification = false
-        webView.isInspectable = true
+        webView.isInspectable = AppFlavor.current.allowsWebInspector
     }
 
     /// (Re)load the page with a fresh boot script.
