@@ -128,11 +128,22 @@ export function assertReached(
     // Every page that may not leave silently is still here. This is the half
     // a count cannot do: a swap keeps the count and changes the set.
     for (const [file, why] of POLICY_REQUIRED) {
+        // Reports what it FOUND, which is that the page is no longer among the
+        // declarers, and does not name a cause it never checked. The earlier
+        // wording said "no longer declares a policy", which was the only way
+        // out of the set on the day it was written and stopped being so as
+        // soon as the predicate grew a second condition. A true failure
+        // carrying a false explanation costs the next reader the time it takes
+        // to disbelieve it, and it does that at the moment they are already
+        // confused, so the sentence points at the predicate rather than
+        // restating a copy of it that can rot.
         expect(
             files,
-            `${file} no longer declares a policy. It is required because ${why}. ` +
-            "If that is deliberate, remove it from POLICY_REQUIRED in cspDeclarers.ts " +
-            "and say why in the commit, rather than only deleting the policy.",
+            `${file} is no longer one of the declarers cspDeclarers() finds. ` +
+            `It is required because ${why}. Check that page against what ` +
+            "cspDeclarers() requires of a declarer. If dropping it is deliberate, " +
+            "remove it from POLICY_REQUIRED and say why in the commit, rather than " +
+            "only changing the page.",
         ).toContain(file);
     }
 
