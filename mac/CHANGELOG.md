@@ -12,6 +12,12 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ## [Unreleased]
 
+### Security
+
+- Nothing can attach a Web Inspector to Birta Writer for Mac's editor any more. The release build shipped with the inspector enabled. Your note lives in that page rather than being read off the file, so a console over it could read what you were writing and rewrite it, and the app would then autosave whatever it left behind. macOS only ever allowed that from your own account, so it was never a way in from another machine or another user; what it offered was a surface to whatever else was already running as you. The DEVELOPMENT build keeps the inspector, which is the build that is for looking inside.
+
+- With Rich link previews and embeds switched on, Birta Writer for Mac gave its editor page permission to frame, and to load images from, any https host at all. It now permits only the embed providers' own hosts, which is what Birta Writer for VS Code has always permitted. Nothing else was ever framed: which host an embed loads is decided by the provider table, and this permission sat behind that rather than in front of it. One visible consequence, and it is the reason this is worth reading rather than just worth doing: an image written into a document as a full https URL no longer loads in the app, which is how it has always behaved in VS Code. Link previews and pasted-link titles are unaffected, because the app fetches those itself and the page was never the thing making those requests.
+
 ---
 
 ## [2026.908.0] - 2026, September 8

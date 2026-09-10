@@ -61,6 +61,80 @@ final class WebHostPageTests: XCTestCase {
         XCTAssertTrue(subject.renderPage(source).contains(#"<body class="vscode-dark toc-right">"#))
     }
 
+    // MARK: - The content-security-policy
+
+    /// Every directive's value, keyed by name, out of the served policy itself
+    /// rather than out of `csp()`: the policy only does anything from inside
+    /// the page, so the string that reaches the template is the subject.
+    private func servedDirectives(networkEnabled: Bool) throws -> [String: String] {
+        let subject = handler()
+        subject.networkEnabled = networkEnabled
+        let page = subject.renderPage(try template())
+        guard let open = page.range(of: #"<meta http-equiv="Content-Security-Policy" content=""#),
+              let close = page.range(of: "\">", range: open.upperBound..<page.endIndex) else {
+            XCTFail("the served page carries no content-security-policy")
+            return [:]
+        }
+        let policy = String(page[open.upperBound..<close.lowerBound])
+        var directives: [String: String] = [:]
+        for part in policy.split(separator: ";") {
+            let fields = part.split(separator: " ", omittingEmptySubsequences: true).map(String.init)
+            guard let name = fields.first else { continue }
+            directives[name] = fields.dropFirst().joined(separator: " ")
+        }
+        // The parse reached something, or every assertion below is about an
+        // empty dictionary and passes by looking at nothing.
+        XCTAssertEqual(directives["default-src"], "'none'", policy)
+        return directives
+    }
+
+    /// A pin on the off state rather than a test of the pinned lists: this one
+    /// passes against the policy before the lists existed too, because with
+    /// the switch off that policy granted nothing remote either. Said out loud
+    /// because a green here is not evidence about the grants, and the two
+    /// tests below are what carry that.
+    func testTheNetworkSwitchOffShouldLeaveNoRemoteGrantAtAll() throws {
+        let directives = try servedDirectives(networkEnabled: false)
+        XCTAssertEqual(directives["frame-src"], "'none'")
+        for (name, value) in directives {
+            XCTAssertFalse(value.contains("http"), "\(name) grants \(value) with the network off")
+        }
+    }
+
+    func testTheNetworkSwitchOnShouldGrantTheProviderHostsAndNothingWider() throws {
+        let directives = try servedDirectives(networkEnabled: true)
+
+        // The lists are not empty, or the equalities below hold for a
+        // directive that grants nothing and this checks nothing.
+        XCTAssertFalse(EmbedHosts.frameSrc.isEmpty)
+        XCTAssertFalse(EmbedHosts.imgSrc.isEmpty)
+
+        // Exactly the pinned hosts: an extra one fails here too, which a
+        // per-host `contains` check would not catch.
+        XCTAssertEqual(directives["frame-src"], EmbedHosts.frameSrc.joined(separator: " "))
+        XCTAssertEqual(directives["img-src"],
+                       "'self' data: blob: " + EmbedHosts.imgSrc.joined(separator: " "))
+
+        // The bare scheme is what a pinned list exists instead of. Asked of
+        // every directive rather than the two that widen, because the whole
+        // point is that no OTHER directive quietly grows one.
+        for (name, value) in directives {
+            XCTAssertFalse(value.split(separator: " ").contains("https:"),
+                           "\(name) grants the whole of https:")
+        }
+    }
+
+    func testTheDirectivesNothingAsksForShouldNotMoveWithTheNetworkSwitch() throws {
+        // The page issues no request of its own on any surface, so these two
+        // read the same with the switch either way. They were widened with the
+        // rest before anything checked whether they were used.
+        for networkEnabled in [false, true] {
+            let directives = try servedDirectives(networkEnabled: networkEnabled)
+            XCTAssertEqual(directives["connect-src"], "'self'", "network \(networkEnabled)")
+            XCTAssertEqual(directives["media-src"], "'self' data:", "network \(networkEnabled)")
+        }
+    }
+
     func testTheDockSideShouldBeTheTrailingEdgeWhateverTheTheme() throws {
         // A macOS sidebar is on the trailing edge, and nothing here may put it
         // anywhere else: the page's flip button and the Swap Sides command are

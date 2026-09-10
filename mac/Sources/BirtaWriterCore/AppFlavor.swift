@@ -114,4 +114,19 @@ public enum AppFlavor: String, CaseIterable, Sendable {
     /// would overwrite the change somebody built it to look at with whatever
     /// the newest release happens to be.
     public var updatesItself: Bool { self == .release }
+
+    /// Whether the Web Inspector may attach to the page.
+    ///
+    /// Development only, and the reason is what the page holds rather than
+    /// what the inspector is for. The buffer lives in the page, so anything
+    /// that can attach an inspector has a JavaScript console over the note
+    /// somebody is writing: it can read it and rewrite it without touching the
+    /// file, and the app will then autosave what it left behind.
+    ///
+    /// Not a boundary against another account. macOS lets only the same user
+    /// attach, so this is the difference between a program that offers that
+    /// surface to whatever else is running as you and one that does not, which
+    /// is the same trade `updatesItself` and `showsWelcomeScreen` make: a
+    /// development build is for looking inside, and the release is not.
+    public var allowsWebInspector: Bool { self == .dev }
 }

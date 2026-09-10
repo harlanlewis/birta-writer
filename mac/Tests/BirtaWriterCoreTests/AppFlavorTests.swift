@@ -84,4 +84,25 @@ final class AppFlavorTests: XCTestCase {
         XCTAssertTrue(AppFlavor.release.updatesItself)
         XCTAssertFalse(AppFlavor.dev.updatesItself)
     }
+
+    /// The buffer lives in the page, so an attachable inspector is a console
+    /// over somebody's note: it can rewrite what is in the editor, and the app
+    /// autosaves what it leaves behind.
+    func testOnlyTheDevelopmentBuildShouldOfferTheWebInspector() {
+        XCTAssertTrue(AppFlavor.dev.allowsWebInspector)
+        XCTAssertFalse(AppFlavor.release.allowsWebInspector)
+    }
+
+    /// The three development-only capabilities disagree about which flavour is
+    /// the permissive one, and that is the whole point: a build is for looking
+    /// inside OR for holding somebody's notes. Derived from `allCases` so a
+    /// fourth flavour has to answer all three rather than be forgotten here.
+    func testEveryFlavourShouldAnswerTheThreeCapabilitiesConsistently() {
+        XCTAssertEqual(AppFlavor.allCases.count, 2)
+        for flavour in AppFlavor.allCases {
+            XCTAssertEqual(flavour.allowsWebInspector, flavour == .dev, flavour.rawValue)
+            XCTAssertEqual(flavour.showsWelcomeScreen, flavour == .dev, flavour.rawValue)
+            XCTAssertEqual(flavour.updatesItself, flavour == .release, flavour.rawValue)
+        }
+    }
 }

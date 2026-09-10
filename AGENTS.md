@@ -184,6 +184,7 @@ mac/Sources/BirtaWriter/MissingFileScreen.swift  What the panel says when the bo
 mac/Sources/BirtaWriter/StatusOverlay.swift      The transient status line: legible with no frame, so the ink is measured and the scrim is the page's own paper colour
 mac/Sources/BirtaWriterCore/ActiveBinding.swift  WHICH of the app's three file settings is in force, so a rename writes back to the one it was read from
 mac/Sources/BirtaWriterCore/Frontmatter.swift    The metadata block split off the body, host side: a port of shared/contentTransform.ts and shared/lineMap.ts, and why the block the panel holds is mirrored rather than re-read from the buffer
+mac/Sources/BirtaWriterCore/EmbedHosts.swift     Which hosts the app's CSP may name, restated from shared/embedProviders.ts; why the network opt-in pins them rather than opening https:
 mac/Sources/BirtaWriterCore/DocumentTypes.swift  The file types the Mac app OPENS against the one it WRITES, and why those are two lists; the Open With claim's Swift half
 mac/Sources/BirtaWriterCore/DocumentName.swift   What a typed filename means: the extension kept, `/` and `:` refused, an unchanged field not a rename
 mac/Sources/BirtaWriterCore/AutosavePolicy.swift  When the app writes, when it does not, and when it asks instead; what the autosave setting promises in both directions
