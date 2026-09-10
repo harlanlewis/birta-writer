@@ -16,15 +16,13 @@
  * reads as though it covers the policy; it covers the host lists. That is the
  * "a guard names what it reads" shape from AGENTS.md, wearing a broad name.
  *
- * The declarers are DISCOVERED rather than listed, and that is not a style
- * choice. `workerCsp.test.ts` hand-lists seven files, so a harness page added
- * after it was written is a page that guard never learned about, which is
- * AGENTS.md's own "a hand-written list of cases is a list a new case never
- * joins". It also stops two concurrent branches from breaking each other: a
- * session adding a harness page does not have to edit a guard it never read,
- * and whichever branch merges second does not fail on a list the other grew.
- * The floor below is what keeps discovery honest, because a walk that finds
- * nothing satisfies every comparison by having nothing to compare.
+ * The declarers come from `cspDeclarers.ts`, discovered rather than listed,
+ * and that module's header has the argument for why. `workerCsp.test.ts` reads
+ * the same walk, which is the point: two guards asking the same question used
+ * to answer it two ways, and the hand-listed one was only ever as complete as
+ * somebody's memory of it. The floor that walk offers is what keeps discovery
+ * honest, because finding nothing satisfies every comparison below by having
+ * nothing to compare.
  *
  * Hosts are deliberately NOT compared, and that is not laziness. A harness
  * page that never renders an embed has no business granting the YouTube
@@ -35,45 +33,7 @@
  * on every one of these pages.
  */
 import { describe, it, expect } from "vitest";
-import { readFileSync, readdirSync, statSync } from "node:fs";
-import { join } from "node:path";
-
-const root = join(__dirname, "..", "..");
-
-/** The two hosts that ship. Neither is discoverable by walking `e2e/`. */
-const SHIPPED_HOSTS = [
-    "src/webviewHtml.ts",
-    "mac/Sources/BirtaWriter/WebHost.swift",
-];
-
-/** Every `.html` under `e2e/`, repo-relative. */
-function harnessPages(): string[] {
-    const found: string[] = [];
-    const walk = (dir: string): void => {
-        for (const name of readdirSync(join(root, dir))) {
-            if (name.startsWith(".") || name === "node_modules") continue;
-            const rel = `${dir}/${name}`;
-            if (statSync(join(root, rel)).isDirectory()) walk(rel);
-            else if (name.endsWith(".html")) found.push(rel);
-        }
-    };
-    walk("e2e");
-    return found;
-}
-
-/**
- * Every file that serves the editor page under a policy: it says
- * `default-src 'none'`.
- *
- * A harness page with no policy at all is not a declarer and is not judged.
- * `e2e/svgRender/index.html` is the deliberate one, and its own header says
- * why: it exists to prove the sanitizer holds where no policy is helping.
- */
-function declarers(): [file: string, source: string][] {
-    return [...SHIPPED_HOSTS, ...harnessPages()]
-        .map((file) => [file, readFileSync(join(root, file), "utf8")] as [string, string])
-        .filter(([, source]) => source.includes("default-src 'none'"));
-}
+import { cspDeclarers, assertReached } from "./cspDeclarers";
 
 /**
  * The scheme and keyword sources an `img-src` grants, hosts dropped, or null
@@ -111,21 +71,16 @@ function imgSchemeGrants(source: string): string[] | null {
 }
 
 describe("img-src across the surfaces that serve the editor page", () => {
-    const found = declarers();
+    const found = cspDeclarers();
     const withImgSrc = found
-        .map(([file, source]) => [file, imgSchemeGrants(source)] as const)
+        .map(({ file, source }) => [file, imgSchemeGrants(source)] as const)
         .filter((entry): entry is [string, string[]] => entry[1] !== null);
 
     // Discovery reached the tree, and reached both halves of it. Without this
     // every comparison below is satisfied by an empty list, which is what a
     // renamed directory or a broken walk produces.
     it("should have found the shipped hosts and the harness pages", () => {
-        const files = found.map(([file]) => file);
-        for (const host of SHIPPED_HOSTS) {
-            expect(files, `${host} declares no policy, or was not found`).toContain(host);
-        }
-        expect(files.filter((f) => f.startsWith("e2e/")).length,
-            "no harness page declares a policy; the walk found nothing").toBeGreaterThan(3);
+        assertReached(found, expect);
     });
 
     // An `img-src` that parsed to zero sources is this file being broken, not

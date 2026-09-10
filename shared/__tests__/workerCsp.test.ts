@@ -10,35 +10,39 @@
  * document that hitches again. This holds the grant where it has to be
  * written, in the two hosts and in the harness pages that mirror them, so the
  * nightly's `mainReparses` ceiling is the second guard and not the first.
+ *
+ * The declarers were a hand-written list of seven until `cspDeclarers.ts`
+ * replaced it, and the reason for the change is the same absence this file
+ * exists to catch, one level up. An unlisted page was an unchecked page, and
+ * unchecked is green: a harness page added after this guard was written could
+ * drop the grant, run its own suite on the main thread, and report nothing.
+ * The guard was only ever as complete as somebody's memory of it.
  */
 import { describe, it, expect } from "vitest";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
-
-const root = join(__dirname, "..", "..");
-
-const POLICIES: ReadonlyArray<[what: string, file: string]> = [
-    ["the VS Code webview (src/webviewHtml.ts)", "src/webviewHtml.ts"],
-    ["the Mac app (mac/Sources/BirtaWriter/WebHost.swift)", "mac/Sources/BirtaWriter/WebHost.swift"],
-    ["the launch perf harness page", "e2e/perf/index.html"],
-    ["the corpus harness page", "e2e/corpus/index.html"],
-    ["the mdx harness page", "e2e/mdx/index.html"],
-    ["the verify worker harness page", "e2e/verifyWorker/index.html"],
-    ["the frame embed's frame page", "e2e/frameHost/editor.html"],
-];
+import { cspDeclarers, assertReached } from "./cspDeclarers";
 
 describe("the verify worker's CSP grant", () => {
-    it.each(POLICIES)("%s should declare a policy, so the grant below is load-bearing", (_what, file) => {
-        const source = readFileSync(join(root, file), "utf8");
-        expect(source).toContain("default-src 'none'");
+    const found = cspDeclarers();
+
+    it("should have found the shipped hosts and the harness pages", () => {
+        assertReached(found, expect);
     });
 
-    it.each(POLICIES)("%s should grant a Blob worker and nothing wider", (_what, file) => {
-        const source = readFileSync(join(root, file), "utf8");
-        const grants = source.match(/worker-src[^;"']*/g) ?? [];
-        expect(grants.length, `${file} declares no worker-src`).toBeGreaterThan(0);
-        for (const grant of grants) {
-            expect(grant.trim()).toBe("worker-src blob:");
-        }
-    });
+    it.each(found.map((d) => [d.file, d] as const))(
+        "%s should declare a policy, so the grant below is load-bearing",
+        (_file, declarer) => {
+            expect(declarer.source).toContain("default-src 'none'");
+        },
+    );
+
+    it.each(found.map((d) => [d.file, d] as const))(
+        "%s should grant a Blob worker and nothing wider",
+        (file, declarer) => {
+            const grants = declarer.source.match(/worker-src[^;"']*/g) ?? [];
+            expect(grants.length, `${file} declares no worker-src`).toBeGreaterThan(0);
+            for (const grant of grants) {
+                expect(grant.trim()).toBe("worker-src blob:");
+            }
+        },
+    );
 });
