@@ -4,8 +4,13 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Text typed at the right edge of an inline code span is plain text rather than more code. The caret at the end of a span now behaves the way it already did at the end of a link: what you type next leaves the span instead of silently extending it. To go on typing inside a span, put the caret before its last character.
+
 ### Fixed
 
+- Typing a formatting delimiter inside inline code leaves it literal. Closing a `*b*` inside a backticked span used to italicize the `b` and swallow the stars, so text you had marked as literal was reformatted under your hands as you typed it. The same went for the other delimiters the editor watches for. Only typing was ever affected: a span that already contained `*b*` when the file opened was always left alone, so nothing on disk needs checking.
 - An image you attach to an `/ai` request shows its thumbnail on the chip. The chip, the file name and the request were all correct, and the picture was simply an empty box: the editor's own security policy did not permit the kind of URL a preview of a not-yet-saved file uses, so the browser refused to draw it. Nothing else was affected, then or now, and there is nothing to redo: the file was always attached, written and named in the request. If you dropped a screenshot into `/ai`, saw nothing, and attached it again to be sure, that is the bug and it is gone.
 
 ### Security
