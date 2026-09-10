@@ -51,6 +51,16 @@ describe("mermaid.initialize config", () => {
         expect(config.look).toBe("classic");
     });
 
+    it("a diagram render should pin the label wrapping width", async () => {
+        // Arrange / Act
+        const config = await initConfig();
+        // Assert: flowchart.wrappingWidth decides how wide a node label grows
+        // before it wraps, so it sets every labelled node's size and through
+        // them the whole diagram's. Mermaid 12 moved this default from 200 to
+        // 120, which redrew flowcharts that nobody had edited.
+        expect((config.flowchart as Record<string, unknown>).wrappingWidth).toBe(200);
+    });
+
     it("the pinned defaults should sit beside the settings the runtime already fixed", async () => {
         // Arrange / Act
         const config = await initConfig();
