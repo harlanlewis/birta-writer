@@ -21,6 +21,15 @@
  * page, in `mac/Tests/BirtaWriterTests/WebHostPageTests.swift`. This file owns
  * only the cross-language equality and the two source-level absences below,
  * which no run of either suite can catch.
+ *
+ * SCOPE, stated because this file's name overstates it. It compares the two
+ * embed-HOST lists and nothing else. The directive heads those hosts hang off
+ * are not compared here, and while they were not compared anywhere the two
+ * policies' `img-src` diverged on `blob:` and the agent composer's attachment
+ * thumbnail drew on the Mac app and showed an empty box in VS Code, with this
+ * suite green throughout. `cspDirectives.test.ts` owns the scheme grants
+ * across every surface now; a new fact about a directive belongs there, and a
+ * new fact about which HOSTS an embed may reach belongs here.
  */
 import { describe, it, expect } from "vitest";
 import { readFileSync, readdirSync, statSync } from "node:fs";

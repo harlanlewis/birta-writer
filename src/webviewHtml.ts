@@ -277,6 +277,18 @@ export function buildWebviewHtml(
     // embeds off, no card is built, no thumbnail element exists, and nothing is
     // fetched: the offline-by-default guarantee lives in the gated code paths,
     // not in the absence of a CSP entry.
+    // `blob:` on img-src, beside those hosts, is the agent composer's
+    // attachment thumbnail: `addFiles` builds it with
+    // `URL.createObjectURL(file)` over a file the reader just dropped
+    // (webview/components/agentPanel). It grants no network reach of any kind,
+    // because an object URL names bytes this page already holds.
+    //
+    // It is here because the Mac app's policy had it and this one did not, so
+    // the same panel drew a thumbnail on one surface and an empty box on the
+    // other. The invariant that settles which way to fix that is AGENTS.md's:
+    // the app ships zero behaviour the extension lacks. Nothing anywhere
+    // argued the extension should be without it; the grant was simply written
+    // once, on the surface whose author happened to need it.
     const embedImgHosts = ` ${EMBED_CSP_IMG_HOSTS.join(" ")}`;
     const embedFrameSrc = `\n             frame-src ${EMBED_CSP_FRAME_HOSTS.join(" ")};`;
     const checklistSinkChecked = config.checklistSinkChecked;
@@ -341,7 +353,7 @@ export function buildWebviewHtml(
              style-src ${webview.cspSource} 'unsafe-inline';
              script-src 'nonce-${nonce}' ${webview.cspSource} 'wasm-unsafe-eval';
              worker-src blob:;
-             img-src ${webview.cspSource} data:${embedImgHosts};${embedFrameSrc}
+             img-src ${webview.cspSource} data: blob:${embedImgHosts};${embedFrameSrc}
              font-src ${webview.cspSource} data:;">
 	  <meta name="viewport" content="width=device-width, initial-scale=1.0">
 	  <title>Markdown Editor</title>

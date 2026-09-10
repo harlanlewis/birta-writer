@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- An image you attach to an `/ai` request shows its thumbnail on the chip. The chip, the file name and the request were all correct, and the picture was simply an empty box: the editor's own security policy did not permit the kind of URL a preview of a not-yet-saved file uses, so the browser refused to draw it. Nothing else was affected, then or now, and there is nothing to redo: the file was always attached, written and named in the request. If you dropped a screenshot into `/ai`, saw nothing, and attached it again to be sure, that is the bug and it is gone.
+
 ---
 
 ## [2026.908.0] - 2026, September 8
