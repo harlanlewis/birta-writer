@@ -13,9 +13,11 @@
  * that refuses inline code offers there, correctly: what it would write lands
  * outside the span, where the maintenance engines can see it.
  *
- * The mark input rules key off the same flag: a `*` typed inside a code span
- * is literal, so `markRule` stands down there. That one needs its control, or
- * a rule that never fires anywhere reads exactly like a rule that stood down.
+ * The mark input rules key off the same flag: a delimiter typed inside a code
+ * span is literal, so `markRule` stands down there. Every delimiter the
+ * CHANGELOG entry claims is driven, not one standing in for the rest, and each
+ * needs its control: a rule that never fires anywhere reads exactly like a rule
+ * that stood down.
  */
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { Editor, rootCtx, defaultValueCtx, editorViewCtx } from "@milkdown/core";
@@ -129,28 +131,57 @@ describe("a mark input rule inside an inline-code span", () => {
         editors = [];
     });
 
-    it("the closing star should italicize in prose and stay literal in code", async () => {
-        // One gesture, two contexts. The code reading is only evidence against
-        // a control that fires: `handleTextInput` returning false means no rule
-        // consumed the keystroke, which is also what a rule that is broken
-        // everywhere returns.
-        const plain = await makeEditor("a *b c\n");
-        expect(plain.state.doc.firstChild!.textContent).toBe("a *b c");
-        const handledInPlain = typeAt(plain, 5, "*");
+    // Every one of these is a separate input rule, and the CHANGELOG entry
+    // claims the whole set, so the whole set is driven rather than one of them
+    // standing in for the rest. Table-driven so a new delimiter joins by adding
+    // a row, and the `ch` field carries BOTH characters of a two-character
+    // delimiter: typing one `*` of a `**` pair matches nothing, and a probe
+    // that types only the first reads as a rule standing down when it is really
+    // a rule that was never offered its trigger.
+    const DELIMITERS = [
+        { name: "**strong**", text: "a **b c", pos: 6, ch: "**", mark: "strong" },
+        // Both spellings of emphasis, because they are not one rule: the star
+        // is `mathAwareEmphasisStarInputRule`, which WRAPS `markRule` to keep
+        // `60*60*1000` literal, and a wrapper is exactly where the upstream
+        // guard could be bypassed. The underscore is the stock rule.
+        { name: "*emphasis*", text: "a *b c", pos: 5, ch: "*", mark: "emphasis" },
+        { name: "_emphasis_", text: "a _b c", pos: 5, ch: "_", mark: "emphasis" },
+        { name: "~~strike~~", text: "a ~~b c", pos: 6, ch: "~~", mark: "strike_through" },
+        { name: "==highlight==", text: "a ==b c", pos: 6, ch: "==", mark: "highlight" },
+    ] as const;
 
-        document.body.innerHTML = "";
-        const code = await makeEditor("`a *b c`\n");
-        expect(code.state.doc.firstChild!.textContent).toBe("a *b c");
-        expect(shape(code)[0]!.code).toBe(true);
-        const handledInCode = typeAt(code, 5, "*");
-
-        // The control consumed the keystroke and wrote emphasis.
-        expect(handledInPlain).toBe(true);
-        expect(shape(plain).flatMap((s) => s.marks)).toContain("emphasis");
-
-        // Inside the span the rule stood down and the stars stayed literal.
-        expect(handledInCode).toBe(false);
-        expect(code.state.doc.firstChild!.textContent).toBe("a *b* c");
-        expect(shape(code).flatMap((s) => s.marks)).not.toContain("emphasis");
+    // The list is the assertion's own subject, so an empty or truncated table
+    // would otherwise pass by enumerating nothing.
+    it("the table should cover every delimiter the entry claims", () => {
+        expect(DELIMITERS.map((d) => d.name).sort()).toEqual(
+            ["**strong**", "*emphasis*", "==highlight==", "_emphasis_", "~~strike~~"],
+        );
     });
+
+    for (const d of DELIMITERS) {
+        it(`${d.name} should fire in prose and stand down inside a code span`, async () => {
+            // One gesture, two contexts. The code reading is only evidence
+            // against a control that fires: `handleTextInput` returning false
+            // means no rule consumed the keystroke, which is also what a rule
+            // broken everywhere returns.
+            const plain = await makeEditor(`${d.text}\n`);
+            expect(plain.state.doc.firstChild!.textContent).toBe(d.text);
+            expect(shape(plain)[0]!.code).toBe(false);
+            [...d.ch].forEach((ch, i) => typeAt(plain, d.pos + i, ch));
+
+            document.body.innerHTML = "";
+            const code = await makeEditor(`\`${d.text}\`\n`);
+            expect(code.state.doc.firstChild!.textContent).toBe(d.text);
+            expect(shape(code)[0]!.code).toBe(true);
+            [...d.ch].forEach((ch, i) => typeAt(code, d.pos + i, ch));
+
+            // The control wrote the mark.
+            expect(shape(plain).flatMap((x) => x.marks)).toContain(d.mark);
+            // Inside the span the rule stood down and the delimiters are literal.
+            expect(shape(code).flatMap((x) => x.marks)).not.toContain(d.mark);
+            expect(code.state.doc.firstChild!.textContent).toBe(
+                `${d.text.slice(0, d.pos - 1)}${d.ch}${d.text.slice(d.pos - 1)}`,
+            );
+        });
+    }
 });
