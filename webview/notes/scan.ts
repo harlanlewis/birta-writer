@@ -273,13 +273,19 @@ export function scanNotes(doc: ProseNode, customMarkers: readonly string[] = [],
  * returns a partial answer, and storing one here would hand the next reader a
  * document's worth of notes with the head missing.
  *
- * The array is shared, so no caller may mutate what it gets back. None does:
- * `scanNotes` sorts its own array before returning it, and every incremental
- * path rebuilds through filter/map/spread.
+ * The array is shared between both readers, so no caller may mutate what it
+ * gets back, and the return type is `readonly` so the compiler is what says so
+ * rather than this paragraph. None does today: `scanNotes` sorts its own array
+ * before returning it, and every incremental path rebuilds through
+ * filter/map/spread. A future caller that wants to sort gets a build error and
+ * a copy, instead of quietly reordering the other reader's answer.
  */
 const notesByDoc = new WeakMap<ProseNode, { key: string; items: NoteItem[] }>();
 
-export function cachedScanNotes(doc: ProseNode, customMarkers: readonly string[] = []): NoteItem[] {
+export function cachedScanNotes(
+    doc: ProseNode,
+    customMarkers: readonly string[] = [],
+): readonly NoteItem[] {
     // NUL-joined: a marker is a literal string the user typed into a setting,
     // so any printable separator could appear inside one and let two different
     // marker sets share a key.

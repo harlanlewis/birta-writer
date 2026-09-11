@@ -92,9 +92,11 @@ export function initNotesList(getView: () => EditorView | null): NotesListView {
     // Incremental-scan cache: the doc the cached items were scanned from, and
     // those items.
     let scannedDoc: ProseNode | null = null;
-    let scannedItems: NoteItem[] = [];
+    // Readonly because one of the two sources is the memo in notes/scan.ts,
+    // whose array the in-text highlight is reading at the same time.
+    let scannedItems: readonly NoteItem[] = [];
 
-    function scan(doc: ProseNode): NoteItem[] {
+    function scan(doc: ProseNode): readonly NoteItem[] {
         if (scannedDoc === doc) { return scannedItems; }
         const items = (scannedDoc && incrementalScanNotes(scannedDoc, scannedItems, doc, markers))
             || cachedScanNotes(doc, markers);

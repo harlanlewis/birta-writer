@@ -6,6 +6,7 @@
 
 ### Changed
 
+- Selecting the whole document, and pasting into a long one, cost what the gesture touches rather than what the file contains. Escalating Select All to the whole document read the rendered element of every block in the file to work out which fold controls to redraw, which got worse faster than the document got longer, so the third press of Cmd+A was the slowest thing you could do to a long outline. A paste that brought in a list rebuilt every task checkbox in the file, and the notes scan walked the document twice over for one answer, once for the highlighting and once for the review sidebar's list. What ends up selected, what gets pasted, which checkboxes are ticked and what the sidebar lists are all unchanged.
 - Text typed at the right edge of an inline code span is plain text rather than more code. The caret at the end of a span now behaves the way it already did at the end of a link: what you type next leaves the span instead of silently extending it. To go on typing inside a span, put the caret before its last character.
 
 ### Fixed
