@@ -16,6 +16,7 @@ import {
 } from "@/ui/icons";
 import { t, kbd } from "@/i18n";
 import { attachInputUndo } from "@/utils/inputUndo";
+import { insertTextKeepingMarks } from "@/utils/insertKeepingMarks";
 import { registerEscapeLayer } from "@/ui/escapeLayers";
 import { watchOutsidePress } from "@/ui/outsidePress";
 import { hostArranges } from "../../../shared/hostProfile";
@@ -1380,7 +1381,7 @@ export function initFindBar(
         const replacement = replacementFor(m);
         let nextKey: [number, number];
         if (m.kind === "text") {
-            view.dispatch(view.state.tr.insertText(replacement, m.from, m.to));
+            view.dispatch(insertTextKeepingMarks(view.state.tr, replacement, m.from, m.to));
             // Advance past the inserted text so a replacement containing the
             // query does not get matched again immediately
             nextKey = [m.from + replacement.length, -1];
@@ -1450,7 +1451,7 @@ export function initFindBar(
         // Text replacements in reverse document order keep earlier positions
         // valid; the single transaction keeps everything one undo step.
         for (let i = texts.length - 1; i >= 0; i--) {
-            tr = tr.insertText(replacementFor(texts[i]), texts[i].from, texts[i].to);
+            tr = insertTextKeepingMarks(tr, replacementFor(texts[i]), texts[i].from, texts[i].to);
         }
         view.dispatch(tr);
 

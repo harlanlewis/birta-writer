@@ -17,7 +17,7 @@ import { t } from "@/i18n";
 import { bindActivate } from "@/ui/dom";
 import { notifyReviewGroupByType } from "@/messaging";
 import { NOTE_HIGHLIGHT_EVENT, noteMarkersEnabled, setNoteMarkersEnabled } from "@/plugins/noteMarkers";
-import { scanNotes, incrementalScanNotes, type NoteItem } from "@/notes/scan";
+import { cachedScanNotes, incrementalScanNotes, type NoteItem } from "@/notes/scan";
 import { initReviewList, type ReviewResult } from "./reviewList";
 import type { ReviewListView } from "./proofreadingList";
 
@@ -92,12 +92,14 @@ export function initNotesList(getView: () => EditorView | null): NotesListView {
     // Incremental-scan cache: the doc the cached items were scanned from, and
     // those items.
     let scannedDoc: ProseNode | null = null;
-    let scannedItems: NoteItem[] = [];
+    // Readonly because one of the two sources is the memo in notes/scan.ts,
+    // whose array the in-text highlight is reading at the same time.
+    let scannedItems: readonly NoteItem[] = [];
 
-    function scan(doc: ProseNode): NoteItem[] {
+    function scan(doc: ProseNode): readonly NoteItem[] {
         if (scannedDoc === doc) { return scannedItems; }
         const items = (scannedDoc && incrementalScanNotes(scannedDoc, scannedItems, doc, markers))
-            || scanNotes(doc, markers);
+            || cachedScanNotes(doc, markers);
         scannedDoc = doc;
         scannedItems = items;
         return items;

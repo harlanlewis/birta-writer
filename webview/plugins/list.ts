@@ -793,24 +793,25 @@ interface TaskItemMark {
 }
 
 /**
- * Every task item in `doc`, in document order.
+ * Every task item in `doc` between `from` and `to`, in document order.
  *
- * A WHOLE-DOCUMENT walk, and the only place one is left: the initial build,
- * and a rebuild after a transaction that changed which items exist or what
- * they are ticked to. It prunes at textblocks, which hold every text and
- * inline node in a document and can contain no list item, so it visits the
- * block skeleton rather than the document.
+ * The whole document only at the initial build; every rebuild after that
+ * bounds the range to what the transaction touched. It prunes at textblocks,
+ * which hold every text and inline node in a document and can contain no list
+ * item, so it visits the block skeleton rather than the document.
  *
- * It must NOT go back on the keystroke path. Running it per doc-changing
- * transaction, pruned, is what `pnpm perf:typing:ab` failed `xlarge` for, and
- * is the whole reason `taskListItemsTouched` below exists.
+ * It must NOT go back on the keystroke path unbounded. Running it per
+ * doc-changing transaction over the whole document, pruned, is what
+ * `pnpm perf:typing:ab` failed `xlarge` for, and is the whole reason
+ * `taskListItemsTouched` below exists.
  */
-function taskItemMarks(doc: ProseNode, from = 0): TaskItemMark[] {
+function taskItemMarks(doc: ProseNode, from = 0, to = doc.content.size): TaskItemMark[] {
     const marks: TaskItemMark[] = [];
     let nodes = 0;
-    // From `from` to the end: the document by default, or the tail an append
-    // added, for which the controls before it already stand (see apply).
-    doc.nodesBetween(from, doc.content.size, (node, pos) => {
+    // The document by default; a sub-range for the two callers that have
+    // proven the controls outside it stand where they are — the tail an
+    // append added, and the top-level blocks a structural edit landed in.
+    doc.nodesBetween(from, to, (node, pos) => {
         nodes++;
         if (node.isTextblock) { return false; }
         const checked = node.attrs["checked"];
@@ -867,31 +868,68 @@ function taskCheckboxPos(mark: TaskItemMark): number {
  */
 export function taskListItemsTouched(tr: Transaction): boolean {
     const doc = tr.doc;
-    const { maps } = tr.mapping;
-    for (let i = 0; i < maps.length; i++) {
-        // The step's range lands in the document THAT STEP produced, so it is
-        // carried through the steps after it to reach `tr.doc`'s coordinates.
-        const rest = tr.mapping.slice(i + 1);
+    for (const { from, to } of changedRangesInDoc(tr)) {
         let touched = false;
-        maps[i]!.forEach((_oldStart, _oldEnd, newStart, newEnd) => {
-            if (touched) { return; }
-            const from = rest.map(newStart, -1);
-            const to = rest.map(newEnd, 1);
-            doc.nodesBetween(from, to, (node, pos) => {
-                if (touched || node.isTextblock) { return false; }
-                // `nodesBetween` hands back the ancestors the range is inside
-                // as well as the nodes within it; an ancestor starts before the
-                // range and is not something this transaction introduced.
-                if (pos >= from && node.type.name === "list_item") {
-                    touched = true;
-                    return false;
-                }
-                return true;
-            });
+        doc.nodesBetween(from, to, (node, pos) => {
+            if (touched || node.isTextblock) { return false; }
+            // `nodesBetween` hands back the ancestors the range is inside
+            // as well as the nodes within it; an ancestor starts before the
+            // range and is not something this transaction introduced.
+            if (pos >= from && node.type.name === "list_item") {
+                touched = true;
+                return false;
+            }
+            return true;
         });
         if (touched) { return true; }
     }
     return false;
+}
+
+/**
+ * The transaction's own changed ranges, in `tr.doc`'s coordinates. A step's
+ * map reports its range in the document THAT STEP produced, so it is carried
+ * through the steps after it.
+ */
+function changedRangesInDoc(tr: Transaction): { from: number; to: number }[] {
+    const ranges: { from: number; to: number }[] = [];
+    const { maps } = tr.mapping;
+    for (let i = 0; i < maps.length; i++) {
+        const rest = tr.mapping.slice(i + 1);
+        maps[i]!.forEach((_oldStart, _oldEnd, newStart, newEnd) => {
+            ranges.push({ from: rest.map(newStart, -1), to: rest.map(newEnd, 1) });
+        });
+    }
+    return ranges;
+}
+
+/**
+ * The span of TOP-LEVEL blocks a transaction's changed ranges land in, or null
+ * when it changed nothing.
+ *
+ * Widened to whole top-level blocks because that is what makes the bounded
+ * rebuild below safe to reason about: a list item is always inside one, so a
+ * span of whole blocks holds every item whose control could have changed and
+ * can never split one across an end. It is the MIN and MAX over the ranges
+ * rather than each range on its own, so a transaction whose edits are
+ * scattered degrades to the whole-document rebuild instead of leaving a gap.
+ */
+function touchedBlockSpan(doc: ProseNode, tr: Transaction): { from: number; to: number } | null {
+    let from = Infinity;
+    let to = -Infinity;
+    for (const range of changedRangesInDoc(tr)) {
+        from = Math.min(from, range.from);
+        to = Math.max(to, range.to);
+    }
+    if (from > to) { return null; }
+    const size = doc.content.size;
+    const start = Math.max(0, Math.min(from, size));
+    const end = Math.max(0, Math.min(to, size));
+    const before = doc.childBefore(end);
+    return {
+        from: start >= size ? size : doc.childAfter(start).offset,
+        to: before.node ? Math.max(before.offset + before.node.nodeSize, end) : end,
+    };
 }
 
 function taskCheckboxWidgets(marks: readonly TaskItemMark[]): Decoration[] {
@@ -952,7 +990,20 @@ const taskCheckboxA11yPlugin = $prose(
                         return added.length ? mapped.add(tr.doc, added) : mapped;
                     }
                     if (taskListItemsTouched(tr)) {
-                        return taskCheckboxDecorations(tr.doc, taskItemMarks(tr.doc));
+                        // Only the blocks the edit landed in are re-read: every
+                        // control outside them belongs to an item this
+                        // transaction did not touch, so it maps. A paste used
+                        // to walk the whole document here, which on a long one
+                        // is most of what the gesture cost (MAR-438).
+                        const span = touchedBlockSpan(tr.doc, tr);
+                        if (!span) {
+                            return taskCheckboxDecorations(tr.doc, taskItemMarks(tr.doc));
+                        }
+                        const mapped = previous.map(tr.mapping, tr.doc);
+                        const stale = mapped.find(span.from, span.to);
+                        const kept = stale.length > 0 ? mapped.remove(stale) : mapped;
+                        const fresh = taskCheckboxWidgets(taskItemMarks(tr.doc, span.from, span.to));
+                        return fresh.length > 0 ? kept.add(tr.doc, fresh) : kept;
                     }
                     // The same controls, carried to where the edit put them.
                     // The map is not optional: a DecorationSet is a tree shaped

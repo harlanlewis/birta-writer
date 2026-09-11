@@ -51,6 +51,7 @@ import {
     type EquationSpan,
 } from "../utils/calc";
 import { calcUnitsReady } from "../utils/calcUnits";
+import { insertTextKeepingMarks } from "../utils/insertKeepingMarks";
 import { blockCalcText, calcAutoInsert, calcEnabled, scopeUpTo } from "./calc";
 
 /**
@@ -251,7 +252,8 @@ export const calcRefreshPlugin = $prose(() => new Plugin({
             // steps THIS transaction has already accumulated (an earlier
             // refresh may have shifted them — unmapped, a second rewrite
             // lands at corrupt offsets).
-            out = out.insertText(
+            out = insertTextKeepingMarks(
+                out,
                 result,
                 out.mapping.map(blockStart + cand.res[0]),
                 out.mapping.map(blockStart + cand.res[1]),

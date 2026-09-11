@@ -46,6 +46,7 @@ import {
     type SlashMenuItem,
     type SlashMenuState,
 } from "../components/slashMenu/registry";
+import { insertTextKeepingMarks } from "../utils/insertKeepingMarks";
 import { setPendingRange } from "./pendingRange";
 import { setSlashArgumentHint, type SlashArgumentHintText } from "./slashArgumentHint";
 import { canPlaceCommandBlock } from "../blockPlacement";
@@ -397,7 +398,7 @@ class SlashMenuController {
         this.menu.setArgument(item);
         const { state } = this.view;
         this.view.dispatch(
-            state.tr.insertText(`${item.id} `, match.slashPos + 1, match.caret),
+            insertTextKeepingMarks(state.tr, `${item.id} `, match.slashPos + 1, match.caret),
         );
     }
 

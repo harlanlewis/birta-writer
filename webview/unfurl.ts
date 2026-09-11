@@ -213,7 +213,12 @@ function upgradeBareLinkToTitle(
     const tr = view.state.tr;
     tr.insertText(title, range.from, range.to);
     // Re-assert the link mark over the new title text: replacement text does not
-    // reliably inherit the mark, so add it explicitly (href preserved).
+    // reliably inherit the mark, so add it explicitly (href preserved). This is
+    // the one ranged insertText that does NOT go through
+    // utils/insertKeepingMarks.ts, because it is asserting a specific href
+    // rather than carrying the region's own marks across. The addMark below is
+    // what makes it safe, so it has to stay: without it this is an instance of
+    // the mark-dropping class that helper exists for.
     tr.addMark(range.from, range.from + title.length, linkType.create({ href: url, title: null }));
     tr.setMeta("addToHistory", false);
     view.dispatch(tr);

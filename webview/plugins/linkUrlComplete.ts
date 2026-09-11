@@ -27,6 +27,7 @@ import {
 } from "../components/pathLink/linkTargetComplete";
 import { isLocalPathQuery } from "../../shared/linkTargetSuggest";
 import { createLinkifyTr } from "./linkInputRule";
+import { insertTextKeepingMarks } from "../utils/insertKeepingMarks";
 import { caretSuggestPlugin, type CaretSuggestSpec } from "./caretSuggest";
 
 /** Unclosed inline link construct ending at the caret. */
@@ -65,7 +66,9 @@ const linkUrlSpec: CaretSuggestSpec = {
             // No usable label (e.g. `[](partial`): just complete the partial
             // path in place and let the user keep editing the literal text.
             view.dispatch(
-                state.tr.insertText(picked, match.caret - match.query.length, match.caret),
+                insertTextKeepingMarks(
+                    state.tr, picked, match.caret - match.query.length, match.caret,
+                ),
             );
         }
     },

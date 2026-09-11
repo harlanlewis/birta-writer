@@ -125,6 +125,7 @@ import {
     blockChrome,
     blockFingerprintPart,
     buildHeadingFoldDecorations,
+    chromeCursor,
     structureFingerprint,
     type ChromeWindows,
 } from "./foldDecorations";
@@ -158,6 +159,9 @@ function getHeadingElementAtPos(view: EditorView, pos: number): HTMLElement | nu
 }
 
 type Span = { from: number; to: number };
+
+/** Stand-in for a fold set the plugin has not published yet (see the cover pass). */
+const EMPTY_FOLDS: ReadonlySet<number> = new Set<number>();
 
 /**
  * MAR-215: the window(s) the decoration build materializes — the scroll window
@@ -733,16 +737,38 @@ export const headingFoldPlugin = $prose(() =>
                 // Blocks that entered it; the held ones cost no DOM read.
                 // Walked from the cover's own start, never from the top of
                 // the document: this runs on every selection change.
+                //
+                // A block with no gutter chrome is never read: it has no
+                // marker to surface, and `view.nodeDOM` walks the view-desc
+                // tree from the root on every call, so asking each one makes
+                // the pass quadratic in the block count — which is what
+                // Mod+A's third press, whose cover IS the document, paid
+                // (MAR-438). The moment such a block gains chrome its
+                // decoration set is a new one, and the invalidation above
+                // drops the held entries so this pass reads it then.
+                const foldState = foldPluginKey.getState(view.state);
+                const hasChrome = chromeCursor(
+                    foldState?.folded ?? EMPTY_FOLDS,
+                    foldState?.enabled ?? false,
+                    chromeWindows(foldState?.window ?? null, foldState?.pinned ?? null),
+                );
                 let { index, offset } = doc.childAfter(Math.min(cover.from, doc.content.size));
                 let blocks = 0;
+                let reads = 0;
                 for (; index < doc.childCount && offset < cover.to; index++) {
+                    const size = doc.child(index).nodeSize;
                     blocks++;
-                    if (offset >= cover.from && !coveredByBlock.has(offset)) {
+                    if (offset >= cover.from && !coveredByBlock.has(offset) && hasChrome(offset, offset + size)) {
+                        reads++;
                         coverBlock(offset);
                     }
-                    offset += doc.child(index).nodeSize;
+                    offset += size;
                 }
-                countWork("fold-cover", { blocks });
+                // Two amounts, because they grow with different things and
+                // only one of them is expensive: `blocks` is the arithmetic
+                // walk over the cover, `reads` the DOM reads it decided to
+                // make.
+                countWork("fold-cover", { blocks, reads });
             };
 
             const clearHoveredGutter = () => {
