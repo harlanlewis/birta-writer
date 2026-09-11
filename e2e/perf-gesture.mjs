@@ -3,8 +3,10 @@
  * on a fixture and reads what ONE editing gesture costs, gesture by gesture:
  * a typed character for scale, Enter at the end of a paragraph (a new empty
  * block), Backspace on that empty block, Enter inside a paragraph (a split),
- * Backspace across the seam (a join), and a block drag in its three parts,
- * the pickup past the drag threshold, the moves, and the drop.
+ * Backspace across the seam (a join), the block-selection ladder and what it
+ * enables (Mod+A's three presses, a block move, a selection extension, the
+ * Escape that collapses it), a paste landing a task list, and a block drag in
+ * its three parts, the pickup past the drag threshold, the moves, and the drop.
  *
  * The other runners cannot see these. `pnpm perf` reads open, `pnpm
  * perf:typing` reads a burst of plain characters and holds its keystroke
@@ -16,6 +18,24 @@
  * whole document for a one-block change, a body-class flip whose CSS
  * restyles every element, a per-block lookup made quadratic by asking the
  * view once per block, a forced layout in a pointer handler.
+ *
+ * The selection and paste gestures are here because nothing else in the repo
+ * MAKES them, which is not the same as nothing guarding what they do.
+ * `structuralEditWork.test.ts` holds all three of the costs #459 fixed, as
+ * size differentials in jsdom, and that is the protection against a
+ * regression. What did not exist was any way to READ what these gestures
+ * cost: the nightly count gate's workload is a mount plus a burst of typed
+ * characters, so it never selects, never moves a block and never pastes, and
+ * `heavy-budget.json` carries no `mdw:fold-cover.*` row for exactly that
+ * reason. So their cost on a real engine at scale came from a bespoke survey
+ * in a scratch directory each time somebody wanted the number, and the
+ * counters they stamp appeared in no column anyone reads (MAR-438).
+ *
+ * Every one of them verifies that it did what its name says before its
+ * reading is kept, the way the drag does: a swallowed chord, a selection
+ * that did not escalate and a paste the schema refused all measure nothing
+ * and report a very good number. A gesture that cannot be confirmed has its
+ * reading discarded and says so under "not read".
  *
  * What it reports, per gesture, as medians over `--reps`:
  *   dispatch   the synchronous main-thread block of the gesture's own
@@ -55,6 +75,7 @@
  *   node e2e/perf-gesture.mjs xlarge --reps 3
  *   BIRTA_E2E_BROWSER=webkit node e2e/perf-gesture.mjs
  *   node esbuild.mjs && node e2e/perf-gesture.mjs --profile --only drag,drop
+ *   node e2e/perf-gesture.mjs --only select-all,escape,block,extend,paste
  *   node e2e/perf-gesture.mjs --trace --json gesture.json
  *
  * A figure this prints is a reading, not a record: quote it from a run on an
@@ -100,6 +121,10 @@ const content = pool[fixture];
 
 // A frame gap or a task this long counts: the floor the typing runner uses.
 const STALL_MS = 50;
+// `Mod-` in the editor's keymap, spelled for Playwright. The page resolves it
+// from the browser's platform and this from Node's, which agree because the
+// browser is on this machine.
+const MOD = process.platform === "darwin" ? "Meta" : "Control";
 // The settle after each gesture. The sync scheduler's trailing window is
 // 300 ms, so this holds the sync and its long task inside the reading.
 const SETTLE_MS = 700;
@@ -331,12 +356,32 @@ const GESTURES = [
     { name: "backspace empty", keyboard: true },
     { name: "enter mid-para", keyboard: true },
     { name: "backspace join", keyboard: true },
+    { name: "select-all text", keyboard: true },
+    { name: "select-all block", keyboard: true },
+    { name: "block move", keyboard: true },
+    { name: "extend selection", keyboard: true },
+    { name: "select-all doc", keyboard: true },
+    { name: "escape collapse", keyboard: true },
+    { name: "paste list", keyboard: false },
     { name: "drag start", keyboard: false },
     { name: "drag move", keyboard: false },
     { name: "drop", keyboard: false },
 ];
+// The selection ladder runs in this order because each step is the next one's
+// precondition, and two of them reach their expensive path ONLY from the right
+// starting selection: `moveSelectedBlocks` walks `unitBoundaries` only when
+// `selectionCoverRange` is non-null, which a bare caret is not, and
+// `escalateSelectAll` takes its early return before that walk once the
+// selection is already a block range. So the move and the extension sit
+// between the second press and the third, and the third is what stamps
+// `fold-cover` over the whole document.
+const SELECTION_LADDER = [
+    "select-all text", "select-all block", "block move",
+    "extend selection", "select-all doc", "escape collapse",
+];
 // `--only` takes comma-separated name prefixes: `--only drag,drop` is the
-// whole drag, `--only enter` both Enters.
+// whole drag, `--only enter` both Enters, `--only select-all` the three
+// presses.
 const wanted = (name) => !only || only.split(",").some((prefix) => name.startsWith(prefix.trim()));
 
 async function measure(browserType, url) {
@@ -406,6 +451,138 @@ async function measure(browserType, url) {
             await caretTo(page, "mid");
             await run("enter mid-para", () => page.keyboard.press("Enter"));
             await run("backspace join", () => page.keyboard.press("Backspace"));
+        }
+
+        // What the selection IS, read structurally rather than by class name:
+        // `toJSON().type` is the registered jsonID ("blockRange"), which a
+        // production bundle's minification leaves alone where a constructor
+        // name would not survive it.
+        const selectionState = () => page.evaluate(() => {
+            const view = window.__birtaPerf.view();
+            const sel = view.state.selection;
+            const json = sel.toJSON();
+            return {
+                type: typeof json.type === "string" ? json.type : "text",
+                from: sel.from,
+                to: sel.to,
+                empty: sel.empty,
+                docSize: view.state.doc.content.size,
+            };
+        });
+        // Task items specifically, not list items: `taskItemMarks` is asked
+        // only for a transaction that touched an item carrying a boolean
+        // `checked`, so a paste landing a plain bullet list never reaches it
+        // and would leave the reading measuring an ordinary insert.
+        const taskItems = () => page.evaluate(() => {
+            let n = 0;
+            window.__birtaPerf.view().state.doc.descendants((node) => {
+                if (node.type.name === "list_item" && typeof node.attrs.checked === "boolean") n++;
+                return true;
+            });
+            return n;
+        });
+
+        for (let i = 0; i < reps; i++) {
+            if (!SELECTION_LADDER.some(wanted)) break;
+            await caretTo(page, "mid");
+
+            // The first failure ends the rep: every later step in the ladder
+            // starts from the selection this one was meant to leave, so
+            // reading them after a miss measures a state no gesture reached.
+            let aborted = null;
+            const step = async (name, act, confirm) => {
+                if (aborted) return;
+                await run(name, act);
+                const missed = await confirm();
+                if (missed === null) return;
+                aborted = `${name}: ${missed}`;
+                // `run` pushes a reading only when the gesture is wanted, so
+                // the pop has to ask the same question or it would discard a
+                // different gesture's rep.
+                if (wanted(name)) readings[name].pop();
+            };
+
+            await step("select-all text", () => page.keyboard.press(`${MOD}+a`), async () => {
+                const sel = await selectionState();
+                return sel.type === "text" && !sel.empty
+                    ? null
+                    : `selection is ${sel.type}${sel.empty ? " and empty" : ""}, so the first press did not select the block's text`;
+            });
+            await step("select-all block", () => page.keyboard.press(`${MOD}+a`), async () => {
+                const sel = await selectionState();
+                return sel.type === "blockRange"
+                    ? null
+                    : `selection is ${sel.type}, so the second press did not escalate to a block range`;
+            });
+            // Held IN the page, for the same reason the drag holds its doc
+            // there: a node crossing the protocol is a plain object that
+            // never equals the live one, so the comparison would always
+            // claim a change and never see one missing. Taken here rather
+            // than at the top of the rep, because the two presses before it
+            // each carry a settle the sync pipeline runs inside, and a doc
+            // replaced by that would satisfy this check with the move having
+            // done nothing.
+            if (!aborted) {
+                await page.evaluate(() => { window.__docBeforeMove = window.__birtaPerf.view().state.doc; });
+            }
+            await step("block move", () => page.keyboard.press("Alt+ArrowDown"), async () => {
+                const moved = await page.evaluate(() => window.__birtaPerf.view().state.doc !== window.__docBeforeMove);
+                return moved ? null : "the document is unchanged, so no block moved";
+            });
+            const beforeExtend = aborted ? null : await selectionState();
+            await step("extend selection", () => page.keyboard.press("Shift+ArrowDown"), async () => {
+                const sel = await selectionState();
+                if (sel.type !== "blockRange") return `selection is ${sel.type}, expected a block range`;
+                return sel.to - sel.from > beforeExtend.to - beforeExtend.from
+                    ? null
+                    : `the range stayed ${beforeExtend.to - beforeExtend.from} wide, so nothing was extended`;
+            });
+            await step("select-all doc", () => page.keyboard.press(`${MOD}+a`), async () => {
+                const sel = await selectionState();
+                return sel.type === "blockRange" && sel.from === 0 && sel.to === sel.docSize
+                    ? null
+                    : `selection is ${sel.type} ${sel.from}..${sel.to} of ${sel.docSize}, so the cover is not the document and \`fold-cover\` was not asked for all of it`;
+            });
+            await step("escape collapse", () => page.keyboard.press("Escape"), async () => {
+                const sel = await selectionState();
+                return sel.empty
+                    ? null
+                    : `selection is ${sel.type} and still ${sel.to - sel.from} wide, so Escape was taken by a transient surface rather than the selection`;
+            });
+
+            if (aborted) {
+                skipped.push(`selection ladder: ${aborted}; the rest of this rep was not read`);
+                break;
+            }
+        }
+
+        // A paste landing a task list, which is what asks `taskItemMarks` for
+        // anything. Dispatched as a real ClipboardEvent rather than through
+        // the prop, because which listener wins is the layer the defect class
+        // lives in (MAR-277, e2e/pasteImage).
+        const canBuildClipboard = await page.evaluate(() => {
+            try { new DataTransfer(); return true; } catch { return false; }
+        });
+        if (!canBuildClipboard && wanted("paste list")) {
+            skipped.push(`paste list: ${BROWSER} would not construct a DataTransfer, so no paste was dispatched`);
+        }
+        for (let i = 0; canBuildClipboard && i < reps; i++) {
+            if (!wanted("paste list")) break;
+            await caretTo(page, "end");
+            const before = await taskItems();
+            await run("paste list", () => page.evaluate(() => {
+                const el = document.querySelector(".milkdown .ProseMirror") ?? document.querySelector(".ProseMirror");
+                const dt = new DataTransfer();
+                dt.setData("text/plain", "\n- [ ] alpha\n- [ ] beta\n- [x] gamma\n");
+                el.dispatchEvent(new ClipboardEvent("paste", { clipboardData: dt, bubbles: true, cancelable: true }));
+            }));
+            const after = await taskItems();
+            if (after <= before) {
+                skipped.push(`paste list: task items went ${before} to ${after}, so the paste landed no task list and \`task-marks\` was never asked`);
+                readings["paste list"].pop();
+                break;
+            }
+            await page.waitForTimeout(400);
         }
 
         for (let i = 0; i < reps; i++) {

@@ -136,6 +136,14 @@ describe("rebrand guard", () => {
  * all any more, the rule is the simple one the display-string era could not
  * afford: the three letters, case-insensitive, as a substring, anywhere.
  *
+ * The word is RESERVED, not dead, and the difference only shows up later.
+ * It is parked against a possible future product, and the ban exists so that
+ * nothing pre-attaches it to this one: a spelling in the tree today is a leak
+ * from the old name, never an early claim on the new. So the day it names
+ * something again, this describe comes down as a decision, and a reappearance
+ * is not to be reverted on sight by a reader who took "retired" to mean the
+ * word was finished with.
+ *
  * That strictness is deliberate. A word-boundary rule would miss the glued
  * identifiers (the old module prefix, the old dev bundle id), and an
  * identifier rule would miss prose. The one cost is that no scanned file may
