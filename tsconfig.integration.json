@@ -1,8 +1,8 @@
 {
-  "//": "Compiles the @vscode/test-electron integration suite (src/test/**) to CommonJS in out/. Run via `pnpm test:integration`. Separate from the esbuild extension build and the Vitest unit configs.",
+  "//": "Compiles the @vscode/test-electron integration suite (src/test/**) to CommonJS in out/. Run via `pnpm test:integration`. Separate from the esbuild extension build and the Vitest unit configs. The CommonJS emit is conditional: under `module: node16` it follows the package, so adding `\"type\": \"module\"` to package.json would flip it to ESM and `node out/test/runTest.js` would stop loading.",
   "compilerOptions": {
-    "module": "commonjs",
-    "moduleResolution": "node",
+    "module": "node16",
+    "moduleResolution": "node16",
     "target": "es2021",
     "lib": ["es2021"],
     "outDir": "out",
