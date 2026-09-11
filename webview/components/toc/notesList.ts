@@ -17,7 +17,7 @@ import { t } from "@/i18n";
 import { bindActivate } from "@/ui/dom";
 import { notifyReviewGroupByType } from "@/messaging";
 import { NOTE_HIGHLIGHT_EVENT, noteMarkersEnabled, setNoteMarkersEnabled } from "@/plugins/noteMarkers";
-import { scanNotes, incrementalScanNotes, type NoteItem } from "@/notes/scan";
+import { cachedScanNotes, incrementalScanNotes, type NoteItem } from "@/notes/scan";
 import { initReviewList, type ReviewResult } from "./reviewList";
 import type { ReviewListView } from "./proofreadingList";
 
@@ -97,7 +97,7 @@ export function initNotesList(getView: () => EditorView | null): NotesListView {
     function scan(doc: ProseNode): NoteItem[] {
         if (scannedDoc === doc) { return scannedItems; }
         const items = (scannedDoc && incrementalScanNotes(scannedDoc, scannedItems, doc, markers))
-            || scanNotes(doc, markers);
+            || cachedScanNotes(doc, markers);
         scannedDoc = doc;
         scannedItems = items;
         return items;

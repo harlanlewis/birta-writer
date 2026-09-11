@@ -337,6 +337,23 @@ function foldCursor(folded: ReadonlySet<number>, enabled: boolean): (from: numbe
     };
 }
 
+/**
+ * THE rule for whether a top-level block carries gutter chrome: it overlaps a
+ * materialized window, or it holds a fold entry. Cursor-shaped like
+ * `foldCursor` (calls must ascend), and exported because the selection cover
+ * in plugin.ts asks the same question — a block with no chrome has no marker
+ * to surface, so reading its DOM is a view-desc walk for a known-empty answer.
+ * One definition, so the cover can never disagree with what was built.
+ */
+export function chromeCursor(
+    folded: ReadonlySet<number>,
+    enabled: boolean,
+    windows: ChromeWindows,
+): (from: number, to: number) => boolean {
+    const hasFold = foldCursor(folded, enabled);
+    return (from, to) => hasFold(from, to) || inWindows(windows, from, to);
+}
+
 /** Whether a top-level block overlaps any materialized window. */
 function inWindows(windows: ChromeWindows, from: number, to: number): boolean {
     if (windows === null) {
@@ -373,15 +390,14 @@ export function structureFingerprint(
 ): string {
     const foldCtx = { folded, enabled };
     const parts: string[] = [enabled ? "E" : "D"];
-    const hasFold = foldCursor(folded, enabled);
+    const hasChrome = chromeCursor(folded, enabled, windows);
     // Every top-level block is visited, window or not: the window decides
     // what is EMITTED, not what is walked. Counted so the per-keystroke and
     // nightly gates see this pass whenever a transaction reaches it.
     countWork("fold-structure", { blocks: doc.childCount });
     doc.forEach((node: any, offset: number) => {
         const end = offset + node.nodeSize;
-        const folds = hasFold(offset, end);
-        if (!folds && !inWindows(windows, offset, end)) {
+        if (!hasChrome(offset, end)) {
             return;
         }
         parts.push(blockFingerprintPart(node, offset, folded, enabled, enabled && Boolean(ranges.get(offset))));
@@ -436,7 +452,7 @@ export function buildHeadingFoldDecorations(
     const collapsedSections: { pos: number; node: any; range: HeadingFoldRange }[] = [];
     const ranges = cachedFoldRanges(doc);
     const foldCtx = { folded, enabled };
-    const hasFold = foldCursor(folded, enabled);
+    const hasChrome = chromeCursor(folded, enabled, windows);
 
     // Every top-level block is visited, window or not; the window decides
     // what is emitted. Counted beside the fingerprint's pass so a transaction
@@ -445,10 +461,10 @@ export function buildHeadingFoldDecorations(
     doc.forEach((node: any, offset: number) => {
         const end = offset + node.nodeSize;
         // Out-of-window blocks get no gutter chrome (MAR-215). Blocks that own
-        // a fold entry are never skipped — see foldCursor — and the
+        // a fold entry are never skipped — see chromeCursor — and the
         // content-hiding pass below stays document-wide regardless, so a
         // collapsed section off screen keeps hiding its body.
-        if (!hasFold(offset, end) && !inWindows(windows, offset, end)) {
+        if (!hasChrome(offset, end)) {
             return;
         }
         const section = blockChrome(node, offset, decorations, folded, enabled, ranges);
