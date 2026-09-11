@@ -66,6 +66,7 @@ import { findingsAt } from "./proofread";
 import { requestIdle } from "../utils/idle";
 import { changeTouchesTextblock } from "../utils/textblockEdit";
 import { countWork } from "../perf";
+import { replaceKeepingMarks } from "../utils/insertKeepingMarks";
 import { t } from "../i18n";
 import { isReadOnly } from "../readOnly";
 import "./calcStale.css";
@@ -261,7 +262,7 @@ function cueMessage(cue: CalcCueSpec["cue"]): string {
 
 /** Replace a stale result with the freshly computed value. */
 export function updateCueResult(view: EditorView, from: number, to: number, newValue: string): void {
-    view.dispatch(view.state.tr.insertText(newValue, from, to).scrollIntoView());
+    replaceKeepingMarks(view, from, to, newValue);
     refreshCalcCues(view);
 }
 

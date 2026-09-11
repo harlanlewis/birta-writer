@@ -41,7 +41,13 @@ const schema = new Schema({
         text: { group: "inline" },
     },
     marks: {
-        link: { attrs: { href: { default: "" }, title: { default: null } } },
+        // `inclusive: false` is not decoration here, it is what production has
+        // (plugins/linkBoundary.ts), and it is the whole difference between a
+        // replace that keeps a link and one that silently destroys it. A plain
+        // `link` declared here passes every replace test in this file while the
+        // real editor drops the mark, because `marksAcross` only sheds a
+        // non-inclusive one (MAR-453).
+        link: { attrs: { href: { default: "" }, title: { default: null } }, inclusive: false },
     },
 });
 
@@ -1097,6 +1103,45 @@ describe("initFindBar replace", () => {
         click(btnReplace);
         expect(docText()).toBe("baz bar foo");
         expect(count.textContent).toBe("1/1");
+    });
+
+    it("replacing the whole of a link's text should keep the link", () => {
+        // Replacing a whole linked word is an ordinary thing to do, and the
+        // range then ends exactly at the link's end boundary, which is where a
+        // plain insertText sheds the mark and leaves the user's link as bare
+        // text (MAR-453). Asserting the resulting TEXT alone passes while that
+        // happens, so read the mark.
+        const { findBar, replaceInput, btnReplace, getState } = setup(
+            mkDoc(p("see ", linked("docs", "https://example.com/docs"))),
+        );
+        findBar.open("docs", { showReplace: true });
+        replaceInput.value = "guide";
+        click(btnReplace);
+
+        const para = getState().doc.firstChild as PmNode;
+        const replaced = para.child(1);
+        expect(replaced.text).toBe("guide");
+        const mark = replaced.marks.find((m: Mark) => m.type.name === "link");
+        expect(mark?.attrs["href"]).toBe("https://example.com/docs");
+    });
+
+    it("replace all over several whole links should keep every link", () => {
+        const { findBar, replaceInput, btnReplaceAll, getState } = setup(
+            mkDoc(p(linked("docs", "http://a/1"), " and ", linked("docs", "http://b/2"))),
+        );
+        findBar.open("docs", { showReplace: true });
+        replaceInput.value = "guide";
+        click(btnReplaceAll);
+
+        const para = getState().doc.firstChild as PmNode;
+        const hrefs: string[] = [];
+        para.forEach((child: PmNode) => {
+            const m = child.marks.find((mk: Mark) => mk.type.name === "link");
+            if (m) { hrefs.push(`${child.text}:${m.attrs["href"]}`); }
+        });
+        // Both, not just the first: stored marks are nulled per step, so a
+        // batch that set them once would mark only one of these.
+        expect(hrefs).toEqual(["guide:http://a/1", "guide:http://b/2"]);
     });
 
     it("replacement text containing the query should not be matched again", () => {

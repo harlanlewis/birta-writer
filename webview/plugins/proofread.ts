@@ -61,6 +61,7 @@ import { lintCacheGeneration, lookupLints, rememberLints } from "../proofread/li
 import { hideLintPopup, showFindingsPopup, type PopupButton, type PopupFinding } from "../proofread/popup";
 import { notifyLintBlocks } from "../messaging";
 import { requestIdle } from "../utils/idle";
+import { insertTextKeepingMarks } from "../utils/insertKeepingMarks";
 import { clearMeasures, countWork, mark, measure, measureSpan } from "../perf";
 import { t } from "../i18n";
 
@@ -785,9 +786,15 @@ function decorationAt(
         : null;
 }
 
-/** Replace the flagged span with `text`. */
+/**
+ * Replace the flagged span with `text`, keeping the marks the span carried. A
+ * flagged word is ordinary prose wherever it sits, so it can be the whole of a
+ * link's text or of a code span, and a plain `insertText` over that range would
+ * write the correction unmarked and destroy the construct (utils/
+ * insertKeepingMarks.ts).
+ */
 function replaceRange(view: EditorView, from: number, to: number, text: string): void {
-    view.dispatch(view.state.tr.insertText(text, from, to));
+    view.dispatch(insertTextKeepingMarks(view.state.tr, text, from, to));
 }
 
 /**
