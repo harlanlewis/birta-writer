@@ -71,7 +71,7 @@ export function computeFoldAnchors(doc: any, folded: ReadonlySet<number>): FoldA
         // Headings anchored by slug above; everything else that currently
         // hides something anchors by path — asked of the model rather than a
         // second kind list, so a widened grammar persists without an edit here.
-        if (!isCallout && (isHeadingNode(node) || foldHiddenRange(doc, pos) === null)) {
+        if (!isCallout && (isHeadingNode(node) || foldHiddenRange(doc, pos, node) === null)) {
             continue;
         }
         const $pos = doc.resolve(pos);
@@ -139,7 +139,7 @@ export function resolveFoldAnchors(doc: any, anchors: FoldAnchors): Set<number> 
     }
     for (const encoded of anchors.blocks) {
         const hit = resolveChildPath(doc, encoded);
-        if (hit && !isHeadingNode(hit.node) && foldHiddenRange(doc, hit.pos) !== null) {
+        if (hit && !isHeadingNode(hit.node) && foldHiddenRange(doc, hit.pos, hit.node) !== null) {
             folded.add(hit.pos);
         }
     }

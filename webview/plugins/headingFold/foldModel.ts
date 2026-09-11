@@ -400,8 +400,14 @@ export function foldedSectionEnd(state: EditorState, blockPos: number): number |
  * needs to reason about invisible content — drop guards, reveal-on-navigate,
  * the caret skip-over — derives from this one map.
  */
-export function foldHiddenRange(doc: any, pos: number): HeadingFoldRange | null {
-    const node = doc.nodeAt(pos);
+export function foldHiddenRange(doc: any, pos: number, known?: any): HeadingFoldRange | null {
+    // `known` is the node AT `pos`, passed by a caller that already holds it.
+    // `doc.nodeAt` re-derives it by scanning the fragment, which is linear in
+    // the top-level block count, so a walk that asks per node pays that scan
+    // once per node: on a few thousand blocks that is the whole cost of the
+    // walk. Passing a node from anywhere but `pos` is a caller bug, and the
+    // answer would be silently wrong rather than refused.
+    const node = known ?? doc.nodeAt(pos);
     if (isHeadingNode(node)) {
         // Only top-level headings own sections; the ranges map is keyed by
         // top-level offsets, so a nested heading simply misses.
@@ -614,7 +620,7 @@ export function allFoldablePositions(doc: any): number[] {
         }
     }
     doc.descendants((node: any, pos: number) => {
-        if (!isHeadingNode(node) && foldHiddenRange(doc, pos) !== null) {
+        if (!isHeadingNode(node) && foldHiddenRange(doc, pos, node) !== null) {
             positions.push(pos);
         }
         return true;
