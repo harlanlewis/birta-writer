@@ -28,7 +28,7 @@
 import { Decoration, DecorationSet, Plugin, PluginKey } from "../pm";
 import type { EditorState, EditorView, Node as ProseNode } from "../pm";
 import { $prose } from "@milkdown/utils";
-import { incrementalScanNotes, scanNotes, type NoteItem } from "../notes/scan";
+import { cachedScanNotes, incrementalScanNotes, type NoteItem } from "../notes/scan";
 import { notifySetNoteHighlight } from "../messaging";
 import { requestIdle } from "../utils/idle";
 import "./noteMarkers.css";
@@ -156,7 +156,7 @@ export const noteMarkersPlugin = $prose(() =>
                 const markers = customMarkers();
                 const items = (scannedDoc
                     && incrementalScanNotes(scannedDoc, scannedItems, doc, markers))
-                    || scanNotes(doc, markers);
+                    || cachedScanNotes(doc, markers);
                 scannedDoc = doc;
                 scannedItems = items;
                 const set = decorationsFor(doc, items);

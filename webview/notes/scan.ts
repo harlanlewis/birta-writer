@@ -257,6 +257,43 @@ export function scanNotes(doc: ProseNode, customMarkers: readonly string[] = [],
 }
 
 /**
+ * `scanNotes` over a WHOLE document, memoized on the document and the marker
+ * set. ProseMirror documents are immutable, so the reference is a perfect
+ * cache key; the custom markers are a setting that changes under an unchanged
+ * document, so they are part of it.
+ *
+ * Two independent readers ask the same document for the same answer: the
+ * in-text highlight plugin, and the review panel, which asks on every
+ * tab-visibility recompute whether or not the Notes tab is the one showing.
+ * Each keeps its own incremental cache, so an edit that defeats the
+ * incremental path (a paste, a block split) made both fall back and the
+ * document was walked twice for one answer (MAR-438).
+ *
+ * Only the whole-document form is memoized. `scanNotes`'s `from` overload
+ * returns a partial answer, and storing one here would hand the next reader a
+ * document's worth of notes with the head missing.
+ *
+ * The array is shared, so no caller may mutate what it gets back. None does:
+ * `scanNotes` sorts its own array before returning it, and every incremental
+ * path rebuilds through filter/map/spread.
+ */
+const notesByDoc = new WeakMap<ProseNode, { key: string; items: NoteItem[] }>();
+
+export function cachedScanNotes(doc: ProseNode, customMarkers: readonly string[] = []): NoteItem[] {
+    // NUL-joined: a marker is a literal string the user typed into a setting,
+    // so any printable separator could appear inside one and let two different
+    // marker sets share a key.
+    const key = customMarkers.join("\u0000");
+    const hit = notesByDoc.get(doc);
+    if (hit && hit.key === key) {
+        return hit.items;
+    }
+    const items = scanNotes(doc, customMarkers);
+    notesByDoc.set(doc, { key, items });
+    return items;
+}
+
+/**
  * The per-keystroke fast path: given the previous (doc, items) and the next doc,
  * reuse the cached items when the change is confined to one textblock — re-scan
  * just that block and shift the trailing anchors by the edit's delta — instead
