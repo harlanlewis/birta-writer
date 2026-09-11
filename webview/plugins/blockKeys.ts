@@ -52,6 +52,7 @@ import {
     moveBlockAt,
 } from "../components/blockMenu";
 import { moveBlocks } from "../editing/moveBlocks";
+import { countWork } from "../perf";
 import { BlockRangeSelection } from "./blockRange";
 import {
     foldHiddenRange,
@@ -92,6 +93,15 @@ export function unitBoundaries(state: EditorState): { from: number; to: number }
         units.push({ from: offset, to: end });
         skipUntil = end;
     });
+    // Two amounts, for the reason `fold-cover` carries two: `blocks` is what
+    // the walk visits, `units` what the caller then iterates, and a collapsed
+    // section makes them diverge. Reporting only the latter would understate
+    // the walk on exactly the documents it is being watched for. Counted
+    // because it is document-proportional on a gesture that changes one
+    // block; no keystroke reaches it, so the nightly burst never stamps it
+    // and `heavy-budget.json` holds no ceiling. `pnpm perf:gesture` drives
+    // the gestures that do (MAR-438).
+    countWork("unit-boundaries", { blocks: state.doc.childCount, units: units.length });
     return units;
 }
 
