@@ -309,12 +309,15 @@ async function endWindow(page) {
 }
 
 /**
- * The drag's handle: the gutter marker of the paragraph in the middle of the
- * document, revealed by hovering the paragraph, with the outline closed if it
- * is docked over the gutter. Returns null when no handle is under the pointer,
- * which the caller treats as a gesture it cannot read rather than a fast one.
+ * The gutter marker of the paragraph in the middle of the document, revealed
+ * by hovering the paragraph, with the outline closed if it is docked over the
+ * gutter. Returns null when no handle is under the pointer, which the caller
+ * treats as a gesture it cannot read rather than a fast one.
+ *
+ * Two gestures start here, because the marker is one control carrying two
+ * meanings: a press and a move drags the block, a click opens its menu.
  */
-async function dragHandle(page) {
+async function gutterHandle(page) {
     // An open panel hides its reveal tab and shows a hide button in its
     // header instead, so the close goes through whichever is on screen.
     const opened = await page.evaluate(() => document.body.classList.contains("toc-open"));
@@ -363,6 +366,7 @@ const GESTURES = [
     { name: "select-all doc", keyboard: true },
     { name: "escape collapse", keyboard: true },
     { name: "paste list", keyboard: false },
+    { name: "block menu open", keyboard: false },
     { name: "drag start", keyboard: false },
     { name: "drag move", keyboard: false },
     { name: "drop", keyboard: false },
@@ -585,9 +589,39 @@ async function measure(browserType, url) {
             await page.waitForTimeout(400);
         }
 
+        // Opening the block menu: a click on the same marker the drag grabs.
+        // The one gesture here that applies NO transaction, so its cost lands
+        // in `longtask` and `stall` and its `dispatch` reads 0 by construction
+        // rather than by being fast (MAR-439).
+        for (let i = 0; i < reps; i++) {
+            if (!wanted("block menu open")) break;
+            const handle = await gutterHandle(page);
+            if (!handle) {
+                skipped.push("block menu open: no gutter handle was under the pointer, so no menu was opened");
+                break;
+            }
+            await run("block menu open", () => page.mouse.click(handle.x, handle.y));
+            // Rows, not the container: `openBlockMenu` mounts its shell before
+            // it builds the Turn into audit, so an empty `.block-menu` is a
+            // menu whose expensive half never ran.
+            const rows = await page.evaluate(() => document.querySelectorAll(".block-menu .block-menu-item").length);
+            if (rows === 0) {
+                skipped.push(`block menu open: the menu has ${rows} rows, so the click did not open it and nothing was measured`);
+                readings["block menu open"].pop();
+                break;
+            }
+            await page.keyboard.press("Escape");
+            await page.waitForTimeout(400);
+            const stillOpen = await page.evaluate(() => document.querySelectorAll(".block-menu").length);
+            if (stillOpen) {
+                skipped.push("block menu open: the menu outlived its Escape, so later reps would have measured a reopen");
+                break;
+            }
+        }
+
         for (let i = 0; i < reps; i++) {
             if (!["drag start", "drag move", "drop"].some(wanted)) break;
-            const handle = await dragHandle(page);
+            const handle = await gutterHandle(page);
             if (!handle) {
                 skipped.push("drag: no gutter handle was under the pointer, so no drag was read");
                 break;
