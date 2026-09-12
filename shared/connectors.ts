@@ -55,6 +55,25 @@ export interface ConnectorSpec {
      */
     builtinProviderId?: string;
     /**
+     * The registered public client, for `auth: "oauth-pkce"` only.
+     *
+     * None of this is a credential. A PKCE public client has no secret by
+     * construction, which is the property that lets the flow ship inside a
+     * distributed extension at all, and the client id is published in every
+     * authorize URL the browser shows. So it belongs in this file, which the
+     * webview imports, on the same terms as `apiHosts`: public facts about a
+     * provider, stated once, where the confused-deputy guard can read them.
+     *
+     * The two URLs are separate fields rather than one host because providers
+     * routinely split them, and both are pinned: `oauthHosts.test.ts` holds
+     * each to https and to a host this connector already names.
+     */
+    oauth?: {
+        readonly clientId: string;
+        readonly authorizeUrl: string;
+        readonly tokenUrl: string;
+    };
+    /**
      * The scopes requested by an ordinary connect. Read-only and minimal
      * (NETWORK_POSTURE invariant 9), and for GitHub that means EMPTY: a
      * scopeless OAuth token reads public repository, user and gist data and

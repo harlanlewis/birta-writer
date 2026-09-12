@@ -116,18 +116,40 @@ async function main() {
         return;
     }
 
+    // Deliberately a plain team query with the matching done here, rather than
+    // a server-side filter on the marker.
+    //
+    // The first cut filtered on `description: { contains: $marker }` and on
+    // `state: { type: { nin: [...] } }`. Neither was verified against the
+    // schema, and an alert is the worst place to discover a filter does not
+    // exist: a query that errors means no issue is filed on the one night it
+    // was needed, and the failure lands inside the catch that reports "could
+    // not raise the alert" rather than anywhere a schema problem is legible.
+    //
+    // `issues(filter: { team: { key: { eq } } })` is the shape Linear's own
+    // documentation uses everywhere, so it is the one assumption left, and the
+    // marker and the open-ness are decided from fields every issue carries.
+    //
+    // `first: 250` is Linear's page maximum. A team with more than 250 issues
+    // could hide an existing alert past the page boundary and file a second
+    // one, which is a duplicate rather than a silence, and the wrong way round
+    // to fail.
     const found = await graphql(
-        `query($key: String!, $marker: String!) {
-            issues(filter: {
-                team: { key: { eq: $key } }
-                state: { type: { nin: ["completed", "canceled"] } }
-                description: { contains: $marker }
-            }) { nodes { id identifier url } }
+        `query($key: String!) {
+            issues(filter: { team: { key: { eq: $key } } }, first: 250) {
+                nodes { id identifier url description state { type } }
+            }
         }`,
-        { key: TEAM_KEY, marker: MARKER },
+        { key: TEAM_KEY },
     );
 
-    const open = found.issues.nodes[0];
+    const open = found.issues.nodes.find(
+        (n) =>
+            typeof n.description === "string" &&
+            n.description.includes(MARKER) &&
+            n.state?.type !== "completed" &&
+            n.state?.type !== "canceled",
+    );
     if (open) {
         await graphql(
             `mutation($issueId: String!, $body: String!) {
