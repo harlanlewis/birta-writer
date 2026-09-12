@@ -342,9 +342,34 @@ describe("computeZones with a host that lacks a capability (MAR-373)", () => {
             expect(none.has("styleCheck")).toBe(true);
             expect(none.has("settings")).toBe(true);
             expect(none.has("bold")).toBe(true);
-            // Absent means all.
+            // Absent means all, minus the items an arrangement withdraws. `toc`
+            // is one: the default profile leaves the control on the panel, so
+            // the bar does not carry it. See the arrangement pair below.
             window.__i18n = { translations: {}, isMac: true };
-            expect(hostAvailableItems().size).toBe(TOOLBAR_ITEM_IDS.length);
+            expect(hostAvailableItems().size).toBe(TOOLBAR_ITEM_IDS.length - 1);
+        } finally {
+            window.__i18n = prior;
+        }
+    });
+
+    it("the toc item should follow tocToggleInBar, so one surface never draws two toggles", () => {
+        // The pair is the point. A host with a sidebar has two possible holders
+        // for one command, the bar's button and the panel's own reveal tab, and
+        // the arrangement says which holds it. Asserting only the absent half
+        // would pass against an item that is never offered at all.
+        const prior = window.__i18n;
+        try {
+            const withCapability = (arrangements: string[]) => ({
+                translations: {},
+                isMac: true,
+                host: { capabilities: ["toc"], arrangements },
+            });
+
+            window.__i18n = withCapability([]) as typeof window.__i18n;
+            expect(hostAvailableItems().has("toc")).toBe(false);
+
+            window.__i18n = withCapability(["tocToggleInBar"]) as typeof window.__i18n;
+            expect(hostAvailableItems().has("toc")).toBe(true);
         } finally {
             window.__i18n = prior;
         }

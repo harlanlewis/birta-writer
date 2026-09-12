@@ -231,15 +231,28 @@ export const ITEM_HOST_CAPABILITY: Record<ToolbarItemId, HostCapability | null> 
 /**
  * The items the host can carry: everything whose capability it declares.
  *
- * `fontPreset` has a second reason to be absent, and it is a layout choice
- * rather than a capability: a surface that puts the typography rows inside the
- * gear menu has no use for an item that would open an empty menu beside it.
- * The CONTROL still exists either way, so the palette and slash-menu commands
- * are unaffected; only the item is.
+ * Two items have a second reason to be absent, and both are layout choices
+ * rather than capabilities. The CONTROL exists either way in both cases, so the
+ * palette and slash-menu commands are unaffected; only the bar item is.
+ *
+ * `fontPreset`: a surface that puts the typography rows inside the gear menu has
+ * no use for an item that would open an empty menu beside it.
+ *
+ * `toc`: the bar's button and the panel's own reveal tab are two routes to one
+ * command, and a surface takes exactly one of them. `tocToggleInBar` is the
+ * declaration that the bar holds it, so the item is present under that
+ * arrangement and absent without it, where the panel shows itself.
+ *
+ * The arrangement is load-bearing here and not decoration: gate this on the
+ * `toc` capability alone and every host with a sidebar draws both controls, a
+ * bar button and the panel's tab below it doing the same thing a few pixels
+ * apart. The panel half already reads the arrangement (`components/toc/`), so
+ * the bar reading it too is what keeps the pair in step.
  */
 export function hostAvailableItems(): ReadonlySet<ToolbarItemId> {
     return new Set(TOOLBAR_ITEM_IDS.filter((id) => {
         if (id === "fontPreset" && hostArranges("typographyInGearMenu")) { return false; }
+        if (id === "toc" && !hostArranges("tocToggleInBar")) { return false; }
         const cap = ITEM_HOST_CAPABILITY[id];
         return cap === null || hostHas(cap);
     }));

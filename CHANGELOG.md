@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- One control for the table of contents instead of two. The toolbar carried a panel button and the sidebar carried its own, a few pixels apart, both running the same command. The sidebar's is the one that stays: click it to show and hide the panel, and hover it while the panel is shut for the flyout. The Toggle Table of Contents command still runs from the command palette and the slash menu, so the only thing that moves is where you click for it. If you had positioned the toolbar button through Customize Toolbar, that slot is gone with the button.
+
 ---
 
 ## [2026.912.0] - 2026, September 12

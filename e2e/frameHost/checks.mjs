@@ -235,8 +235,15 @@ export async function run({ page, check, baseUrl, browserName }) {
     // claim rather than only a shape one.
     check("the withdrawn items are the ones that name a host: an image store and a text editor",
         ["image", "viewSource"].every((id) => withdrawnItems.includes(id)), JSON.stringify(withdrawnItems));
+    // The PANEL follows the capability, which is what this claims. The bar's
+    // toc ITEM deliberately does not appear here: it follows the
+    // `tocToggleInBar` arrangement rather than the capability, so it is absent
+    // under both of these profiles and asserting its withdrawal would
+    // discriminate nothing, which is the trap the `readOnly` note above
+    // describes. `toolbarRegistry.test.ts` holds the item against the
+    // arrangement, with both halves of the pair.
     check("the sidebar is the host's too, and goes with them",
-        absent.toc && !empty.toc && withdrawnItems.includes("toc"),
+        absent.toc && !empty.toc,
         JSON.stringify({ emptyToc: empty.toc, absentToc: absent.toc }));
     check("the withdrawn gear rows are VS Code's settings, keybindings and release notes",
         withdrawnRows.length === 3 && withdrawnRows.every((r) => /Settings|Keyboard Shortcuts|What's New/.test(r)),

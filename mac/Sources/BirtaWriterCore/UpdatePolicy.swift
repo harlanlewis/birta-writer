@@ -278,13 +278,19 @@ public enum UpdatePolicy {
             : common
     }
 
-    /// The offer's title.
+    /// The offer's title, for the sheet nobody asked for.
     ///
-    /// Through `plain`, like every other sentence in this type. This and
-    /// `checkReport`'s `.found` title are one sentence about one fact, raised
-    /// by two surfaces that a person can meet in either order, so spelling
-    /// the version two ways here is the reader's problem rather than the
-    /// caller's.
+    /// Through `plain`, like every other sentence in this type.
+    ///
+    /// It names the app and the version where `checkReport`'s `.found` title
+    /// names neither, and the asymmetry is the point rather than a drift. This
+    /// one arrives unbidden, so it has to say what it is before it can ask for
+    /// anything; that one is the answer to a question somebody just asked in a
+    /// window they opened, where naming the app back to them is filler and the
+    /// version is a subtraction `releaseGap` has already done.
+    ///
+    /// If these are ever made to match, the direction is this one getting
+    /// shorter rather than that one getting a version back.
     public static func title(appName: String, tag: String) -> String {
         "\(appName) \(plain(tag)) is available."
     }
@@ -341,9 +347,15 @@ public enum UpdatePolicy {
         public let buttons: [String]
     }
 
-    public static let installNowTitle = "Install Now"
-    public static let installOnQuitTitle = "Install on Next Launch"
-    public static let notNowTitle = "Not Now"
+    /// Sentence case, and the first one says what it does to the note.
+    ///
+    /// "Save and install now" rather than "Install now" because the save is the
+    /// part a person would otherwise have to be told about in the body, and a
+    /// button that names its own side effect is shorter than a sentence
+    /// explaining it.
+    public static let installNowTitle = "Save and install now"
+    public static let installOnQuitTitle = "Install on next launch"
+    public static let cancelTitle = "Cancel"
     public static let restartNowTitle = "Restart Now"
 
     /// The sheet for `answer`, worded for the person who asked.
@@ -356,21 +368,19 @@ public enum UpdatePolicy {
     public static func checkReport(_ answer: CheckAnswer, appName: String,
                                    current: String) -> CheckReport {
         switch answer {
-        case let .found(latest, staged):
-            let arrived = staged
-                ? "It has already been downloaded and checked."
-                : "Installing it downloads it first and checks it against its published checksum."
-            let ways = "\(installNowTitle) writes your note, restarts \(appName) as the new version "
-                + "and reopens this note. \(installOnQuitTitle) puts it in after you quit, so the "
-                + "next time you open \(appName) it is the new one."
-            let gap = newerBy(current: current, latest: latest).map { $0 + " " } ?? ""
-            // Its own title rather than the unasked offer's, so the version
-            // is spelled the way the About window and the sentence under it
-            // spell it, without the tag's `v`.
+        case let .found(latest, _):
+            // One sentence, and it answers the only question the person who
+            // pressed Check Now has: is there something newer, and by how much.
+            //
+            // What used to be here also explained the checksum, what each
+            // button does to the note, and what happens at the next launch, in
+            // a sheet whose buttons already say those things. Four sentences in
+            // a modal is a wall somebody dismisses rather than reads, and the
+            // two facts worth keeping are carried by the date and the buttons.
             return CheckReport(
-                title: "\(appName) \(plain(latest)) is available.",
-                detail: gap + arrived + " " + ways,
-                buttons: [installNowTitle, installOnQuitTitle, notNowTitle])
+                title: "Update available",
+                detail: releaseGap(current: current, latest: latest),
+                buttons: [installNowTitle, installOnQuitTitle, cancelTitle])
         case .upToDate:
             return CheckReport(
                 title: "\(appName) is up to date.",
@@ -406,33 +416,46 @@ public enum UpdatePolicy {
         }
     }
 
-    /// How far behind `current` is, as a sentence, or nil when either version
-    /// carries no date.
+    /// The whole sentence under the offer: when the newest release was cut, and
+    /// how far ahead of the installed copy it is.
     ///
     /// "Newer" is answered in days rather than in releases, because the days
     /// are in the two versions and the releases between them are not: the
     /// feed answers with the newest release alone, and counting the rest
     /// would be a second request spent on a number nobody acts on. The day is
     /// what tells somebody whether they are a night behind or a month.
-    public static func newerBy(current: String, latest: String) -> String? {
+    ///
+    /// Neither version number appears. The person pressing Check Now is asking
+    /// whether to take the update, and a CalVer pair answers that worse than a
+    /// date and a gap do: `2026.908.0` against `2026.912.0` is a subtraction
+    /// they have to perform, and this sentence has performed it.
+    ///
+    /// The year is always spelled, unlike the two-sentence form this replaced,
+    /// which dropped it within one year. With only one date left there is no
+    /// second date for it to be relative to, so an unqualified "Sep 12" would
+    /// be a date the reader has to place.
+    ///
+    /// Never nil: a version without a parseable date still has to say
+    /// something, and the something is the fact the check established.
+    public static func releaseGap(current: String, latest: String) -> String {
         guard let from = ReleaseFeed.releaseDay(of: current),
-              let to = ReleaseFeed.releaseDay(of: latest) else { return nil }
+              let to = ReleaseFeed.releaseDay(of: latest) else {
+            return "A newer release is available."
+        }
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(identifier: "UTC")!
         let days = calendar.dateComponents([.day], from: from, to: to).day ?? 0
-        let sameYear = calendar.component(.year, from: from) == calendar.component(.year, from: to)
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.timeZone = calendar.timeZone
-        formatter.dateFormat = sameYear ? "MMMM d" : "MMMM d, yyyy"
+        formatter.dateFormat = "MMM d, yyyy"
         let gap: String
         switch days {
-        case ..<1: gap = "cut the same day"
-        case 1: gap = "a day newer"
-        default: gap = "\(days) days newer"
+        case ..<1: gap = "the same day as"
+        case 1: gap = "a day newer than"
+        default: gap = "\(days) days newer than"
         }
-        return "You have \(plain(current)), from \(formatter.string(from: from)). "
-            + "\(plain(latest)) is from \(formatter.string(from: to)), \(gap)."
+        return "The latest release was \(formatter.string(from: to)), \(gap) your current version."
     }
 
     /// What the panel says once a swap is armed to run after the next quit.

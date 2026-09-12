@@ -325,48 +325,71 @@ final class UpdatePolicyTests: XCTestCase {
 
     func testHowMuchNewerShouldBeReadOutOfTheTwoVersionsThemselves() {
         XCTAssertEqual(
-            UpdatePolicy.newerBy(current: "2026.826.0", latest: "v2026.905.0"),
-            "You have 2026.826.0, from August 26. 2026.905.0 is from September 5, 10 days newer.")
+            UpdatePolicy.releaseGap(current: "2026.826.0", latest: "v2026.905.0"),
+            "The latest release was Sep 5, 2026, 10 days newer than your current version.")
         XCTAssertEqual(
-            UpdatePolicy.newerBy(current: "2026.904.0", latest: "v2026.905.0"),
-            "You have 2026.904.0, from September 4. 2026.905.0 is from September 5, a day newer.")
+            UpdatePolicy.releaseGap(current: "2026.904.0", latest: "v2026.905.0"),
+            "The latest release was Sep 5, 2026, a day newer than your current version.")
         // A second release the same day is a patch, and "newer by zero days"
         // is a sentence nobody says.
         XCTAssertEqual(
-            UpdatePolicy.newerBy(current: "2026.905.0", latest: "v2026.905.1"),
-            "You have 2026.905.0, from September 5. 2026.905.1 is from September 5, cut the same day.")
+            UpdatePolicy.releaseGap(current: "2026.905.0", latest: "v2026.905.1"),
+            "The latest release was Sep 5, 2026, the same day as your current version.")
     }
 
-    func testAGapAcrossAYearShouldNameTheYears() {
+    func testTheYearShouldBeSpelledEvenWithinOneYear() {
+        // The two-sentence form this replaced dropped the year when both dates
+        // fell in it, because the other date supplied it. One date has nothing
+        // to be relative to, so an unqualified "Sep 5" is a date the reader has
+        // to place. Both arms here, so a reintroduced same-year shortcut fails.
+        XCTAssertTrue(
+            UpdatePolicy.releaseGap(current: "2026.826.0", latest: "v2026.905.0")
+                .contains("Sep 5, 2026"))
         XCTAssertEqual(
-            UpdatePolicy.newerBy(current: "2025.1230.0", latest: "v2026.102.0"),
-            "You have 2025.1230.0, from December 30, 2025. 2026.102.0 is from January 2, 2026, 3 days newer.")
+            UpdatePolicy.releaseGap(current: "2025.1230.0", latest: "v2026.102.0"),
+            "The latest release was Jan 2, 2026, 3 days newer than your current version.")
     }
 
-    func testAVersionWithNoDateInItShouldLeaveTheGapUnsaid() {
-        // A checkout's version carries no date, and a sentence built on one
-        // would be a sentence about nothing.
-        XCTAssertNil(UpdatePolicy.newerBy(current: "0.0.0", latest: "v2026.905.0"))
-        XCTAssertNil(UpdatePolicy.newerBy(current: "2026.905.0", latest: "later"))
+    func testAVersionWithNoDateInItShouldStillSayWhatTheCheckFound() {
+        // A checkout's version carries no date, so the gap cannot be computed.
+        // The sentence still has to carry the fact the check established, and
+        // saying nothing would leave the sheet with a title and a blank body.
+        XCTAssertEqual(
+            UpdatePolicy.releaseGap(current: "0.0.0", latest: "v2026.905.0"),
+            "A newer release is available.")
+        XCTAssertEqual(
+            UpdatePolicy.releaseGap(current: "2026.905.0", latest: "later"),
+            "A newer release is available.")
         let found = report(.found(latest: "v2026.905.0", staged: false), current: "0.0.0")
-        XCTAssertFalse(found.detail.contains("You have"))
+        XCTAssertEqual(found.detail, "A newer release is available.")
         XCTAssertFalse(found.detail.hasPrefix(" "), "the gap left a leading space behind")
     }
 
-    func testAFindShouldSayHowFarBehindWhetherTheBytesAreHereAndWhatEachButtonDoes() {
+    func testAFindShouldSayWhenTheReleaseWasCutAndNothingElse() {
         let waiting = report(.found(latest: "v2026.905.0", staged: false))
-        XCTAssertEqual(waiting.title, "Birta Writer 2026.905.0 is available.")
-        XCTAssertFalse(waiting.detail.contains("v2026"), "the body and the title spell the version one way")
-        XCTAssertTrue(waiting.detail.contains("10 days newer"))
-        XCTAssertTrue(waiting.detail.contains("downloads it first"))
-        XCTAssertTrue(waiting.detail.contains(UpdatePolicy.installNowTitle))
-        XCTAssertTrue(waiting.detail.contains(UpdatePolicy.installOnQuitTitle))
+        XCTAssertEqual(waiting.title, "Update available")
+        XCTAssertEqual(waiting.detail,
+                       "The latest release was Sep 5, 2026, 10 days newer than your current version.")
+        // Neither version number belongs in the body: the sheet answers whether
+        // to take the update, and the date and the gap answer it.
+        XCTAssertFalse(waiting.detail.contains("2026.905.0"))
+        XCTAssertFalse(waiting.detail.contains("2026.826.0"))
+        // The buttons say what they do, so the body does not repeat them.
+        XCTAssertFalse(waiting.detail.contains(UpdatePolicy.installNowTitle))
+        XCTAssertFalse(waiting.detail.contains(UpdatePolicy.installOnQuitTitle))
         XCTAssertEqual(waiting.buttons, [UpdatePolicy.installNowTitle,
                                          UpdatePolicy.installOnQuitTitle,
-                                         UpdatePolicy.notNowTitle])
+                                         UpdatePolicy.cancelTitle])
+    }
+
+    func testWhetherTheBytesAreAlreadyHereShouldNotChangeTheWords() {
+        // `staged` still decides what the buttons DO, and it used to add a
+        // sentence about the checksum. That sentence answered a question the
+        // person pressing Check Now did not ask, so the two arms now read the
+        // same and the difference stays where it is acted on.
+        let waiting = report(.found(latest: "v2026.905.0", staged: false))
         let arrived = report(.found(latest: "v2026.905.0", staged: true))
-        XCTAssertTrue(arrived.detail.contains("already been downloaded"))
-        XCTAssertFalse(arrived.detail.contains("downloads it first"))
+        XCTAssertEqual(waiting, arrived)
     }
 
     func testEveryOutcomeShouldBeASentenceWithAWayOut() {
@@ -464,8 +487,8 @@ final class UpdatePolicyTests: XCTestCase {
                       UpdatePolicy.installedNotice(appName: app, tag: Self.sweptTag)))
         swept.append(("installOnQuitNotice",
                       UpdatePolicy.installOnQuitNotice(appName: app, tag: Self.sweptTag)))
-        swept.append(("newerBy",
-                      UpdatePolicy.newerBy(current: "v2026.904.0", latest: Self.sweptTag) ?? ""))
+        swept.append(("releaseGap",
+                      UpdatePolicy.releaseGap(current: "v2026.904.0", latest: Self.sweptTag)))
         swept.append(("downloadingNotice", UpdatePolicy.downloadingNotice(tag: Self.sweptTag)))
         swept.append(("installingNotice", UpdatePolicy.installingNotice(tag: Self.sweptTag)))
 
@@ -476,13 +499,21 @@ final class UpdatePolicyTests: XCTestCase {
 
         // A sweep over sentences that stopped naming a version would pass by
         // saying nothing, so what could not be reached is NAMED rather than
-        // counted away. These four carry no version at all; a change that
-        // gives one of them a version takes this red rather than slipping
-        // past the check above.
+        // counted away. These carry no version at all; a change that gives one
+        // of them a version takes this red rather than slipping past the check
+        // above.
+        //
+        // `checkReport.found` and `releaseGap` joined the silent list when the
+        // offer stopped spelling versions at a person deciding whether to take
+        // an update, and answered with a date and a gap instead. They are here
+        // rather than removed from the sweep so that a version reappearing in
+        // either one is still caught.
         let silent = swept.filter { !$0.text.contains(Self.sweptVersion) }.map(\.surface).sorted()
         XCTAssertEqual(silent, ["checkReport.busy", "checkReport.couldNotInstall",
-                                "checkReport.notThisBuild", "checkReport.unreachable"])
-        XCTAssertEqual(swept.count - silent.count, 10,
+                                "checkReport.found", "checkReport.found",
+                                "checkReport.notThisBuild", "checkReport.unreachable",
+                                "releaseGap"])
+        XCTAssertEqual(swept.count - silent.count, 7,
                        "fewer sentences named a version than this sweep was written to cover")
     }
 
