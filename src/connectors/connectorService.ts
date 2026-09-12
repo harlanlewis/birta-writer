@@ -45,6 +45,7 @@ import {
 } from "../../shared/connectors";
 import { fetchConnectorCard } from "./fetchCard";
 import { githubCard } from "./github";
+import { linearCard } from "./linear";
 
 /** Secret key for one connector's record. Namespaced so nothing else collides. */
 function secretKey(id: ConnectorId): string {
@@ -74,6 +75,7 @@ interface ConnectorRecord {
 /** Per-card-shape response mappers, keyed by connector. */
 const CARD_BUILDERS: Record<ConnectorId, (match: EmbedMatch, body: unknown) => EmbedCardData | null> = {
     github: githubCard,
+    linear: linearCard,
 };
 
 export class ConnectorService {
@@ -218,7 +220,7 @@ export class ConnectorService {
         if (hit) {
             return hit;
         }
-        const pending = this.resolveUncached(match, request.connector, request.url).catch((e) => {
+        const pending = this.resolveUncached(match, request.connector, request.url, request.body).catch((e) => {
             reportError("resolveEmbedCard", e);
             return { state: "error", connector: request.connector } as EmbedCardResult;
         });
@@ -230,6 +232,7 @@ export class ConnectorService {
         match: EmbedMatch,
         id: ConnectorId,
         requestUrl: string,
+        requestBody?: unknown,
     ): Promise<EmbedCardResult> {
         const spec = CONNECTORS[id];
         const record = await this.readRecord(id);
@@ -248,7 +251,7 @@ export class ConnectorService {
             }
         }
 
-        const outcome = await fetchConnectorCard(spec, requestUrl, token);
+        const outcome = await fetchConnectorCard(spec, requestUrl, token, requestBody);
         if (outcome.state === "notFound") {
             // Not visible to whoever just asked. A broader grant may fix it —
             // GitHub answers 404 for a private repository precisely so an

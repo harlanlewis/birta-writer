@@ -66,6 +66,17 @@ export async function fetchConnectorCard(
     spec: ConnectorSpec,
     requestUrl: string,
     token: string | null,
+    /**
+     * A JSON body to POST. Absent means GET.
+     *
+     * Added for Linear, whose API is GraphQL and has no GET surface at all, so
+     * a card there is a query rather than a path. It changes the method and the
+     * content type and NOTHING else: the https check, the pinned-host check,
+     * the SSRF guard, the manual redirect, the timeout and the capped read all
+     * run exactly as before, which is why this stays one enforcement site
+     * rather than becoming two.
+     */
+    requestBody?: unknown,
 ): Promise<ConnectorFetchOutcome> {
     let parsed: URL;
     try {
@@ -92,8 +103,12 @@ export async function fetchConnectorCard(
             // separate status check for it — one that could not be told apart
             // from `!res.ok` would be untested code claiming to be a guard.
             redirect: "manual",
+            ...(requestBody === undefined
+                ? {}
+                : { method: "POST", body: JSON.stringify(requestBody) }),
             headers: {
                 accept: "application/json",
+                ...(requestBody === undefined ? {} : { "content-type": "application/json" }),
                 ...(token === null ? {} : { authorization: `Bearer ${token}` }),
                 "user-agent": "Birta-Writer/connector",
             },

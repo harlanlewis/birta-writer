@@ -16,10 +16,10 @@
  * string only ever SELECTS a connector, and every byte of the outgoing request
  * is rebuilt here from parts the recognizer already validated.
  */
-import { githubCardParts, type EmbedKind, type EmbedMatch } from "./embedProviders";
+import { githubCardParts, linearCardParts, type EmbedKind, type EmbedMatch } from "./embedProviders";
 
 /** The connectors this pass understands. Widen the union to add one. */
-export type ConnectorId = "github";
+export type ConnectorId = "github" | "linear";
 
 /**
  * How a connector obtains its credential. The strategy is a property of the
@@ -37,9 +37,8 @@ export type ConnectorId = "github";
  *    for providers whose OAuth demands a confidential client secret (which is
  *    unshippable inside a distributed extension) or a verification program.
  *
- * Only `builtin` has a live row today. The other two are named because the
- * seam is shaped for them, and a strategy with no provider behind it would be
- * a code path nothing has ever run.
+ * `token` has no live row: it is named because the seam is shaped for it, and
+ * a strategy with no provider behind it is a code path nothing has ever run.
  */
 export type ConnectorAuthKind = "builtin" | "oauth-pkce" | "token";
 
@@ -133,6 +132,29 @@ export const CONNECTORS: Record<ConnectorId, ConnectorSpec> = {
         apiHosts: ["api.github.com"],
         verifyUrl: "https://api.github.com/user",
     },
+    linear: {
+        id: "linear",
+        label: "Linear",
+        auth: "oauth-pkce",
+        oauth: {
+            // Registered 2026-09-12 as a public application. Not a secret: it
+            // is in every authorize URL the browser shows, and a PKCE public
+            // client has no secret to pair it with.
+            clientId: "c07c04224e8cf83638f63971153ca008",
+            authorizeUrl: "https://linear.app/oauth/authorize",
+            tokenUrl: "https://api.linear.app/oauth/token",
+        },
+        // `read` is Linear's whole read surface and its narrowest one: there is
+        // no per-resource read scope to ask for instead. No write scope is ever
+        // requested, which is what keeps invariant 5 (render-only) true at the
+        // grant rather than only in our code.
+        scopes: ["read"],
+        // Only the API host. `linear.app` carries the consent page and is
+        // opened in the browser rather than fetched, so it is deliberately not
+        // here: this list is what a CREDENTIAL may be sent to.
+        apiHosts: ["api.linear.app"],
+        verifyUrl: "https://api.linear.app/graphql",
+    },
 };
 
 /** Every connector id, for iteration (the connect/disconnect pickers). */
@@ -144,7 +166,9 @@ export const CONNECTOR_IDS: readonly ConnectorId[] = Object.keys(CONNECTORS) as 
  * cause a credential-bearing request, which is the point.
  */
 export function connectorForEmbedKind(kind: EmbedKind): ConnectorId | null {
-    return kind === "github" ? "github" : null;
+    if (kind === "github") { return "github"; }
+    if (kind === "linear") { return "linear"; }
+    return null;
 }
 
 /** GitHub owner/repo/ref segments, re-validated at the request-building site. */
@@ -173,6 +197,73 @@ export interface ConnectorApiRequest {
     connector: ConnectorId;
     /** Absolute https URL on one of the connector's pinned `apiHosts`. */
     url: string;
+    /**
+     * A JSON body to POST, for a provider with no GET surface.
+     *
+     * Absent means GET, which is what every REST provider uses and what this
+     * seam assumed until Linear. Linear's API is GraphQL and answers POST only,
+     * so a card there is a query rather than a path, and the variables carry
+     * the validated parts instead of the URL doing it.
+     *
+     * That difference matters to the confused-deputy guard rather than just to
+     * plumbing: with GET, the validated parts are interpolated into a path and
+     * `safeSegment` is what keeps them from escaping it. With a GraphQL query
+     * the parts travel as JSON variables, so they cannot escape into the
+     * request's shape at all, and the query string itself is a constant this
+     * module owns. Neither the document nor its URL can reach it.
+     */
+    body?: unknown;
+}
+
+/**
+ * The one GraphQL document this module will send, as a constant.
+ *
+ * A constant rather than a built string, and the distinction is the whole
+ * confused-deputy argument for the GraphQL path: nothing a document contains
+ * can change the query's shape, only the values bound to `$team` and
+ * `$number`. Those two are re-validated below.
+ *
+ * An issue is looked up by team key and number rather than by the `MAR-186`
+ * identifier as one string, because the identifier is what the URL carries and
+ * splitting it here is what lets both halves be checked.
+ */
+const LINEAR_ISSUE_QUERY =
+    "query BirtaIssue($team: String!, $number: Float!) {"
+    + " issues(filter: { team: { key: { eq: $team } }, number: { eq: $number } }, first: 1) {"
+    + " nodes { identifier title state { name } assignee { displayName } } } }";
+
+/** The issue key splits into a team key and a number: `MAR-186`. */
+const LINEAR_KEY_PARTS = /^([A-Za-z0-9]+)-([0-9]+)$/;
+
+/**
+ * Build Linear's card request: a GraphQL POST carrying validated variables.
+ *
+ * Returns null rather than a partial request whenever the key does not split
+ * into exactly a team and a number, so a URL the recognizer accepted but this
+ * cannot decompose asks nothing at all.
+ */
+function linearApiRequest(match: EmbedMatch): ConnectorApiRequest | null {
+    const { key } = linearCardParts(match.id);
+    const parts = LINEAR_KEY_PARTS.exec(key);
+    if (!parts) {
+        return null;
+    }
+    const number = Number(parts[2]);
+    // A key whose number does not survive the round trip is not asked about.
+    // `Number.isSafeInteger` rather than `isFinite`: an issue number past 2^53
+    // does not exist, and a value that large would be sent as something other
+    // than what the URL said.
+    if (!Number.isSafeInteger(number)) {
+        return null;
+    }
+    return {
+        connector: "linear",
+        url: "https://api.linear.app/graphql",
+        body: {
+            query: LINEAR_ISSUE_QUERY,
+            variables: { team: parts[1], number },
+        },
+    };
 }
 
 /**
@@ -186,6 +277,9 @@ export interface ConnectorApiRequest {
  */
 export function connectorApiRequest(match: EmbedMatch): ConnectorApiRequest | null {
     const connector = connectorForEmbedKind(match.kind);
+    if (connector === "linear") {
+        return linearApiRequest(match);
+    }
     if (connector !== "github") {
         return null;
     }

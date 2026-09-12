@@ -24,7 +24,7 @@ describe("connectorForEmbedKind", () => {
         // The map is the gate: a kind absent from it can never reach a
         // credential-bearing code path, whatever its URL says.
         const mapped = EMBED_KINDS.filter((kind) => connectorForEmbedKind(kind) !== null);
-        expect(mapped).toEqual(["github"]);
+        expect(mapped).toEqual(["github", "linear"]);
     });
 
     it("every mapped connector should exist in the registry", () => {
