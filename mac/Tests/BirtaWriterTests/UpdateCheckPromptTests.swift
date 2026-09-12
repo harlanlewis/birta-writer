@@ -20,7 +20,7 @@ final class UpdateCheckPromptTests: XCTestCase {
         let alert = UpdateCheckPrompt.build(report(.found(latest: "v2026.905.0", staged: false)))
         XCTAssertEqual(alert.buttons.map(\.title),
                        [UpdatePolicy.installNowTitle, UpdatePolicy.installOnQuitTitle,
-                        UpdatePolicy.notNowTitle])
+                        UpdatePolicy.cancelTitle])
         XCTAssertTrue(alert.buttons.allSatisfy(\.isEnabled), "an asked-for answer arrives live")
     }
 
