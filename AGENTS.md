@@ -344,7 +344,9 @@ Keeping the backlog honest matters as much as filing it. Close the loop when wor
 
 The `phase-*` labels are the roadmap spine, in order: `phase-0-fidelity` (round-trip trust, existential, comes first), `phase-1-performance` (speed the user can feel, reusing the slot vacated by the retired `phase-1-vscode-parity`, which shipped in 0.2.3), `phase-2-syntax`, `phase-3-interaction`, `phase-4-differentiators`. Within a phase, order by `priority`, and pick the first High or Urgent down the spine.
 
-`phase-5-surfaces` does not rank. It is exploration, not queued work, so the "first High-or-Urgent down the spine" rule skips it, and a High there never outranks a phase-0 bug. Promoting it is a roadmap change the owner makes explicitly (decision D8).
+`phase-5-surfaces` does not rank, with one exception. It is exploration, not queued work, so the "first High-or-Urgent down the spine" rule skips it, and a High there never outranks a phase-0 bug. Promoting one of its improvements is a roadmap change the owner makes explicitly (decision D8).
+
+The exception is `#Bug`, which ranks by `priority` wherever it sits, `phase-5-surfaces` included (owner decision, 2026-09-11). A surface that has shipped can be broken, and a broken shipped surface is not exploration. What made the gap visible: MAR-407 is a High bug that makes the Mac app's one learnable gesture fail silently, and it sat unpicked while the spine skipped its phase and no High or Urgent existed anywhere else on the spine, so a session following the rule correctly worked nothing High at all. The `#Bug` label is what carries this, so an item that is really a defect gets the label rather than an argument, and the exception stays narrow: a phase-5 `#Improvement` or `#Vision` still does not rank however it is prioritized.
 
 Where `docs/WHY_THIS_FORK.md` disagrees with the `phase-*` labels, the labels win. Its 1 to 4 list is the founding rationale, not the live spine.
 
