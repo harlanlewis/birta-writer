@@ -30,6 +30,47 @@ export type FmList = {
     newItemQuote: '"' | "'" | null;
 };
 
+/**
+ * One `key: scalar` pair inside a nested value.
+ *
+ * `value` is the VERBATIM source text after the colon, quotes and all, exactly
+ * like a flat entry's `value`. Nothing here re-quotes on the way out, so a leaf
+ * the user never touched is emitted as the bytes it came in as, and one they
+ * did edit is emitted as what they typed.
+ */
+export type FmNestedLeaf = {
+    key: string;
+    value: string;
+    /** Exact original line. Absent on a flow leaf: one line carries every leaf of its item. */
+    origLine?: string;
+};
+
+/** One mapping inside a nested value: indented `k: v` lines, or a single `{ ... }`. */
+export type FmNestedItem = {
+    style: "block" | "flow";
+    leaves: FmNestedLeaf[];
+    /** flow items only: the exact line carrying the whole mapping. */
+    origLine?: string;
+};
+
+/**
+ * A nested value the table renders natively rather than dropping the whole
+ * block to the raw editor: a sequence of mappings (`sources:` in the Open
+ * Knowledge Format), a single nested mapping, or a one-line flow mapping.
+ *
+ * Depth stops here by construction. A leaf whose value would open a third
+ * level is refused by `isNestedLeafValue`, so every shape in this model is
+ * exactly two levels deep and its line spans stay contiguous.
+ */
+export type FmNested = {
+    /** seq: `key:` then `- ` items. map: `key:` then indented pairs. flow: `key: { ... }`. */
+    kind: "seq" | "map" | "flow";
+    /** `map` and `flow` hold exactly one item. */
+    items: FmNestedItem[];
+    /** Indentation of a sequence's `- ` lines, or of a map's pair lines. */
+    itemIndent: string;
+};
+
 export type FmEntry = {
     key: string;
     value: string;
@@ -38,6 +79,18 @@ export type FmEntry = {
     origLine?: string;
     /** Present when the value is a list; `value` is unused then. */
     list?: FmList;
+    /** Present when the value is a nested mapping or sequence of mappings; `value` is unused then. */
+    nested?: FmNested;
+    /**
+     * The exact lines this entry occupied in the source, as parsed.
+     *
+     * The serializer finds an entry by matching its source lines, so the span
+     * has to be what the FILE holds, not what the entry now holds: an entry
+     * whose span is re-derived from its current items stops matching the
+     * moment an item is removed, and the field is then re-emitted at the end
+     * of the block instead of where the author put it.
+     */
+    origSpan?: string[];
 };
 
 /** The fence style a frontmatter block is written in: YAML `---` or TOML `+++`. */
@@ -146,11 +199,188 @@ function splitInlineFlow(body: string): string[] | null {
 }
 
 /**
- * Parses frontmatter into table entries when every construct is either a
- * `key: scalar` line or a simple list (inline flow `key: [a, b]`, a
- * multi-line flow sequence with one item per line, or block `- item` lines).
- * Returns null for anything richer — nested maps, comments, block scalars,
- * anchors, CRLF — which routes the panel to the raw editor instead.
+ * Is `value` one a nested leaf can hold and re-emit verbatim?
+ *
+ * Empty is refused because an empty value is how YAML OPENS another level, so
+ * accepting it would let an edit turn a leaf into a nested block the model
+ * cannot describe. `{` is refused for the same reason one level down, a line
+ * break because a leaf owns one line, and a leading `- ` because that spells a
+ * sequence rather than a scalar. A single-line flow sequence (`receipt:
+ * [job_id, executed_sql, result]`) is allowed and kept as text: it round-trips
+ * as its own bytes.
+ *
+ * The parser cannot produce any of those, having split on newlines and matched
+ * the shapes already. They are here for the EDIT path, which is the only place
+ * a leaf is handed text nobody parsed.
+ */
+export function isNestedLeafValue(value: string): boolean {
+    if (value === "") { return false; }
+    if (/[\r\n]/.test(value)) { return false; }
+    if (value === "-" || value.startsWith("- ")) { return false; }
+    const v0 = value[0]!;
+    if ("|>&*{#!%@`".includes(v0)) { return false; }
+    if (/\s#/.test(value)) { return false; }
+    if (v0 === '"' || v0 === "'") {
+        return value.length >= 2 && value.endsWith(v0);
+    }
+    if (v0 === "[") {
+        return value.endsWith("]") && splitInlineFlow(value.slice(1, -1)) !== null;
+    }
+    return true;
+}
+
+/** Splits one `key: value` pair out of a nested line's text (indentation and any `- ` already stripped). */
+function parseNestedPair(text: string): FmNestedLeaf | null {
+    const colonIdx = text.indexOf(":");
+    if (colonIdx <= 0) { return null; }
+    const next = text[colonIdx + 1];
+    if (next !== undefined && next !== " " && next !== "\t") { return null; }
+    const key = text.slice(0, colonIdx);
+    if (key.trim() === "" || /["'#]/.test(key)) { return null; }
+    const value = text.slice(colonIdx + 1).trim();
+    if (!isNestedLeafValue(value)) { return null; }
+    return { key: key.trim(), value };
+}
+
+/** Parses a one-line `{ a: b, c: d }` mapping into its leaves. */
+function parseFlowMap(text: string): FmNestedLeaf[] | null {
+    const t = text.trim();
+    if (!t.startsWith("{") || !t.endsWith("}") || t.length < 2) { return null; }
+    const body = t.slice(1, -1);
+    if (body.trim() === "") { return null; } // nothing to render as a row
+    const parts = splitInlineFlow(body);
+    if (parts === null) { return null; }
+    const leaves: FmNestedLeaf[] = [];
+    for (const part of parts) {
+        const pair = parseNestedPair(part.trim());
+        if (!pair) { return null; }
+        leaves.push(pair);
+    }
+    return leaves;
+}
+
+/** Spells a flow mapping from its leaves. */
+export function flowMapText(leaves: FmNestedLeaf[]): string {
+    return `{ ${leaves.map((l) => `${l.key}: ${l.value}`).join(", ")} }`;
+}
+
+/**
+ * Would `next` survive being written into this leaf?
+ *
+ * A block leaf owns its whole line, so the scalar rules are the whole answer.
+ * A flow leaf shares one line with its siblings, where a comma or a brace ends
+ * the value early, so the candidate mapping is re-spelled and re-parsed: the
+ * value is accepted only when the round trip hands every leaf back unchanged.
+ */
+export function acceptsNestedValue(item: FmNestedItem, leafIdx: number, next: string): boolean {
+    if (!isNestedLeafValue(next)) { return false; }
+    if (item.style === "block") { return true; }
+    const candidate = item.leaves.map((l, k) => (k === leafIdx ? { ...l, value: next } : l));
+    const parsed = parseFlowMap(flowMapText(candidate));
+    return parsed !== null
+        && parsed.length === candidate.length
+        && parsed.every((p, k) => p.key === candidate[k]!.key && p.value === candidate[k]!.value);
+}
+
+/**
+ * Does an unquoted list-item token spell a mapping (`- id: x`) rather than a
+ * string?
+ *
+ * The question is the colon alone, never whether the mapping is one this model
+ * can describe: `- b:` is a null-valued mapping the nested parser refuses, and
+ * treating it as the string "b:" is the same loss as for `- id: x`. A quoted
+ * token is a string whatever it contains.
+ */
+function isMappingToken(token: string, quote: '"' | "'" | null): boolean {
+    if (quote !== null) { return false; }
+    const colonIdx = token.indexOf(":");
+    if (colonIdx <= 0) { return false; }
+    const next = token[colonIdx + 1];
+    return next === undefined || next === " " || next === "\t";
+}
+
+/**
+ * Parses the indented block under a `key:` line into a nested value, starting
+ * at `start`. Returns null for anything outside the two-level model, which
+ * routes the whole frontmatter block to the raw editor as before.
+ *
+ * A blank line ENDS the block rather than failing it, so the trailing blank
+ * between two fields survives; a blank in the middle leaves the rest of the
+ * indented lines to the caller, which refuses stray indentation.
+ */
+function parseNestedBlock(lines: string[], start: number): { nested: FmNested; next: number } | null {
+    const first = lines[start];
+    if (first === undefined || first.trim() === "") { return null; }
+    const indent = first.match(/^[ \t]+/)?.[0];
+    if (indent === undefined) { return null; }
+
+    // Sequence of mappings: `- k: v` items, each optionally continued by lines
+    // aligned past the marker.
+    const dashPrefix = `${indent}- `;
+    if (first.startsWith(dashPrefix)) {
+        const leafPrefix = `${indent}  `;
+        const items: FmNestedItem[] = [];
+        let j = start;
+        while (j < lines.length) {
+            const line = lines[j]!;
+            if (line.trim() === "") { break; }
+            if (!line.startsWith(dashPrefix)) {
+                if (line.startsWith(indent)) { return null; } // indented, but not an item of this sequence
+                break; // dedent: the sequence is over
+            }
+            const head = line.slice(dashPrefix.length);
+            if (head.startsWith("{")) {
+                const leaves = parseFlowMap(head);
+                if (!leaves) { return null; }
+                items.push({ style: "flow", leaves, origLine: line });
+                j++;
+                continue;
+            }
+            const head0 = parseNestedPair(head);
+            if (!head0) { return null; }
+            const leaves: FmNestedLeaf[] = [{ ...head0, origLine: line }];
+            j++;
+            while (j < lines.length) {
+                const cont = lines[j]!;
+                if (cont.trim() === "" || !cont.startsWith(leafPrefix)) { break; }
+                const rest = cont.slice(leafPrefix.length);
+                if (/^[ \t]/.test(rest)) { return null; } // a third level
+                const pair = parseNestedPair(rest);
+                if (!pair) { return null; }
+                leaves.push({ ...pair, origLine: cont });
+                j++;
+            }
+            items.push({ style: "block", leaves });
+        }
+        if (items.length === 0) { return null; }
+        return { nested: { kind: "seq", items, itemIndent: indent }, next: j };
+    }
+
+    // Nested mapping: indented `k: v` lines, all at one indentation.
+    const leaves: FmNestedLeaf[] = [];
+    let j = start;
+    while (j < lines.length) {
+        const line = lines[j]!;
+        if (line.trim() === "" || !line.startsWith(indent)) { break; }
+        const rest = line.slice(indent.length);
+        if (/^[ \t]/.test(rest)) { return null; } // ragged or deeper indentation
+        const pair = parseNestedPair(rest);
+        if (!pair) { return null; }
+        leaves.push({ ...pair, origLine: line });
+        j++;
+    }
+    if (leaves.length === 0) { return null; }
+    return { nested: { kind: "map", items: [{ style: "block", leaves }], itemIndent: indent }, next: j };
+}
+
+/**
+ * Parses frontmatter into table entries when every construct is a
+ * `key: scalar` line, a simple list (inline flow `key: [a, b]`, a multi-line
+ * flow sequence with one item per line, or block `- item` lines), or a nested
+ * value two levels deep: a sequence of mappings, a nested mapping, or a
+ * one-line flow mapping. Returns null for anything richer — a third level,
+ * comments, block scalars, anchors, CRLF — which routes the panel to the raw
+ * editor instead.
  *
  * TOML blocks always take that same route. Every rule below is a YAML rule:
  * the `key:` split, and the quoting `quoteItem` and `isSafePlain` apply on the
@@ -194,11 +424,16 @@ export function parseTabularFrontmatter(raw: string): FmEntry[] | null {
                 if (token === "") { return null; } // empty/duplicate commas
                 const { value: v, quote } = parseQuotedToken(token);
                 if (quote === null && !isSafeScalarValue(v)) { return null; }
+                // `[a: b]` is a single-pair mapping, not the string "a: b". The
+                // chip list would re-emit it quoted and change its type, so the
+                // block goes to the raw editor rather than be re-spelled.
+                if (isMappingToken(v, quote)) { return null; }
                 items.push({ value: v, quote });
             }
             entries.push({
                 key: key.trim(), value: "", origLine: line,
                 list: { kind: "flow-inline", items, itemIndent: "", newItemQuote: majorityQuote(items) },
+                origSpan: [line],
             });
             i++;
             continue;
@@ -220,6 +455,7 @@ export function parseTabularFrontmatter(raw: string): FmEntry[] | null {
                     if (!m) { return null; }
                     const { value: v, quote } = parseQuotedToken(m[2]!);
                     if (quote === null && !isSafeScalarValue(v)) { return null; }
+                    if (isMappingToken(v, quote)) { return null; } // a mapping, not a string
                     items.push({ value: v, origLine: l, quote });
                 }
                 if (closeLine === null) { return null; }
@@ -245,8 +481,22 @@ export function parseTabularFrontmatter(raw: string): FmEntry[] | null {
                         itemIndent, trailingCommaAll,
                         newItemQuote: majorityQuote(items),
                     },
+                    origSpan: lines.slice(i, j + 1),
                 });
                 i = j + 1;
+                continue;
+            }
+
+            // Nested value: a sequence of mappings, or a nested mapping. Tried
+            // BEFORE the block sequence below, because `- id: x` is a mapping
+            // and the chip list would keep it as the string "id: x".
+            const nested = parseNestedBlock(lines, i + 1);
+            if (nested) {
+                entries.push({
+                    key: key.trim(), value: "", origLine: line,
+                    nested: nested.nested, origSpan: lines.slice(i, nested.next),
+                });
+                i = nested.next;
                 continue;
             }
 
@@ -266,11 +516,17 @@ export function parseTabularFrontmatter(raw: string): FmEntry[] | null {
                     const { value: v, quote } = parseQuotedToken(token);
                     if (quote === null && !isSafeScalarValue(v)) { return null; }
                     if (quote === null && /\s#/.test(v)) { return null; }
+                    // A list that mixes strings with mappings reaches here (an
+                    // all-mapping one was taken by parseNestedBlock above). The
+                    // chip list would re-emit the mapping quoted, turning it
+                    // into a string, so the block takes the raw route instead.
+                    if (isMappingToken(v, quote)) { return null; }
                     items.push({ value: v, origLine: l, quote });
                 }
                 entries.push({
                     key: key.trim(), value: "", origLine: line,
                     list: { kind: "block", items, itemIndent: indent, newItemQuote: majorityQuote(items) },
+                    origSpan: lines.slice(i, j),
                 });
                 i = j;
                 continue;
@@ -278,6 +534,19 @@ export function parseTabularFrontmatter(raw: string): FmEntry[] | null {
 
             // Plain empty scalar
             entries.push({ key: key.trim(), value: "", origLine: line });
+            i++;
+            continue;
+        }
+
+        // One-line flow mapping: `key: { a: b, c: d }`
+        if (value.startsWith("{")) {
+            const leaves = parseFlowMap(value);
+            if (!leaves) { return null; }
+            entries.push({
+                key: key.trim(), value: "", origLine: line,
+                nested: { kind: "flow", items: [{ style: "flow", leaves, origLine: line }], itemIndent: "" },
+                origSpan: [line],
+            });
             i++;
             continue;
         }

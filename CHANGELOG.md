@@ -8,6 +8,15 @@
 
 - Connect Linear, and a Linear issue link shows the issue's real title, its workflow state and who it is assigned to. Run "Connect Service…" from the command palette and pick Linear: your browser opens Linear's own consent page, and what comes back is read-only and kept in your keychain, never in a settings file and never in the editor. "Disconnect Service…" deletes it. Until you connect, the card is still built from the URL alone and Birta asks Linear nothing at all, so a document full of Linear links sends nothing anywhere. This needs `birta.network.enabled`, which ships off. Linear is the first service to connect through its own browser consent rather than through a sign-in VS Code already manages, which is what makes providers with no VS Code account reachable at all.
 
+### Changed
+
+- The metadata panel edits nested fields as fields instead of as raw YAML. A value written as a list of entries (the `sources` block of an Open Knowledge Format document, for one), as an indented group of keys, or as a one-line `{ from: ..., to: ... }` mapping gets its own labelled rows in the panel, and a list of entries carries a button to drop one. Until now a single such field sent the whole block to the raw YAML box, so a document carrying any of them lost the ordinary rows for its plain fields too. Editing a nested field rewrites that field's line and no other, and a value that could not be written back (an emptied field, or a comma inside a one-line mapping) is refused in the cell rather than saved. What still opens the raw box is unchanged in kind: a third level of nesting, block scalars, comments, anchors, and every TOML block.
+
+### Fixed
+
+- A list mixing plain items with `key: value` entries opens in the raw YAML box instead of being re-spelled. The panel read such an entry as the text `key: value`, and the next change anywhere in the block wrote it back quoted, turning an entry into a string. A list whose items are all plain is still a chip list, and one whose items are all entries is now a nested field, so neither was affected.
+- Removing a value from a list leaves that field where you put it. Taking out any item but the last moved the whole field to the bottom of the metadata block, under every field written after it. The remaining values were always correct; only the field's position moved.
+
 ---
 
 ## [2026.913.0] - 2026, September 13

@@ -2349,6 +2349,82 @@ body.toolbar-hidden::before {
     }
 }
 
+/* Nested frontmatter values: a sequence of mappings (Open Knowledge Format's
+   `sources`), a nested mapping, or a one-line flow mapping. Rendered as
+   key/value groups in the table instead of sending the whole block to the raw
+   editor. Sizing is inherited from .frontmatter-table so a nested value reads
+   at the same scale as a flat one. */
+.fm-nested {
+    display: flex;
+    flex-direction: column;
+    gap: var(--ui-space-2);
+}
+
+.fm-nested-item {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--ui-space-2);
+}
+
+/* A sequence item reads as one record: a hairline on the leading edge groups
+   its pairs without drawing a box around every field. A lone mapping needs no
+   such grouping, so only a sequence gets the rule. */
+.fm-nested-seq .fm-nested-item {
+    border-left: 1px solid var(--vscode-panel-border);
+    padding-left: var(--ui-space-4);
+}
+
+.fm-nested-pairs {
+    flex: 1;
+    min-width: 0;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 0 var(--ui-space-4);
+}
+
+/* The pair is a grouping element only: its key and value join the grid above
+   so every value in a group starts at one column. */
+.fm-nested-pair {
+    display: contents;
+}
+
+.fm-nested-key {
+    color: var(--vscode-descriptionForeground);
+    font-family: var(--vscode-editor-font-family, monospace);
+    white-space: nowrap;
+}
+
+.fm-nested-val {
+    color: var(--vscode-editor-foreground);
+    outline: none;
+    white-space: pre-wrap;
+    word-break: break-word;
+    min-width: 1ch;
+
+    &:focus {
+        text-decoration: underline dotted var(--vscode-focusBorder);
+    }
+}
+
+/* Composes .ui-btn; local: tiny pill box, muted ink, resting fade. */
+.fm-nested-remove {
+    width: 16px;
+    height: 16px;
+    border-radius: var(--ui-radius-pill);
+    color: var(--vscode-descriptionForeground);
+    opacity: 0.4;
+
+    svg {
+        width: 10px;
+        height: 10px;
+    }
+
+    &:hover {
+        opacity: 1;
+        color: var(--vscode-errorForeground);
+    }
+}
+
 /* Suggestion dropdown for the "+" chip button: workspace-wide values used
    under the same frontmatter key (filter input on top, create row at the end) */
 .fm-suggest-menu {

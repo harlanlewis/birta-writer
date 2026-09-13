@@ -17,6 +17,13 @@ import {
 
 const FM = '---\ntitle: "Hello"\ndate: 2026-01-01\ndraft: true\n---\n';
 const FM_NESTED = "---\nauthor:\n  name: Jane\n  email: jane@example.com\n---\n";
+/**
+ * The raw editor's fixture. A comment line is outside the table model at every
+ * level, so this block cannot become tabular the way FM_NESTED did when nested
+ * values gained native rows: these suites are about the raw editor, not about
+ * which shapes reach it.
+ */
+const FM_RAW = "---\n# owner\nauthor: Jane\n---\n";
 const FM_LIST = "---\ntags:\n- one\n- two\n---\n";
 const FM_COMMENT = "---\n# site metadata\ntitle: Hello\n---\n";
 const FM_BLOCK_SCALAR = "---\ndescription: |\n  line one\n  line two\n---\n";
@@ -193,12 +200,21 @@ describe("renderFrontmatterPanel raw mode", () => {
         return ta!;
     }
 
-    it("nested map frontmatter should render the raw editor instead of the table", () => {
-        renderFrontmatterPanel(FM_NESTED);
+    it("a block scalar should render the raw editor instead of the table", () => {
+        renderFrontmatterPanel(FM_BLOCK_SCALAR);
         const panel = document.getElementById("frontmatter-panel")!;
         expect(panel.querySelector(".frontmatter-table")).toBeNull();
         expect(panel.querySelector(".fm-add-btn")).toBeNull();
-        expect(getRawEditor().value).toBe("author:\n  name: Jane\n  email: jane@example.com");
+        expect(getRawEditor().value).toBe("description: |\n  line one\n  line two");
+    });
+
+    // Intentional behavior change, the same one the simple lists below made:
+    // a nested map was routed to the raw editor as an interim safety measure
+    // and now gets native rows (see the "nested value" suites).
+    it("nested map frontmatter should render the table, not the raw editor", () => {
+        renderFrontmatterPanel(FM_NESTED);
+        expect(document.querySelector(".fm-raw-editor")).toBeNull();
+        expect(document.querySelector(".frontmatter-table")).toBeTruthy();
     });
 
     // Intentional behavior change: simple lists were originally routed to the
@@ -222,13 +238,13 @@ describe("renderFrontmatterPanel raw mode", () => {
     });
 
     it("blurring without changes should not post any frontmatter update", () => {
-        renderFrontmatterPanel(FM_NESTED);
+        renderFrontmatterPanel(FM_RAW);
         getRawEditor().dispatchEvent(new Event("blur"));
         expect(postedFrontmatters()).toEqual([]);
     });
 
     it("committing an edit should write the textarea content verbatim between the original fences", () => {
-        renderFrontmatterPanel(FM_NESTED);
+        renderFrontmatterPanel(FM_RAW);
         const ta = getRawEditor();
         ta.value = "author:\n  name: Jane\n  email: jane@example.com\n  url: https://example.com";
         ta.dispatchEvent(new Event("blur"));
@@ -238,7 +254,7 @@ describe("renderFrontmatterPanel raw mode", () => {
     });
 
     it("the raw panel should still show the collapse toggle", () => {
-        renderFrontmatterPanel(FM_NESTED);
+        renderFrontmatterPanel(FM_RAW);
         const toggle = document.querySelector(".fm-toggle-btn");
         expect(toggle?.textContent).toContain("Hide metadata");
     });
@@ -285,7 +301,7 @@ describe("renderFrontmatterPanel TOML mode", () => {
     });
 
     it("the YAML raw editor should still be labelled as YAML", () => {
-        renderFrontmatterPanel(FM_NESTED);
+        renderFrontmatterPanel(FM_RAW);
         expect(getRawEditor().getAttribute("aria-label")).toBe("Edit metadata as YAML");
     });
 
@@ -424,7 +440,7 @@ describe("renderFrontmatterPanel raw mode fence-line rejection", () => {
     // The extension re-extracts frontmatter with a first-`---` regex, so an inner
     // fence-like line would truncate the block and corrupt the document later.
     it("an inner line of only --- should refuse the commit and mark the textarea invalid", () => {
-        renderFrontmatterPanel(FM_NESTED);
+        renderFrontmatterPanel(FM_RAW);
         const ta = getRawEditor();
         const bad = "author:\n  name: Jane\n---\nextra: line";
         ta.value = bad;
@@ -438,7 +454,7 @@ describe("renderFrontmatterPanel raw mode fence-line rejection", () => {
     });
 
     it("an inner YAML document-end line (...) should also refuse the commit", () => {
-        renderFrontmatterPanel(FM_NESTED);
+        renderFrontmatterPanel(FM_RAW);
         const ta = getRawEditor();
         ta.value = "author:\n  name: Jane\n...";
 
@@ -457,7 +473,7 @@ describe("renderFrontmatterPanel raw mode fence-line rejection", () => {
         ["--- "],
         ["... done"],
     ])("an inner line starting with a fence marker (%j) should refuse the commit", (badLine) => {
-        renderFrontmatterPanel(FM_NESTED);
+        renderFrontmatterPanel(FM_RAW);
         const ta = getRawEditor();
         const bad = `author:\n  name: Jane\n${badLine}\nextra: line`;
         ta.value = bad;
@@ -470,7 +486,7 @@ describe("renderFrontmatterPanel raw mode fence-line rejection", () => {
     });
 
     it("a line merely containing --- after other text should still commit", () => {
-        renderFrontmatterPanel(FM_NESTED);
+        renderFrontmatterPanel(FM_RAW);
         const ta = getRawEditor();
         ta.value = "author:\n  name: Jane\nnote: a --- b";
 
@@ -483,7 +499,7 @@ describe("renderFrontmatterPanel raw mode fence-line rejection", () => {
     });
 
     it("fixing the offending line should clear the invalid state and commit", () => {
-        renderFrontmatterPanel(FM_NESTED);
+        renderFrontmatterPanel(FM_RAW);
         const ta = getRawEditor();
         ta.value = "author:\n  name: Jane\n---";
         ta.dispatchEvent(new Event("blur"));
@@ -783,10 +799,13 @@ describe("parseTabularFrontmatter", () => {
         expect(entries[1]!.list!.itemIndent).toBe("  ");
     });
 
-    it("nested maps, comments and colon-less lines should not be tabular", () => {
-        expect(parseTabularFrontmatter("---\nauthor:\n  name: Jane\n---\n")).toBeNull();
+    it("comments and colon-less lines should not be tabular", () => {
         expect(parseTabularFrontmatter("---\n# comment\na: 1\n---\n")).toBeNull();
         expect(parseTabularFrontmatter("---\nno colon\n---\n")).toBeNull();
+    });
+
+    it("a third level of nesting should not be tabular", () => {
+        expect(parseTabularFrontmatter("---\na:\n  b:\n    c: 1\n---\n")).toBeNull();
     });
 
     it("a nested flow sequence should not be tabular", () => {
@@ -1094,7 +1113,7 @@ describe("frontmatter panel keyboard activation and ARIA", () => {
     });
 
     it("the raw-mode toggle should point aria-controls at the raw editor", () => {
-        renderFrontmatterPanel(FM_NESTED);
+        renderFrontmatterPanel(FM_RAW);
         const toggle = document.querySelector(".fm-toggle-btn")!;
 
         const id = toggle.getAttribute("aria-controls")!;
@@ -1402,7 +1421,7 @@ describe("frontmatter panel undo/redo", () => {
     });
 
     it("a committed raw-editor edit should be undoable from the panel", () => {
-        renderFrontmatterPanel(FM_NESTED);
+        renderFrontmatterPanel(FM_RAW);
         const ta = document.querySelector<HTMLTextAreaElement>(".fm-raw-editor")!;
         ta.value = "author:\n  name: Someone Else";
         ta.dispatchEvent(new Event("blur"));
@@ -1412,9 +1431,9 @@ describe("frontmatter panel undo/redo", () => {
 
         dispatchChord(document.getElementById("frontmatter-panel")!);
 
-        expect(postedFrontmatters().at(-1)).toBe(FM_NESTED);
+        expect(postedFrontmatters().at(-1)).toBe(FM_RAW);
         expect(document.querySelector<HTMLTextAreaElement>(".fm-raw-editor")!.value)
-            .toBe("author:\n  name: Jane\n  email: jane@example.com");
+            .toBe("# owner\nauthor: Jane");
     });
 });
 
@@ -1542,7 +1561,7 @@ describe("frontmatter panel under read-only", () => {
     });
 
     it("the raw editor should be readOnly while the mode is on and a blur commit should be refused", () => {
-        renderFrontmatterPanel(FM_NESTED);
+        renderFrontmatterPanel(FM_RAW);
         const ta = document.querySelector<HTMLTextAreaElement>(".fm-raw-editor")!;
         expect(ta.readOnly).toBe(false);
 
@@ -1553,7 +1572,7 @@ describe("frontmatter panel under read-only", () => {
         expect(postedFrontmatters()).toEqual([]);
         // The panel is back to what the file holds, not what was typed.
         expect(document.querySelector<HTMLTextAreaElement>(".fm-raw-editor")!.value)
-            .toBe("author:\n  name: Jane\n  email: jane@example.com");
+            .toBe("# owner\nauthor: Jane");
 
         setReadOnly(false);
         expect(document.querySelector<HTMLTextAreaElement>(".fm-raw-editor")!.readOnly).toBe(false);
@@ -1561,7 +1580,7 @@ describe("frontmatter panel under read-only", () => {
 
     it("a raw editor built while read-only should be born readOnly", () => {
         setReadOnly(true);
-        renderFrontmatterPanel(FM_NESTED);
+        renderFrontmatterPanel(FM_RAW);
         expect(document.querySelector<HTMLTextAreaElement>(".fm-raw-editor")!.readOnly).toBe(true);
     });
 
@@ -1574,6 +1593,363 @@ describe("frontmatter panel under read-only", () => {
         setReadOnly(true);
         dispatchChord(document.getElementById("frontmatter-panel")!);
         expect(panelRows()).toHaveLength(2);
+        expect(postedFrontmatters()).toEqual([]);
+    });
+});
+
+/**
+ * Nested values (Open Knowledge Format shapes): a sequence of mappings, a
+ * nested mapping, and a one-line flow mapping. Before these landed, ONE of
+ * these constructs sent the whole block to the raw editor, so an OKF document
+ * lost the native rows for its flat fields too.
+ */
+const FM_OKF = [
+    "---",
+    "type: Dimension",
+    "status: stable",
+    "sources:",
+    "  - id: ga4-schema",
+    "    resource: https://developers.google.com/analytics/bigquery/export-schema",
+    "    title: GA4 BigQuery Export schema",
+    "    author: team:ga4-docs",
+    "    usage_count: 5000",
+    "    last_modified: 2026-05-30T00:00:00Z",
+    "  - id: finance-handbook",
+    "    resource: references/finance.md",
+    "usage_window: { from: 2026-06-01T00:00:00Z, to: 2026-06-30T00:00:00Z }",
+    "verified:",
+    "  - { by: human:ahormati, at: 2026-06-25T09:00:00Z }",
+    "  - { by: process:finance-nightly, at: 2026-06-26T02:00:00Z }",
+    "executor:",
+    "  resource: references/skills/run-on-bq.md",
+    "  receipt: [job_id, executed_sql, result]",
+    "---",
+    "",
+].join("\n");
+
+describe("parseTabularFrontmatter nested values", () => {
+    it("a whole OKF metadata block should parse rather than route to the raw editor", () => {
+        const entries = parseTabularFrontmatter(FM_OKF);
+
+        expect(entries).not.toBeNull();
+        expect(entries!.map((e) => e.key)).toEqual([
+            "type", "status", "sources", "usage_window", "verified", "executor",
+        ]);
+    });
+
+    it("a sequence of mappings should parse into one item per mapping, keyed leaf by leaf", () => {
+        const sources = parseTabularFrontmatter(FM_OKF)!.find((e) => e.key === "sources")!;
+
+        expect(sources.nested!.kind).toBe("seq");
+        expect(sources.nested!.items).toHaveLength(2);
+        expect(sources.nested!.items[0]!.leaves.map((l) => l.key)).toEqual([
+            "id", "resource", "title", "author", "usage_count", "last_modified",
+        ]);
+        // A value carrying its own colons survives the key/value split.
+        expect(sources.nested!.items[0]!.leaves[3]!.value).toBe("team:ga4-docs");
+    });
+
+    it("a one-line flow mapping should parse into leaves on the key's own line", () => {
+        const window = parseTabularFrontmatter(FM_OKF)!.find((e) => e.key === "usage_window")!;
+
+        expect(window.nested!.kind).toBe("flow");
+        expect(window.nested!.items[0]!.leaves).toEqual([
+            { key: "from", value: "2026-06-01T00:00:00Z" },
+            { key: "to", value: "2026-06-30T00:00:00Z" },
+        ]);
+    });
+
+    it("a sequence of flow mappings should parse one item per line", () => {
+        const verified = parseTabularFrontmatter(FM_OKF)!.find((e) => e.key === "verified")!;
+
+        expect(verified.nested!.items.map((i) => i.style)).toEqual(["flow", "flow"]);
+        expect(verified.nested!.items[0]!.leaves.map((l) => l.value))
+            .toEqual(["human:ahormati", "2026-06-25T09:00:00Z"]);
+    });
+
+    it("a nested mapping holding a flow sequence should keep that sequence as its text", () => {
+        const executor = parseTabularFrontmatter(FM_OKF)!.find((e) => e.key === "executor")!;
+
+        expect(executor.nested!.kind).toBe("map");
+        expect(executor.nested!.items[0]!.leaves[1]).toMatchObject({
+            key: "receipt",
+            value: "[job_id, executed_sql, result]",
+        });
+    });
+
+    it("a blank line between a nested value and the next key should end the block, not refuse it", () => {
+        const entries = parseTabularFrontmatter("---\na:\n  b: 1\n\nc: 2\n---\n");
+
+        expect(entries!.map((e) => e.key)).toEqual(["a", "c"]);
+    });
+
+    it("a blank line inside a nested value should route the block to the raw editor", () => {
+        // Its span would stop being contiguous, which is what lets the
+        // serializer emit untouched lines byte-for-byte.
+        expect(parseTabularFrontmatter("---\na:\n  b: 1\n\n  c: 2\n---\n")).toBeNull();
+    });
+
+    it("a leaf whose value would open a third level should route the block to the raw editor", () => {
+        expect(parseTabularFrontmatter("---\na:\n  b:\n---\n")).toBeNull();
+        expect(parseTabularFrontmatter("---\na:\n  - b:\n---\n")).toBeNull();
+    });
+
+    it("a list mixing strings with mappings should route to the raw editor, not be re-spelled", () => {
+        // `- id: x` is a mapping. The chip list would keep it as the STRING
+        // "id: x" and re-emit it quoted, changing its type on the next commit.
+        expect(parseTabularFrontmatter("---\nitems:\n- plain\n- id: x\n---\n")).toBeNull();
+        expect(parseTabularFrontmatter("---\nitems: [plain, id: x]\n---\n")).toBeNull();
+        expect(parseTabularFrontmatter('---\nitems:\n[\n  "plain",\n  id: x,\n]\n---\n')).toBeNull();
+    });
+
+    it("a list of plain strings should still be a chip list, not a nested value", () => {
+        const entries = parseTabularFrontmatter("---\ntags:\n- one\n- two\n---\n")!;
+
+        expect(entries[0]!.nested).toBeUndefined();
+        expect(entries[0]!.list!.items.map((i) => i.value)).toEqual(["one", "two"]);
+    });
+
+    it("a URL list item should stay a string (its colon is not a mapping)", () => {
+        const entries = parseTabularFrontmatter("---\nlinks:\n- https://example.com\n---\n")!;
+
+        expect(entries[0]!.nested).toBeUndefined();
+        expect(entries[0]!.list!.items.map((i) => i.value)).toEqual(["https://example.com"]);
+    });
+});
+
+describe("serializeFrontmatter nested values", () => {
+    it("an untouched OKF block should round-trip byte-for-byte", () => {
+        const entries = parseTabularFrontmatter(FM_OKF)!;
+
+        expect(serializeFrontmatter(entries, FM_OKF)).toBe(FM_OKF);
+    });
+
+    it("editing one nested leaf should leave every other line byte-identical", () => {
+        const entries = parseTabularFrontmatter(FM_OKF)!;
+        const sources = entries.find((e) => e.key === "sources")!;
+        sources.nested!.items[0]!.leaves[4]!.value = "6200";
+
+        const out = serializeFrontmatter(entries, FM_OKF);
+
+        expect(out).toBe(FM_OKF.replace("usage_count: 5000", "usage_count: 6200"));
+    });
+
+    it("editing a flow mapping's leaf should rewrite that one line only", () => {
+        const entries = parseTabularFrontmatter(FM_OKF)!;
+        const window = entries.find((e) => e.key === "usage_window")!;
+        window.nested!.items[0]!.leaves[1]!.value = "2026-07-31T00:00:00Z";
+
+        const out = serializeFrontmatter(entries, FM_OKF);
+
+        expect(out).toBe(FM_OKF.replace(
+            "usage_window: { from: 2026-06-01T00:00:00Z, to: 2026-06-30T00:00:00Z }",
+            "usage_window: { from: 2026-06-01T00:00:00Z, to: 2026-07-31T00:00:00Z }",
+        ));
+    });
+
+    it("removing a sequence item should drop exactly that item's lines", () => {
+        const entries = parseTabularFrontmatter(FM_OKF)!;
+        const sources = entries.find((e) => e.key === "sources")!;
+        sources.nested!.items.splice(1, 1);
+
+        const out = serializeFrontmatter(entries, FM_OKF);
+
+        expect(out).toBe(FM_OKF.replace(
+            "  - id: finance-handbook\n    resource: references/finance.md\n",
+            "",
+        ));
+    });
+
+    it("deleting a nested field should remove its whole span and nothing else", () => {
+        const entries = parseTabularFrontmatter(FM_OKF)!;
+
+        const out = serializeFrontmatter(entries.filter((e) => e.key !== "verified"), FM_OKF);
+
+        expect(out).toBe(FM_OKF.replace(
+            "verified:\n  - { by: human:ahormati, at: 2026-06-25T09:00:00Z }\n"
+            + "  - { by: process:finance-nightly, at: 2026-06-26T02:00:00Z }\n",
+            "",
+        ));
+    });
+
+    // The serializer locates an entry by matching its source lines, so a span
+    // re-derived from the entry's CURRENT items stops matching at the first
+    // removal and the field is re-emitted at the end of the block.
+    it("removing a non-last nested item should leave the field where its author put it", () => {
+        const raw = "---\nsources:\n  - id: a\n  - id: b\n  - id: c\ntitle: T\n---\n";
+        const entries = parseTabularFrontmatter(raw)!;
+        entries[0]!.nested!.items.splice(1, 1);
+
+        expect(serializeFrontmatter(entries, raw))
+            .toBe("---\nsources:\n  - id: a\n  - id: c\ntitle: T\n---\n");
+    });
+
+    it("removing a non-last list chip should leave the field where its author put it", () => {
+        const raw = "---\ntags:\n- one\n- two\n- three\ntitle: T\n---\n";
+        const entries = parseTabularFrontmatter(raw)!;
+        entries[0]!.list!.items.splice(0, 1);
+
+        expect(serializeFrontmatter(entries, raw))
+            .toBe("---\ntags:\n- two\n- three\ntitle: T\n---\n");
+    });
+
+    it("a serialized edit should re-parse to the same shape it was written from", () => {
+        const entries = parseTabularFrontmatter(FM_OKF)!;
+        entries.find((e) => e.key === "executor")!.nested!.items[0]!.leaves[0]!.value = "references/bq.md";
+
+        const reparsed = parseTabularFrontmatter(serializeFrontmatter(entries, FM_OKF));
+
+        expect(reparsed!.map((e) => e.key)).toEqual(entries.map((e) => e.key));
+        expect(reparsed!.find((e) => e.key === "executor")!.nested!.items[0]!.leaves[0]!.value)
+            .toBe("references/bq.md");
+    });
+});
+
+describe("renderFrontmatterPanel nested values", () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        mockVscodeApi.getState.mockReturnValue(null);
+        setupDom();
+    });
+
+    /** The rendered key/value pairs of one field's nested value. */
+    function nestedPairs(key: string): string[] {
+        const row = Array.from(document.querySelectorAll(".frontmatter-table tr"))
+            .find((tr) => tr.querySelector(".fm-key")?.textContent === key)!;
+        return Array.from(row.querySelectorAll(".fm-nested-pair")).map((p) =>
+            `${p.querySelector(".fm-nested-key")!.textContent}=${p.querySelector(".fm-nested-val")!.textContent}`);
+    }
+
+    it("an OKF block should render the table with native rows, not the raw editor", () => {
+        renderFrontmatterPanel(FM_OKF);
+
+        expect(document.querySelector(".fm-raw-editor")).toBeNull();
+        expect(Array.from(document.querySelectorAll(".frontmatter-table .fm-key")).map((k) => k.textContent))
+            .toEqual(["type", "status", "sources", "usage_window", "verified", "executor"]);
+    });
+
+    it("a sequence of mappings should render one group per item", () => {
+        renderFrontmatterPanel(FM_OKF);
+
+        const row = Array.from(document.querySelectorAll(".frontmatter-table tr"))
+            .find((tr) => tr.querySelector(".fm-key")?.textContent === "sources")!;
+        expect(row.querySelectorAll(".fm-nested-item")).toHaveLength(2);
+        expect(nestedPairs("sources")).toContain("id=ga4-schema");
+        expect(nestedPairs("sources")).toContain("author=team:ga4-docs");
+    });
+
+    it("a flow mapping should render its pairs as rows", () => {
+        renderFrontmatterPanel(FM_OKF);
+
+        expect(nestedPairs("usage_window"))
+            .toEqual(["from=2026-06-01T00:00:00Z", "to=2026-06-30T00:00:00Z"]);
+    });
+
+    it("rendering alone should post no frontmatter update", () => {
+        renderFrontmatterPanel(FM_OKF);
+
+        expect(postedFrontmatters()).toEqual([]);
+    });
+
+    it("editing a nested leaf should commit a block with only that line changed", () => {
+        renderFrontmatterPanel(FM_OKF);
+        const leaf = Array.from(document.querySelectorAll<HTMLElement>(".fm-nested-val"))
+            .find((el) => el.textContent === "5000")!;
+
+        leaf.textContent = "6200";
+        leaf.dispatchEvent(new Event("blur"));
+
+        expect(postedFrontmatters()).toEqual([FM_OKF.replace("usage_count: 5000", "usage_count: 6200")]);
+    });
+
+    it("a nested leaf emptied should revert rather than commit a value-less key", () => {
+        renderFrontmatterPanel(FM_OKF);
+        const leaf = Array.from(document.querySelectorAll<HTMLElement>(".fm-nested-val"))
+            .find((el) => el.textContent === "5000")!;
+
+        leaf.textContent = "";
+        leaf.dispatchEvent(new Event("blur"));
+
+        expect(postedFrontmatters()).toEqual([]);
+        expect(leaf.textContent).toBe("5000");
+    });
+
+    it("a flow leaf given a comma should revert: it would end the value early", () => {
+        renderFrontmatterPanel(FM_OKF);
+        const leaf = Array.from(document.querySelectorAll<HTMLElement>(".fm-nested-val"))
+            .find((el) => el.textContent === "2026-06-30T00:00:00Z")!;
+
+        leaf.textContent = "a, b";
+        leaf.dispatchEvent(new Event("blur"));
+
+        expect(postedFrontmatters()).toEqual([]);
+        expect(leaf.textContent).toBe("2026-06-30T00:00:00Z");
+    });
+
+    // The parser cannot produce either shape, so only an edit can introduce
+    // one: a leaf owns exactly one line, and `- x` spells a sequence.
+    it.each([
+        ["a line break", "two\nlines"],
+        ["a leading sequence marker", "- item"],
+    ])("a nested leaf given %s should revert rather than commit", (_name, typed) => {
+        renderFrontmatterPanel(FM_OKF);
+        const leaf = Array.from(document.querySelectorAll<HTMLElement>(".fm-nested-val"))
+            .find((el) => el.textContent === "5000")!;
+
+        leaf.textContent = typed;
+        leaf.dispatchEvent(new Event("blur"));
+
+        expect(postedFrontmatters()).toEqual([]);
+        expect(leaf.textContent).toBe("5000");
+    });
+
+    it("removing a sequence item should commit the block without that item's lines", () => {
+        renderFrontmatterPanel(FM_OKF);
+        const row = Array.from(document.querySelectorAll(".frontmatter-table tr"))
+            .find((tr) => tr.querySelector(".fm-key")?.textContent === "sources")!;
+
+        row.querySelectorAll<HTMLButtonElement>(".fm-nested-remove")[1]!.click();
+
+        expect(postedFrontmatters()).toEqual([FM_OKF.replace(
+            "  - id: finance-handbook\n    resource: references/finance.md\n",
+            "",
+        )]);
+    });
+
+    it("a lone sequence item should offer no remove button: a bare key is not the same field", () => {
+        renderFrontmatterPanel("---\nsources:\n  - id: only\n---\n");
+
+        // Assert the sequence rendered before reading the button count: a
+        // block that fell through to the raw editor also has zero of them.
+        expect(document.querySelectorAll(".fm-nested-item")).toHaveLength(1);
+        expect(document.querySelectorAll(".fm-nested-remove")).toHaveLength(0);
+    });
+
+    it("deleting a nested field's row should commit the block without its whole span", () => {
+        renderFrontmatterPanel(FM_OKF);
+        const row = Array.from(document.querySelectorAll(".frontmatter-table tr"))
+            .find((tr) => tr.querySelector(".fm-key")?.textContent === "executor")!;
+
+        row.querySelector<HTMLButtonElement>(".fm-delete-btn")!.click();
+
+        expect(postedFrontmatters()).toEqual([FM_OKF.replace(
+            "executor:\n  resource: references/skills/run-on-bq.md\n"
+            + "  receipt: [job_id, executed_sql, result]\n",
+            "",
+        )]);
+    });
+
+    it("nested leaves and the remove button should follow the read-only mode", () => {
+        renderFrontmatterPanel(FM_OKF);
+        setReadOnly(true);
+
+        expect(document.querySelector<HTMLButtonElement>(".fm-nested-remove")!.disabled).toBe(true);
+
+        const leaf = Array.from(document.querySelectorAll<HTMLElement>(".fm-nested-val"))
+            .find((el) => el.textContent === "5000")!;
+        leaf.textContent = "6200";
+        leaf.dispatchEvent(new Event("blur"));
+
         expect(postedFrontmatters()).toEqual([]);
     });
 });
