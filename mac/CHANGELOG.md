@@ -12,6 +12,10 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ## [Unreleased]
 
+---
+
+## [2026.913.0] - 2026, September 13
+
 ### Changed
 
 - The update offer is one sentence, and its buttons say what they do. It used to explain the checksum, what each button does to your note, and what happens at the next launch, in a sheet whose buttons were already saying most of it. It now names the date the newest release was cut and how far ahead of yours it is, which is what the question "should I take this" actually turns on. Save and install now, Install on next launch and Cancel replace Install Now, Install on Next Launch and Not Now; the first is renamed rather than changed, because writing your note first is what it always did and the button is a better place to say so than a paragraph. Neither version number appears any more: the gap in days is the part you would have worked out from them.
