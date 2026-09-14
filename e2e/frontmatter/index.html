@@ -46,6 +46,28 @@
   // than the table: every table rule is a YAML rule (MAR-363).
   const TOML = new URLSearchParams(location.search).get("toml") === "1";
   const TOML_FRONTMATTER = '+++\ntitle = "Content inventory"\ndraft = false\n+++\n';
+  // ?nested=1 boots the nested-value shapes: a sequence of mappings, a
+  // sequence of flow mappings, a one-line flow mapping, and a nested mapping.
+  // They are here rather than in the default block because the checks above
+  // count rows, and because only a real engine lays out the pairs grid.
+  const NESTED = new URLSearchParams(location.search).get("nested") === "1";
+  const NESTED_FRONTMATTER = [
+    "---",
+    "title: Content inventory",
+    "sources:",
+    "  - id: ga4-schema",
+    "    resource: https://developers.google.com/analytics/bigquery/export-schema",
+    "  - id: finance-handbook",
+    "    resource: references/finance.md",
+    "usage_window: { from: 2026-06-01T00:00:00Z, to: 2026-06-30T00:00:00Z }",
+    "verified:",
+    "- { by: human:ahormati, at: 2026-06-25T09:00:00Z }",
+    "executor:",
+    "  resource: references/skills/run-on-bq.md",
+    "  receipt: [job_id, executed_sql, result]",
+    "---",
+    "",
+  ].join("\n");
   window.acquireVsCodeApi = () => ({
     postMessage: (msg) => {
       window.__posted.push(msg);
@@ -53,7 +75,8 @@
         window.postMessage({
           type: "init",
           content: EMPTY ? "# Sample\n\ntext\n" : CONTENT,
-          frontmatter: EMPTY ? undefined : (TOML ? TOML_FRONTMATTER : FRONTMATTER),
+          frontmatter: EMPTY ? undefined
+            : (TOML ? TOML_FRONTMATTER : (NESTED ? NESTED_FRONTMATTER : FRONTMATTER)),
           syncVersion: 1,
         }, "*");
       }

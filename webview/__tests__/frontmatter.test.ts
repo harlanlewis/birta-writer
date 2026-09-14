@@ -1931,16 +1931,25 @@ describe("renderFrontmatterPanel nested values", () => {
         expect(leaf.textContent).toBe("5000");
     });
 
-    it("a flow leaf given a comma should revert: it would end the value early", () => {
+    // Both of these are legal YAML that the panel's own flow splitter cannot
+    // scan past, so the writer quotes them rather than the cell declining to
+    // save. A silent refusal of a value a user can type is the failure here,
+    // and it is invisible: the file is simply not written.
+    it.each([
+        ["a comma, which would end the value early", "a, b", '"a, b"'],
+        ["a hash, which our own splitter stops at", "a#b", '"a#b"'],
+    ])("a flow leaf given %s should be committed quoted", (_name, typed, written) => {
         renderFrontmatterPanel(FM_OKF);
         const leaf = Array.from(document.querySelectorAll<HTMLElement>(".fm-nested-val"))
             .find((el) => el.textContent === "2026-06-30T00:00:00Z")!;
 
-        leaf.textContent = "a, b";
+        leaf.textContent = typed;
         leaf.dispatchEvent(new Event("blur"));
 
-        expect(postedFrontmatters()).toEqual([]);
-        expect(leaf.textContent).toBe("2026-06-30T00:00:00Z");
+        expect(postedFrontmatters()).toEqual([FM_OKF.replace(
+            "usage_window: { from: 2026-06-01T00:00:00Z, to: 2026-06-30T00:00:00Z }",
+            `usage_window: { from: 2026-06-01T00:00:00Z, to: ${written} }`,
+        )]);
     });
 
     // The parser cannot produce either shape, so only an edit can introduce
@@ -1999,6 +2008,153 @@ describe("renderFrontmatterPanel nested values", () => {
             'Remove item: "id: ga4-schema"',
             'Remove item: "id: finance-handbook"',
         ]);
+    });
+
+    it("a colon typed into a value should be committed quoted, not written bare", () => {
+        renderFrontmatterPanel("---\nnote: a\n---\n");
+        const cell = Array.from(document.querySelectorAll<HTMLElement>(".fm-val"))
+            .find((el) => el.textContent === "a")!;
+
+        cell.textContent = "Note: see below";
+        cell.dispatchEvent(new Event("blur"));
+
+        expect(postedFrontmatters()).toEqual(['---\nnote: "Note: see below"\n---\n']);
+    });
+
+    // A quoted key is refused on the way back in, so quoting is no way out
+    // here and the cell keeps what it had.
+    it("a colon typed into a key should revert rather than split the field", () => {
+        renderFrontmatterPanel("---\nnote: a\n---\n");
+        const keyCell = document.querySelector<HTMLElement>(".fm-key")!;
+
+        keyCell.textContent = "a: b";
+        keyCell.dispatchEvent(new Event("blur"));
+
+        expect(postedFrontmatters()).toEqual([]);
+        expect(keyCell.textContent).toBe("note");
+    });
+
+    describe("adding a sequence entry", () => {
+        // The mode is module state, so a suite that turns it on and leaves it
+        // on fails the NEXT suite, with a message about whatever that one was
+        // doing. Reset here rather than at the end of the one test.
+        afterEach(() => {
+            setReadOnly(false);
+        });
+
+        const RAW = "---\nsources:\n  - id: a\n    resource: x\ntitle: T\n---\n";
+
+        function openDraft(): HTMLElement {
+            renderFrontmatterPanel(RAW);
+            document.querySelector<HTMLButtonElement>(".fm-nested-add")!.click();
+            return document.querySelector<HTMLElement>(".fm-nested-item--draft")!;
+        }
+
+        it("the draft should take the first item's keys and none of its values", () => {
+            const draft = openDraft();
+
+            expect(Array.from(draft.querySelectorAll(".fm-nested-key")).map((k) => k.textContent))
+                .toEqual(["id", "resource"]);
+            expect(Array.from(draft.querySelectorAll(".fm-nested-val")).map((v) => v.textContent))
+                .toEqual(["", ""]);
+            expect(postedFrontmatters()).toEqual([]);
+        });
+
+        it("a draft with an empty leaf left should post nothing", () => {
+            const draft = openDraft();
+            const vals = draft.querySelectorAll<HTMLElement>(".fm-nested-val");
+
+            vals[0]!.textContent = "b";
+            vals[0]!.dispatchEvent(new Event("blur"));
+
+            expect(postedFrontmatters()).toEqual([]);
+        });
+
+        it("a filled draft should land as one more item, in the file's own indentation", () => {
+            const draft = openDraft();
+            const vals = draft.querySelectorAll<HTMLElement>(".fm-nested-val");
+
+            vals[0]!.textContent = "b";
+            vals[0]!.dispatchEvent(new Event("blur"));
+            vals[1]!.textContent = "y";
+            vals[1]!.dispatchEvent(new Event("blur"));
+
+            expect(postedFrontmatters()).toEqual([
+                "---\nsources:\n  - id: a\n    resource: x\n  - id: b\n    resource: y\ntitle: T\n---\n",
+            ]);
+        });
+
+        it("a draft's own remove button should drop it without posting", () => {
+            const draft = openDraft();
+
+            draft.querySelector<HTMLButtonElement>(".fm-nested-remove")!.click();
+
+            expect(document.querySelector(".fm-nested-item--draft")).toBeNull();
+            expect(postedFrontmatters()).toEqual([]);
+        });
+
+        it("a second click should not stack a second draft", () => {
+            openDraft();
+            document.querySelector<HTMLButtonElement>(".fm-nested-add")!.click();
+
+            expect(document.querySelectorAll(".fm-nested-item--draft")).toHaveLength(1);
+        });
+
+        // A flow draft takes its template's style, so it lands as one more
+        // `- { ... }` line rather than as block pairs among flow siblings.
+        it("a draft of a flow sequence should land as one more flow line", () => {
+            const raw = "---\nverified:\n  - { by: a, at: b }\n---\n";
+            renderFrontmatterPanel(raw);
+            document.querySelector<HTMLButtonElement>(".fm-nested-add")!.click();
+            const vals = document.querySelectorAll<HTMLElement>(".fm-nested-item--draft .fm-nested-val");
+
+            vals[0]!.textContent = "c";
+            vals[0]!.dispatchEvent(new Event("blur"));
+            vals[1]!.textContent = "d";
+            vals[1]!.dispatchEvent(new Event("blur"));
+
+            expect(postedFrontmatters()).toEqual([
+                "---\nverified:\n  - { by: a, at: b }\n  - { by: c, at: d }\n---\n",
+            ]);
+        });
+
+        // A brace would end the value early if it were written bare, so this
+        // is the draft path reaching the same quoting every other value gets.
+        it("a flow draft whose value holds a brace should land quoted", () => {
+            renderFrontmatterPanel("---\nverified:\n  - { by: a, at: b }\n---\n");
+            document.querySelector<HTMLButtonElement>(".fm-nested-add")!.click();
+            const vals = document.querySelectorAll<HTMLElement>(".fm-nested-item--draft .fm-nested-val");
+
+            vals[0]!.textContent = "c";
+            vals[0]!.dispatchEvent(new Event("blur"));
+            vals[1]!.textContent = "d }";
+            vals[1]!.dispatchEvent(new Event("blur"));
+
+            expect(postedFrontmatters()).toEqual([
+                '---\nverified:\n  - { by: a, at: b }\n  - { by: c, at: "d }" }\n---\n',
+            ]);
+        });
+
+        it("a mapping should offer no add: its shape is its keys, which are not editable", () => {
+            renderFrontmatterPanel("---\nexecutor:\n  resource: r\n---\n");
+
+            expect(document.querySelectorAll(".fm-nested-item")).toHaveLength(1);
+            expect(document.querySelectorAll(".fm-nested-add")).toHaveLength(0);
+        });
+
+        it("a lone item should still offer the add that gets it a sibling", () => {
+            renderFrontmatterPanel("---\nsources:\n  - id: only\n---\n");
+
+            expect(document.querySelectorAll(".fm-nested-remove")).toHaveLength(0);
+            expect(document.querySelectorAll(".fm-nested-add")).toHaveLength(1);
+        });
+
+        it("the add button should follow the read-only mode", () => {
+            renderFrontmatterPanel(RAW);
+            setReadOnly(true);
+
+            expect(document.querySelector<HTMLButtonElement>(".fm-nested-add")!.disabled).toBe(true);
+        });
     });
 
     it("a lone sequence item should offer no remove button: a bare key is not the same field", () => {

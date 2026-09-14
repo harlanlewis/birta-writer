@@ -304,4 +304,97 @@ export async function run({ page, check, baseUrl }) {
         (await lastFm()) === '+++\ntitle = "Content inventory"\ndraft = false\nweight = 3\n+++\n',
         JSON.stringify(await lastFm()),
     );
+
+    // ── Nested values (?nested=1). jsdom has no layout engine, so the pairs
+    //    grid's column alignment and the reserved control gutter are only
+    //    assertable here; the add/remove round trip is here because it is the
+    //    gesture, and a real click is the only thing that makes it. ──
+    await page.goto(`${baseUrl}/index.html?nested=1`);
+    await page.waitForSelector("#frontmatter-panel .frontmatter-table", { timeout: 10000 });
+    await page.waitForTimeout(300);
+
+    const rawCount = await page.locator(".fm-raw-editor").count();
+    check("a nested block renders the table, not the raw editor", rawCount === 0, `${rawCount} raw editors`);
+
+    const nestedRow = (key) =>
+        page.locator("#frontmatter-panel tbody tr")
+            .filter({ has: page.locator(`.fm-key:text-is("${key}")`) });
+
+    // `display: contents` hands a pair's children to the grid above it. Get
+    // that wrong and the text still reads in the DOM while measuring zero on
+    // screen, which no jsdom assertion can tell apart from working.
+    const boxes = await page.evaluate(() =>
+        Array.from(document.querySelectorAll(".fm-nested-pair")).map((p) => {
+            const k = p.querySelector(".fm-nested-key").getBoundingClientRect();
+            const v = p.querySelector(".fm-nested-val").getBoundingClientRect();
+            return { kw: Math.round(k.width), vw: Math.round(v.width) };
+        }));
+    // The count is pinned as well as the widths: a selector that stopped
+    // matching would report every pair it found as laid out, which is zero
+    // pairs and a pass. Ten is the fixture: two sources of two, then
+    // usage_window, verified and executor of two each.
+    check("every nested pair is laid out",
+        boxes.length === 10 && boxes.every((b) => b.kw > 0 && b.vw > 0),
+        `${boxes.length} pairs, empty: ${JSON.stringify(boxes.filter((b) => !b.kw || !b.vw))}`);
+
+    const sourceVx = await nestedRow("sources").locator(".fm-nested-val")
+        .evaluateAll((els) => [...new Set(els.map((e) => Math.round(e.getBoundingClientRect().x)))]);
+    check("values in a sequence share one column", sourceVx.length === 1, JSON.stringify(sourceVx));
+
+    // The gutter is reserved on every item, the last one included, so chrome
+    // appearing or leaving never moves the text beside it.
+    const gutters = await page.evaluate(() =>
+        Array.from(document.querySelectorAll(".fm-nested-item"))
+            .map((el) => Math.round(el.querySelector(".fm-nested-action").getBoundingClientRect().width)));
+    check("every item reserves its control gutter",
+        gutters.length > 0 && gutters.every((w) => w > 0), JSON.stringify(gutters));
+
+    const reach = await page.evaluate(() => {
+        const btn = document.querySelector(".fm-nested-remove").getBoundingClientRect();
+        const cell = document.querySelector(".fm-nested").getBoundingClientRect();
+        return { fromLeft: Math.round(btn.x - cell.x), cellWidth: Math.round(cell.width) };
+    });
+    check("the remove button leads its item rather than trailing the cell",
+        reach.fromLeft < reach.cellWidth / 2, JSON.stringify(reach));
+
+    // Add: a draft appears, commits nothing while any leaf is empty, and
+    // lands as exactly one more item once it is filled.
+    const before = (await fmUpdates()).length;
+    await nestedRow("sources").locator(".fm-nested-add").click();
+    const draftPairs = await page.locator(".fm-nested-item--draft .fm-nested-pair").count();
+    check("Add entry opens a draft shaped like the first item", draftPairs === 2, `${draftPairs} pairs`);
+    check("an empty draft posts nothing", (await fmUpdates()).length === before);
+
+    const draftVals = page.locator(".fm-nested-item--draft .fm-nested-val");
+    await draftVals.nth(0).pressSequentially("okf-spec");
+    await draftVals.nth(1).click();
+    check("a half-filled draft still posts nothing", (await fmUpdates()).length === before,
+        JSON.stringify(await lastFm()));
+
+    await draftVals.nth(1).pressSequentially("references/okf.md");
+    await page.locator(".milkdown .ProseMirror").click();
+    await page.waitForTimeout(200);
+    check(
+        "a filled draft lands as one more sequence item",
+        (await lastFm() ?? "").includes("  - id: okf-spec\n    resource: references/okf.md"),
+        JSON.stringify(await lastFm()),
+    );
+
+    // An abandoned draft leaves no trace, the way an abandoned new row does.
+    await nestedRow("sources").locator(".fm-nested-add").click();
+    const afterDraft = (await fmUpdates()).length;
+    await page.locator(".milkdown .ProseMirror").click();
+    await page.waitForTimeout(200);
+    const draftsLeft = await page.locator(".fm-nested-item--draft").count();
+    check("an abandoned draft is cleaned up",
+        draftsLeft === 0 && (await fmUpdates()).length === afterDraft, `${draftsLeft} drafts left`);
+
+    // Remove, through a real click: the item's lines go and nothing else does.
+    await nestedRow("sources").locator(".fm-nested-remove").first().click();
+    await page.waitForTimeout(200);
+    const afterRemove = await lastFm() ?? "";
+    check("removing an item drops its lines and keeps its siblings",
+        !afterRemove.includes("ga4-schema")
+        && afterRemove.includes("finance-handbook") && afterRemove.includes("okf-spec"),
+        JSON.stringify(afterRemove));
 }

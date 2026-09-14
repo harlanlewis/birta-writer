@@ -34,9 +34,9 @@ export type FmList = {
  * One `key: scalar` pair inside a nested value.
  *
  * `value` is the VERBATIM source text after the colon, quotes and all, exactly
- * like a flat entry's `value`. Nothing here re-quotes on the way out, so a leaf
- * the user never touched is emitted as the bytes it came in as, and one they
- * did edit is emitted as what they typed.
+ * like a flat entry's `value`. A leaf the user never touched is emitted as the
+ * bytes it came in as; one they did edit goes through `emitScalar`, which
+ * quotes only what would not read back as itself.
  */
 export type FmNestedLeaf = {
     key: string;
@@ -132,6 +132,97 @@ export function quoteItem(value: string, quote: '"' | "'" | null): string {
     if (quote === "'" && !value.includes("'")) { return `'${value}'`; }
     if (quote === null && isSafePlain(value)) { return value; }
     return '"' + value.replace(/\\/g, "\\\\").replace(/"/g, '\\"') + '"';
+}
+
+/**
+ * Where a scalar is being written. A line of its own is `block`; inside a
+ * `{ ... }` mapping, which its siblings share, is `flow`.
+ */
+export type FmScalarContext = "block" | "flow";
+
+/**
+ * Is `value` a plain (unquoted) scalar that reads back as itself?
+ *
+ * The panel keeps a scalar as VERBATIM source text and splits a line on its
+ * FIRST colon, so it reads its own output back as the string it meant even
+ * when no YAML parser would: `note: Note: see below` spells a mapping inside a
+ * mapping value, which is an error everywhere else (MAR-455). This is the
+ * question `emitScalar` asks before deciding to quote, and it is deliberately
+ * about EMISSION: a value only has to survive the round trip, so a leading
+ * `-` or `?` is an indicator only where a space follows it.
+ */
+function isPlainEmittable(value: string, context: FmScalarContext): boolean {
+    if (value === "") { return false; }
+    if (/[\r\n]/.test(value)) { return false; }
+    if (value !== value.trim()) { return false; }
+    const v0 = value[0]!;
+    if ("|>&*[{]}#!%@`\"',".includes(v0)) { return false; }
+    if ((v0 === "-" || v0 === "?" || v0 === ":") && (value.length === 1 || value[1] === " ")) {
+        return false;
+    }
+    if (/\s#/.test(value)) { return false; }
+    // The defect itself: a colon that ends the value and opens a mapping.
+    if (/:(\s|$)/.test(value)) { return false; }
+    // Inside `{ ... }` a comma or a bracket ends the value wherever it sits,
+    // not only at the front, and the reader gets a shorter value plus a key
+    // nobody wrote. `#` is here for our own reader rather than for YAML, where
+    // a hash with no space before it is ordinary: `splitInlineFlow` stops at
+    // one anywhere outside quotes, so a bare `a#b` would be refused by the
+    // cell instead of written. Quoted, it survives both.
+    if (context === "flow" && /[,[\]{}#]/.test(value)) { return false; }
+    return true;
+}
+
+/**
+ * Is `value` one complete quoted scalar, rather than text that merely starts
+ * and ends with the same quote character?
+ *
+ * The weaker test is the one every classifier here applies, and it is right
+ * for them: they are asking whether a line of an existing FILE is one this
+ * model can describe. A writer cannot use it, because `"abc"def"` passes it
+ * and is not a quoted scalar at all: its string ends at the second quote and
+ * the rest is a syntax error. So the closing quote is found by scanning, and
+ * it has to be the last character.
+ */
+function isQuotedScalar(value: string): boolean {
+    const q = value[0];
+    if ((q !== '"' && q !== "'") || value.length < 2 || !value.endsWith(q)) { return false; }
+    for (let i = 1; i < value.length; i++) {
+        // In a double-quoted scalar a backslash escapes the next character; in
+        // a single-quoted one a doubled quote is one literal quote.
+        if (q === '"' && value[i] === "\\") { i++; continue; }
+        if (value[i] !== q) { continue; }
+        if (q === "'" && value[i + 1] === "'") { i++; continue; }
+        return i === value.length - 1;
+    }
+    return false;
+}
+
+/**
+ * The text to write after `key: ` for one scalar value.
+ *
+ * Quoting is an emission decision, never a parse-time one. The parser's job is
+ * to say what the file holds; only the writer knows whether the text it is
+ * about to splice into a line still means that text once read back.
+ *
+ * Source text that is ALREADY a quoted scalar or a flow collection passes
+ * through untouched, because a value here is verbatim source: re-quoting
+ * `"v, w"` would double its quotes and change what the file says.
+ *
+ * A flow sequence passes through in `block` context only. Inside a mapping
+ * that shares its line, its own commas would be read as the mapping's, so
+ * there it is quoted like anything else.
+ */
+export function emitScalar(value: string, context: FmScalarContext = "block"): string {
+    if (value === "") { return ""; }
+    if (isPlainEmittable(value, context)) { return value; }
+    if (isQuotedScalar(value)) { return value; }
+    const v0 = value[0]!;
+    if (context === "block" && v0 === "[" && value.endsWith("]")
+        && splitInlineFlow(value.slice(1, -1)) !== null) {
+        return value;
+    }
+    return quoteItem(value, '"');
 }
 
 /** Does this scalar pass the same safety rules the flat classifier applies? */
@@ -261,7 +352,7 @@ function parseFlowMap(text: string): FmNestedLeaf[] | null {
 
 /** Spells a flow mapping from its leaves. */
 export function flowMapText(leaves: FmNestedLeaf[]): string {
-    return `{ ${leaves.map((l) => `${l.key}: ${l.value}`).join(", ")} }`;
+    return `{ ${leaves.map((l) => `${l.key}: ${emitScalar(l.value, "flow")}`).join(", ")} }`;
 }
 
 /**
@@ -271,6 +362,18 @@ export function flowMapText(leaves: FmNestedLeaf[]): string {
  * A flow leaf shares one line with its siblings, where a comma or a brace ends
  * the value early, so the candidate mapping is re-spelled and re-parsed: the
  * value is accepted only when the round trip hands every leaf back unchanged.
+ *
+ * The round trip is read against the EMITTED spelling rather than the typed
+ * one, because emission is where quoting is decided. A value the writer quotes
+ * comes back quoted, and comparing it to the raw text would reject the very
+ * values quoting exists to carry.
+ *
+ * It is a check ON THE WRITER, not a list of hazards, and it is expected to
+ * refuse nothing: `emitScalar` in flow context quotes everything this file's
+ * own `splitInlineFlow` cannot scan past, so every value it emits parses back.
+ * That is exactly why it stays. It is the one thing that fails if the two ever
+ * disagree again, and each time they have, the symptom was a legal value the
+ * cell silently declined to save rather than anything a reader could see.
  */
 export function acceptsNestedValue(item: FmNestedItem, leafIdx: number, next: string): boolean {
     if (!isNestedLeafValue(next)) { return false; }
@@ -279,7 +382,7 @@ export function acceptsNestedValue(item: FmNestedItem, leafIdx: number, next: st
     const parsed = parseFlowMap(flowMapText(candidate));
     return parsed !== null
         && parsed.length === candidate.length
-        && parsed.every((p, k) => p.key === candidate[k]!.key && p.value === candidate[k]!.value);
+        && parsed.every((p, k) => p.key === candidate[k]!.key && p.value === emitScalar(candidate[k]!.value, "flow"));
 }
 
 /**
