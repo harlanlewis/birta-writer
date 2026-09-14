@@ -65,8 +65,18 @@ export type ConnectorFetchOutcome =
      * that lands here is exactly the case worth offering a connection for.
      */
     | { state: "notFound" }
-    /** Anything else: offline, refused, rate-limited, malformed, redirected. */
-    | { state: "error" };
+    /**
+     * Anything else: offline, refused, rate-limited, malformed, redirected.
+     *
+     * `status` is present when the failure was an HTTP response rather than a
+     * transport or parse failure, and absent when there was no response to read
+     * a status off. The card path ignores it; the OAuth path needs it, because
+     * the states above are a CARD's vocabulary and a token endpoint does not
+     * share it. RFC 6749 has that endpoint answer 400 for a refused grant,
+     * which is indistinguishable here from being offline unless the status
+     * travels with the failure.
+     */
+    | { state: "error"; status?: number };
 
 /**
  * Perform one GET against a connector's pinned API and return its parsed JSON
@@ -155,13 +165,17 @@ export async function fetchConnectorCard(
         // more buys nothing — every authenticated tier shares one budget — so
         // offering an upgrade there would be a suggestion that cannot work.
         if (res.status === 403) {
-            return { state: token === null ? "notFound" : "error" };
+            return token === null ? { state: "notFound" } : { state: "error", status: 403 };
         }
         if (!res.ok) {
-            return { state: "error" };
+            return { state: "error", status: res.status };
         }
         const contentType = res.headers.get("content-type");
         if (!contentType || !/json/i.test(contentType)) {
+            // No status: the response arrived and was a success by HTTP's
+            // reckoning, so carrying a 200 here would tell the OAuth path the
+            // provider refused when the provider answered fine and sent
+            // something unreadable.
             return { state: "error" };
         }
         const body = await readCappedText(res, CONNECTOR_MAX_BYTES);
@@ -169,7 +183,10 @@ export async function fetchConnectorCard(
     } catch (e) {
         // Offline, DNS failure, abort-on-timeout, malformed JSON. The error
         // sink is console-only, and the message never carries the credential.
-        reportError("resolveEmbedCard", e);
+        // Named for the guarded fetch rather than for cards: token exchanges
+        // ride this same site, and logging one as a card resolution sends
+        // whoever reads the sink looking in the wrong place.
+        reportError("connectorFetch", e);
         return { state: "error" };
     } finally {
         clearTimeout(timer);

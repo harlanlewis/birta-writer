@@ -140,6 +140,28 @@ describe("the OAuth callback", () => {
         }
     });
 
+    it("should call a 400 from the token endpoint a refusal, not a network failure", async () => {
+        // RFC 6749 section 5.2: a refused grant is a 400 `invalid_grant`, which
+        // is what an authorization code that sat too long in a browser gets.
+        // Reported as `network` it becomes "could not reach Linear", which
+        // sends the user to check their connection over a refusal.
+        stubToken({ error: "invalid_grant" }, 400);
+        const pending = flow.authorize(SPEC, ["read"]);
+        await vi.waitFor(() => expect(env.openExternal).toHaveBeenCalled());
+        callback(handler, `code=stale&state=${openedState()}`);
+        expect(await pending).toEqual({ ok: false, reason: "refused" });
+    });
+
+    it("should call a 500 from the token endpoint a network failure", async () => {
+        // The other side of the same branch, so the mapping is discriminating
+        // rather than a constant: a provider fault is not the user's refusal.
+        stubToken({}, 503);
+        const pending = flow.authorize(SPEC, ["read"]);
+        await vi.waitFor(() => expect(env.openExternal).toHaveBeenCalled());
+        callback(handler, `code=c&state=${openedState()}`);
+        expect(await pending).toEqual({ ok: false, reason: "network" });
+    });
+
     it("should give up when the browser could not be opened", async () => {
         (env.openExternal as ReturnType<typeof vi.fn>).mockResolvedValue(false);
         expect(await flow.authorize(SPEC, ["read"])).toEqual({ ok: false, reason: "cancelled" });

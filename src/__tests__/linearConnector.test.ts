@@ -31,6 +31,13 @@ describe("the Linear connector's spec", () => {
         expect(spec.apiHosts).not.toContain("linear.app");
     });
 
+    it("should declare that it cannot be read anonymously", () => {
+        // Both rows, because the flag's whole purpose is that the two providers
+        // differ: asserting Linear alone would pass against a constant.
+        expect(CONNECTORS.linear.anonymousReads).toBe(false);
+        expect(CONNECTORS.github.anonymousReads).toBe(true);
+    });
+
     it("should request read and nothing else, so render-only holds at the grant", () => {
         expect(CONNECTORS.linear.scopes).toEqual(["read"]);
         expect(CONNECTORS.linear.privateScopes).toBeUndefined();
@@ -91,7 +98,7 @@ describe("linearCard", () => {
     const match = matchFor(ISSUE_URL);
     const ok = (nodes: unknown[]) => ({ data: { issues: { nodes } } });
 
-    it("should map a complete issue to title, identifier with assignee, and state", () => {
+    it("should map a complete issue to title, assignee and state", () => {
         const card = linearCard(match, ok([{
             identifier: "MAR-186",
             title: "Embed provider roadmap",
@@ -100,12 +107,26 @@ describe("linearCard", () => {
         }]));
         expect(card).toEqual({
             title: "Embed provider roadmap",
-            subtitle: "MAR-186 · Harlan",
+            subtitle: "Harlan",
             status: "In Progress",
         });
     });
 
-    it("should show the key alone when nobody is assigned, with no trailing separator", () => {
+    it("should never repeat the issue key, which the renderer already draws", () => {
+        // `embedCard.ts` prepends the URL-derived identity when the API title
+        // differs from it, which for an issue is always. A key here produced
+        // "MAR-186 · MAR-186" on a real card, and no unit test saw it because
+        // the duplication happens one layer up. Both fixtures assert the
+        // absence, since only one of them exercises the assignee branch.
+        const assigned = linearCard(match, ok([{
+            identifier: "MAR-186", title: "T", assignee: { displayName: "Harlan" },
+        }]));
+        expect(assigned?.subtitle).toBe("Harlan");
+        const unassigned = linearCard(match, ok([{ identifier: "MAR-186", title: "T" }]));
+        expect(unassigned?.subtitle).toBeUndefined();
+    });
+
+    it("should omit the subtitle when nobody is assigned", () => {
         // `assignee: null` is what the API actually sends for an unassigned
         // issue, confirmed against api.linear.app rather than assumed. An
         // earlier version of this fixture OMITTED the key instead, which is a
@@ -114,12 +135,8 @@ describe("linearCard", () => {
         const card = linearCard(match, ok([{
             identifier: "MAR-186", title: "T", state: { name: "Todo" }, assignee: null,
         }]));
-        expect(card?.subtitle).toBe("MAR-186");
-    });
-
-    it("should treat an absent assignee the same as a null one", () => {
-        const card = linearCard(match, ok([{ identifier: "MAR-186", title: "T" }]));
-        expect(card?.subtitle).toBe("MAR-186");
+        expect(card).not.toBeNull();
+        expect("subtitle" in card!).toBe(false);
     });
 
     it("should pass a workspace's own state name through rather than mapping it", () => {
@@ -149,8 +166,4 @@ describe("linearCard", () => {
         }
     });
 
-    it("should fall back to the URL's key when the response omits the identifier", () => {
-        const card = linearCard(match, ok([{ title: "T" }]));
-        expect(card?.subtitle).toBe("MAR-186");
-    });
 });

@@ -286,6 +286,13 @@ export class ConnectorService {
             if (!token) {
                 return { state: "expired", connector: id };
             }
+        } else if (!spec.anonymousReads) {
+            // Nothing to ask and nobody to ask it of. Returning `locked` here
+            // rather than letting the request fail is the difference between a
+            // card that says "connect" and one that says "reconnect" to
+            // somebody who never connected, and it keeps the document's ids
+            // off the wire for a request that could only 401.
+            return { state: "locked", connector: id };
         }
 
         const outcome = await fetchConnectorCard(

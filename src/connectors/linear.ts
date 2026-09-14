@@ -68,18 +68,18 @@ export function linearCard(match: EmbedMatch, body: unknown): EmbedCardData | nu
         return null;
     }
 
-    // The identifier the API returns rather than the one parsed from the URL:
-    // they agree, and preferring the API's means the card shows what the
-    // provider says this issue is rather than what the link claimed.
-    const identifier = str(node, "identifier") ?? linearCardParts(match.id).key;
     const assignee = str(obj(node, "assignee"), "displayName");
 
     return {
         title,
-        // The identifier leads because it is what a reader scans for, and the
-        // assignee follows only when there is one: an unassigned issue gets a
-        // subtitle of just its key rather than a trailing separator.
-        subtitle: assignee ? `${identifier} · ${assignee}` : identifier,
+        // The assignee ALONE, and the identifier deliberately not.
+        //
+        // `embedCard.ts` already puts the URL-derived identity in front of this
+        // line whenever the API's title differs from it, which for an issue is
+        // always. Repeating the key here produced "MAR-186 · MAR-186" on a real
+        // card. `EmbedCardData` says a subtitle is one supporting line, an
+        // author or a date; identity belongs to the renderer.
+        ...(assignee !== undefined ? { subtitle: assignee } : {}),
         // Linear's workflow states are workspace-defined ("In Review",
         // "Shipped"), so the state's own name is passed through rather than
         // mapped onto a fixed vocabulary. A mapping would have to guess at

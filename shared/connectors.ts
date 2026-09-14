@@ -100,6 +100,22 @@ export interface ConnectorSpec {
      */
     apiHosts: readonly string[];
     /**
+     * Whether this provider answers anything useful WITHOUT a credential.
+     *
+     * GitHub does: a public repository's issues and pull requests read fine
+     * anonymously, which is what makes connecting an upgrade rather than an
+     * entry fee. Linear does not: its API is authenticated in full, so an
+     * unconnected request can only ever fail.
+     *
+     * False means no request is made at all until the user connects, and the
+     * card is `locked` rather than `expired`. Both halves matter. A 401 from an
+     * unconnected provider maps to `expired`, which tells somebody to RE-connect
+     * a service they never connected. And the request itself would send the
+     * document's issue ids to a provider that cannot answer, which is a leak
+     * bought for nothing.
+     */
+    anonymousReads: boolean;
+    /**
      * The one call `connect` makes to prove a fresh credential works before
      * the connection is recorded. It must be the cheapest authenticated
      * endpoint the provider has, and it must not name any document's content:
@@ -130,6 +146,9 @@ export const CONNECTORS: Record<ConnectorId, ConnectorSpec> = {
         privateScopes: ["repo"],
         scopeNote: "GitHub grants no read-only access to private repositories: this also permits writes. Birta only ever reads.",
         apiHosts: ["api.github.com"],
+        // A scopeless read of public repository data needs no credential, which
+        // is why a GitHub card works before anyone connects anything.
+        anonymousReads: true,
         verifyUrl: "https://api.github.com/user",
     },
     linear: {
@@ -153,6 +172,10 @@ export const CONNECTORS: Record<ConnectorId, ConnectorSpec> = {
         // opened in the browser rather than fetched, so it is deliberately not
         // here: this list is what a CREDENTIAL may be sent to.
         apiHosts: ["api.linear.app"],
+        // Linear's API is authenticated in full: there is no anonymous read of
+        // anything, so an unconnected request can only fail. Asking anyway
+        // would leak the document's issue ids for a 401.
+        anonymousReads: false,
         verifyUrl: "https://api.linear.app/graphql",
     },
 };

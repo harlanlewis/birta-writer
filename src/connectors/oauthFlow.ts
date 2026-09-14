@@ -51,6 +51,27 @@ export type AuthorizeOutcome =
     /** The exchange could not be completed. */
     | { ok: false; reason: "network" };
 
+/**
+ * Read a guarded-fetch failure in the token endpoint's vocabulary.
+ *
+ * The outcome states are a CARD's: `expired` means a credential the provider
+ * no longer honours, and `notFound` means a resource that is not visible. A
+ * token endpoint means neither. RFC 6749 section 5.2 has it answer 400 for
+ * `invalid_grant`, which is the ordinary way a code that sat too long in a
+ * browser is refused, and that is a refusal rather than a network problem.
+ *
+ * Any 4xx is the provider saying no. Anything else, including no status at
+ * all, is a request that did not complete, which is what `network` means to
+ * the person reading the message.
+ */
+function tokenFailure(outcome: { state: string; status?: number }): "refused" | "network" {
+    if (outcome.state === "expired") {
+        return "refused";
+    }
+    const status = outcome.status;
+    return status !== undefined && status >= 400 && status < 500 ? "refused" : "network";
+}
+
 interface Pending {
     readonly attempt: PkceAttempt;
     readonly settle: (uri: vscode.Uri | null) => void;
@@ -182,7 +203,7 @@ export class OAuthFlow {
             spec, spec.oauth.tokenUrl, null, { kind: "form", value: body },
         );
         if (outcome.state !== "ok") {
-            return { ok: false, reason: outcome.state === "expired" ? "refused" : "network" };
+            return { ok: false, reason: tokenFailure(outcome) };
         }
         const tokens = readTokenResponse(outcome.body, Date.now());
         return tokens.ok ? { ok: true, tokens: tokens.tokens } : { ok: false, reason: "refused" };
@@ -213,7 +234,7 @@ export class OAuthFlow {
             spec, spec.oauth!.tokenUrl, null, { kind: "form", value: body },
         );
         if (outcome.state !== "ok") {
-            return { ok: false, reason: outcome.state === "expired" ? "refused" : "network" };
+            return { ok: false, reason: tokenFailure(outcome) };
         }
         const tokens = readTokenResponse(outcome.body, Date.now());
         return tokens.ok ? { ok: true, tokens: tokens.tokens } : { ok: false, reason: "refused" };
