@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+---
+
+## [2026.914.0] - 2026, September 14
+
 ### Added
 
 - Connect Linear, and a Linear issue link shows the issue's real title, its workflow state and who it is assigned to. Run "Connect Service…" from the command palette and pick Linear: your browser opens Linear's own consent page, and what comes back is read-only and kept in your keychain, never in a settings file and never in the editor. "Disconnect Service…" deletes it. Until you connect, the card is still built from the URL alone and Birta asks Linear nothing at all, so a document full of Linear links sends nothing anywhere. This needs `birta.network.enabled`, which ships off. Linear is the first service to connect through its own browser consent rather than through a sign-in VS Code already manages, which is what makes providers with no VS Code account reachable at all.
