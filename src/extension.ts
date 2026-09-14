@@ -16,6 +16,7 @@ import { reportErrorWithNotification } from "./errorSink";
 import { registerSendFeedback } from "./feedback/sendFeedback";
 import { refreshUnread } from "./whatsNew";
 import { ConnectorService } from "./connectors/connectorService";
+import { OAuthFlow } from "./connectors/oauthFlow";
 import { registerConnectorCommands } from "./connectors/commands";
 import { captureNavTarget } from "./searchNavigation";
 import {
@@ -175,7 +176,14 @@ export function activate(context: vscode.ExtensionContext) {
     // reason to exist, and nothing else in the extension is handed the
     // SecretStorage handle. Constructing it costs one object and reads no
     // keychain entry; the first read happens when a card asks.
-    const connectors = new ConnectorService(context.secrets);
+    // One URI handler for the whole extension, which is all VS Code permits,
+    // owned by the flow that dispatches on the callback's path. Registered
+    // unconditionally: it is a listener rather than a request, it costs nothing
+    // until a `vscode://birtalabs.birta-writer/auth/...` URL is opened, and a
+    // connector whose consent page is already open must find it waiting.
+    const oauthFlow = new OAuthFlow();
+    context.subscriptions.push(oauthFlow.register());
+    const connectors = new ConnectorService(context.secrets, oauthFlow);
     MarkdownEditorProvider.current?.setConnectorService(connectors);
     registerConnectorCommands(context, connectors, () => {
         MarkdownEditorProvider.current?.broadcastConnectorState();

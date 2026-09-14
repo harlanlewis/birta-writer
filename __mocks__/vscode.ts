@@ -9,6 +9,21 @@ import { URI, Utils } from "vscode-uri";
 
 // vscode-uri IS the exact URI implementation the VS Code API exposes as `vscode.Uri`,
 // so tests exercise real parsing/joining/fsPath semantics instead of a hand-rolled fake.
+/**
+ * The handler the extension last registered, for a test to deliver a URI to.
+ * Module-level because `window` is an object literal that cannot reference
+ * itself, and read through `takeUriHandler` so a test cannot mistake a stale
+ * one for a fresh registration.
+ */
+let lastUriHandler: { handleUri: (uri: unknown) => void } | null = null;
+
+/** The registered URI handler, cleared as it is taken. */
+export function takeUriHandler(): { handleUri: (uri: unknown) => void } | null {
+    const handler = lastUriHandler;
+    lastUriHandler = null;
+    return handler;
+}
+
 export const Uri = {
     file: (p: string) => URI.file(p),
     parse: (s: string, strict?: boolean) => URI.parse(s, strict),
@@ -531,6 +546,16 @@ function makeFakeStatusBarItem() {
 }
 
 export const window = {
+    /**
+     * The extension's one URI handler (MAR-198's OAuth callback). The handler
+     * is captured rather than discarded so a test can deliver a callback the
+     * way VS Code would, which is the only way to exercise the state check and
+     * the replay refusal: both live in code that only runs on a real callback.
+     */
+    registerUriHandler: vi.fn((handler: { handleUri: (uri: unknown) => void }) => {
+        lastUriHandler = handler;
+        return { dispose: vi.fn() };
+    }),
     /**
      * Opening a document in the raw text editor. The mode switch passes its
      * `TextDocumentShowOptions` here, so a test can read back the selection the

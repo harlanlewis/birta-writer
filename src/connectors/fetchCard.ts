@@ -28,6 +28,22 @@ import { isPubliclyRoutableUrl } from "../utils/urlGuard";
 import { readCappedText } from "../utils/cappedRead";
 import type { ConnectorSpec } from "../../shared/connectors";
 
+/**
+ * A POST body and the encoding its recipient requires.
+ *
+ * `form` exists because RFC 6749 requires the OAuth token endpoint to take
+ * `application/x-www-form-urlencoded`, so the exchange cannot ride the JSON
+ * path a GraphQL card uses.
+ */
+export type ConnectorRequestBody =
+    | { kind: "json"; value: unknown }
+    | { kind: "form"; value: URLSearchParams };
+
+const CONTENT_TYPE: Record<ConnectorRequestBody["kind"], string> = {
+    json: "application/json",
+    form: "application/x-www-form-urlencoded",
+};
+
 /** Same total-time bound as the oEmbed fetch: decoration must never hang. */
 const CONNECTOR_TIMEOUT_MS = 5000;
 /** A single issue/PR/repo JSON; 512 KB is headroom, not a real budget. */
@@ -67,16 +83,20 @@ export async function fetchConnectorCard(
     requestUrl: string,
     token: string | null,
     /**
-     * A JSON body to POST. Absent means GET.
+     * A body to POST. Absent means GET.
      *
-     * Added for Linear, whose API is GraphQL and has no GET surface at all, so
-     * a card there is a query rather than a path. It changes the method and the
-     * content type and NOTHING else: the https check, the pinned-host check,
-     * the SSRF guard, the manual redirect, the timeout and the capped read all
-     * run exactly as before, which is why this stays one enforcement site
-     * rather than becoming two.
+     * Two encodings because the two callers have no choice about theirs. A
+     * GraphQL card is JSON, which is what Linear's API accepts and the only
+     * reason this parameter exists at all. An OAuth token exchange is
+     * form-encoded, which RFC 6749 requires of the token endpoint, so sending
+     * it as JSON would be refused by a spec-compliant provider.
+     *
+     * It changes the method and the content type and NOTHING else: the https
+     * check, the pinned-host check, the SSRF guard, the manual redirect, the
+     * timeout and the capped read all run exactly as before, which is why this
+     * stays one enforcement site rather than becoming two.
      */
-    requestBody?: unknown,
+    requestBody?: ConnectorRequestBody,
 ): Promise<ConnectorFetchOutcome> {
     let parsed: URL;
     try {
@@ -105,10 +125,15 @@ export async function fetchConnectorCard(
             redirect: "manual",
             ...(requestBody === undefined
                 ? {}
-                : { method: "POST", body: JSON.stringify(requestBody) }),
+                : {
+                    method: "POST",
+                    body: requestBody.kind === "json"
+                        ? JSON.stringify(requestBody.value)
+                        : requestBody.value.toString(),
+                }),
             headers: {
                 accept: "application/json",
-                ...(requestBody === undefined ? {} : { "content-type": "application/json" }),
+                ...(requestBody === undefined ? {} : { "content-type": CONTENT_TYPE[requestBody.kind] }),
                 ...(token === null ? {} : { authorization: `Bearer ${token}` }),
                 "user-agent": "Birta-Writer/connector",
             },

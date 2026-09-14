@@ -106,7 +106,19 @@ describe("linearCard", () => {
     });
 
     it("should show the key alone when nobody is assigned, with no trailing separator", () => {
-        const card = linearCard(match, ok([{ identifier: "MAR-186", title: "T", state: { name: "Todo" } }]));
+        // `assignee: null` is what the API actually sends for an unassigned
+        // issue, confirmed against api.linear.app rather than assumed. An
+        // earlier version of this fixture OMITTED the key instead, which is a
+        // shape the provider never produces and which would have passed while
+        // leaving the null case untested.
+        const card = linearCard(match, ok([{
+            identifier: "MAR-186", title: "T", state: { name: "Todo" }, assignee: null,
+        }]));
+        expect(card?.subtitle).toBe("MAR-186");
+    });
+
+    it("should treat an absent assignee the same as a null one", () => {
+        const card = linearCard(match, ok([{ identifier: "MAR-186", title: "T" }]));
         expect(card?.subtitle).toBe("MAR-186");
     });
 

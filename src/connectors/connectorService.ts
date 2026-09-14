@@ -46,6 +46,17 @@ import {
 import { fetchConnectorCard } from "./fetchCard";
 import { githubCard } from "./github";
 import { linearCard } from "./linear";
+import { OAuthFlow } from "./oauthFlow";
+
+/**
+ * Refresh this far ahead of a known expiry.
+ *
+ * A token that expires while a request is in flight reads as a revoked grant,
+ * so the window is wide enough to cover a slow round trip rather than tuned to
+ * anything. It is not a guess about clock skew: the expiry is computed from our
+ * own clock at the moment the token arrived, so the two clocks are the same one.
+ */
+const OAUTH_REFRESH_SKEW_MS = 60_000;
 
 /** Secret key for one connector's record. Namespaced so nothing else collides. */
 function secretKey(id: ConnectorId): string {
@@ -62,8 +73,24 @@ function secretKey(id: ConnectorId): string {
  */
 interface ConnectorRecord {
     auth: ConnectorSpec["auth"];
-    /** Present only for `token` (and future `oauth-pkce`) strategies. */
+    /** Present only for `token` and `oauth-pkce` strategies. */
     token?: string;
+    /**
+     * The refresh token, for `oauth-pkce` and only when the provider issued
+     * one. Absent means the access token is all there is, and its expiry is
+     * the end of the connection rather than a thing to recover from.
+     */
+    refreshToken?: string;
+    /**
+     * When the access token stops being usable, in epoch ms.
+     *
+     * Absent means the provider named no expiry, which is not the same as "it
+     * never expires": it means we were told nothing, so the only way to learn
+     * the grant is gone is a 401, which `fetchConnectorCard` already turns into
+     * `expired`. Refresh is attempted ahead of a KNOWN expiry and never
+     * speculatively.
+     */
+    expiresAt?: number;
     /**
      * The user opted into the broader grant that reads private resources.
      * Absent or false means the connection is the public, read-only one, which
@@ -83,7 +110,14 @@ export class ConnectorService {
     /** Connected-state mirror, so the hot path avoids a keychain read per card. */
     private connected = new Map<ConnectorId, boolean>();
 
-    constructor(private readonly secrets: vscode.SecretStorage) {}
+    /**
+     * The browser round trip, injectable so a test drives connect and refresh
+     * without a network or a real VS Code URI handler.
+     */
+    constructor(
+        private readonly secrets: vscode.SecretStorage,
+        private readonly flow: OAuthFlow = new OAuthFlow(),
+    ) {}
 
     /** Has the user connected this service to Birta? */
     async isConnected(id: ConnectorId): Promise<boolean> {
@@ -145,9 +179,12 @@ export class ConnectorService {
                 message: vscode.l10n.t("Turn on birta.network.enabled first: Birta is offline by default."),
             };
         }
+        if (spec.auth === "oauth-pkce") {
+            return this.connectViaOAuth(spec, scopes);
+        }
         if (spec.auth !== "builtin") {
-            // The seam admits `oauth-pkce` and `token`, and no provider has
-            // shipped on either yet. Refusing loudly beats a half-path.
+            // `token` has no provider behind it. Refusing loudly beats a
+            // half-path.
             return { ok: false, message: vscode.l10n.t("{0} cannot be connected yet.", spec.label) };
         }
         let session: vscode.AuthenticationSession | undefined;
@@ -251,7 +288,12 @@ export class ConnectorService {
             }
         }
 
-        const outcome = await fetchConnectorCard(spec, requestUrl, token, requestBody);
+        const outcome = await fetchConnectorCard(
+            spec,
+            requestUrl,
+            token,
+            requestBody === undefined ? undefined : { kind: "json", value: requestBody },
+        );
         if (outcome.state === "notFound") {
             // Not visible to whoever just asked. A broader grant may fix it —
             // GitHub answers 404 for a private repository precisely so an
@@ -269,11 +311,75 @@ export class ConnectorService {
     }
 
     /**
+     * Connect through the browser: consent, callback, exchange, verify, record.
+     *
+     * The verify is the same one `builtin` does and for the same reason: a
+     * grant the provider will not honour must never present itself as a working
+     * connection. It is the one moment the user is waiting and can be told
+     * plainly that it did not work.
+     *
+     * Nothing is written before the verify passes, so a failed connect leaves
+     * no record and no token behind.
+     */
+    private async connectViaOAuth(
+        spec: ConnectorSpec,
+        scopes: readonly string[],
+    ): Promise<{ ok: boolean; message?: string } | null> {
+        const authorized = await this.flow.authorize(spec, scopes);
+        if (!authorized.ok) {
+            // A cancellation is silent by design: the user closed the browser
+            // or declined, and neither is news.
+            if (authorized.reason === "cancelled") {
+                return null;
+            }
+            return {
+                ok: false,
+                message: authorized.reason === "refused"
+                    ? vscode.l10n.t("{0} refused that sign-in.", spec.label)
+                    : vscode.l10n.t("Could not reach {0} to complete the sign-in.", spec.label),
+            };
+        }
+
+        const check = await fetchConnectorCard(
+            spec,
+            spec.verifyUrl,
+            authorized.tokens.accessToken,
+            // Linear's verify endpoint is its GraphQL one, which answers POST
+            // only, so the cheapest authenticated call is a query rather than a
+            // GET. `viewer` is that call: it names no document and reads one id.
+            { kind: "json", value: { query: "{ viewer { id } }" } },
+        );
+        if (check.state !== "ok") {
+            return {
+                ok: false,
+                message: check.state === "expired"
+                    ? vscode.l10n.t("{0} rejected that sign-in.", spec.label)
+                    : vscode.l10n.t("Could not reach {0} to confirm the connection.", spec.label),
+            };
+        }
+
+        await this.writeRecord(spec.id, {
+            auth: spec.auth,
+            token: authorized.tokens.accessToken,
+            ...(authorized.tokens.refreshToken !== undefined
+                ? { refreshToken: authorized.tokens.refreshToken }
+                : {}),
+            ...(authorized.tokens.expiresAt !== undefined
+                ? { expiresAt: authorized.tokens.expiresAt }
+                : {}),
+        });
+        return { ok: true };
+    }
+
+    /**
      * The bearer token for a live connection, or null when the grant is gone.
      * Null is the `expired` state: the user connected once, and the provider
      * will not honour that connection now.
      */
     private async credential(spec: ConnectorSpec, record: ConnectorRecord): Promise<string | null> {
+        if (spec.auth === "oauth-pkce") {
+            return this.oauthCredential(spec, record);
+        }
         if (spec.auth !== "builtin") {
             return record.token ?? null;
         }
@@ -290,6 +396,52 @@ export class ConnectorService {
             { silent: true },
         );
         return session?.accessToken ?? null;
+    }
+
+    /**
+     * The access token for an `oauth-pkce` connection, refreshed if it is known
+     * to have lapsed and a refresh token exists.
+     *
+     * Refresh happens only against a KNOWN expiry, never speculatively: a
+     * provider that named no `expires_in` gets its token used until something
+     * answers 401, which is already the `expired` state. Refreshing on a guess
+     * would spend a refresh token to solve a problem nobody reported.
+     *
+     * A refresh that fails is `expired` rather than an error, because from the
+     * user's side those are the same fact and only one of them is actionable:
+     * reconnect.
+     */
+    private async oauthCredential(
+        spec: ConnectorSpec,
+        record: ConnectorRecord,
+    ): Promise<string | null> {
+        const stillGood = record.expiresAt === undefined
+            || Date.now() < record.expiresAt - OAUTH_REFRESH_SKEW_MS;
+        if (stillGood) {
+            return record.token ?? null;
+        }
+        if (!record.refreshToken) {
+            return null;
+        }
+        const refreshed = await this.flow.refresh(spec, record.refreshToken);
+        if (!refreshed.ok) {
+            return null;
+        }
+        // The provider may or may not rotate the refresh token. Keeping the old
+        // one when none comes back is what makes a non-rotating provider work;
+        // overwriting with undefined would end the connection at the next
+        // expiry for no reason.
+        await this.writeRecord(spec.id, {
+            auth: spec.auth,
+            token: refreshed.tokens.accessToken,
+            ...(refreshed.tokens.refreshToken ?? record.refreshToken
+                ? { refreshToken: refreshed.tokens.refreshToken ?? record.refreshToken }
+                : {}),
+            ...(refreshed.tokens.expiresAt !== undefined
+                ? { expiresAt: refreshed.tokens.expiresAt }
+                : {}),
+        });
+        return refreshed.tokens.accessToken;
     }
 
     private async readRecord(id: ConnectorId): Promise<ConnectorRecord | null> {

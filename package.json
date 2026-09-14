@@ -41,7 +41,9 @@
         "url": "https://github.com/harlanlewis/birta-writer/issues"
     },
     "homepage": "https://github.com/harlanlewis/birta-writer#readme",
-    "activationEvents": [],
+    "activationEvents": [
+        "onUri"
+    ],
     "main": "./dist/extension.js",
     "l10n": "./l10n",
     "contributes": {
