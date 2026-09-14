@@ -9,7 +9,11 @@
  *   block is a "flat" mapping of `key: scalar` lines.
  * - Flat blocks get the key/value table UX; serialization preserves every
  *   untouched line byte-for-byte and only rewrites lines whose entry changed.
- * - Anything else (nested maps, lists, block scalars, comments, anchors,
+ * - `parseTabularFrontmatter` widens that model to simple lists and to nested
+ *   values two levels deep (a sequence of mappings, a nested mapping, a
+ *   one-line flow mapping), each rendered natively and serialized the same
+ *   way: only the lines whose leaf actually changed are rewritten.
+ * - Anything else (a third level, block scalars, comments, anchors,
  *   colon-less lines, CRLF files, ...) is edited in a raw monospace textarea
  *   whose content is written back verbatim. No line is ever dropped.
  * - The table is YAML-only, by construction rather than by omission: its
@@ -26,19 +30,23 @@ import { attachInputUndo, undoChordOf } from "../../utils/inputUndo";
 import { getWebviewState, notifyFrontmatterUpdate, setWebviewState } from "../../messaging";
 import {
     FLOW_ITEM_RE,
+    acceptsNestedValue,
+    emitScalar,
+    flowMapText,
+    isNestedLeafValue,
     parseQuotedToken,
     parseTabularFrontmatter,
     quoteItem,
     splitFences,
 } from "../../../shared/frontmatterTable";
-import type { FmEntry, FmListItem } from "../../../shared/frontmatterTable";
+import type { FmEntry, FmListItem, FmNested, FmNestedItem, FmNestedLeaf } from "../../../shared/frontmatterTable";
 import { closeActiveFmSuggestMenu, openFmChipSuggestMenu, openFmSuggestMenu } from "./suggestMenu";
 import type { FmSuggestController } from "./suggestMenu";
 
 // The pure parsing core lives in shared/frontmatterTable.ts (also used by the
 // Extension side); re-export it so existing consumers keep their import paths.
 export { parseTabularFrontmatter } from "../../../shared/frontmatterTable";
-export type { FmEntry, FmList, FmListItem } from "../../../shared/frontmatterTable";
+export type { FmEntry, FmList, FmListItem, FmNested, FmNestedItem, FmNestedLeaf } from "../../../shared/frontmatterTable";
 
 /**
  * Conservative structural check: returns true only when every non-empty inner
@@ -97,8 +105,19 @@ export function parseFrontmatter(raw: string): FmEntry[] {
         .filter(({ key }) => key.length > 0);
 }
 
-/** The exact original lines an entry occupies in the source block. */
+/**
+ * The exact original lines an entry occupies in the source block.
+ *
+ * The parser records this, so it stays what the FILE holds even after the
+ * user removes a chip or a nested item. Re-deriving it from the entry's
+ * current items would stop matching at the first removal, and the field would
+ * then be re-emitted at the end of the block rather than left where its author
+ * put it. The derivations below are the fallback for an entry the parser never
+ * saw, which is a row the user just added; every nested entry comes from the
+ * parser and so is answered above.
+ */
 function entrySpan(entry: FmEntry): string[] | null {
+    if (entry.origSpan) { return entry.origSpan; }
     if (entry.origLine === undefined) { return null; }
     if (!entry.list) { return [entry.origLine]; }
     const { list } = entry;
@@ -112,8 +131,65 @@ function entrySpan(entry: FmEntry): string[] | null {
     return [entry.origLine, ...(itemLines as string[])];
 }
 
+/** Does this line still spell exactly this leaf, whatever its spacing? */
+function leafLineUnchanged(origLine: string | undefined, leaf: FmNestedLeaf): boolean {
+    if (origLine === undefined) { return false; }
+    const text = origLine.replace(/^[ \t]*(- )?/, "");
+    const colonIdx = text.indexOf(":");
+    if (colonIdx <= 0) { return false; }
+    return text.slice(0, colonIdx).trim() === leaf.key
+        && text.slice(colonIdx + 1).trim() === leaf.value;
+}
+
+/** Does this line still spell exactly these flow leaves? */
+function flowLineUnchanged(origLine: string | undefined, leaves: FmNestedLeaf[]): boolean {
+    if (origLine === undefined) { return false; }
+    const brace = origLine.indexOf("{");
+    if (brace === -1) { return false; }
+    const parsed = parseTabularFrontmatter(`---\nk: ${origLine.slice(brace)}\n---\n`)?.[0]?.nested;
+    return parsed !== undefined
+        && parsed.items[0]!.leaves.length === leaves.length
+        && parsed.items[0]!.leaves.every((l, k) => l.key === leaves[k]!.key && l.value === leaves[k]!.value);
+}
+
+/** Rebuilds a nested entry's lines, emitting original bytes wherever nothing changed. */
+function reconstructNestedLines(entry: FmEntry, nested: FmNested): string[] {
+    if (nested.kind === "flow") {
+        const leaves = nested.items[0]!.leaves;
+        const keyUnchanged = entry.origLine !== undefined
+            && entry.origLine.slice(0, entry.origLine.indexOf(":")).trim() === entry.key;
+        if (keyUnchanged && flowLineUnchanged(entry.origLine, leaves)) { return [entry.origLine!]; }
+        return [`${entry.key}: ${flowMapText(leaves)}`];
+    }
+
+    // The `key:` line carries no value, so its original bytes stand as long as
+    // the key itself is the one they name.
+    const keyLine = entry.origLine !== undefined
+        && entry.origLine.slice(0, entry.origLine.indexOf(":")).trim() === entry.key
+        ? entry.origLine
+        : `${entry.key}:`;
+    const lines = [keyLine];
+    for (const item of nested.items) {
+        if (item.style === "flow") {
+            const rebuilt = `${nested.itemIndent}- ${flowMapText(item.leaves)}`;
+            lines.push(flowLineUnchanged(item.origLine, item.leaves) ? item.origLine! : rebuilt);
+            continue;
+        }
+        item.leaves.forEach((leaf, k) => {
+            // In a sequence the first leaf of an item carries the `- ` marker
+            // and the rest align past it; a nested mapping has neither.
+            const marker = nested.kind === "seq" && k === 0 ? "- " : "";
+            const indent = nested.kind === "seq" && k > 0 ? `${nested.itemIndent}  ` : nested.itemIndent;
+            const rebuilt = `${indent}${marker}${leaf.key}: ${emitScalar(leaf.value)}`;
+            lines.push(leafLineUnchanged(leaf.origLine, leaf) ? leaf.origLine! : rebuilt);
+        });
+    }
+    return lines;
+}
+
 /** Rebuilds an entry's lines, emitting original bytes wherever nothing changed. */
 function reconstructEntryLines(entry: FmEntry): string[] {
+    if (entry.nested) { return reconstructNestedLines(entry, entry.nested); }
     if (!entry.list) { return [formatEntryLine(entry)]; }
     const { list } = entry;
     const keyLine = entry.origLine !== undefined
@@ -183,17 +259,24 @@ function isEntryUnchanged(entry: FmEntry): boolean {
         && entry.origLine.slice(colonIdx + 1).trim() === entry.value;
 }
 
-/** Formats one entry as a YAML line, preserving the original key text and colon spacing when possible. */
+/**
+ * Formats one entry as a YAML line, preserving the original key text and colon
+ * spacing when possible. The value goes through `emitScalar`, which is where
+ * the quoting decision lives: the cell holds verbatim source text, and text
+ * that would not read back as itself has to be quoted on the way out
+ * (MAR-455).
+ */
 function formatEntryLine(entry: FmEntry): string {
+    const value = emitScalar(entry.value);
     if (entry.origLine !== undefined) {
         const colonIdx = entry.origLine.indexOf(':');
         if (colonIdx !== -1 && entry.origLine.slice(0, colonIdx).trim() === entry.key) {
             // Only the value changed: keep the original `key:` prefix and its spacing style.
             const spacing = entry.origLine.slice(colonIdx + 1).match(/^[ \t]*/)?.[0] || ' ';
-            return entry.origLine.slice(0, colonIdx + 1) + spacing + entry.value;
+            return entry.origLine.slice(0, colonIdx + 1) + spacing + value;
         }
     }
-    return `${entry.key}: ${entry.value}`;
+    return `${entry.key}: ${value}`;
 }
 
 /**
@@ -225,7 +308,7 @@ export function serializeFrontmatter(entries: FmEntry[], originalRaw?: string): 
             if (idx === -1) { i++; continue; } // line belonged to a deleted entry
             const entry = remaining.splice(idx, 1)[0]!;
             const span = entrySpan(entry)!;
-            if (!entry.list && isEntryUnchanged(entry)) {
+            if (!entry.list && !entry.nested && isEntryUnchanged(entry)) {
                 out.push(line);
             } else {
                 out.push(...reconstructEntryLines(entry));
@@ -300,7 +383,8 @@ function restoreCommittedFm(): void {
 }
 
 /** The panel's controls whose whole purpose is a write. */
-const FM_MUTATING_CONTROLS = ".fm-delete-btn, .fm-add-btn, .fm-add-metadata-btn, .fm-chip-remove";
+const FM_MUTATING_CONTROLS = ".fm-delete-btn, .fm-add-btn, .fm-add-metadata-btn, .fm-chip-remove,"
+    + " .fm-nested-remove, .fm-nested-add";
 
 /**
  * Make the panel's chrome follow the mode. The raw YAML/TOML editor is a real
@@ -421,6 +505,9 @@ function focusRowValue(row: Element | undefined): boolean {
     if (valTd?.contentEditable === 'true') { valTd.focus(); return true; }
     const addChip = row.querySelector('.fm-chip-add') as HTMLElement | null;
     if (addChip) { addChip.focus(); return true; }
+    // A nested value is a group of leaves; the first one is the row's value.
+    const leaf = row.querySelector('.fm-nested-val') as HTMLElement | null;
+    if (leaf) { leaf.focus(); return true; }
     return false;
 }
 
@@ -455,8 +542,12 @@ function bindFmCell(
      */
     const commitCell = (): void => {
         const newVal = (td.textContent ?? '').trim();
-        if (field === 'key' && newVal.length === 0) {
-            // Keys must not be empty; restore the previous value
+        // A key is spliced in front of the colon that separates it from the
+        // value, so a key carrying its own colon spells a different field and
+        // a shorter value. Quoting is not the way out: the table refuses a
+        // quoted key on the way back in, so the block would leave the table
+        // entirely. Refused here, the way an empty key is.
+        if (field === 'key' && (newVal.length === 0 || newVal.includes(':'))) {
             td.textContent = td.dataset['orig'] ?? '';
             return;
         }
@@ -720,6 +811,238 @@ function bindFmListCell(
     td.appendChild(chips);
 }
 
+/**
+ * Binds one nested leaf's value, the only editable text inside a nested value.
+ *
+ * A candidate that would not survive being written back is refused here rather
+ * than committed and re-read: the leaf keeps its previous text, so a stray `{`
+ * or an emptied field cannot turn a rendered structure into a block the next
+ * parse has to send to the raw editor. Keys are not editable in this pass;
+ * the row's own delete button still removes the whole field.
+ *
+ * `onCommitted` is what a committed leaf does next. A leaf of a live item
+ * commits the block; a leaf of a DRAFT item (see `createNestedItemEl`) is not
+ * in the document yet, so it attaches the item first and commits only once
+ * every one of its leaves has a value. A draft leaf is checked against the
+ * scalar rules alone: the flow round trip reads the item's other leaves, which
+ * are still empty, so it would refuse every value until the last one.
+ */
+function bindFmNestedLeaf(
+    el: HTMLElement,
+    item: FmNestedItem,
+    leafIdx: number,
+    onCommitted: () => void = commitFrontmatterChange,
+    accepts: (next: string) => boolean = (next) => acceptsNestedValue(item, leafIdx, next),
+): void {
+    const leaf = item.leaves[leafIdx]!;
+    markEditableIsland(el, false);
+    // A leaf holds an id, a path or a timestamp. The raw YAML editor these
+    // bytes used to be edited in has spelling off, and so does a chip; a flat
+    // cell keeps it on, because a title or a description there is prose.
+    el.spellcheck = false;
+    el.textContent = leaf.value;
+    el.dataset['orig'] = leaf.value;
+    el.setAttribute('role', 'textbox');
+    el.setAttribute('aria-multiline', 'false');
+    el.setAttribute('aria-label', leaf.key);
+
+    const commitLeaf = (): void => {
+        const next = (el.textContent ?? '').trim();
+        if (next === leaf.value) { return; }
+        if (!accepts(next)) {
+            el.textContent = el.dataset['orig'] ?? '';
+            return;
+        }
+        leaf.value = next;
+        el.dataset['orig'] = next;
+        onCommitted();
+    };
+
+    el.addEventListener('keydown', (e) => {
+        if (e.isComposing) { return; }
+        const chord = undoChordOf(e);
+        if (chord) {
+            e.preventDefault();
+            e.stopPropagation();
+            if (chord === 'undo' && (el.textContent ?? '') !== (el.dataset['orig'] ?? '')) {
+                el.textContent = el.dataset['orig'] ?? '';
+                return; // local revert only; stay focused
+            }
+            handleFmHistoryChord(chord);
+            return;
+        }
+        e.stopPropagation();
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            commitLeaf();
+        } else if (isBareEscape(e)) {
+            e.preventDefault();
+            el.textContent = el.dataset['orig'] ?? '';
+            el.blur();
+        }
+    });
+    el.addEventListener('blur', commitLeaf);
+}
+
+/**
+ * Renders a nested value natively: a sequence of mappings as one group per
+ * item, a nested or flow mapping as a single group of key/value pairs.
+ *
+ * A sequence down to its last item offers no remove button. Taking that one
+ * away would leave a bare `key:`, which reads back as an empty scalar and so
+ * silently changes the field's type; the row's delete button is how a field goes.
+ */
+function bindFmNestedCell(
+    td: HTMLElement,
+    entry: FmEntry,
+    tbody: HTMLElement,
+    panel: HTMLElement,
+): void {
+    td.classList.add('fm-nested');
+    const nested = entry.nested!;
+    td.classList.toggle('fm-nested-seq', nested.kind === 'seq');
+
+    for (const item of nested.items) {
+        td.appendChild(createNestedItemEl(item, entry, tbody, panel, false));
+    }
+
+    // Only a sequence can gain an item. A mapping's shape IS its keys, and
+    // those are not editable here, so there is nothing an add would mean.
+    if (nested.kind === 'seq') {
+        // Icon and label are written together rather than passed as both:
+        // createButton's `label` assigns textContent, which wipes the icon it
+        // just wrote as innerHTML. Same construction as Add field below.
+        const addBtn = createButton({
+            className: 'ui-btn ui-btn--chip fm-nested-add',
+            ariaLabel: `${t('Add entry')}: ${entry.key}`,
+            onClick: () => {
+                if (!currentFmEntries.includes(entry)) { return; }
+                if (td.querySelector('.fm-nested-item--draft')) { return; }
+                const draft = draftFrom(nested.items[0]!);
+                const draftEl = createNestedItemEl(draft, entry, tbody, panel, true);
+                td.insertBefore(draftEl, addBtn);
+                draftEl.querySelector<HTMLElement>('.fm-nested-val')?.focus();
+            },
+        });
+        addBtn.innerHTML = `${IconPlus} <span>${t('Add entry')}</span>`;
+        td.appendChild(addBtn);
+    }
+}
+
+/** An unattached item shaped like `template`: its keys, and no values yet. */
+function draftFrom(template: FmNestedItem): FmNestedItem {
+    return { style: template.style, leaves: template.leaves.map((l) => ({ key: l.key, value: '' })) };
+}
+
+/**
+ * Builds one item of a nested value: a leading control gutter, then its pairs.
+ *
+ * The gutter is where the remove button lives, and it is reserved whether or
+ * not a button is drawn, so an item that becomes the last one never shifts its
+ * own text sideways. It also puts the control beside what it removes instead
+ * of at the far edge of a wide panel, one indent in from the row's own delete
+ * button, which is the same gesture one level out.
+ *
+ * A DRAFT is rendered but is NOT in `nested.items`, so it reaches no
+ * serialized block and an abandoned one costs nothing. It attaches on the
+ * commit that fills its last empty leaf; left incomplete, it goes when focus
+ * leaves it, which is how this panel has always treated an abandoned new row.
+ *
+ * A draft's leaves are checked against the scalar rules alone rather than the
+ * flow round trip, which reads the item's still-empty siblings and would
+ * refuse every value until the last one. Nothing is lost by that: `emitScalar`
+ * either passes a value through as plain text that carries no comma or brace,
+ * or quotes it, so a flow item spells and reads back as itself whatever its
+ * leaves hold. An attach-time round trip was tried here and removed after it
+ * was found to refuse nothing the writer had not already made safe.
+ */
+function createNestedItemEl(
+    item: FmNestedItem,
+    entry: FmEntry,
+    tbody: HTMLElement,
+    panel: HTMLElement,
+    draft: boolean,
+): HTMLElement {
+    const nested = entry.nested!;
+    const itemEl = document.createElement('div');
+    itemEl.className = draft ? 'fm-nested-item fm-nested-item--draft' : 'fm-nested-item';
+
+    const action = document.createElement('div');
+    action.className = 'fm-nested-action';
+    itemEl.appendChild(action);
+
+    // No button on a lone item rather than a disabled one: syncFmChromeForMode
+    // owns `disabled` on every mutating control, so a locally disabled button
+    // would be re-enabled by the next render's read-only sweep.
+    if (nested.kind === 'seq' && (draft || nested.items.length > 1)) {
+        action.appendChild(createButton({
+            className: 'ui-btn fm-nested-remove',
+            icon: IconX,
+            title: t('Remove item'),
+            // Every button in the group would otherwise read the same to a
+            // screen reader; the item's first pair is what tells them apart
+            // on screen, so it is what names the button (mirrors a chip's).
+            ariaLabel: draft
+                ? t('Remove item')
+                : `${t('Remove item')}: "${item.leaves[0]!.key}: ${item.leaves[0]!.value}"`,
+            tooltipPlacement: 'above',
+            onClick: () => {
+                if (draft) { itemEl.remove(); return; }
+                const idx = nested.items.indexOf(item);
+                if (!currentFmEntries.includes(entry) || idx === -1 || nested.items.length <= 1) { return; }
+                nested.items.splice(idx, 1);
+                commitFrontmatterChange();
+                rebuildFmTable(tbody, panel);
+            },
+        }));
+    }
+
+    /** Attaches a filled draft, once every leaf has a value and not before. */
+    const attachDraft = (): void => {
+        if (!currentFmEntries.includes(entry)) { return; }
+        if (item.leaves.some((l) => l.value === '')) { return; }
+        nested.items.push(item);
+        commitFrontmatterChange();
+        rebuildFmTable(tbody, panel);
+    };
+
+    const pairs = document.createElement('div');
+    pairs.className = 'fm-nested-pairs';
+    item.leaves.forEach((leaf, leafIdx) => {
+        const pair = document.createElement('div');
+        pair.className = 'fm-nested-pair';
+        const keyEl = document.createElement('span');
+        keyEl.className = 'fm-nested-key';
+        keyEl.textContent = leaf.key;
+        const valEl = document.createElement('span');
+        valEl.className = 'fm-nested-val';
+        // The key is already drawn in the column to its left, so echoing it
+        // here reads as a bug rather than as a prompt. Same word the flat
+        // value cell uses.
+        if (draft) { valEl.dataset['placeholder'] = 'value'; }
+        bindFmNestedLeaf(
+            valEl, item, leafIdx,
+            draft ? attachDraft : commitFrontmatterChange,
+            draft ? isNestedLeafValue : undefined,
+        );
+        pair.append(keyEl, valEl);
+        pairs.appendChild(pair);
+    });
+    itemEl.appendChild(pairs);
+
+    if (draft) {
+        itemEl.addEventListener('focusout', () => {
+            setTimeout(() => {
+                if (!itemEl.isConnected || itemEl.contains(document.activeElement)) { return; }
+                if (nested.items.includes(item)) { return; } // it attached and re-rendered
+                itemEl.remove();
+            }, 0);
+        });
+    }
+
+    return itemEl;
+}
+
 /** Creates one editable table row (contenteditable td, direct typing). */
 function createFmRow(entry: FmEntry, tbody: HTMLElement, panel: HTMLElement): HTMLTableRowElement {
     const tr = document.createElement('tr');
@@ -764,6 +1087,8 @@ function createFmRow(entry: FmEntry, tbody: HTMLElement, panel: HTMLElement): HT
     tdVal.className = 'fm-val';
     if (entry.list) {
         bindFmListCell(tdVal, entry, tbody, panel);
+    } else if (entry.nested) {
+        bindFmNestedCell(tdVal, entry, tbody, panel);
     } else {
         bindFmCell(tdVal, entry, 'value', tbody, panel);
     }
@@ -776,7 +1101,7 @@ function createFmRow(entry: FmEntry, tbody: HTMLElement, panel: HTMLElement): HT
     // focus leaves the row (mirrors abandoned chips), so repeated "Add field"
     // clicks never accumulate ghost rows. The blur commit runs synchronously
     // before focusout, so by timeout time entry.key/value reflect any typing.
-    if (entry.origLine === undefined && !entry.list) {
+    if (entry.origLine === undefined && !entry.list && !entry.nested) {
         tr.addEventListener('focusout', () => {
             setTimeout(() => {
                 if (!tr.isConnected || tr.contains(document.activeElement)) { return; }

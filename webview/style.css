@@ -661,7 +661,8 @@ html {
     }
 }
 
-/* Raw YAML editor for non-flat frontmatter (nested maps, lists, comments, ...) */
+/* Raw YAML editor for frontmatter the table cannot describe (comments, block
+   scalars, a third level of nesting, ...) */
 .fm-raw-editor {
     display: block;
     width: 100%;
@@ -2346,6 +2347,118 @@ body.toolbar-hidden::before {
     &:hover {
         color: var(--vscode-editor-foreground);
         border-color: var(--vscode-focusBorder);
+    }
+}
+
+/* Nested frontmatter values: a sequence of mappings (Open Knowledge Format's
+   `sources`), a nested mapping, or a one-line flow mapping. Rendered as
+   key/value groups in the table instead of sending the whole block to the raw
+   editor. Sizing is inherited from .frontmatter-table so a nested value reads
+   at the same scale as a flat one. */
+.fm-nested {
+    /* The control gutter's width, in one place: the reserved box, the button
+       that sits in it, and the add button's alignment past it all read this,
+       so none of the three can drift out from under the others. */
+    --fm-nested-gutter: 16px;
+
+    display: flex;
+    flex-direction: column;
+    gap: var(--ui-space-2);
+}
+
+.fm-nested-item {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--ui-space-2);
+}
+
+/* A sequence item reads as one record. The grouping is the control gutter and
+   the gap, not a rule: a 1px hairline at the panel border's alpha is the
+   faintest mark the theme has, and it was carrying the whole job. A lone
+   mapping has no siblings to be told apart from, so only a sequence indents. */
+.fm-nested-seq .fm-nested-item {
+    padding-left: var(--ui-space-1);
+}
+
+/* The remove button's home, reserved on every item including the last, which
+   has no button: chrome that appears and disappears must never move the text
+   beside it. Sized from the button so the two cannot drift apart. */
+.fm-nested-action {
+    flex: none;
+    width: var(--fm-nested-gutter);
+    height: var(--fm-nested-gutter);
+}
+
+.fm-nested-pairs {
+    flex: 1;
+    min-width: 0;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 0 var(--ui-space-4);
+}
+
+/* The pair is a grouping element only: its key and value join the grid above
+   so every value in a group starts at one column. */
+.fm-nested-pair {
+    display: contents;
+}
+
+.fm-nested-key {
+    color: var(--vscode-descriptionForeground);
+    font-family: var(--vscode-editor-font-family, monospace);
+    white-space: nowrap;
+}
+
+.fm-nested-val {
+    color: var(--vscode-editor-foreground);
+    outline: none;
+    white-space: pre-wrap;
+    word-break: break-word;
+    min-width: 1ch;
+
+    &:focus {
+        text-decoration: underline dotted var(--vscode-focusBorder);
+    }
+
+    /* A draft entry's empty leaf names itself, so the shape being filled in is
+       readable before any of it is typed. */
+    &:empty::before {
+        content: attr(data-placeholder);
+        color: var(--vscode-input-placeholderForeground, var(--vscode-descriptionForeground));
+        opacity: 0.5;
+        pointer-events: none;
+    }
+}
+
+/* Composes .ui-btn .ui-btn--chip, the same recipe as Add field below the
+   table; local: it sits at the sequence's own indent and shrinks to its text
+   so it reads as the end of that list, not as chrome for the whole panel. */
+.fm-nested-add {
+    align-self: flex-start;
+    margin-left: calc(var(--fm-nested-gutter) + var(--ui-space-2) + var(--ui-space-1));
+    color: var(--vscode-descriptionForeground);
+
+    &:hover {
+        color: var(--vscode-editor-foreground);
+    }
+}
+
+/* Composes .ui-btn; local: tiny pill box, muted ink, resting fade. */
+.fm-nested-remove {
+    width: var(--fm-nested-gutter);
+    height: var(--fm-nested-gutter);
+    border-radius: var(--ui-radius-pill);
+    color: var(--vscode-descriptionForeground);
+    opacity: 0.4;
+
+    svg {
+        width: 10px;
+        height: 10px;
+    }
+
+    &:hover {
+        opacity: 1;
+        color: var(--vscode-errorForeground);
     }
 }
 

@@ -17,9 +17,10 @@ export type FmTextSource = { getText(): Promise<string> | string };
 
 /**
  * Extracts the list values per frontmatter key from one markdown document.
- * Files without frontmatter, or whose frontmatter is not tabular (nested maps,
- * comments, block scalars, ...), contribute nothing. Scalar values are
- * intentionally ignored — only list-valued keys feed the suggestion menu.
+ * Files without frontmatter, or whose frontmatter is not tabular (comments,
+ * block scalars, a third level of nesting, ...), contribute nothing. Scalar
+ * and nested values are intentionally ignored — only list-valued keys feed the
+ * suggestion menu.
  */
 export function extractListValuesByKey(content: string): Map<string, string[]> {
     const { frontmatter } = extractFrontmatter(content);

@@ -66,13 +66,23 @@ describe("collectFrontmatterListValues", () => {
     });
 
     it("files with non-tabular frontmatter should contribute nothing", async () => {
-        const nested = "---\nauthor:\n  name: Jane\ntags:\n- hidden-by-nesting\n---\nbody";
+        const blockScalar = "---\nnote: |\n  line one\ntags:\n- hidden-by-block-scalar\n---\nbody";
         const commented = "---\n# a comment\ntags:\n- hidden-by-comment\n---\nbody";
-        const files = [file(nested), file(commented), file(docWithTags("visible"))];
+        const files = [file(blockScalar), file(commented), file(docWithTags("visible"))];
 
         const values = await collectFrontmatterListValues(files, "tags");
 
         expect(values).toEqual(["visible"]);
+    });
+
+    // A nested value used to take the whole block out of the tabular model, so
+    // a sibling list in the same file contributed nothing.
+    it("a nested map beside a list should not hide that list's values", async () => {
+        const nested = "---\nauthor:\n  name: Jane\ntags:\n- beside-a-nested-map\n---\nbody";
+
+        const values = await collectFrontmatterListValues([file(nested)], "tags");
+
+        expect(values).toEqual(["beside-a-nested-map"]);
     });
 
     it("inline flow, multi-line flow and block lists should all contribute", async () => {

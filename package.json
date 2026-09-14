@@ -2766,6 +2766,7 @@
         "@vscode/test-electron": "^3.1.0",
         "@vscode/vsce": "^3.9.2",
         "esbuild": "^0.28.2",
+        "js-yaml": "^5.4.2",
         "jsdom": "30.0.1",
         "mocha": "^11.8.0",
         "ovsx": "1.2.0",

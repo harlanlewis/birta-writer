@@ -8,6 +8,16 @@
 
 - Connect Linear, and a Linear issue link shows the issue's real title, its workflow state and who it is assigned to. Run "Connect Service…" from the command palette and pick Linear: your browser opens Linear's own consent page, and what comes back is read-only and kept in your keychain, never in a settings file and never in the editor. "Disconnect Service…" deletes it. Until you connect, the card is still built from the URL alone and Birta asks Linear nothing at all, so a document full of Linear links sends nothing anywhere. This needs `birta.network.enabled`, which ships off. Linear is the first service to connect through its own browser consent rather than through a sign-in VS Code already manages, which is what makes providers with no VS Code account reachable at all.
 
+### Changed
+
+- The metadata panel edits nested fields as fields instead of as raw YAML. A value written as a list of entries (the `sources` block of an Open Knowledge Format document, for one), as an indented group of keys, or as a one-line `{ from: ..., to: ... }` mapping gets its own labelled rows in the panel. A list of entries also carries Add entry and a button per entry to drop one: a new entry takes the shape of the first, and is written to the file only once every one of its fields has a value, so clicking away from a half-filled one leaves the file as it was. Until now a single nested field sent the whole block to the raw YAML box, so a document carrying any of them lost the ordinary rows for its plain fields too. Editing a nested field rewrites that field's line and no other. What still opens the raw box: a third level of nesting, block scalars, comments, anchors, and every TOML block. One shape joins them, the mixed list in the fix below.
+
+### Fixed
+
+- A metadata value that needs quoting gets it, instead of breaking the file for every other tool. Typing `Note: see below` wrote it back bare, which spells a mapping inside a mapping value; a stray quote mark did the same. The panel read its own output back as the text you typed, while a YAML parser refused the block outright, so a site generator or a vault indexer would fail on a file the editor showed as fine. A field's name is handled the other way: a colon typed into one is refused in the cell, because a quoted name would take the whole block back to the raw box.
+- A list mixing plain items with `key: value` entries opens in the raw YAML box instead of being re-spelled. The panel read such an entry as the text `key: value`, and the next change anywhere in the block wrote it back quoted, turning an entry into a string. A list whose items are all plain is still a chip list, and one whose items are all entries is now a nested field, in either of the two indentations YAML writes them in, so neither was affected.
+- Removing a value from a list leaves that field where you put it. Taking out any item but the last moved the whole field to the bottom of the metadata block, under every field written after it. The remaining values were always correct; only the field's position moved.
+
 ---
 
 ## [2026.913.0] - 2026, September 13
