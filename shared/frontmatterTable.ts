@@ -300,9 +300,15 @@ function isMappingToken(token: string, quote: '"' | "'" | null): boolean {
 }
 
 /**
- * Parses the indented block under a `key:` line into a nested value, starting
- * at `start`. Returns null for anything outside the two-level model, which
- * routes the whole frontmatter block to the raw editor as before.
+ * Parses the block under a `key:` line into a nested value, starting at
+ * `start`. Returns null for anything outside the two-level model, which routes
+ * the whole frontmatter block to the raw editor as before.
+ *
+ * A sequence may sit at the key's own column (`sources:` then `- id: a`) or be
+ * indented past it, the two spellings the block-list parser already accepts;
+ * a mapping has only the indented spelling, because an unindented `k: v` line
+ * under a key is a SIBLING field and reading it as a leaf would swallow the
+ * rest of the block.
  *
  * A blank line ENDS the block rather than failing it, so the trailing blank
  * between two fields survives; a blank in the middle leaves the rest of the
@@ -311,8 +317,7 @@ function isMappingToken(token: string, quote: '"' | "'" | null): boolean {
 function parseNestedBlock(lines: string[], start: number): { nested: FmNested; next: number } | null {
     const first = lines[start];
     if (first === undefined || first.trim() === "") { return null; }
-    const indent = first.match(/^[ \t]+/)?.[0];
-    if (indent === undefined) { return null; }
+    const indent = first.match(/^[ \t]*/)![0];
 
     // Sequence of mappings: `- k: v` items, each optionally continued by lines
     // aligned past the marker.
@@ -325,7 +330,10 @@ function parseNestedBlock(lines: string[], start: number): { nested: FmNested; n
             const line = lines[j]!;
             if (line.trim() === "") { break; }
             if (!line.startsWith(dashPrefix)) {
-                if (line.startsWith(indent)) { return null; } // indented, but not an item of this sequence
+                // Indented past this sequence but not one of its items: the
+                // shape is outside the model. An unindented line is the next
+                // field, so the sequence simply ends there.
+                if (/^[ \t]/.test(line)) { return null; }
                 break; // dedent: the sequence is over
             }
             const head = line.slice(dashPrefix.length);
@@ -356,7 +364,9 @@ function parseNestedBlock(lines: string[], start: number): { nested: FmNested; n
         return { nested: { kind: "seq", items, itemIndent: indent }, next: j };
     }
 
-    // Nested mapping: indented `k: v` lines, all at one indentation.
+    // Nested mapping: indented `k: v` lines, all at one indentation. Without
+    // indentation there is nothing to tell a leaf from the next field.
+    if (indent === "") { return null; }
     const leaves: FmNestedLeaf[] = [];
     let j = start;
     while (j < lines.length) {

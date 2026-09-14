@@ -10,7 +10,7 @@
 
 ### Changed
 
-- The metadata panel edits nested fields as fields instead of as raw YAML. A value written as a list of entries (the `sources` block of an Open Knowledge Format document, for one), as an indented group of keys, or as a one-line `{ from: ..., to: ... }` mapping gets its own labelled rows in the panel, and a list of entries carries a button to drop one. Until now a single such field sent the whole block to the raw YAML box, so a document carrying any of them lost the ordinary rows for its plain fields too. Editing a nested field rewrites that field's line and no other, and a value that could not be written back (an emptied field, or a comma inside a one-line mapping) is refused in the cell rather than saved. What still opens the raw box is unchanged in kind: a third level of nesting, block scalars, comments, anchors, and every TOML block.
+- The metadata panel edits nested fields as fields instead of as raw YAML. A value written as a list of entries (the `sources` block of an Open Knowledge Format document, for one), as an indented group of keys, or as a one-line `{ from: ..., to: ... }` mapping gets its own labelled rows in the panel, and a list of entries carries a button to drop one. Until now a single such field sent the whole block to the raw YAML box, so a document carrying any of them lost the ordinary rows for its plain fields too. Editing a nested field rewrites that field's line and no other, and a value that could not be written back (an emptied field, or a comma inside a one-line mapping) is refused in the cell rather than saved. What still opens the raw box: a third level of nesting, block scalars, comments, anchors, and every TOML block. One shape joins them, the mixed list in the fix below.
 
 ### Fixed
 

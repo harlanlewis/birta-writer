@@ -1715,6 +1715,40 @@ describe("parseTabularFrontmatter nested values", () => {
         expect(entries[0]!.nested).toBeUndefined();
         expect(entries[0]!.list!.items.map((i) => i.value)).toEqual(["https://example.com"]);
     });
+
+    // Both spellings of a block sequence are ordinary YAML, and the chip list
+    // has always taken either. A sequence of mappings that reached only the
+    // indented one would send the other spelling's whole block to the raw
+    // editor, which is the thing this model exists to stop.
+    it("a sequence of mappings at the key's own column should parse like an indented one", () => {
+        const raw = "---\nsources:\n- id: a\n  resource: x\n- id: b\ntitle: T\n---\n";
+
+        const entries = parseTabularFrontmatter(raw)!;
+
+        expect(entries.map((e) => e.key)).toEqual(["sources", "title"]);
+        expect(entries[0]!.nested!.kind).toBe("seq");
+        expect(entries[0]!.nested!.itemIndent).toBe("");
+        expect(entries[0]!.nested!.items.map((i) => i.leaves.map((l) => `${l.key}=${l.value}`))).toEqual([
+            ["id=a", "resource=x"], ["id=b"],
+        ]);
+    });
+
+    it("a sequence of flow mappings at the key's own column should parse too", () => {
+        const entries = parseTabularFrontmatter("---\nverified:\n- { by: a, at: b }\nx: 1\n---\n")!;
+
+        expect(entries.map((e) => e.key)).toEqual(["verified", "x"]);
+        expect(entries[0]!.nested!.items[0]!.style).toBe("flow");
+    });
+
+    // The unindented sequence is the reason a mapping cannot take that
+    // spelling: with no indentation, a leaf and the next field are one shape.
+    it("an unindented key under a value-less key should stay a sibling field", () => {
+        const entries = parseTabularFrontmatter("---\na:\nb: 1\nc: 2\n---\n")!;
+
+        expect(entries.map((e) => e.key)).toEqual(["a", "b", "c"]);
+        expect(entries[0]!.nested).toBeUndefined();
+        expect(entries[0]!.value).toBe("");
+    });
 });
 
 describe("serializeFrontmatter nested values", () => {
@@ -1782,6 +1816,29 @@ describe("serializeFrontmatter nested values", () => {
 
         expect(serializeFrontmatter(entries, raw))
             .toBe("---\nsources:\n  - id: a\n  - id: c\ntitle: T\n---\n");
+    });
+
+    it("an untouched sequence at the key's own column should round-trip byte-for-byte", () => {
+        const raw = "---\nsources:\n- id: a\n  resource: x\n- id: b\ntitle: T\n---\n";
+
+        expect(serializeFrontmatter(parseTabularFrontmatter(raw)!, raw)).toBe(raw);
+    });
+
+    it("editing a leaf of an unindented sequence should rewrite that line alone", () => {
+        const raw = "---\nsources:\n- id: a\n  resource: x\n- id: b\ntitle: T\n---\n";
+        const entries = parseTabularFrontmatter(raw)!;
+        entries[0]!.nested!.items[0]!.leaves[1]!.value = "y";
+
+        expect(serializeFrontmatter(entries, raw)).toBe(raw.replace("  resource: x", "  resource: y"));
+    });
+
+    it("removing a non-last item of an unindented sequence should keep the field's place", () => {
+        const raw = "---\nsources:\n- id: a\n- id: b\n- id: c\ntitle: T\n---\n";
+        const entries = parseTabularFrontmatter(raw)!;
+        entries[0]!.nested!.items.splice(1, 1);
+
+        expect(serializeFrontmatter(entries, raw))
+            .toBe("---\nsources:\n- id: a\n- id: c\ntitle: T\n---\n");
     });
 
     it("removing a non-last list chip should leave the field where its author put it", () => {
@@ -1914,6 +1971,34 @@ describe("renderFrontmatterPanel nested values", () => {
             "  - id: finance-handbook\n    resource: references/finance.md\n",
             "",
         )]);
+    });
+
+    // Each commit re-serializes from the block the panel was RENDERED from, so
+    // a second removal has to be read against the original lines, not against
+    // what the first one posted.
+    it("removing two items in a row should take both, and only both", () => {
+        const raw = "---\nsources:\n  - id: a\n  - id: b\n  - id: c\ntitle: T\n---\n";
+        renderFrontmatterPanel(raw);
+
+        document.querySelectorAll<HTMLButtonElement>(".fm-nested-remove")[1]!.click();
+        document.querySelectorAll<HTMLButtonElement>(".fm-nested-remove")[1]!.click();
+
+        expect(postedFrontmatters().at(-1)).toBe("---\nsources:\n  - id: a\ntitle: T\n---\n");
+        expect(document.querySelectorAll(".fm-nested-remove")).toHaveLength(0);
+    });
+
+    it("each remove button should name the item it removes, not just 'Remove item'", () => {
+        renderFrontmatterPanel(FM_OKF);
+        const row = Array.from(document.querySelectorAll(".frontmatter-table tr"))
+            .find((tr) => tr.querySelector(".fm-key")?.textContent === "sources")!;
+
+        const names = Array.from(row.querySelectorAll(".fm-nested-remove"))
+            .map((b) => b.getAttribute("aria-label"));
+
+        expect(names).toEqual([
+            'Remove item: "id: ga4-schema"',
+            'Remove item: "id: finance-handbook"',
+        ]);
     });
 
     it("a lone sequence item should offer no remove button: a bare key is not the same field", () => {

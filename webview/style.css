@@ -661,7 +661,8 @@ html {
     }
 }
 
-/* Raw YAML editor for non-flat frontmatter (nested maps, lists, comments, ...) */
+/* Raw YAML editor for frontmatter the table cannot describe (comments, block
+   scalars, a third level of nesting, ...) */
 .fm-raw-editor {
     display: block;
     width: 100%;

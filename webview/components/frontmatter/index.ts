@@ -809,6 +809,10 @@ function bindFmListCell(
 function bindFmNestedLeaf(el: HTMLElement, item: FmNestedItem, leafIdx: number): void {
     const leaf = item.leaves[leafIdx]!;
     markEditableIsland(el, false);
+    // A leaf holds an id, a path or a timestamp. The raw YAML editor these
+    // bytes used to be edited in has spelling off, and so does a chip; a flat
+    // cell keeps it on, because a title or a description there is prose.
+    el.spellcheck = false;
     el.textContent = leaf.value;
     el.dataset['orig'] = leaf.value;
     el.setAttribute('role', 'textbox');
@@ -899,6 +903,10 @@ function bindFmNestedCell(
                 className: 'ui-btn fm-nested-remove',
                 icon: IconX,
                 title: t('Remove item'),
+                // Every button in the group would otherwise read the same to a
+                // screen reader; the item's first pair is what tells them apart
+                // on screen, so it is what names the button (mirrors a chip's).
+                ariaLabel: `${t('Remove item')}: "${item.leaves[0]!.key}: ${item.leaves[0]!.value}"`,
                 tooltipPlacement: 'above',
                 onClick: () => {
                     if (!currentFmEntries.includes(entry) || nested.items.length <= 1) { return; }
