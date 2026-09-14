@@ -28,6 +28,22 @@ import { isPubliclyRoutableUrl } from "../utils/urlGuard";
 import { readCappedText } from "../utils/cappedRead";
 import type { ConnectorSpec } from "../../shared/connectors";
 
+/**
+ * A POST body and the encoding its recipient requires.
+ *
+ * `form` exists because RFC 6749 requires the OAuth token endpoint to take
+ * `application/x-www-form-urlencoded`, so the exchange cannot ride the JSON
+ * path a GraphQL card uses.
+ */
+export type ConnectorRequestBody =
+    | { kind: "json"; value: unknown }
+    | { kind: "form"; value: URLSearchParams };
+
+const CONTENT_TYPE: Record<ConnectorRequestBody["kind"], string> = {
+    json: "application/json",
+    form: "application/x-www-form-urlencoded",
+};
+
 /** Same total-time bound as the oEmbed fetch: decoration must never hang. */
 const CONNECTOR_TIMEOUT_MS = 5000;
 /** A single issue/PR/repo JSON; 512 KB is headroom, not a real budget. */
@@ -49,8 +65,18 @@ export type ConnectorFetchOutcome =
      * that lands here is exactly the case worth offering a connection for.
      */
     | { state: "notFound" }
-    /** Anything else: offline, refused, rate-limited, malformed, redirected. */
-    | { state: "error" };
+    /**
+     * Anything else: offline, refused, rate-limited, malformed, redirected.
+     *
+     * `status` is present when the failure was an HTTP response rather than a
+     * transport or parse failure, and absent when there was no response to read
+     * a status off. The card path ignores it; the OAuth path needs it, because
+     * the states above are a CARD's vocabulary and a token endpoint does not
+     * share it. RFC 6749 has that endpoint answer 400 for a refused grant,
+     * which is indistinguishable here from being offline unless the status
+     * travels with the failure.
+     */
+    | { state: "error"; status?: number };
 
 /**
  * Perform one GET against a connector's pinned API and return its parsed JSON
@@ -66,6 +92,21 @@ export async function fetchConnectorCard(
     spec: ConnectorSpec,
     requestUrl: string,
     token: string | null,
+    /**
+     * A body to POST. Absent means GET.
+     *
+     * Two encodings because the two callers have no choice about theirs. A
+     * GraphQL card is JSON, which is what Linear's API accepts and the only
+     * reason this parameter exists at all. An OAuth token exchange is
+     * form-encoded, which RFC 6749 requires of the token endpoint, so sending
+     * it as JSON would be refused by a spec-compliant provider.
+     *
+     * It changes the method and the content type and NOTHING else: the https
+     * check, the pinned-host check, the SSRF guard, the manual redirect, the
+     * timeout and the capped read all run exactly as before, which is why this
+     * stays one enforcement site rather than becoming two.
+     */
+    requestBody?: ConnectorRequestBody,
 ): Promise<ConnectorFetchOutcome> {
     let parsed: URL;
     try {
@@ -92,8 +133,17 @@ export async function fetchConnectorCard(
             // separate status check for it — one that could not be told apart
             // from `!res.ok` would be untested code claiming to be a guard.
             redirect: "manual",
+            ...(requestBody === undefined
+                ? {}
+                : {
+                    method: "POST",
+                    body: requestBody.kind === "json"
+                        ? JSON.stringify(requestBody.value)
+                        : requestBody.value.toString(),
+                }),
             headers: {
                 accept: "application/json",
+                ...(requestBody === undefined ? {} : { "content-type": CONTENT_TYPE[requestBody.kind] }),
                 ...(token === null ? {} : { authorization: `Bearer ${token}` }),
                 "user-agent": "Birta-Writer/connector",
             },
@@ -115,13 +165,17 @@ export async function fetchConnectorCard(
         // more buys nothing — every authenticated tier shares one budget — so
         // offering an upgrade there would be a suggestion that cannot work.
         if (res.status === 403) {
-            return { state: token === null ? "notFound" : "error" };
+            return token === null ? { state: "notFound" } : { state: "error", status: 403 };
         }
         if (!res.ok) {
-            return { state: "error" };
+            return { state: "error", status: res.status };
         }
         const contentType = res.headers.get("content-type");
         if (!contentType || !/json/i.test(contentType)) {
+            // No status: the response arrived and was a success by HTTP's
+            // reckoning, so carrying a 200 here would tell the OAuth path the
+            // provider refused when the provider answered fine and sent
+            // something unreadable.
             return { state: "error" };
         }
         const body = await readCappedText(res, CONNECTOR_MAX_BYTES);
@@ -129,7 +183,10 @@ export async function fetchConnectorCard(
     } catch (e) {
         // Offline, DNS failure, abort-on-timeout, malformed JSON. The error
         // sink is console-only, and the message never carries the credential.
-        reportError("resolveEmbedCard", e);
+        // Named for the guarded fetch rather than for cards: token exchanges
+        // ride this same site, and logging one as a card resolution sends
+        // whoever reads the sink looking in the wrong place.
+        reportError("connectorFetch", e);
         return { state: "error" };
     } finally {
         clearTimeout(timer);

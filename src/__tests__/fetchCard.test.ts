@@ -97,7 +97,12 @@ describe("fetchConnectorCard", () => {
                 new Response("", { status: 302, headers: { location: "https://evil.example/" } }),
             );
             vi.stubGlobal("fetch", fetchSpy);
-            expect(await fetchConnectorCard(SPEC, SPEC.verifyUrl, TOKEN)).toEqual({ state: "error" });
+            // The status rides along on an HTTP failure so the OAuth path can
+            // tell a refusal from an unreachable host; a card ignores it. 302
+            // is not 4xx, so it reads as a request that did not complete rather
+            // than as the provider saying no.
+            expect(await fetchConnectorCard(SPEC, SPEC.verifyUrl, TOKEN))
+                .toEqual({ state: "error", status: 302 });
             // One request, and the option that stopped it at one.
             expect(fetchSpy).toHaveBeenCalledTimes(1);
             const [, init] = fetchSpy.mock.calls[0] as unknown as [string, RequestInit];

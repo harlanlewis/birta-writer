@@ -447,8 +447,11 @@ describe("ConnectorService", () => {
         });
 
         it("the connection map should report every known connector", async () => {
+            // Both keys, and only one of them connected. A map that reported
+            // only what is connected would be indistinguishable from one that
+            // forgot a connector, which is the thing this test is named for.
             const service = new ConnectorService(fakeSecrets({ "birta.connector.github": CONNECTED }).api);
-            expect(await service.connectionStates()).toEqual({ github: true });
+            expect(await service.connectionStates()).toEqual({ github: true, linear: false });
         });
 
         it("an unreadable keychain should degrade to locked, never to a throw", async () => {

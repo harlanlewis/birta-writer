@@ -324,6 +324,10 @@ A Linear issue link gets an info card built **from the URL alone** - the issue k
 
 https://linear.app/harlan/issue/MAR-186/embed-provider-roadmap
 
+Connect Linear and that same card carries the issue's real title, its workflow state and whoever it is assigned to. Connect from the command palette with **Connect Service…**: Linear's own consent page opens in your browser, and the grant it gives back is read-only and kept in your keychain. Disconnecting deletes it.
+
+Until you connect, the card asks Linear nothing at all - the issue key never leaves your machine. That is not true of every provider: a GitHub card reads a public repository without any credential, so it fills in before you connect anything. Linear has no anonymous read, so the choice is between a card built from the URL and one built from a grant you gave.
+
 #### Code playgrounds
 
 A CodePen, CodeSandbox, or StackBlitz link loads that provider's own embedded editor on click - the resting card fetches nothing. Each of these is a real public project, so the editor and its result pane come up live. The CodePen one is a **team** pen, which carries its `team/` path in the URL and cards the same way:

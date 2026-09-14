@@ -2,7 +2,7 @@
 
 Status: a record of live behavior and directed work, not exploration.
 
-This document owns the network and consent story: what ships today (`birta.network.enabled`, paste-unfurl, embeds, link cards, the GitHub connector), and the directed design ahead of it (the rest of MAR-198's connector roster).
+This document owns the network and consent story: what ships today (`birta.network.enabled`, paste-unfurl, embeds, link cards, the GitHub and Linear connectors), and the directed design ahead of it (the rest of MAR-198's connector roster).
 
 All of it is checkable. Where it describes shipped behavior it is a fact about the tree. Where it describes work MAR-198 has not reached, it is directed but unbuilt, and says so.
 
@@ -18,7 +18,7 @@ Every network capability sits on one rung. The rungs are ordered by what leaves 
 | 0b. A URL you send yourself | Nothing, from Birta. It composes text and hands a URL to the host. The request is the user's browser or mail client, under their identity, against a draft they can still edit | Shipped | Send Feedback (`birta.sendFeedback`); following a link in a document; What's New (`birta.editor.openWhatsNew`); Ask Agent (`/ai`, `birta.editor.askAgent`), which hands one composed line to a shell command run as a child process or in a terminal, to the Chat view, or to the clipboard per `birta.agent.command`, and never to a model of its own |
 | 0c. The app asking about itself | Nothing about you or your documents. A GET to the project's own release host, and then the archive | Shipped, the Mac app only, on by default; the asked-for check rides no setting | Birta Writer for Mac's update check, download and swap (`autoUpdate`) |
 | 1. A URL you typed | The URL, to its own host | Shipped | Paste-unfurl; URL embed cards; link cards |
-| 2. A URL and your credential | The URL and a per-provider token, to that provider's pinned hosts | Shipped for GitHub (MAR-198); every other provider directed, not built | GitHub repository, issue and pull-request cards; Jira, Asana and Figma still to come |
+| 2. A URL and your credential | The URL and a per-provider token, to that provider's pinned hosts | Shipped for GitHub and Linear (MAR-198); every other provider directed, not built | GitHub repository, issue and pull-request cards; Linear issue cards; Jira, Asana and Figma still to come |
 | 3. Your document content | The document itself, uploaded by Birta, to a destination Birta chose | Not decided, not designed, and gated on an open scope question | The publish loop (MAR-232). The Mac app's note in iCloud Drive is NOT this, and §1's own subsection argues why |
 
 ### Rung 1 today: three features, and only one of them writes to the file
@@ -93,9 +93,11 @@ That is what makes rung 3 a category change rather than one more checkbox: publi
 
 Not a Birta account, a third-party one. The distinction is real and worth defending, but "Birta has no auth" stopped being true the moment MAR-198 was directed.
 
-#### Rung 2 today: one connector, and four gates in front of it
+#### Rung 2 today: two connectors, and four gates in front of each
 
-GitHub is the only connected service. It authenticates through VS Code's own GitHub provider (`vscode.authentication.getSession`), which is the reason it could ship first: no application to register, no client secret to hide inside a distributed extension, and no token for the user to paste or for us to refresh. Connected, a GitHub repository, issue or pull-request link shows what its URL cannot know: the pull request's title and whether it merged, the issue's state, the repository's description and whether it is private.
+GitHub and Linear are the connected services, and they sit on different rungs of the auth ergonomics ladder, which is why each gets its own account here.
+
+GitHub authenticates through VS Code's own GitHub provider (`vscode.authentication.getSession`), which is the reason it could ship first: no application to register, no client secret to hide inside a distributed extension, and no token for the user to paste or for us to refresh. Connected, a GitHub repository, issue or pull-request link shows what its URL cannot know: the pull request's title and whether it merged, the issue's state, the repository's description and whether it is private.
 
 Three gates sit in front of any GitHub request and all three must be open: `birta.network.enabled`, then `birta.embeds.enabled`, then `birta.embeds.providers.github`. A fourth, the connection itself, governs only whether a CREDENTIAL is attached. Without it the card is still built, from an anonymous read of public data, exactly as every other provider's card is; connecting is an upgrade rather than an entry fee, because a public repository's title is world-readable and asking for a grant to display it would be asking for more than the card spends.
 
@@ -105,7 +107,15 @@ Connecting has two tiers, and the default is the narrow one. The ordinary connec
 
 A card that cannot be built says which of the three reasons applies, because only two of them are worth acting on: never connected, a grant the provider no longer honours, or a request that failed. It never degrades to a blank card. `src/__tests__/connectorService.test.ts` pins the gates, the states, and the rule that no reply crossing to the webview may contain the credential; `src/__tests__/fetchCard.test.ts` pins the pinned-host and redirect behavior at the one site that attaches a token.
 
-The other two rungs of the auth ergonomics ladder, OAuth with PKCE through a URI handler and pasted personal access tokens, are shaped for in `shared/connectors.ts` and have no provider behind them yet. Neither is written, because a strategy nothing has run is not a strategy.
+Linear is the second connector and the first on OAuth with PKCE, which is the rung for a provider VS Code has no auth for. Connecting opens Linear's own consent page in the browser, and the grant comes back to `vscode://birtalabs.birta-writer/auth/linear` through the extension's URI handler. There is no client secret anywhere: a public client has none by construction, and the code verifier takes its place, minted per attempt, held in memory, spent once. That is what lets this ship inside a distributed extension without a hosted broker holding secrets on everyone's behalf, which MAR-198 refuses outright.
+
+That callback is a URL anything on the machine can ask VS Code to open, so it is treated as hostile: an attempt must be in flight, its `state` must match in constant time, and it must not have expired. The attempt is consumed before any of that is answered, so a code can be offered once and a replay finds nothing waiting. Without the `state` check, somebody able to open a URL here could hand Birta their authorization code and connect this editor to their account.
+
+Linear differs from GitHub in one way a reader would otherwise have to infer, and `ConnectorSpec.anonymousReads` is where it is written down: Linear's API is authenticated in full, so there is no anonymous card to build. Until the user connects, Birta asks Linear nothing at all and the card says so. This is not a smaller version of GitHub's behavior but the opposite one, and it is the better-behaved of the two: an unconnected Linear link puts no issue id on the wire, where an unconnected GitHub link does send the repository and number it names.
+
+Linear requests `read` and nothing else, which is its whole read surface and its narrowest one; it has no write scope in any tier Birta asks for. The token endpoint is `api.linear.app`, which is the only host Linear's credential may be sent to. `linear.app` serves the consent page and is opened in a browser rather than fetched, so it is deliberately not on that list.
+
+Pasted personal access tokens, the third rung, are shaped for in `shared/connectors.ts` and have no provider behind them. That one is not written, because a strategy nothing has run is not a strategy.
 
 ### Rung 0b is a rung, not a footnote
 

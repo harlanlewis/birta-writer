@@ -3509,18 +3509,29 @@ body.handles-quiet:not(.handles-rest-always) .milkdown .editor :is(.block-gutter
    could not know; the connect affordance is what a locked card offers instead.
    Both sit to the right of the text block and shrink last, so a long title
    never pushes the state off the card. */
+/* A state, not a control, and it carries no border for that reason.
+
+   It shares the row's right edge with Reconnect and the open-externally button,
+   so an outline here is the only thing distinguishing a label from a control,
+   and an outlined one reads as a third button. The feedback that it is not one
+   is clicking it and having nothing happen.
+
+   The badge tokens are VS Code's own for this, so fill rather than outline is
+   what separates them: the bordered things in this row are the things that do
+   something. */
 .embed-card__status {
     flex: none;
     margin-left: auto;
     padding: 1px 8px;
-    border: 1px solid var(--vscode-editorWidget-border);
     border-radius: var(--ui-radius-l);
-    color: var(--vscode-foreground);
+    background: var(--vscode-badge-background);
+    color: var(--vscode-badge-foreground);
     font-size: var(--ui-fs-s);
     white-space: nowrap;
 }
 
 .embed-card__status--muted {
+    background: none;
     color: var(--vscode-descriptionForeground);
 }
 
