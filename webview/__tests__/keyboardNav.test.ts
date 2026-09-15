@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { wireRoving } from "../components/toc/keyboardNav";
+import { wireRoving } from "../components/sidePanel/keyboardNav";
 
 /** Roving-tabindex list navigation — the sidebar's keyboard access. */
 

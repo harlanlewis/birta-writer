@@ -1,0 +1,241 @@
+/* ─── Side-panel shell (components/sidePanel) ──────────────────────────────
+   The drawer, its flyout card, the resize sash and the reveal tab, styled once
+   for every composer. Every selector here is a `side-panel*` class the shell
+   writes; the composer's own `${prefix}-*` classes (toc-panel, toc-open) are
+   written beside them for the composer's stylesheet, style.css's margin math
+   and the test selectors, and nothing here keys on a body class, because a
+   body class is one panel's and this sheet serves more than one. State the
+   reveal tab draws (concealed while open, lifted while the flyout is out,
+   transitions off for a commit) is written on the tab itself. */
+.side-panel {
+    position: fixed;
+    top: var(--editor-topbar-height, 40px);
+    left: 0;
+    /* The composer's width variable, bound per instance by shell.ts as an
+       inline custom property (an inline `width` would beat the flyout's fixed
+       width below; a custom property does not). */
+    width: var(--side-panel-width, 260px);
+    height: calc(100vh - var(--editor-topbar-height, 40px));
+    /* Editor background (not the sidebar shade), and no borders: the docked
+       drawer blends into the editor gutter with no differentiated chrome. The
+       solid fill still covers document text in overlay mode. The only edge
+       treatment is the resize handle's accent line on hover (below). */
+    background: var(--vscode-editor-background);
+    z-index: 99;
+    display: flex;
+    flex-direction: column;
+    transform: translateX(-100%);
+    /* Hidden panel fades out; the open state restores opacity to 1. */
+    opacity: 0;
+    /* A closed drawer must be OUT of the keyboard's reach: transform/opacity
+       alone leave its roving tab stops (a flip button, an overflow select)
+       focusable off-screen (MAR-295). visibility flips AFTER the slide-out
+       (the 0.2s delay below) so the exit still animates, and instantly on
+       open (the --open rule zeroes the delay). */
+    visibility: hidden;
+    /* top/height follow the toolbar's 0.2s slide so the panel moves in sync */
+    transition: transform 0.2s ease, top 0.2s ease, height 0.2s ease,
+        opacity 0.2s ease, visibility 0s linear 0.2s;
+    overflow: hidden;
+}
+
+/* Right-docked variant */
+.side-panel--right {
+    left: auto;
+    right: 0;
+    transform: translateX(100%);
+}
+
+.side-panel--open {
+    transform: translateX(0);
+    opacity: 1;
+    visibility: visible;
+    transition-delay: 0s; /* show instantly; the base delay is for hiding only */
+}
+
+/* Flyout: the collapsed tab's hover/focus reveals the panel transiently as a
+   floating dropdown BELOW the trigger (top/left set inline by flyout.ts). The
+   trigger itself never moves, so the cursor stays over it. This is a floating
+   card, auto height (capped, the body scrolls), rounded, shadowed, bordered,
+   not the flush full-height edge drawer, and it floats above the content
+   (never pushing it). It sits ABOVE the formatting and link palettes so they
+   slide under it rather than punching hover-holes through it.
+   Enter/exit is a slight slide-DOWN + fade (--flyout-in toggles it);
+   `overflow: visible` keeps the hover-band ::before below unclipped, and the
+   composer's own scroller keeps its scroll (min-height:0 so it can shrink). */
+.side-panel--flyout {
+    top: auto; /* overridden inline; declared so the drawer's top never lingers */
+    left: auto;
+    right: auto;
+    height: auto;
+    max-height: min(70vh, 620px);
+    width: 260px; /* a fixed standard width, NOT the dragged width variable (kept in sync with FLYOUT_WIDTH) */
+    overflow: visible;
+    opacity: 0;
+    transform: translateY(-6px);
+    /* The flyout is visible without --open (its own transition replaces the
+       base shorthand, so the base's delayed visibility:hidden would otherwise
+       blank it instantly). It keeps this through the exit fade; teardown
+       removes the class, and the base hidden state returns. */
+    visibility: visible;
+    transition: transform 150ms ease, opacity 150ms ease;
+    z-index: 10000;
+    border: 1px solid var(--vscode-panel-border);
+    border-radius: var(--ui-radius-l);
+    box-shadow: var(--ui-card-shadow);
+}
+
+.side-panel--flyout.side-panel--flyout-in {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+/* Entry frame only: snap to the flyout's start state (no transition) so the
+   reveal never interpolates from the closed drawer's translateX (a sideways
+   sweep). flyout.ts removes this the frame before adding --flyout-in. */
+.side-panel--flyout.side-panel--flyout-enter {
+    transition: none;
+}
+
+/* Invisible hover band spanning the flyout's full width, from the panel up to
+   the content-area top (the toolbar's bottom); height set inline by flyout.ts.
+   Hovering anywhere in this column keeps the panel :hover (its mouseenter
+   cancels the retract), so the flyout doesn't snap shut the instant the
+   pointer drifts off the small tab. The reveal tab is lifted ABOVE this band
+   (below) so its own clicks/hover still land. */
+.side-panel--flyout::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 100%;
+    height: var(--side-panel-flyout-band-h, 6px);
+}
+
+/* The docked-drawer chrome (the composer's controls, the resize sash) is
+   meaningless in the transient flyout; hide it so it reads as a clean menu. */
+.side-panel--flyout .side-panel-controls,
+.side-panel--flyout .side-panel-resize-handle {
+    display: none;
+}
+
+/* First paint of the rendered view, and a resize reset: commit the panel's
+   state instantly rather than sliding it in. Present only for that commit
+   (shell.ts setInstant); user-invoked show/hide keeps the transitions above. */
+.side-panel.side-panel--instant {
+    transition: none;
+}
+
+/* ─── Drag-to-resize handle (VS Code sash style) ─────── */
+/* The 8px band is the (transparent) hit area, wide enough to grab without much
+   precision; the ::after pseudo-element paints a crisp 2px line on the panel's
+   inner edge. Hovering anywhere in the drawer reveals a faint neutral edge
+   border; hovering the edge itself (or dragging) lights it up with the theme
+   accent, matching VS Code's sash. */
+.side-panel-resize-handle {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    right: 0;
+    width: 8px;
+    z-index: 1;
+    background: transparent;
+}
+
+.side-panel-resize-handle::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    right: 0;
+    width: 2px;
+    background: var(--vscode-panel-border);
+    opacity: 0;
+    transition: opacity 0.12s ease, background-color 0.12s ease;
+}
+
+/* Hovering the drawer reveals a faint edge border... */
+.side-panel:hover .side-panel-resize-handle::after {
+    opacity: 1;
+}
+
+/* ...and hovering the edge itself brightens it to the theme accent. */
+.side-panel-resize-handle:hover::after {
+    opacity: 1;
+    background: var(--vscode-sash-hoverBorder, var(--vscode-focusBorder));
+}
+
+.side-panel--right .side-panel-resize-handle {
+    right: auto;
+    left: 0;
+}
+
+.side-panel--right .side-panel-resize-handle::after {
+    right: auto;
+    left: 0;
+}
+
+/* While actively dragging: keep the accent line lit. */
+.side-panel-resize-handle--active::after,
+.side-panel-resize-handle--active:hover::after {
+    opacity: 1;
+    background: var(--vscode-sash-hoverBorder, var(--vscode-focusBorder));
+}
+
+/* While dragging, text selection and the resize cursor are the interaction
+   shield's (ui/interactionShield.ts): `user-select` on the body is inherited
+   by every element and restyled the whole document at the drag's start and
+   end. The tab's transition suppression is its own --instant class below. */
+
+/* ─── Reveal tab: standalone fixed icon button shown only while the panel is
+   closed. It is a visual clone of the composer's hide button (same 22px box,
+   15px dock-side glyph) positioned by JS to land exactly over it, so toggling
+   the panel never shifts the glyph. At rest it is just the glyph, no background
+   or border; chrome appears only on hover/active/focus. Unaffected by the
+   panel's overflow:hidden since it is appended to <body>. ─── */
+/* Composes .ui-btn/.ui-btn--icon; local: fixed anchoring, icon ink, the
+   resting fade, and a transition that also eases position (the tab travels
+   with the panel/toolbar). It REPLACES the primitive's transition list, so
+   background/opacity easing is restated here. */
+.side-panel-tab {
+    position: fixed;
+    /* left|right / top set dynamically by JS to match the hide button */
+    color: var(--vscode-icon-foreground, var(--vscode-foreground));
+    user-select: none;
+    z-index: 100;
+    opacity: 0.6;
+    transition: left 0.2s ease, right 0.2s ease, top 0.2s ease, opacity 0.1s ease,
+        background-color 0.1s ease;
+
+    & svg {
+        width: 15px;
+        height: 15px;
+    }
+
+    &:hover,
+    &:active,
+    &:focus-visible {
+        opacity: 1;
+    }
+}
+
+/* Transitions off for one commit: the load reveal, and a resize drag or reset,
+   where the tab must snap with the panel rather than slide after it. */
+.side-panel-tab.side-panel-tab--instant {
+    transition: none;
+}
+
+/* Hidden while the panel is open: the composer's hide button is the control then */
+.side-panel-tab.side-panel-tab--concealed {
+    display: none;
+}
+
+/* While the flyout is out: lift the reveal tab ABOVE the flyout panel and its
+   hover band so its own clicks/hover still land, and hold its hover look; it
+   reads as the active trigger of the open flyout even as the cursor roams the
+   panel. */
+.side-panel-tab.side-panel-tab--flyout-open {
+    z-index: 10001;
+    opacity: 1;
+    background: var(--vscode-toolbar-hoverBackground);
+}
