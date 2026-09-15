@@ -40,6 +40,25 @@ import BirtaWriterCore
 final class AppPanel: NSPanel {
     var onHideRequest: (() -> Void)?
 
+    /// The tab bar's `+` button, and the system's New Tab rows. AppKit offers
+    /// both only when something in the responder chain answers
+    /// `newWindowForTab:`, so this is what turns them on; what a new tab IS
+    /// (a note, in this window's group) is the app's, and it is asked.
+    var onNewTabRequest: (() -> Void)?
+
+    override func newWindowForTab(_ sender: Any?) {
+        onNewTabRequest?()
+    }
+
+    /// Which windows may share a tab bar with this one.
+    ///
+    /// Set explicitly rather than left to the heuristic AppKit derives from
+    /// the class, so it can differ by what a window is rooted at: windows on
+    /// files group together, and a directory window's tabs group with that
+    /// directory's (MAR-457), so Merge All Windows never folds a folder's
+    /// explorer into a stack of loose notes.
+    static let notesTabbingIdentifier = "\(AppFlavor.current.bundleID).notes"
+
     /// Whether this window is the one that remembers its size and position
     /// between launches.
     ///
@@ -111,6 +130,12 @@ final class AppPanel: NSPanel {
         applyWindowPolicy()
         isReleasedWhenClosed = false
         becomesKeyOnlyIfNeeded = false
+        // `.automatic`, the default, on purpose: whether a NEW window arrives
+        // as a tab is the system's "Prefer tabs when opening documents"
+        // setting to decide, and this honours it. An explicit New Tab adds a
+        // tab whatever that setting says (`addTabbedWindow`).
+        tabbingMode = .automatic
+        tabbingIdentifier = Self.notesTabbingIdentifier
         // The system's own show and hide, not a chosen one.
         animationBehavior = .default
         minSize = PanelSize.minimum
