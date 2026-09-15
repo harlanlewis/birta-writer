@@ -24,7 +24,7 @@ import { bindActivate } from "@/ui/dom";
 import type { EditorView } from "@/pm";
 import { t } from "@/i18n";
 import { revealRange } from "./navigate";
-import { wireRoving } from "./keyboardNav";
+import { wireRoving } from "../sidePanel/keyboardNav";
 import { buildReviewItem, buildReviewEmpty, type ReviewAction } from "./reviewItem";
 
 /** One row model the adapter hands in; identity/display drives the signature,
