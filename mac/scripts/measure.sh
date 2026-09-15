@@ -2457,6 +2457,94 @@ echo "RSS with two windows $((RSS_TWO / 1024)) MB   (app + $(printf '%s' "$WK_TW
 echo "idle RSS app         $((RSS_APP / 1024)) MB"
 echo "idle RSS helpers     $((RSS_HELPERS / 1024)) MB   (WebKit helpers that appeared since launch: ${WK_OURS:-none})"
 
+# A settings change that reaches EVERY window leaves each on its own file.
+#
+# The rule is `Coordinator.rebindFromSettings`, entered at the window's own
+# slot (MAR-456). Read at the top of the app-wide precedence instead, it moved
+# every window onto the one active file: two buffers over one path, which is
+# the hazard the Open gesture refuses. `__birtaReloadEverywhere` is the
+# publishing-target toggle without the switch, and each window traces the file
+# it is on as it reloads, so the check is that the set of files after is the
+# set of files before.
+#
+# The set before is read from the app rather than reasoned about from which
+# arms ran above, because the arms above open and close windows and this must
+# not have to know how many are left.
+printf '{"type":"__birtaOpenSet"}' > "$SCRATCH_DIR/.debug-message.json"
+kill -URG $PID; sleep 0.6
+rm -f "$SCRATCH_DIR/.debug-message.json"
+# `|| true` because an answer that has not arrived is the failure the guard
+# below reports, and `pipefail` would otherwise end the script on the empty
+# grep before it could say so.
+SET_BEFORE="$(grep "^birta-trace openset " "$LOG" | tail -1 | sed 's/^birta-trace openset //' || true)"
+SET_COUNT="$(printf '%s' "$SET_BEFORE" | sed -n 's/.*count=\([0-9]*\).*/\1/p')"
+SET_FRONT="$(printf '%s' "$SET_BEFORE" | sed -n 's/.*front=\(.*\)$/\1/p')"
+if [ -z "$SET_COUNT" ] || [ "$SET_COUNT" -lt 2 ]; then
+    echo "rebind per window    FAILED: fewer than two windows are open, so nothing below is measured ($SET_BEFORE)" >&2
+    exit 1
+fi
+REBINDS_BEFORE=$(grep -c "^birta-trace rebind " "$LOG" || true)
+printf '{"type":"__birtaReloadEverywhere"}' > "$SCRATCH_DIR/.debug-message.json"
+kill -URG $PID
+n=0
+while [ "$(( $(grep -c "^birta-trace rebind " "$LOG" || true) - REBINDS_BEFORE ))" -lt "$SET_COUNT" ]; do
+    sleep 0.2; n=$((n+1))
+    if [ $n -gt 50 ]; then
+        echo "rebind per window    FAILED: only $(( $(grep -c "^birta-trace rebind " "$LOG" || true) - REBINDS_BEFORE )) of $SET_COUNT windows reloaded" >&2
+        grep "^birta-trace rebind " "$LOG" | tail -n "$SET_COUNT" | sed 's/^/  /' >&2; exit 1
+    fi
+done
+rm -f "$SCRATCH_DIR/.debug-message.json"
+REBOUND_DISTINCT="$(grep "^birta-trace rebind " "$LOG" | tail -n "$SET_COUNT" | sed 's/ slot=.*$//' | sort -u | wc -l | tr -d ' ')"
+if [ "$REBOUND_DISTINCT" != "$SET_COUNT" ]; then
+    echo "rebind per window    FAILED: $SET_COUNT windows reloaded onto $REBOUND_DISTINCT distinct files" >&2
+    grep "^birta-trace rebind " "$LOG" | tail -n "$SET_COUNT" | sed 's/^/  /' >&2; exit 1
+fi
+echo "rebind per window    ok: $SET_COUNT windows reloaded and each is still on its own file"
+# The pages have just reloaded; let them settle before anything else asks.
+sleep 2
+
+# The windows come back after a quit, the same ones with the same one in
+# front (MAR-421).
+#
+# The claim is a difference between two launches, so the app is ended through
+# its own SIGTERM path (which is how anything managing the process ends it,
+# and what writes the autosave-off stamp checked at teardown) and launched
+# again under the SAME throwaway defaults domain. `WindowSet.openAtLaunch`
+# traces what it restored; the check is that it matches what the last launch
+# recorded. Nothing is shown: restoration happens in the prewarm.
+end_app
+sleep 1
+READY_BEFORE=$(marks ready)
+RESTORED_BEFORE=$(grep -c "^birta-trace windows restored=" "$LOG" || true)
+BIRTA_MAC_MEASURE=1 "$APP" 2>>"$LOG" &
+PID=$!
+n=0
+while [ "$(grep -c "^birta-trace windows restored=" "$LOG" || true)" -le "$RESTORED_BEFORE" ]; do
+    sleep 0.1; n=$((n+1))
+    if [ $n -gt 200 ]; then echo "restore across quit  FAILED: the relaunch never reported what it restored" >&2; tail -20 "$LOG" >&2; exit 1; fi
+done
+RESTORED="$(grep "^birta-trace windows restored=" "$LOG" | tail -1 | sed 's/^birta-trace windows //')"
+RESTORED_COUNT="$(printf '%s' "$RESTORED" | sed -n 's/.*restored=\([0-9]*\).*/\1/p')"
+RESTORED_FRONT="$(printf '%s' "$RESTORED" | sed -n 's/.*front=\(.*\)$/\1/p')"
+if [ "$RESTORED_COUNT" != "$SET_COUNT" ] || [ "$RESTORED_FRONT" != "$SET_FRONT" ]; then
+    echo "restore across quit  FAILED: recorded $SET_COUNT windows with $SET_FRONT in front, relaunch restored $RESTORED_COUNT with ${RESTORED_FRONT:-nothing} in front" >&2
+    exit 1
+fi
+echo "restore across quit  ok: $RESTORED_COUNT windows came back with $RESTORED_FRONT in front"
+# Every page mounts again in the prewarm; the teardown below needs the app up.
+# Its own counter: the wait above spent some of `n`, and a mount budget cut by
+# however long the restore took is a flake on a loaded machine.
+n=0
+while [ "$(marks ready)" -le "$READY_BEFORE" ]; do
+    sleep 0.1; n=$((n+1))
+    if [ $n -gt 400 ]; then echo "restore across quit  FAILED: the relaunched app never mounted a page" >&2; tail -20 "$LOG" >&2; exit 1; fi
+done
+# The helpers are the relaunched app's now, or the teardown check below would
+# be asking after processes the first app already took with it.
+sleep 2
+WK_OURS="$(comm -13 <(printf '%s\n' "$WC_BEFORE") <(pgrep -f com.apple.WebKit | sort || true) | tr '\n' ' ')"
+
 # This run takes its own processes with it.
 #
 # WebKit's helpers are NOT children of the app, so nothing reaps them for us:

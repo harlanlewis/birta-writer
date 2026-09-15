@@ -152,41 +152,191 @@ final class WindowSet {
             self?.openDocument(at: url)
             return self?.windows.count ?? 0
         }
+        coordinator.onBindingChanged = { [weak self] in self?.recordOpenSetSoon() }
+        coordinator.onFrameChanged = { [weak self] in self?.recordOpenSetSoon() }
+        coordinator.onReloadEverywhereRequest = { [weak self] in self?.preferencesChangedEverywhere() }
+        coordinator.onOpenSetRequest = { [weak self] in self?.describeOpenSet() ?? "" }
         coordinator.onBecameKey = { [weak self, weak coordinator] in
             guard let coordinator else { return }
             self?.moveToFront(coordinator)
         }
         windows.append(coordinator)
+        recordOpenSetSoon()
         return coordinator
+    }
+
+    // MARK: the open set
+
+    /// Record the windows as they stand, so the next launch can put them back.
+    ///
+    /// Settled rather than written on the spot, because the gestures that
+    /// change the set arrive in runs: a launch adopts every restored window
+    /// in one pass, and a titlebar drag posts a move per frame for as long as
+    /// the mouse is down. One write once the run has gone quiet is the same
+    /// recording with none of the churn on the defaults store.
+    ///
+    /// NEVER the first preference this install writes. `Prefs.isFirstLaunch`
+    /// is the absence of every key, and `Prefs.applyOnboardingDefaults` reads
+    /// it on the way to the first-run screen; a set recorded before then would
+    /// turn a first launch into an existing one and the onboarding defaults
+    /// would silently stop applying. `Coordinator.boundURL`'s `didSet` names
+    /// the same trap for the recents list and waits for the same reason. The
+    /// first-run screen writes its own key the moment it is answered, and
+    /// every recording after that goes through.
+    private var openSetRecording: DispatchWorkItem?
+
+    private func recordOpenSetSoon() {
+        openSetRecording?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            self.openSetRecording = nil
+            self.recordOpenSet()
+        }
+        openSetRecording = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4, execute: work)
+    }
+
+    /// The recording itself, now. `prepareToTerminate` calls this directly,
+    /// because a quit does not wait for a settle.
+    private func recordOpenSet() {
+        openSetRecording?.cancel()
+        openSetRecording = nil
+        guard !Prefs.isFirstLaunch else { return }
+        Prefs.openSet = snapshotOpenSet()
+    }
+
+    /// The windows as `OpenSet` spells them: back to front, which is the
+    /// order `windows` is already kept in. One tab per group until window
+    /// tabbing lands (MAR-393).
+    ///
+    /// A window's frame is recorded only once it HAS one. A restored window
+    /// that has not been shown yet is still at its construction placeholder,
+    /// and carries the frame it was handed instead (`Coordinator.windowFrame`),
+    /// so a launch followed by a quit with nothing summoned records the same
+    /// arrangement it restored rather than a row of placeholders.
+    private func snapshotOpenSet() -> OpenSet {
+        OpenSet(groups: windows.map { window in
+            OpenSet.Group(tabs: [window.boundFile.standardizedFileURL.path],
+                          frame: window.windowFrame.map(NSStringFromRect))
+        })
+    }
+
+    /// One line a checking run can read: how many groups, and which file is
+    /// in front. `mac/scripts/measure.sh` compares it against what a relaunch
+    /// restores.
+    private func describeOpenSet() -> String {
+        let set = snapshotOpenSet()
+        let front = set.groups.last?.selectedTab.map { URL(fileURLWithPath: $0).lastPathComponent } ?? ""
+        return "count=\(set.groups.count) front=\(front)"
     }
 
     /// Where the next spawned window goes, carried between spawns so a third
     /// window steps off the second rather than back onto the first.
     private var cascadePoint: NSPoint?
 
-    /// The first window, at launch.
+    /// The windows, at launch: the ones that were open when the app last
+    /// quit, back where they were, with the one the person was last in at the
+    /// front. `BirtaWriterCore.OpenSet.launchPlan` is the rule; this builds
+    /// what it decides. Answers the window in front, which is the one a
+    /// launch shows anything on.
     ///
-    /// "Open to a blank note" is decided here rather than inside a window,
-    /// because it is a rule about LAUNCHING and not about being a window: a
-    /// window opened later by New Note or Open must not consult it. It runs
-    /// before the first page loads, so the editor mounts against the file it
-    /// will actually edit rather than mounting the last one and swapping it
-    /// out a moment later.
+    /// Decided here rather than inside a window because it is a rule about
+    /// LAUNCHING: a window opened later by New Note or Open must not consult
+    /// the blank-note setting, and none of them restores anything. It runs
+    /// before any page loads, so each editor mounts against the file it will
+    /// actually edit rather than mounting one and swapping it out.
+    ///
+    /// - Parameter launchedWith: the file this launch was asked to open, from
+    ///   Open With, a Dock drop or `open -a`. It takes the document slot, as
+    ///   Open does, so a rename from its window writes back to that setting.
     @discardableResult
-    func openFirstWindow() -> Coordinator {
-        if Prefs.openToBlankNote, Prefs.documentURL == nil { Self.startBlankNote() }
-        return makeWindow(on: Prefs.activeURL, slot: Prefs.activeSlot)
+    func openAtLaunch(launchedWith: URL?) -> Coordinator {
+        let asked = launchedWith?.standardizedFileURL
+        let scratchpad = Prefs.scratchpadURL!
+        let currentNote = Prefs.currentNoteURL
+        let plan = OpenSet.launchPlan(
+            stored: Prefs.openSet,
+            // A scratchpad that has never been written does not exist yet,
+            // and a window on it is a legitimate state the coordinator opens
+            // as an empty note (`NoteRead.absent`); pruning it would drop that
+            // window with nothing to say so.
+            exists: { path in
+                FileManager.default.fileExists(atPath: path)
+                    || FileIdentity.sameFile(URL(fileURLWithPath: path), scratchpad)
+            },
+            // Only the note New Note last made counts as the blank note to
+            // front, and only while it is still empty. Any other empty file,
+            // a document opened from the Finder included, is somebody's file
+            // and not a place to start typing a new note into.
+            isBlank: { path in
+                guard let currentNote,
+                      FileIdentity.sameFile(URL(fileURLWithPath: path), currentNote) else { return false }
+                return Self.isBlankNote(atPath: path)
+            },
+            recents: Prefs.recentDocuments.map(\.standardizedFileURL.path),
+            fallback: Prefs.activeURL.standardizedFileURL.path,
+            openToBlankNote: Prefs.openToBlankNote,
+            launchedWith: asked?.path,
+            // The same file spelled two ways is one file, through a symlinked
+            // folder or on a case-insensitive volume, and two windows over it
+            // are the hazard `openDocument` refuses; the plan has to refuse it
+            // the same way.
+            sameFile: { FileIdentity.sameFile(URL(fileURLWithPath: $0), URL(fileURLWithPath: $1)) })
+        if let asked { Prefs.documentURL = asked }
+        for group in plan.groups {
+            guard let path = group.selectedTab else { continue }
+            let url = URL(fileURLWithPath: path)
+            let frame = group.frame.map(NSRectFromString)
+            makeWindow(on: url, slot: slot(for: url), frame: frame.flatMap { $0.isEmpty ? nil : $0 })
+        }
+        if plan.opensBlankNote, let note = Self.startBlankNote() {
+            makeWindow(on: note, slot: .currentNote, frame: nil)
+        }
+        // Nothing restored and no note could be made: the settings' own
+        // answer, which is never empty. The scratchpad is a good fallback for
+        // a blank note that failed, because the setting says where to START,
+        // not that the old note may be lost.
+        if windows.isEmpty {
+            makeWindow(on: Prefs.activeURL, slot: Prefs.activeSlot, frame: nil)
+        }
+        Measure.trace("windows restored=\(windows.count) front=\(windows.last?.boundFile.lastPathComponent ?? "")")
+        return windows.last!
+    }
+
+    /// WHICH app-wide setting names a file being put back, so a rename from
+    /// its window writes to the right one. `Prefs.slot(holding:)` matches the
+    /// stored strings, and the default scratchpad location is stored nowhere,
+    /// so it is asked for separately: a window on it is bound through
+    /// `.scratchpad`, exactly as the first window always was.
+    private func slot(for url: URL) -> ActiveBinding.Slot? {
+        if let named = Prefs.slot(holding: url) { return named }
+        return FileIdentity.sameFile(url, Prefs.scratchpadURL) ? .scratchpad : nil
+    }
+
+    /// Whether a note has nothing in it, for the blank-note rule: a launch
+    /// fronts an empty note that is already open rather than making another.
+    /// Whitespace counts as nothing, as `Coordinator.isVacant` counts it.
+    private static func isBlankNote(atPath path: String) -> Bool {
+        guard let text = try? String(contentsOfFile: path, encoding: .utf8) else { return false }
+        return text.isBlank
+    }
+
+    /// Mount every window's page, hidden. A launch prewarms them all, which is
+    /// what makes the first summon of each instant rather than a cold start.
+    func startAll() {
+        windows.forEach { $0.start() }
     }
 
     /// The launch half of New Note: a fresh file, chosen before anything has
     /// loaded, so there is no buffer to flush and nothing to write first.
-    private static func startBlankNote() {
+    private static func startBlankNote() -> URL? {
         do {
-            Prefs.currentNoteURL = try Coordinator.makeNoteFile()
+            let note = try Coordinator.makeNoteFile()
+            Prefs.currentNoteURL = note
+            return note
         } catch {
-            // The scratchpad is the fallback, and it is a good one: the setting
-            // says where to START, not that the old note may be lost.
             NSLog("Birta Writer: could not start a blank note: \(error)")
+            return nil
         }
     }
 
@@ -321,8 +471,16 @@ final class WindowSet {
             // window that could not happen, because the only way to stop
             // looking at a file was to go to another one.
             Prefs.rememberRecent(coordinator.boundFile)
+            // The document slot goes with the window that held it. The slot
+            // is the setting a rename writes back to, and with the window
+            // gone there is nothing to write back for. It must not outlive
+            // the window: a document setting left standing is a file the app
+            // would open in preference to every note, on a launch with
+            // nothing recorded and on Back to My Notes.
+            if coordinator.bindingSlot == .document { Prefs.documentURL = nil }
             self.windows.removeAll { $0 === coordinator }
             coordinator.tearDown()
+            self.recordOpenSetSoon()
         }
     }
 
@@ -380,30 +538,71 @@ final class WindowSet {
         }
     }
 
-    /// Build a window, hand it its hooks, and place it off the one in front.
+    /// Build a window, hand it its hooks, and place it: where a launch says it
+    /// was, or off the one in front.
+    ///
+    /// - Parameter frame: the recorded frame a launch is putting back, or nil
+    ///   for a window made now, which cascades off the window in front.
     @discardableResult
-    private func makeWindow(on url: URL, slot: ActiveBinding.Slot?) -> Coordinator {
+    private func makeWindow(on url: URL, slot: ActiveBinding.Slot?, frame: NSRect? = nil) -> Coordinator {
         // Only one window may hold a slot, so taking it releases whoever had
         // it. Otherwise two windows would both believe a rename of their file
         // should be written to the same setting, and the second would overwrite
         // what the first had written there.
         let spawn = key
-        // The FIRST window is the one that remembers its frame between
-        // launches, under the historic autosave name, so a panel somebody has
-        // spent months positioning is where they left it.
-        let made = Coordinator(boundTo: url, slot: slot, remembersFrame: windows.isEmpty)
+        // The FIRST window also keeps the historic autosave name, which is
+        // what a panel somebody positioned before the open set was recorded
+        // restores from; the set's own frame outranks it once there is one
+        // (`AppPanel.restoredFrame`).
+        let made = Coordinator(boundTo: url, slot: slot, remembersFrame: windows.isEmpty, frame: frame)
         adopt(made)
         releaseSlot(slot, except: made)
-        if let spawn { cascadePoint = made.cascade(after: spawn, from: cascadePoint) }
+        // Off a window that HAS a place. At launch the window in front is a
+        // restored one that has not been shown yet, still at its construction
+        // placeholder, and a cascade off that would put the new window one
+        // step off the bottom-left corner of the screen and mark it placed;
+        // left unplaced instead, it is centred on first show like any window
+        // nobody has positioned.
+        if frame == nil, let spawn, spawn.isPlaced {
+            cascadePoint = made.cascade(after: spawn, from: cascadePoint)
+        }
         return made
     }
 
+    /// Every setting is back at its default, and the window in front should be
+    /// on the default note, which is what the Reset sheet promises.
+    ///
+    /// The ordinary settings reload cannot do that on its own any more: a
+    /// window bound through no slot stays on its file whatever the settings
+    /// say (`Coordinator.rebindFromSettings`, MAR-456), and the window in
+    /// front is regularly slotless, because opening a second document releases
+    /// the first window's slot. So the reset hands the front window the
+    /// scratchpad slot before it reloads, and the reload lands it on the
+    /// default note. Unless another window is already there, in which case
+    /// that window comes forward instead: two windows over one note is the
+    /// thing every other path here refuses.
+    func settingsWereReset() {
+        guard let front = key else { return }
+        if front.bindingSlot == nil {
+            let scratchpad = Prefs.scratchpadURL!
+            if let open = windows.first(where: { $0 !== front && FileIdentity.sameFile($0.boundFile, scratchpad) }) {
+                open.show()
+            } else {
+                releaseSlot(.scratchpad, except: front)
+                front.bindingSlot = .scratchpad
+            }
+        }
+        front.preferencesChanged()
+    }
+
     /// Keep `windows` in most-recently-fronted order, which is what `key`
-    /// falls back to when nothing holds the keyboard.
+    /// falls back to when nothing holds the keyboard, and what the open set
+    /// records as which window was in front.
     private func moveToFront(_ coordinator: Coordinator) {
         guard windows.last !== coordinator else { return }
         windows.removeAll { $0 === coordinator }
         windows.append(coordinator)
+        recordOpenSetSoon()
     }
 
     // MARK: quitting
@@ -427,6 +626,9 @@ final class WindowSet {
         var remaining = windows
         func ask() {
             guard !remaining.isEmpty else {
+                // Now rather than on the next turn: this is the recording the
+                // next launch restores, and there is no next turn.
+                recordOpenSet()
                 releaseHotkey()
                 done(true)
                 return

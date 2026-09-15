@@ -12,6 +12,11 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ## [Unreleased]
 
+### Fixed
+
+- Birta Writer for Mac launches on the windows you had open, back where they were, with the one you were last working in at the front. It used to open one window, on a file it chose by the order of its three file settings rather than by what you were doing: a file opened once from the Finder stayed the file every later launch landed on, whatever you had written in since, and a second or third window never came back at all. A file you double-click still comes to the front of whatever comes back, and "New windows open with" set to "New file" now puts a blank note in front of your windows rather than in place of them.
+- With two or more windows open, changing a publishing target in Settings no longer moves every window onto one file. Each window reloads on the file it was already on.
+
 ---
 
 ## [2026.914.0] - 2026, September 14

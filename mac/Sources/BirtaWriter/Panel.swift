@@ -56,6 +56,18 @@ final class AppPanel: NSPanel {
     /// The rest cascade off whichever window spawned them.
     private let remembersFrame: Bool
 
+    /// Where a launch that is putting this window BACK wants it, from the
+    /// recorded open set (`BirtaWriterCore.OpenSet`), or nil for a window
+    /// nobody is restoring.
+    ///
+    /// Outranks the autosave name, because it is per window where the name is
+    /// per app: with three windows coming back, the historic autosave can
+    /// answer for one of them, and this answers for each. Ignored when no
+    /// screen shows any of it, so a frame recorded on a display that is not
+    /// plugged in this morning does not put the window where nobody can reach
+    /// it; the window then opens as one that was never placed.
+    private let restoredFrame: NSRect?
+
     /// Whether this window has been given a position yet.
     ///
     /// `placeIfUnplaced` runs from every `show`, and a summon now shows every
@@ -63,8 +75,20 @@ final class AppPanel: NSPanel {
     /// somewhere would be re-centred under the pointer on the next summon.
     private var placed = false
 
-    init(remembersFrame: Bool) {
+    /// Whether this window has a position of its own yet. A window built and
+    /// not yet shown sits at the placeholder `init` gave it, and nothing that
+    /// records or cascades off a frame may read that as a place.
+    var isPlaced: Bool { placed }
+
+    /// The frame worth recording for the next launch: this window's own once
+    /// it has been placed, and until then the one a launch handed it, so a
+    /// quit before the first summon carries the recorded arrangement forward
+    /// rather than replacing it with a row of placeholders.
+    var frameToRecord: NSRect? { placed ? frame : restoredFrame }
+
+    init(remembersFrame: Bool, restoredFrame: NSRect? = nil) {
         self.remembersFrame = remembersFrame
+        self.restoredFrame = restoredFrame
         // All three window buttons, and the style mask each one needs: a panel
         // showing a lone close button reads as a window with something missing.
         // A placeholder rather than the opening size. What the window opens at
@@ -183,6 +207,13 @@ final class AppPanel: NSPanel {
     func placeIfUnplaced() {
         guard !placed else { return }
         placed = true
+        // A window being put back goes where it was, before any rule of this
+        // app's or AppKit's has a say. `restoredFrame` states why it outranks
+        // the autosave and when it is refused.
+        if let restored = restoredFrame, Self.isReachable(restored) {
+            setFrame(restored, display: false)
+            return
+        }
         // Guarded for the reason the autosave above is, and separately:
         // `setFrameUsingName` reads that defaults key whether or not this
         // window ever named itself, so without this a checking run would still
@@ -195,6 +226,14 @@ final class AppPanel: NSPanel {
         // The FRAME's size, not the content's: the title bar is part of what
         // has to stay on the screen, and it is the part that goes off the top.
         setFrameOrigin(PanelSize.origin(for: frame.size, visible: visible))
+    }
+
+    /// Whether a recorded frame is somewhere a person can reach: it has a
+    /// size, and some screen shows part of it. A frame from a display that is
+    /// gone fails this and the window is placed as if it had never been.
+    static func isReachable(_ frame: NSRect, screens: [NSRect] = NSScreen.screens.map(\.visibleFrame)) -> Bool {
+        guard frame.width >= PanelSize.minimum.width, frame.height >= PanelSize.minimum.height else { return false }
+        return screens.contains { $0.intersects(frame) }
     }
 }
 

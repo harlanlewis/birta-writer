@@ -92,4 +92,45 @@ final class PanelPlacementTests: XCTestCase {
         panel.placeIfUnplaced()
         XCTAssertEqual(panel.frame, moved)
     }
+
+    // MARK: a window being put back
+
+    /// A launch restoring the open set hands each window the frame it had,
+    /// and that frame is taken as it is: not centred, not sized for the
+    /// screen, not cascaded. The rule is `PanelSize`'s only for a window that
+    /// was never placed.
+    func testARestoredFrameShouldBeTakenAsItIs() throws {
+        let screen = try XCTUnwrap(targetScreen).visibleFrame
+        let restored = NSRect(x: screen.minX + 30, y: screen.minY + 30, width: 640, height: 480)
+        let panel = AppPanel(remembersFrame: false, restoredFrame: restored)
+        panel.placeIfUnplaced()
+        XCTAssertEqual(panel.frame, restored)
+    }
+
+    /// A frame recorded on a display that is not here fails the reach test and
+    /// the window is placed as one that was never placed. Asserted against the
+    /// rule's own answer, the way the first-placement test is.
+    func testARestoredFrameNoScreenShowsShouldBePlacedByTheRuleInstead() throws {
+        let screen = try XCTUnwrap(targetScreen)
+        let farAway = NSRect(x: 1_000_000, y: 1_000_000, width: 640, height: 480)
+        let panel = AppPanel(remembersFrame: false, restoredFrame: farAway)
+        panel.placeIfUnplaced()
+        let wanted = PanelSize.origin(for: panel.frame.size, visible: screen.visibleFrame)
+        XCTAssertEqual(panel.frame.origin.x, wanted.x, accuracy: 1)
+        XCTAssertEqual(panel.frame.origin.y, wanted.y, accuracy: 1)
+    }
+
+    /// The reach test itself, over screens handed in, so the two refusals are
+    /// pinned without a second display: a frame off every screen, and one
+    /// smaller than the window's own floor, which AppKit would grow anyway.
+    func testReachabilityShouldNeedASizeAndAScreen() {
+        let screens = [NSRect(x: 0, y: 0, width: 1440, height: 900)]
+        XCTAssertTrue(AppPanel.isReachable(NSRect(x: 1400, y: 100, width: 800, height: 600), screens: screens),
+                      "a frame partly on a screen is reachable")
+        XCTAssertFalse(AppPanel.isReachable(NSRect(x: 2000, y: 100, width: 800, height: 600), screens: screens),
+                       "a frame no screen shows is not")
+        XCTAssertFalse(AppPanel.isReachable(NSRect(x: 10, y: 10, width: 100, height: 100), screens: screens),
+                       "a frame below the window's minimum is a recording gone wrong")
+        XCTAssertFalse(AppPanel.isReachable(.zero, screens: screens))
+    }
 }

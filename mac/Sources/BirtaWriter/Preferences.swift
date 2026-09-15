@@ -66,6 +66,7 @@ enum Prefs {
         case styleExceptions
         case noteHighlight
         case syntaxSets
+        case openSet
     }
 
     /// The keys a reset must NOT clear, each for a reason of its own.
@@ -309,6 +310,51 @@ enum Prefs {
                            document: stored(.documentPath),
                            currentNote: stored(.currentNotePath),
                            scratchpad: stored(.scratchpadPath))
+    }
+
+    /// The file a window bound through `slot` is on NOW, and the slot that
+    /// supplies it: the same precedence `activeURL` walks, entered at the
+    /// window's own slot rather than at the top.
+    ///
+    /// This is what lets a settings change reach every window without moving
+    /// any of them onto one file. `activeURL` answers for the app: a document,
+    /// then the current note, then the scratchpad. A window holding the
+    /// `.currentNote` slot is not on the document, whatever the document
+    /// setting says, so it enters the walk one step down and the document
+    /// setting is never consulted for it; a `.scratchpad` window enters at the
+    /// bottom. A `.document` window enters at the top, which is what Back to
+    /// My Notes relies on: it clears the document setting and expects the
+    /// binding to fall through to the next slot down.
+    ///
+    /// Through the accessors, which drop a path that is not on disk, so a
+    /// deleted New Note falls back to the scratchpad exactly as `activeURL`
+    /// does. `storedBinding(enteringAt:)` is the same walk without that
+    /// filter, for the question "did somebody move a setting".
+    static func binding(enteringAt slot: ActiveBinding.Slot) -> (url: URL, slot: ActiveBinding.Slot) {
+        let document = slot == .document ? documentURL : nil
+        let note = slot != .scratchpad ? currentNoteURL : nil
+        return (ActiveBinding.url(document: document, currentNote: note, scratchpad: scratchpadURL),
+                ActiveBinding.slot(hasDocument: document != nil, hasCurrentNote: note != nil))
+    }
+
+    /// The file `slot`'s settings NAME, entered at `slot`, with no existence
+    /// filter. See `storedActiveURL` for why the two readings differ.
+    static func storedBinding(enteringAt slot: ActiveBinding.Slot) -> URL {
+        let document = slot == .document ? stored(.documentPath) : nil
+        let note = slot != .scratchpad ? stored(.currentNotePath) : nil
+        return ActiveBinding.url(document: document, currentNote: note, scratchpad: storedScratchpadURL)
+    }
+
+    /// The windows as they stood when last recorded, so a launch can put them
+    /// back. `BirtaWriterCore.OpenSet` is the shape and the launch rules;
+    /// `WindowSet` is what records it and when.
+    ///
+    /// Empty rather than nil for a store holding nothing, or bytes from a
+    /// shape this build does not read: either way the launch has nothing to
+    /// restore and says so, which is the single-window rule.
+    static var openSet: OpenSet {
+        get { d.data(forKey: Key.openSet.rawValue).flatMap(OpenSet.decoded) ?? OpenSet() }
+        set { d.set(try? newValue.encoded(), forKey: Key.openSet.rawValue) }
     }
 
     /// Write a moved file's new path back to the setting it came from.

@@ -26,8 +26,12 @@ final class WindowBindingTests: XCTestCase {
     /// header.
     private let sanctioned = "rebindFromSettings"
 
-    /// Reading the app's single active-file answer, in any spelling.
-    private let globalReads = ["Prefs.activeURL", "Prefs.activeSlot", "Prefs.storedActiveURL"]
+    /// Reading the app's active-file answer, in any spelling: the app-wide
+    /// walk, and the same walk entered at a window's own slot, which is what
+    /// the sanctioned function reads now (MAR-456). Both are reads of the
+    /// app-wide settings and both belong in that one place.
+    private let globalReads = ["Prefs.activeURL", "Prefs.activeSlot", "Prefs.storedActiveURL",
+                               "Prefs.binding(enteringAt:", "Prefs.storedBinding(enteringAt:"]
 
     private func coordinatorSource() throws -> [String] {
         let url = URL(fileURLWithPath: #filePath)

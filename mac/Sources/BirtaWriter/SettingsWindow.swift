@@ -257,11 +257,21 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     /// outlives this window.
     private let onCheckForUpdates: () -> Void
 
+    /// Every setting has just gone back to its default, and the window in
+    /// front should land on the default note. A third closure rather than a
+    /// call to `onChange`, because the ordinary reload leaves a window bound
+    /// through no slot where it is (`Coordinator.rebindFromSettings`), and the
+    /// front window is regularly slotless; `WindowSet.settingsWereReset` is
+    /// what hands it the scratchpad first. Defaulted so a test building this
+    /// window need not wire an app behind it.
+    private let onReset: () -> Void
+
     init(flavour: AppFlavor,
          onHotkeyChange: @escaping () -> OSStatus,
          refusedSummonCombo: @escaping () -> HotkeyCombo? = { nil },
          onChange: @escaping (BeforeReload?) -> Void,
          onChangeEverywhere: @escaping () -> Void,
+         onReset: @escaping () -> Void = {},
          onShowWelcome: @escaping () -> Void,
          onCheckForUpdates: @escaping () -> Void) {
         self.flavour = flavour
@@ -269,6 +279,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         self.refusedSummonCombo = refusedSummonCombo
         self.onChange = onChange
         self.onChangeEverywhere = onChangeEverywhere
+        self.onReset = onReset
         self.onShowWelcome = onShowWelcome
         self.onCheckForUpdates = onCheckForUpdates
         let window = NSWindow(
@@ -1476,7 +1487,10 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
             AppDelegate.shared?.applyMenuBarPresence()
             _ = self.onHotkeyChange()
             self.syncControlsFromPrefs()
-            self.onChange(nil)
+            // The reload, with the front window pointed at the default note
+            // first; the header on `onReset` says why `onChange` alone cannot
+            // keep the sentence in the sheet true.
+            self.onReset()
         }
     }
 

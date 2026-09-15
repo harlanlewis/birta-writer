@@ -166,20 +166,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding {
         // scratchpad, and a note carried in afterwards can land on the path
         // the panel is already editing. `StrandedNotes` holds the decision.
         NotesMoveOffer.offerAtLaunch()
-        // Before the Coordinator exists, so a launch that came from Open With
+        // Before any Coordinator exists, so a launch that came from Open With
         // mounts against the file it was asked for rather than mounting the
-        // last note and swapping it out a moment later. `document` is the slot
-        // that outranks the other two, so writing it here is what decides the
-        // URL handed to the Coordinator on the next line.
+        // last note and swapping it out a moment later. `WindowSet.openAtLaunch`
+        // puts it in front of whatever else comes back.
         let launchedWith = pendingOpen
         pendingOpen = nil
-        if let launchedWith { Prefs.documentURL = launchedWith.standardizedFileURL }
         windows.openPreferences = { [weak self] in self?.menuOpenSettings() }
         windows.hidePreferences = { [weak self] in self?.settingsWindow?.close() }
-        let first = windows.openFirstWindow()
+        let first = windows.openAtLaunch(launchedWith: launchedWith)
         buildStatusMenu()
         applyMenuBarPresence()
-        first.start()
+        windows.startAll()
         // After the window, because the summon key and the measurement signals
         // both act on a window and there has to be one to act on.
         windows.start()
@@ -991,6 +989,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding {
                 refusedSummonCombo: { [weak self] in self?.windows.refusedSummonCombo },
                 onChange: { [weak self] work in self?.front?.preferencesChanged(beforeReload: work) },
                 onChangeEverywhere: { [weak self] in self?.windows.preferencesChangedEverywhere() },
+                onReset: { [weak self] in self?.windows.settingsWereReset() },
                 onShowWelcome: { [weak self] in self?.showWelcome() },
                 onCheckForUpdates: { [weak self] in self?.menuCheckForUpdates() })
         }

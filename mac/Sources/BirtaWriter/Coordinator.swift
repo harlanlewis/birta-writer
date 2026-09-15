@@ -128,6 +128,23 @@ final class Coordinator {
     /// which way it went.
     var onOpenRequest: ((URL) -> Int)?
 
+    /// This window is on a different file than it was, or has moved or been
+    /// resized, so the app can record the open set again (`WindowSet`
+    /// persists it; `BirtaWriterCore.OpenSet` is what a launch restores).
+    /// Two hooks rather than one because they fire from different places for
+    /// different reasons, and a reader of either wants to know which.
+    var onBindingChanged: (() -> Void)?
+    var onFrameChanged: (() -> Void)?
+
+    /// Ask the app to take a settings change to every window, under
+    /// BIRTA_MAC_MEASURE only: the Settings toggle that does this is a switch a
+    /// script cannot flip, and the rule under test is the app's (MAR-456).
+    var onReloadEverywhereRequest: (() -> Void)?
+
+    /// The open set as the app would record it now, under BIRTA_MAC_MEASURE
+    /// only, so a script can read what a relaunch is about to restore.
+    var onOpenSetRequest: (() -> String)?
+
     /// Ask the app for the recents menu. Which files the OTHER windows hold is
     /// a fact about the set, so a window can only ask; the missing-file card's
     /// Open Recent button is the one control here that raises it.
@@ -320,8 +337,18 @@ final class Coordinator {
             // is. `noteMovedOnDisk` rebinds and re-watches in one step, so it
             // is the one caller this must not fire for twice.
             startWatching()
+            onBindingChanged?()
         }
     }
+
+    /// Where this window is, for the open set's recording of it: nil for a
+    /// window that has neither been placed nor been handed a frame to be put
+    /// back at (`AppPanel.frameToRecord`).
+    var windowFrame: NSRect? { panel.frameToRecord }
+
+    /// Whether this window has a position of its own yet, which is what a
+    /// window cascading off it needs it to have.
+    var isPlaced: Bool { panel.isPlaced }
     private let flushTimeout: TimeInterval = 1.0
     private let measure = Measure()
 
@@ -424,10 +451,14 @@ final class Coordinator {
     /// - Parameter remembersFrame: whether this is the window that keeps its
     ///   size and position between launches. Exactly one is; `AppPanel` says
     ///   why it cannot be all of them.
-    init(boundTo url: URL, slot: ActiveBinding.Slot?, remembersFrame: Bool) {
+    /// - Parameter frame: where a launch putting this window back wants it, or
+    ///   nil for a window nobody is restoring. Required rather than defaulted
+    ///   for the reason the file is: a restore that forgot to pass it would
+    ///   read as a window that was never placed.
+    init(boundTo url: URL, slot: ActiveBinding.Slot?, remembersFrame: Bool, frame: NSRect?) {
         boundURL = url
         bindingSlot = slot
-        panel = AppPanel(remembersFrame: remembersFrame)
+        panel = AppPanel(remembersFrame: remembersFrame, restoredFrame: frame)
         let webRoot = Coordinator.locateWebRoot()
         host = WebHost(webRoot: webRoot, documentDirectory: url.deletingLastPathComponent())
         writer = CoalescingWriter(onError: { error in
@@ -605,6 +636,15 @@ final class Coordinator {
                 }
             })
         }
+        // Where the window is, for the open set. The end of a live resize
+        // rather than every resize event, so a drag records once when it lands.
+        for name in [NSWindow.didMoveNotification, NSWindow.didEndLiveResizeNotification] {
+            observers.append(NotificationCenter.default.addObserver(
+                forName: name, object: panel, queue: .main
+            ) { [weak self] _ in
+                MainActor.assumeIsolated { self?.onFrameChanged?() }
+            })
+        }
         titleBar.titleView.setWindowKey(panel.isKeyWindow)
         refreshTitle()
         panel.contentView = contentView
@@ -755,6 +795,22 @@ final class Coordinator {
             }
             if obj["type"] as? String == "__birtaPrefs" {
                 measure.trace("prefs autosave=\(Prefs.autosave ? "yes" : "no")")
+                return
+            }
+            // A settings change that reaches every window, exactly as
+            // toggling a publishing target does, without the switch: the rule
+            // under test is that no window moves onto another's file, and
+            // each window traces `rebind at=` as it reloads (MAR-456).
+            if obj["type"] as? String == "__birtaReloadEverywhere" {
+                measure.mark("debug-reload-everywhere")
+                onReloadEverywhereRequest?()
+                return
+            }
+            // The open set as the app would record it now, which is what the
+            // next launch restores. Read from the set rather than from the
+            // defaults domain, whose stored form is bytes a shell cannot read.
+            if obj["type"] as? String == "__birtaOpenSet" {
+                measure.trace("openset \(onOpenSetRequest?() ?? "unavailable")")
                 return
             }
             // An explicit save, exactly as Cmd+S makes one.
@@ -1561,14 +1617,24 @@ final class Coordinator {
     ///
     /// The buffer is rescued before a deliberate rebind, because it is still
     /// the only copy of a note nobody has answered for.
+    ///
+    /// Entered at THIS window's slot, never at the top. The app-wide answer
+    /// (`Prefs.activeURL`) is one file for the whole app, and a settings
+    /// change reaches every window: read at the top, it moved every window
+    /// onto that one file, two buffers over one path, which is the hazard
+    /// `WindowSet.openDocument` exists to prevent (MAR-456). A window holding
+    /// no slot is on a file no setting names, so no setting can have moved it,
+    /// and it stays where it is.
     private func rebindFromSettings() {
+        guard let slot = bindingSlot else { return }
+        let binding = Prefs.binding(enteringAt: slot)
         if !noteMissing {
-            boundURL = Prefs.activeURL
-            bindingSlot = Prefs.activeSlot
-        } else if Prefs.storedActiveURL.standardizedFileURL != boundURL.standardizedFileURL {
+            boundURL = binding.url
+            bindingSlot = binding.slot
+        } else if Prefs.storedBinding(enteringAt: slot).standardizedFileURL != boundURL.standardizedFileURL {
             rescueMissingNote()
-            boundURL = Prefs.activeURL
-            bindingSlot = Prefs.activeSlot
+            boundURL = binding.url
+            bindingSlot = binding.slot
         }
     }
 
@@ -3694,6 +3760,10 @@ final class Coordinator {
                 // window, which is one of the two gestures that rebind by
                 // writing a slot rather than by naming a path.
                 self.rebindFromSettings()
+                // Which file this window is on after the rebind, per window,
+                // so a run with two of them can read that neither moved onto
+                // the other's file (MAR-456).
+                self.measure.trace("rebind at=\(self.boundURL.lastPathComponent) slot=\(self.bindingSlot?.rawValue ?? "none")")
                 self.reloadFromDisk = true
                 self.loadPage()
                 // The bound file may have changed; the titlebar names it.
