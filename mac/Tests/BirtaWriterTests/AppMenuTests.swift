@@ -170,9 +170,10 @@ final class AppMenuTests: XCTestCase {
     func testTheViewMenuShouldPutFoldingBehindOneRow() throws {
         let view = build(.view)
         XCTAssertEqual(titles(of: view), [
-            "Zoom In", "Zoom Out", "Actual Size",
+            "Command Palette…",
+            "-", "Zoom In", "Zoom Out", "Actual Size",
             "-", "Font", "Folding",
-            "-", "Show Table of Contents",
+            "-", "Show Table of Contents", "Show Files", "Show Hidden Files",
             "-", "Proofreading",
             // The bracket macOS's own Enter Full Screen lands under; see
             // `AppMenu.Menu.takesSystemRows`.
@@ -252,7 +253,7 @@ final class AppMenuTests: XCTestCase {
 
     func testTheFileMenuShouldOpenRecentThroughASubmenuOfItsOwn() {
         let file = build(.file)
-        XCTAssertEqual(titles(of: file), ["New Note", "Open…", "Open Recent", "Save", "Save a Copy As…"])
+        XCTAssertEqual(titles(of: file), ["New Note", "New Tab", "Open…", "Open Recent", "Go to File…", "Save", "Save a Copy As…"])
         let item = file.items.first { $0.title == "Open Recent" }
         // A submenu row and nothing else. The selector the table gives this
         // row is for the titlebar's button; leaving it on the menu item would
@@ -399,14 +400,17 @@ final class AppMenuTests: XCTestCase {
         let items = allItems(of: view)
         // Everything on, which is not the state a built menu is in: an item
         // starts at `.off`, so a row left untouched fails here.
-        AppMenu.applyState(MenuState(proofreadOptions: [:], noteHighlight: true, tocShown: false),
+        AppMenu.applyState(MenuState(proofreadOptions: [:], noteHighlight: true, tocShown: false,
+                                     hiddenFilesShown: true),
                            to: view)
         let declared = AppMenu.rows.filter { $0.menu == .view && $0.state != nil }
         var checked = 0
         for declaredRow in declared {
-            guard let command = declaredRow.action.command,
-                  let item = items.first(where: { ($0.representedObject as? AppMenu.Command) == command })
-            else {
+            // By the row's ADDRESS, which every built item carries, rather
+            // than by its command: an `.app` row (the file explorer's two)
+            // declares a state and runs a selector, so a lookup by command
+            // would read it as missing from a menu it is in.
+            guard let item = items.first(where: { $0.identifier == declaredRow.itemIdentifier }) else {
                 XCTFail("\(declaredRow.title) declares a state and is not in the built menu")
                 continue
             }
@@ -613,12 +617,12 @@ final class AppMenuTests: XCTestCase {
         XCTAssertEqual(open?.menu, .file)
         XCTAssertEqual(open?.chord, "Mod-o")
         XCTAssertEqual(open?.action.selector, #selector(AppDelegate.menuOpenDocument))
-        // Between New Note and Open Recent, which is where every macOS File
-        // menu puts the pair, and above Save. Asserted on the built menu rather
-        // than on the table, because the order a person reads is the one `fill`
-        // produces.
-        XCTAssertEqual(Array(titles(of: build(.file))[0..<4]),
-                       ["New Note", "Open…", "Open Recent", "Save"])
+        // After the two New rows and before Open Recent, which is where every
+        // macOS File menu puts the pair, and above Save. Asserted on the built
+        // menu rather than on the table, because the order a person reads is
+        // the one `fill` produces.
+        XCTAssertEqual(Array(titles(of: build(.file))[0..<6]),
+                       ["New Note", "New Tab", "Open…", "Open Recent", "Go to File…", "Save"])
     }
 
     func testARowShouldBeReachableByItsSelectorAndPrintItsOwnChord() {

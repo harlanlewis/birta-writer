@@ -25,6 +25,12 @@ public enum MenuToggle: Equatable {
     case noteHighlight
     /// Whether the outline panel is out.
     case tocShown
+    /// Whether the file explorer is out, in a rooted window. Whether the
+    /// window in front HAS an explorer is not a toggle here: the rows are
+    /// enabled or disabled by the app on that (`AppDelegate.validateMenuItem`).
+    case explorerShown
+    /// Whether the explorer lists dotfiles and the files the Finder hides.
+    case hiddenFilesShown
 }
 
 /// What the app knows about the state its menu rows draw, at the moment a menu
@@ -39,13 +45,19 @@ public struct MenuState: Equatable {
     public var proofreadOptions: [String: Bool]
     public var noteHighlight: Bool
     public var tocShown: Bool
+    public var explorerShown: Bool
+    public var hiddenFilesShown: Bool
 
     public init(proofreadOptions: [String: Bool] = [:],
                 noteHighlight: Bool = true,
-                tocShown: Bool = false) {
+                tocShown: Bool = false,
+                explorerShown: Bool = true,
+                hiddenFilesShown: Bool = false) {
         self.proofreadOptions = proofreadOptions
         self.noteHighlight = noteHighlight
         self.tocShown = tocShown
+        self.explorerShown = explorerShown
+        self.hiddenFilesShown = hiddenFilesShown
     }
 
     public func isOn(_ toggle: MenuToggle) -> Bool {
@@ -57,6 +69,8 @@ public struct MenuState: Equatable {
         case let .proofread(key): return proofreadOptions[key] ?? true
         case .noteHighlight: return noteHighlight
         case .tocShown: return tocShown
+        case .explorerShown: return explorerShown
+        case .hiddenFilesShown: return hiddenFilesShown
         }
     }
 
@@ -74,6 +88,8 @@ public struct MenuState: Equatable {
         case let .proofread(key): proofreadOptions[key] = on
         case .noteHighlight: noteHighlight = on
         case .tocShown: tocShown = on
+        case .explorerShown: explorerShown = on
+        case .hiddenFilesShown: hiddenFilesShown = on
         }
     }
 }

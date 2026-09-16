@@ -65,6 +65,53 @@ export type LogseqReason = "graph" | "content" | "forced";
 
 /** TOC dock side, matching the `birta.tocPosition` enum. */
 export type TocPosition = "left" | "right";
+
+/**
+ * The file explorer's wire (MAR-460), for a host that declares `projectFiles`.
+ *
+ * Every path is ROOT-RELATIVE and POSIX-separated, and the empty string is
+ * the root itself. The page never sees an absolute path and never joins one
+ * onto anything: it asks for a listing by the path it was given and asks for
+ * a file to be opened by the path a listing gave it, so the host is the only
+ * party that touches the filesystem and the only one that knows where the
+ * root is.
+ */
+export interface ProjectRoot {
+    /** What the panel's header says: the folder's own name, as the host spells it. */
+    name: string;
+    /** The host's own handle for the root; opaque to the page, echoed nowhere. */
+    path: string;
+}
+
+/** One row of a directory listing. */
+export interface ProjectEntry {
+    name: string;
+    kind: "dir" | "file";
+    /**
+     * Whether this is a document the editor opens in place. False for a
+     * file the host will hand to its default application instead: the page
+     * still lists it and still activates it, and draws it dimmed so the
+     * reader knows which promise a click makes.
+     */
+    openable: boolean;
+    /** A dotfile, or whatever else the host counts as hidden: listed always,
+     *  drawn only while `showHidden` is on, so flipping the setting is a
+     *  re-render and never a re-list. */
+    hidden: boolean;
+}
+
+/**
+ * One command for a host's own palette. `paletteCommands` lists what the page
+ * can run with no argument on this surface, so a host that draws a palette of
+ * its own (the Mac app's, MAR-458) offers exactly the commands the page would.
+ */
+export interface PaletteCommand {
+    id: EditorCommandId;
+    title: string;
+    /** The heading it prints under: the host's own menu where the host binds
+     *  the command (`HostShortcut.section`), a generic one otherwise. */
+    section: string;
+}
 // ToC show/hide preference. Type + normalizer live in ./tocVisibility (mirrors
 // the mermaid/blockHandles enum modules); re-exported here for message typing.
 export type { TocVisibility } from "./tocVisibility";
@@ -381,6 +428,36 @@ export type ToExtensionMessage =
     // the default, set via settings.)
     | { type: "tocWidth"; width: number }
     | { type: "tocVisibility"; visibility: TocVisibility }
+    // ── The file explorer (MAR-460), on a host declaring `projectFiles` ──
+    // One folder's contents, by root-relative path (`""` is the root). The
+    // host replies with `directoryListing` carrying the same `id`; the page
+    // bounds its own wait and draws an error row when nothing comes back.
+    | { type: "listDirectory"; id: string; path: string }
+    // A row was activated. The host opens a document in this window (and
+    // then says so with `currentProjectFile`, which is what selects the row),
+    // or hands a non-document to its default application. The page selects
+    // nothing on its own: selection follows what is open, never what was
+    // clicked, so a Finder open and a click land on the same row by the same
+    // route.
+    | { type: "openProjectFile"; path: string }
+    // The dragged panel width, on mouseup or the double-click reset, never per
+    // move; the host persists it and injects it back as `--files-width` on
+    // `:root`, the way `tocWidth` comes back as `--toc-width`.
+    | { type: "fileExplorerWidth"; width: number }
+    // An explicit show or hide of the panel, for the host to remember and
+    // seed back as `__i18n.fileExplorerVisible` on the next page load.
+    | { type: "fileExplorerVisibility"; visible: boolean }
+    // The page's half of the dotfile switch (the `toggleHiddenFiles` command);
+    // the host owns the setting and echoes it back as `fileExplorerConfig`.
+    | { type: "setFileExplorerShowHidden"; value: boolean }
+    // Every command the page can run with no argument on THIS surface, for a
+    // host that draws its own palette (MAR-458). The reply to
+    // `requestPaletteCommands`, and posted again on its own whenever the
+    // publishing targets change afterwards, because that is what changes the
+    // list (shared/commandAvailability.ts). Never unprompted: a host that
+    // never asks is never told, which is what keeps the frame contract's
+    // unprompted set (docs/HOSTING.md) at what it was.
+    | { type: "paletteCommands"; items: PaletteCommand[] }
     // Review sidebar By-type/In-order mode → persisted to birta.review.groupByType;
     // the config-change listener echoes reviewConfig back to every open editor.
     | { type: "reviewGroupByType"; grouped: boolean }
@@ -778,6 +855,31 @@ export type ToWebviewMessage =
     | { type: "setTocPosition"; position: TocPosition }
     | { type: "setTocVisibility"; visibility: TocVisibility }
     | { type: "setTocWidth"; width: number }
+    // ── The file explorer (MAR-460), from a host declaring `projectFiles` ──
+    // Which folder this window is rooted at, sent after `init`. Null is a
+    // single-file window, where the explorer builds nothing; a non-null root
+    // is what first loads the panel's chunk. `showHidden` seeds the dotfile
+    // switch so the first render draws the right rows.
+    | { type: "projectRoot"; root: ProjectRoot | null; showHidden: boolean }
+    // The answer to one `listDirectory`, by its `id`. `entries: null` with an
+    // `error` is a folder the host could not read (the page draws the message
+    // as a row and offers a retry); `entries` in any order, the page sorts.
+    | { type: "directoryListing"; id: string; path: string; entries: ProjectEntry[] | null; error?: string }
+    // The document this window shows now, or null when it shows none. The
+    // page selects that row, expanding and listing whatever ancestors it has
+    // to in order to reach it.
+    | { type: "currentProjectFile"; path: string | null }
+    // Folders whose contents changed on disk. An expanded one (and the root)
+    // is listed again; a collapsed one drops its cached listing and is
+    // listed when next opened.
+    | { type: "directoryChanged"; paths: string[] }
+    // The dotfile switch changed under the panel, from the host's own menu
+    // row or as the echo of `setFileExplorerShowHidden`.
+    | { type: "fileExplorerConfig"; showHidden: boolean }
+    // A host with a palette of its own asks what the page can run here; the
+    // page answers with `paletteCommands` now and again after every later
+    // change to the list. Ask once, after `init`.
+    | { type: "requestPaletteCommands" }
     // Live resting block-handle visibility update, after `blockHandles` changes.
     // Live source line-number gutter toggle, after `birta.lineNumbers` changes.
     // Enabling loads the gutter's module on demand; disabling removes it from

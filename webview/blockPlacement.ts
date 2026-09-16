@@ -140,6 +140,9 @@ export const COMMAND_BLOCK_REACH: Record<EditorCommandId, BlockReach> = {
     editFrontmatter: NONE,
     swapTocSide: NONE,
     focusReviewSidebar: NONE,
+    toggleFileExplorer: NONE,
+    focusFileExplorer: NONE,
+    toggleHiddenFiles: NONE,
 
     // ── Table cell operations (already scoped to a live table) ──────────────
     tableInsertRowAbove: NONE,

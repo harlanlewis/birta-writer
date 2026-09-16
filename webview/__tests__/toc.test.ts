@@ -9,7 +9,7 @@ import { mockVscodeApi } from "./setup";
 import { Schema, EditorState } from "../pm";
 import type { EditorView } from "../pm";
 
-const fakeEventManager = { onWindow: vi.fn() } as unknown as EventManager;
+const fakeEventManager = { onWindow: vi.fn(() => () => {}) } as unknown as EventManager;
 
 describe("initToc dock side", () => {
     beforeEach(() => {

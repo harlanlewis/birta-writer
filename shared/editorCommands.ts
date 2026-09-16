@@ -361,6 +361,21 @@ export const EDITOR_COMMANDS = [
     // opens the panel when hidden. No default chord — the editor's own chords
     // are spoken for, and a user picks one in the Keyboard Shortcuts UI.
     { id: "focusReviewSidebar", title: "Focus Review Sidebar", palette: true, sections: [], hostCapability: "toc" },
+    // The file explorer (MAR-460): the panel a directory window shows its
+    // folder in. Gated on `projectFiles`, which only an application declares
+    // (VS Code has an explorer of its own beside every editor), so these are
+    // `palette: false` for the same reason `openHostPreferences` is: the flag
+    // is VS Code's palette, and a row there would name a panel no VS Code
+    // host can draw. A host palette of its own gets them through the
+    // `paletteCommands` message (webview/paletteCommands.ts), which lists the
+    // app-only commands beside the palette-flagged ones.
+    { id: "toggleFileExplorer", title: "Toggle File Explorer", palette: false, sections: [], hostCapability: "projectFiles" },
+    // The inbound keyboard gesture, mirroring `focusReviewSidebar`: opens the
+    // panel when hidden and lands on the current file's row.
+    { id: "focusFileExplorer", title: "Focus File Explorer", palette: false, sections: [], hostCapability: "projectFiles" },
+    // The dotfile switch. The host owns the setting (its menu row toggles it
+    // too); this is the page's route to the same switch.
+    { id: "toggleHiddenFiles", title: "Toggle Hidden Files", palette: false, sections: [], hostCapability: "projectFiles" },
     // Keyboard canon (VS Code text-editing parity). Duplicate/smart-select/
     // insert-paragraph default chords are hardcoded ProseMirror keymaps —
     // they collide with native contenteditable behavior and need synchronous

@@ -1,27 +1,26 @@
+// The shell's stylesheet lands before this one: where the two tie on
+// specificity, the composer's rule is the one that should win.
+import { createSidePanelShell } from "../sidePanel/shell";
 import './toc.css';
 import { bindActivate } from "@/ui/dom";
 import type { EditorView, Node as PmNode } from "@/pm";
-import { applyTooltip, hideTooltip } from "@/ui/tooltip";
-import { hideInteractionShield, showInteractionShield } from "@/ui/interactionShield";
+import { applyTooltip } from "@/ui/tooltip";
 import { t } from "@/i18n";
 import { notifyTocWidth, notifyTocVisibility, notifySetTocPosition } from "@/messaging";
 import type { TocVisibility } from "../../../shared/messages";
 import { revealPosition } from "@/editing/blockOps";
-import { IconPanelLeft, IconPanelRight, IconArrowLeftRight } from "@/ui/icons";
+import { IconArrowLeftRight } from "@/ui/icons";
 import { hostArranges } from "../../../shared/hostProfile";
 import { commandAvailable } from "../../../shared/commandAvailability";
 import type { EventManager } from "@/eventManager";
-import { onOutsideClick } from "@/ui/outsideClick";
-import { claimExclusiveChrome, releaseExclusiveChrome } from "@/ui/exclusiveChrome";
 import {
     getTopbarBottom,
     scrollElementBelowTopbar,
-    getAllHeadings,
     findActiveHeading,
     collectDocHeadings,
 } from "@/utils/headingUtils";
 import { initTocDnd } from "./dnd";
-import { wireRoving } from "./keyboardNav";
+import { wireRoving } from "../sidePanel/keyboardNav";
 import { initProofreadingList } from "./proofreadingList";
 import { initNotesList } from "./notesList";
 import { initLinksList } from "./linksList";
@@ -47,24 +46,32 @@ const TOC_MIN_WIDTH = 240;
 const TOC_MAX_WIDTH = 600;
 const DOCKED_MIN_CONTENT_WIDTH = 720;
 const HEADING_SELECTOR = "h1,h2,h3,h4,h5,h6";
-// The closed reveal tab must sit exactly over the open hide button so the glyph
-// doesn't shift on toggle. The floating controls are inset from the drawer's top
-// trailing corner by these amounts (see `.toc-controls` top/right in toc.css);
-// the reveal tab and control buttons share the same box (22px) and glyph (15px),
-// so matching these insets keeps the glyph perceptually stable across the toggle.
-const TAB_EDGE_INSET = 7;
-// Nudged down a touch from a pure top inset so the glyph optically centers on the
-// first heading row's text (lowercase-dominant, so its optical center sits low).
-const TAB_TOP_INSET = 7;
 const tocAutoHideThreshold = window.__i18n?.tocAutoHideThreshold ?? 3;
 // ToC show/hide preference (birta.tocVisibility, via window.__i18n).
 // "auto" (or absent) → the auto-open-by-heading-count heuristic governs.
 const tocVisibility = window.__i18n?.tocVisibility ?? "auto";
-type TocMode = "docked" | "overlay";
 
-export function initToc(eventManager: EventManager, getEditorView: () => EditorView | null): {
+export interface TocOptions {
+    /**
+     * Pixels another docked side panel already takes on the viewport (the
+     * file explorer, when a directory window has one open), read at every
+     * docking decision. The two panels each ask the other, so neither docks
+     * into room the other is standing in.
+     */
+    neighborReserve?: () => number;
+    /** This panel's docked footprint changed; the neighbour re-decides. */
+    onReserveChange?: () => void;
+}
+
+export function initToc(eventManager: EventManager, getEditorView: () => EditorView | null, options: TocOptions = {}): {
     panel: HTMLElement;
     toggle: () => void;
+    /** The width this panel takes off the viewport while docked open, else 0:
+     *  what a second side panel subtracts before deciding whether it can dock. */
+    dockedReserve: () => number;
+    /** Re-decide docked against overlay from the viewport and the neighbour's
+     *  reserve: what the neighbour's `onReserveChange` runs. */
+    checkResponsiveMode: () => void;
     /** Full re-sync (presentation + content) — load time, and any caller whose
      *  own state may have changed. Not for doc changes: see refreshContent. */
     refresh: () => void;
@@ -100,10 +107,6 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
     /** Unregister the panel's drop-zone provider (teardown/tests). */
     dispose: () => void;
 } {
-    // Initial side comes from the birta.tocPosition setting via a
-    // server-rendered body class; the header flip button mutates it live.
-    let tocRight = document.body.classList.contains("toc-right");
-
     // What the SURFACE has settled, read once. The two are asked differently on
     // purpose, and the difference is which question the surface answered.
     //
@@ -120,17 +123,102 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
     const offerFlip = commandAvailable("swapTocSide");
     const toggleInBar = hostArranges("tocToggleInBar");
 
-    const panel = document.createElement("div");
-    panel.className = "toc-panel";
-    panel.classList.toggle("toc-panel--right", tocRight);
+    // The user's explicit show/hide decision, and whether one has been taken.
+    // Seeded from the birta.tocVisibility setting so show/hide survives a fresh
+    // webview init (reloading the window, or reopening the file). "shown"/"hidden"
+    // is an explicit choice that overrides auto-open; "auto" leaves the heuristic
+    // in charge. `dockedUserCollapsed` is the inverse of "visible" when docked.
+    // (Switching tabs never reset this — the webview is retained hidden,
+    // `retainContextWhenHidden`; this seed is only read on a brand-new webview.)
+    let dockedUserCollapsed = false;
+    let userToggled = false;
+    if (tocVisibility === "shown" || tocVisibility === "hidden") {
+        userToggled = true;
+        dockedUserCollapsed = tocVisibility === "hidden";
+    }
+
+    // The initial auto-open on load should snap into place, not slide/fade in —
+    // the switch into the rendered editor shouldn't draw attention to itself.
+    // While this is true, every shell commit lands with transitions off.
+    //
+    // TWO independent commits make up the load reveal, and which of them opens
+    // the panel is a race: the init rAF at the bottom of this function, and the
+    // first `refresh()` after the editor mounts (index.ts calls it synchronously
+    // once createEditor resolves). Either can win. Clearing the flag on
+    // whichever ran first — what this used to do, from `refresh()` alone — left
+    // the OTHER one to animate the reveal it was supposed to suppress: with the
+    // editor mounting inside a single frame, refresh() cleared the flag before
+    // the init rAF had committed anything, and the panel slid in. That is the
+    // `toc` suite's intermittent "initial reveal is instant" failure, and it
+    // reproduces on demand by delaying rAF so the mount always wins.
+    //
+    // So the flag survives until BOTH have committed, in whichever order they
+    // arrive; only then does a later user toggle or resize animate.
+    let initialLoad = true;
+    let initRafCommitted = false;
+    let mountedRefreshCommitted = false;
+    const endInitialLoadIfSettled = (): void => {
+        if (initRafCommitted && mountedRefreshCommitted) {
+            initialLoad = false;
+        }
+    };
+
+    // Headings a caller has already walked, handed through to the shell's
+    // render callback for the duration of ONE commit: only a caller with
+    // nothing to reuse pays a walk there.
+    let pendingHeadings: HeadingEntry[] | undefined;
+
+    // The drawer, its flyout, the resize sash, the reveal tab and the
+    // docked/overlay decision are the side-panel shell's; this module fills it
+    // with the outline and the review tabs, and answers its policy questions.
+    // Initial side comes from the birta.tocPosition setting via a
+    // server-rendered body class; the flip button mutates it live.
+    const shell = createSidePanelShell({
+        prefix: "toc",
+        eventManager,
+        initialRight: document.body.classList.contains("toc-right"),
+        width: {
+            // Injected by the extension as --toc-width on :root (the persisted
+            // value or the default); the dragged width is reported back on
+            // mouseup, never per move.
+            cssVar: "--toc-width",
+            default: TOC_DEFAULT_WIDTH,
+            min: TOC_MIN_WIDTH,
+            max: TOC_MAX_WIDTH,
+            onCommit: notifyTocWidth,
+        },
+        dockedMinContentWidth: DOCKED_MIN_CONTENT_WIDTH,
+        neighborReserve: options.neighborReserve ?? (() => 0),
+        onReserveChange: options.onReserveChange,
+        // Under `tocToggleInBar` the reveal tab is never put on the page: the
+        // bar already carries a button that does exactly this, and two of them
+        // a few pixels apart is one control drawn twice. The surface registers
+        // the bar's button in its place (`setFlyoutTrigger`), so the hover
+        // preview survives the withdrawal rather than being the price of it.
+        trigger: toggleInBar ? { kind: "external" } : { kind: "tab", tooltip: t("Show table of contents") },
+        // The tab runs THIS toggle, which persists the choice; the shell's own
+        // would only flip the panel.
+        onTabActivate: () => toggle(),
+        openOnDock: () => (userToggled ? !dockedUserCollapsed : shouldAutoOpen(getHeadings())),
+        renderBody: () => renderActiveView(pendingHeadings),
+        onPresentationSync: () => syncTabOverflow(),
+        onFlyoutShown: () => centerActiveRowInFlyout(),
+        suppressTransitions: () => initialLoad,
+        focusEditor: () => getEditorView()?.focus(),
+        dragInFlight: () => document.body.classList.contains("block-dragging"),
+        // A gutter-handle drag must be able to travel into an overlay TOC: the
+        // grab's mousedown lands outside the panel but must not close it.
+        outsideClickExempt: (e) => e.target instanceof Element && e.target.closest(".heading-fold-marker") !== null,
+    });
+    const { panel } = shell;
 
     // Controls float in the drawer's top trailing corner, layered above the list
     // which scrolls underneath them. No header row/title — the panel blends with
     // the editor background, so the drawer reads as an unadorned overlay. They are
     // only visible while the panel is open, which is exactly when a side-switch or
     // hide action makes sense.
-    const controls = document.createElement("div");
-    controls.className = "toc-controls";
+    const controls = shell.controlsSlot;
+    controls.classList.add("toc-controls");
     // The pair is its own toolbar, not part of the surrounding tablist's tab
     // set — a tablist's arrows must move between TABS (and these are not
     // tabs; the strip's keydown handler is scoped to .toc-tab for exactly
@@ -232,9 +320,10 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
     tabProofread.hidden = true;
     // Tabs in their strip with the flip/hide controls at the trailing edge —
     // the hide button's top-right position is LOAD-BEARING (the closed reveal
-    // tab sits exactly over it; see TAB_EDGE_INSET) and must not move. When the
-    // visible tabs overflow the row, the strip collapses to a SELECT: a single
-    // button showing the active tab that opens a menu of the others.
+    // tab sits exactly over it; see TAB_EDGE_INSET in sidePanel/revealTab.ts)
+    // and must not move. When the visible tabs overflow the row, the strip
+    // collapses to a SELECT: a single button showing the active tab that opens
+    // a menu of the others.
     const tabsList = document.createElement("div");
     tabsList.className = "toc-tabs__list";
     tabsList.append(tabContents, tabLinks, tabNotes, tabProofread);
@@ -428,6 +517,25 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         }
     }
 
+    /**
+     * The flyout opens at the reader's place in the document, never at the
+     * top: the list renders before the card's capped geometry exists, so the
+     * active row can sit far below the fold. Runs once the shell has committed
+     * the card's final layout (manual scroll math — scrollIntoView would also
+     * scroll the window). Only the Contents tab tracks an active row; the
+     * review tabs don't.
+     */
+    function centerActiveRowInFlyout(): void {
+        const active = activeTab === "contents"
+            ? list.querySelector<HTMLElement>(".toc-item--active")
+            : null;
+        if (active) {
+            const listRect = list.getBoundingClientRect();
+            const itemRect = active.getBoundingClientRect();
+            list.scrollTop += itemRect.top - listRect.top - (list.clientHeight - itemRect.height) / 2;
+        }
+    }
+
     function setActiveTab(tab: ReviewTab): void {
         if (tab === activeTab) { return; }
         activeTab = tab;
@@ -436,7 +544,7 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         scheduleTabVisibility();
         updateTabButtons();
         syncTabOverflow(); // select-mode label follows the active tab
-        if (isPanelVisible()) { renderActiveView(); }
+        if (shell.isVisible()) { renderActiveView(); }
     }
 
     /**
@@ -466,8 +574,8 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
      *  gesture): reveal the panel if hidden — persisting the choice, exactly
      *  like the reveal tab — then move focus into it. */
     function focusPanel(): void {
-        hideFlyoutImmediate(); // focus wants the stable docked panel, not the transient flyout
-        if (!isOpen) {
+        shell.hideFlyoutImmediate(); // focus wants the stable docked panel, not the transient flyout
+        if (!shell.isOpen()) {
             applyVisiblePreference(true);
             notifyTocVisibility("shown");
         }
@@ -505,7 +613,7 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
 
     function scheduleTabVisibility(): void {
         tabVisibilityDirty = true;
-        if (!isPanelVisible()) { return; }
+        if (!shell.isVisible()) { return; }
         if (tabVisibilityScheduled) { return; }
         tabVisibilityScheduled = true;
         tabVisibilityIdle = requestIdle(() => {
@@ -529,19 +637,16 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         syncTabOverflow(); // the visible-tab set changed → remeasure the row
     }
 
-    /** The side-bar glyph whose filled edge marks the current dock side. */
-    function sidebarIcon(): string {
-        return tocRight ? IconPanelRight : IconPanelLeft;
-    }
-
     const flipTip = applyTooltip(flipBtn, "", { placement: "below" });
     function updateFlipTooltip(): void {
-        flipTip.setText(tocRight ? t("Move to left") : t("Move to right"));
+        flipTip.setText(shell.isRight() ? t("Move to left") : t("Move to right"));
     }
     updateFlipTooltip();
 
+    /** The hide button carries the side-bar glyph whose filled edge marks the
+     *  current dock side, the same one the shell draws on the reveal tab. */
     function updateHideButton(): void {
-        hideBtn.innerHTML = sidebarIcon();
+        hideBtn.innerHTML = shell.sideIcon();
     }
     updateHideButton();
     applyTooltip(hideBtn, t("Hide table of contents"), { placement: "below" });
@@ -553,145 +658,8 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         toggle();
     });
 
-    // ── Drag-to-resize handle on the panel's inner edge (VS Code sash style) ──
-    const resizeCursor = (window.__i18n?.isMac ?? false) ? "col-resize" : "ew-resize";
-    const resizeHandle = document.createElement("div");
-    resizeHandle.className = "toc-resize-handle";
-    resizeHandle.style.cursor = resizeCursor;
-    panel.appendChild(resizeHandle);
-
-    function clampWidth(width: number): number {
-        return Math.min(TOC_MAX_WIDTH, Math.max(TOC_MIN_WIDTH, Math.round(width)));
-    }
-
-    function readInitialWidth(): number {
-        // Injected by the extension as --toc-width on :root (persisted value or the 220px default)
-        const raw = getComputedStyle(document.documentElement).getPropertyValue("--toc-width");
-        const parsed = parseInt(raw, 10);
-        return Number.isFinite(parsed) ? clampWidth(parsed) : TOC_DEFAULT_WIDTH;
-    }
-
-    let tocWidth = readInitialWidth();
-
-    function setTocWidth(width: number): void {
-        tocWidth = clampWidth(width);
-        document.documentElement.style.setProperty("--toc-width", `${tocWidth}px`);
-        updateTab();
-        syncTabOverflow(); // the row's available width changed
-    }
-
-    resizeHandle.addEventListener("mousedown", (e) => {
-        if (e.button !== 0) {
-            return;
-        }
-        e.preventDefault();
-        e.stopPropagation();
-        const startX = e.clientX;
-        const startWidth = tocWidth;
-        resizeHandle.classList.add("toc-resize-handle--active");
-        document.body.classList.add("toc-resizing");
-        // The cursor and the selection guard for the drag's life live on the
-        // shield: written on the body, either one is inherited by every
-        // element and restyles the whole document on the way in and out
-        // (ui/interactionShield.ts). The body class stays for the tab's
-        // transition suppression, which is narrow.
-        showInteractionShield("resize", { cursor: resizeCursor });
-        const onMove = (ev: MouseEvent): void => {
-            const delta = tocRight ? startX - ev.clientX : ev.clientX - startX;
-            setTocWidth(startWidth + delta);
-        };
-        const onUp = (): void => {
-            document.removeEventListener("mousemove", onMove);
-            document.removeEventListener("mouseup", onUp);
-            resizeHandle.classList.remove("toc-resize-handle--active");
-            document.body.classList.remove("toc-resizing");
-            hideInteractionShield();
-            if (tocWidth !== startWidth) {
-                notifyTocWidth(tocWidth);
-            }
-            checkResponsiveMode();
-        };
-        document.addEventListener("mousemove", onMove);
-        document.addEventListener("mouseup", onUp);
-    });
-
-    // Double-click resets to the default width
-    resizeHandle.addEventListener("dblclick", () => {
-        // Suppress the tab's slide transition so it snaps with the panel; the forced
-        // style flush commits the new position while the suppression is still active
-        document.body.classList.add("toc-resizing");
-        setTocWidth(TOC_DEFAULT_WIDTH);
-        void tabEl.offsetWidth;
-        document.body.classList.remove("toc-resizing");
-        notifyTocWidth(TOC_DEFAULT_WIDTH);
-        checkResponsiveMode();
-    });
-
-    // ── Reveal tab: a standalone fixed button at the docked outer corner, shown
-    // only while the panel is closed. It carries the same side-bar glyph as the
-    // header's hide button and sits at the same corner, so hiding the panel
-    // reads as the control staying put while the panel slides away behind it.
-    //
-    // Under `tocToggleInBar` it is never put on the page: the bar already
-    // carries a button that does exactly this, and two of them a few pixels
-    // apart is one control drawn twice. It is still BUILT, because it is the
-    // flyout's default anchor and the code below reads its box; the surface
-    // that withdraws it registers the bar's button in its place
-    // (`setFlyoutTrigger`), so the hover preview survives the withdrawal
-    // rather than being the price of it.
-    const tabEl = document.createElement("button");
-    tabEl.className = "ui-btn ui-btn--icon toc-toggle-tab";
-    // Keyboard-reachable: Tab focuses it (flying the panel out as a preview via
-    // the focus listener below), Enter/Space docks it open. Without tabIndex 0 —
-    // and because the mousedown handler preventDefaults click-focus — the focus
-    // path would be dead and the flyout pointer-only.
-    tabEl.tabIndex = 0;
-    if (!toggleInBar) {
-        document.body.appendChild(tabEl);
-        applyTooltip(tabEl, t("Show table of contents"), { placement: "below" });
-    }
-
-    let tocMode: TocMode = "overlay";
-    let isOpen = false;
-    let dockedUserCollapsed = false;
-    let userToggled = false;
-    // Seed from the birta.tocVisibility setting so show/hide survives a fresh
-    // webview init (reloading the window, or reopening the file). "shown"/"hidden"
-    // is an explicit choice that overrides auto-open; "auto" leaves the heuristic
-    // in charge. `dockedUserCollapsed` is the inverse of "visible" when docked.
-    // (Switching tabs never reset this — the webview is retained hidden,
-    // `retainContextWhenHidden`; this seed is only read on a brand-new webview.)
-    if (tocVisibility === "shown" || tocVisibility === "hidden") {
-        userToggled = true;
-        dockedUserCollapsed = tocVisibility === "hidden";
-    }
     let activeHeadingPos: number | null = null;
     let scrollRafId: number | null = null;
-    // The initial auto-open on load should snap into place, not slide/fade in —
-    // the switch into the rendered editor shouldn't draw attention to itself.
-    // While this is true, syncTocState() commits state with transitions off.
-    //
-    // TWO independent commits make up the load reveal, and which of them opens
-    // the panel is a race: the init rAF at the bottom of this function, and the
-    // first `refresh()` after the editor mounts (index.ts calls it synchronously
-    // once createEditor resolves). Either can win. Clearing the flag on
-    // whichever ran first — what this used to do, from `refresh()` alone — left
-    // the OTHER one to animate the reveal it was supposed to suppress: with the
-    // editor mounting inside a single frame, refresh() cleared the flag before
-    // the init rAF had committed anything, and the panel slid in. That is the
-    // `toc` suite's intermittent "initial reveal is instant" failure, and it
-    // reproduces on demand by delaying rAF so the mount always wins.
-    //
-    // So the flag survives until BOTH have committed, in whichever order they
-    // arrive; only then does a later user toggle or resize animate.
-    let initialLoad = true;
-    let initRafCommitted = false;
-    let mountedRefreshCommitted = false;
-    const endInitialLoadIfSettled = (): void => {
-        if (initRafCommitted && mountedRefreshCommitted) {
-            initialLoad = false;
-        }
-    };
 
     // Drag-and-drop wiring: top-level items are drag handles, and the open
     // panel is a drop zone for document drags (see ./dnd). What a dragged
@@ -699,15 +667,16 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
     // this panel, the heading line alone when it lands on the page. The flyout
     // counts as "open" here so internal reorder/refile behaves 1:1 with the
     // docked sidebar — otherwise the dnd measure/contains bail and the drag
-    // falls through to the page (`flyoutOpen` is read lazily, at drag time).
+    // falls through to the page (the shell's visibility is read lazily, at
+    // drag time).
     const dnd = initTocDnd({
         panel,
         // Read at call time: under `tocToggleInBar` the trigger is the bar's
         // button, registered after this init (`setFlyoutTrigger`).
-        flyoutTrigger: () => flyoutAnchor,
+        flyoutTrigger: () => shell.flyoutTrigger(),
         list,
         getEditorView,
-        isOpen: () => isOpen || flyoutOpen,
+        isOpen: () => shell.isVisible(),
         getHeadings,
     });
 
@@ -728,118 +697,23 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         }
     }
 
-    function updateTab(): void {
-        // Pinned to the docked outer edge, carrying the dock-side glyph. CSS
-        // hides it while the panel is open (the header's hide button rules then).
-        tabEl.innerHTML = sidebarIcon();
-        if (tocRight) {
-            tabEl.style.left = "auto";
-            tabEl.style.right = `${TAB_EDGE_INSET}px`;
-        } else {
-            tabEl.style.right = "auto";
-            tabEl.style.left = `${TAB_EDGE_INSET}px`;
-        }
-    }
-
-    function updateBodyClasses(): void {
-        document.body.classList.toggle("toc-docked", tocMode === "docked");
-        document.body.classList.toggle("toc-overlay", tocMode === "overlay");
-        document.body.classList.toggle("toc-open", isOpen && tocMode === "docked");
-        document.body.classList.toggle("toc-overlay-open", isOpen && tocMode === "overlay");
-    }
-
-    /** Outside-click detach handle (null while the overlay dismissal is off). */
-    let outsideOff: (() => void) | null = null;
-
-    function syncOutsideClickHandler(): void {
-        outsideOff?.();
-        outsideOff = null;
-        if (isOpen && tocMode === "overlay") {
-            // Deferred one tick so the opening click can't instantly close the
-            // overlay; the state is re-checked (and any listener a racing sync
-            // already attached is detached first) when the timeout fires.
-            setTimeout(() => {
-                if (isOpen && tocMode === "overlay") {
-                    outsideOff?.();
-                    // Bubble phase (`capture: false`), matching the
-                    // hand-rolled original.
-                    outsideOff = onOutsideClick([panel], (e) => {
-                        // A gutter-handle drag must be able to travel into an
-                        // overlay TOC: the grab's mousedown lands outside the
-                        // panel but must not close it.
-                        if (e.target instanceof Element && e.target.closest(".heading-fold-marker")) {
-                            return;
-                        }
-                        close();
-                    }, { capture: false });
-                }
-            }, 0);
-        }
-    }
-
-    /** Whether the panel is on screen in ANY form — docked/overlay open, or
-     *  transiently flown out from the collapsed tab. The render/measure gate:
-     *  a visible outline must track the document regardless of which of the
-     *  two states is showing it. (`flyoutOpen` is declared below and read
-     *  lazily — every caller runs after module init.) */
-    function isPanelVisible(): boolean {
-        return isOpen || flyoutOpen;
-    }
-
     /**
-     * MAR-295: when the panel stops being focusable while the keyboard is
-     * inside it — the hide button, the panel-toggle command, a responsive
-     * docked→overlay collapse, a flyout teardown — focus goes back to the
-     * editor, exactly where Escape would have put it. Without this it drops to
-     * <body>, stranding the keyboard nowhere (observed by driving a resize
-     * flip with focus in the overflow menu). Only ever called when the panel
-     * is NOT visible, so an open panel's focus is never yanked.
-     */
-    function restoreFocusToEditor(): void {
-        if (panel.contains(document.activeElement)) {
-            getEditorView()?.focus();
-        }
-    }
-
-    /**
-     * Re-commit the panel's whole presentation: open/docked classes, the tab
-     * glyph, the outside-click listener, and (when visible) the list. This is
-     * the RARE path — a toggle, a responsive flip, an edge swap, or load —
-     * never a keystroke: `updateTab` re-parses an SVG and
-     * `syncOutsideClickHandler` cycles a document listener, neither of which
-     * any doc change can affect. `refreshContent` is the hot counterpart.
+     * Re-commit the panel's whole presentation through the shell: open/docked
+     * classes, the tab glyph, the outside-click listener, and (when visible)
+     * the list. This is the RARE path — a toggle, a responsive flip, an edge
+     * swap, or load — never a keystroke. `refreshContent` is the hot
+     * counterpart.
      *
      * `headings` lets a caller that has already walked the doc hand its result
      * in; only a caller with nothing to reuse pays a walk here, and only when
      * the panel is actually visible.
      */
     function syncTocState(headings?: HeadingEntry[]): void {
-        // Suppress the slide/fade only for the initial load reveal (see initialLoad).
-        if (initialLoad) {
-            document.body.classList.add("toc-initial");
-        }
-        panel.classList.toggle("toc-panel--open", isOpen);
-        panel.classList.toggle("toc-panel--docked", tocMode === "docked");
-        panel.classList.toggle("toc-panel--overlay", tocMode === "overlay");
-        updateBodyClasses();
-        updateTab();
-        syncOutsideClickHandler();
-        // Render whenever the panel is VISIBLE — docked/overlay open OR flown
-        // out. `isOpen` alone excluded the flyout (which shows the panel with
-        // isOpen === false), so a flyout list never rebuilt after an edit: it
-        // showed a stale outline, and its stale data-headingPos values then
-        // armed the NEXT drag against positions the doc had moved past.
-        if (isPanelVisible()) {
-            renderActiveView(headings ?? getHeadings());
-        } else {
-            restoreFocusToEditor(); // the panel just stopped being focusable (MAR-295)
-        }
-        syncTabOverflow(); // presentation (open/side/mode) may have changed the row's width
-        if (initialLoad) {
-            // Flush the no-transition state, then re-enable transitions with no
-            // pending change so nothing animates from this commit.
-            void panel.offsetWidth;
-            document.body.classList.remove("toc-initial");
+        pendingHeadings = headings;
+        try {
+            shell.sync();
+        } finally {
+            pendingHeadings = undefined;
         }
     }
 
@@ -927,7 +801,7 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
     }
 
     function shouldAutoOpen(headings: HeadingEntry[]): boolean {
-        return tocMode === "docked" && headings.length > tocAutoHideThreshold;
+        return shell.mode() === "docked" && headings.length > tocAutoHideThreshold;
     }
 
     /**
@@ -941,12 +815,12 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
      * counting it is work with no possible effect.
      */
     function autoOpenPossible(): boolean {
-        return !userToggled && tocMode === "docked";
+        return !userToggled && shell.mode() === "docked";
     }
 
     function syncAutoOpenState(headings: HeadingEntry[]): void {
         if (!userToggled) {
-            isOpen = shouldAutoOpen(headings);
+            shell.setOpen(shouldAutoOpen(headings));
         }
     }
 
@@ -1214,7 +1088,7 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
     /**
      * THE HOT PATH: one doc-changing frame (index.ts's rAF coalescer), so it
      * sits next to the typing path and may cost only what a doc change can
-     * actually change — the outline. Everything `syncTocState` commits is
+     * actually change — the outline. Everything the shell's sync commits is
      * invariant under a doc edit, and re-committing it per frame was pure
      * waste: an SVG re-parse for the tab, seven classList toggles, and a
      * listener remove/add + setTimeout, on every keystroke, panel open or
@@ -1236,17 +1110,17 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         // The doc changed: mark tab visibility stale. Costs a flag write when the
         // panel is closed; schedules one coalesced idle recompute when open.
         scheduleTabVisibility();
-        if (!isPanelVisible() && !autoOpenPossible()) {
+        if (!shell.isVisible() && !autoOpenPossible()) {
             return; // nothing to render, and nothing left to auto-decide
         }
         const headings = getHeadings();
-        const wasVisible = isPanelVisible();
+        const wasVisible = shell.isVisible();
         syncAutoOpenState(headings);
-        if (isPanelVisible() !== wasVisible) {
+        if (shell.isVisible() !== wasVisible) {
             syncTocState(headings); // auto-open flipped: presentation changed too
             return;
         }
-        if (!isPanelVisible()) {
+        if (!shell.isVisible()) {
             return;
         }
         // The Proofreading tab is DECORATION-driven, not doc-driven: on a
@@ -1264,16 +1138,6 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         renderActiveView(headings);
     }
 
-    function close(): void {
-        isOpen = false;
-        syncTocState();
-    }
-
-    function openPanel(): void {
-        isOpen = true;
-        syncTocState();
-    }
-
     /** Apply an explicit show/hide preference — from a local toggle or a
      *  cross-tab broadcast. Seeds the persistent decision (so it overrides
      *  auto-open) and re-syncs the panel. Does NOT persist or notify: the caller
@@ -1283,7 +1147,7 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         // dockedUserCollapsed is the inverse of "visible" when docked, and keeps
         // the overlay↔docked transitions honoring the last explicit choice.
         dockedUserCollapsed = !visible;
-        isOpen = visible;
+        shell.setOpen(visible);
         syncTocState();
     }
 
@@ -1298,8 +1162,8 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         // the bug did not exist. Give the preview to a button that runs the
         // COMMAND instead (`tocToggleInBar`) and every other route to the same
         // command — the palette, a chord, the slash row — arrives without it.
-        hideFlyoutImmediate();
-        const next = !isOpen;
+        shell.hideFlyoutImmediate();
+        const next = !shell.isOpen();
         applyVisiblePreference(next);
         // Report the explicit choice; the extension writes birta.tocVisibility and
         // echoes it to every open editor. A toggle only ever picks shown/hidden.
@@ -1312,267 +1176,16 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
     function applyVisibility(visibility: TocVisibility): void {
         if (visibility === "auto") {
             userToggled = false;
-            isOpen = shouldAutoOpen(getHeadings());
+            shell.setOpen(shouldAutoOpen(getHeadings()));
             syncTocState();
             return;
         }
         const visible = visibility === "shown";
-        if (isOpen === visible && userToggled) {
+        if (shell.isOpen() === visible && userToggled) {
             return; // already in the requested state — nothing to do
         }
-        hideFlyoutImmediate(); // a live dock change shouldn't leave a flyout up
+        shell.hideFlyoutImmediate(); // a live dock change shouldn't leave a flyout up
         applyVisiblePreference(visible);
-    }
-
-
-    // Tab click: always call toggle, which drops the flyout itself. Dropping it
-    // here as well would read as this gesture being the one responsible, and
-    // the whole point of moving it into `toggle` is that it is not.
-    bindActivate(tabEl, toggle);
-
-    // Keyboard activation: Enter/Space docks the panel open (the mousedown
-    // handler above never fires for the keyboard, since a button synthesizes a
-    // click, not a mousedown). Space is prevented so it doesn't scroll.
-    tabEl.addEventListener("keydown", (e) => {
-        if (e.key === "Enter" || e.key === " ") {
-            e.preventDefault();
-            toggle();
-        }
-    });
-
-    // ── Flyout: while the collapsed tab is hovered or focused, reveal the panel
-    // transiently as a floating overlay (the Claude-desktop sidebar pattern),
-    // retracting when the pointer/focus leaves both the tab and the panel. A
-    // click still opens it persistently (toggle above). The flyout floats OVER
-    // the content (never pushes it) and never fights the persistent open state:
-    // showFlyout bails when the panel is already open. ──
-    let flyoutOpen = false;
-    let flyoutHideTimer: ReturnType<typeof setTimeout> | null = null;
-    let flyoutCleanupTimer: ReturnType<typeof setTimeout> | null = null;
-    /**
-     * The flyout's identity in the one-transient-surface-at-a-time set
-     * (`ui/exclusiveChrome.ts`): coming out takes down any toolbar dropdown,
-     * and a dropdown opening retracts this.
-     *
-     * The FLYOUT alone, never the docked drawer. The drawer is a panel the
-     * reader has opened and is entitled to keep; sweeping it away when a menu
-     * opened would be reading the rule as being about panels rather than about
-     * menus.
-     */
-    const exclusiveFlyout = Symbol("toc flyout");
-    // Must match the exit transition in toc.css (.toc-panel--flyout).
-    const FLYOUT_EXIT_MS = 150;
-    // Standard flyout width — a fixed dropdown width, independent of the docked
-    // sidebar's (possibly dragged) --toc-width. Kept in sync with toc.css.
-    const FLYOUT_WIDTH = 260;
-    const FLYOUT_GAP = 6;
-
-    function cancelFlyoutHide(): void {
-        if (flyoutHideTimer) { clearTimeout(flyoutHideTimer); flyoutHideTimer = null; }
-    }
-    function cancelFlyoutCleanup(): void {
-        if (flyoutCleanupTimer) { clearTimeout(flyoutCleanupTimer); flyoutCleanupTimer = null; }
-    }
-    /** Whatever the pointer rests on to preview the panel: the reveal tab, or
-     *  the bar button that replaced it under `tocToggleInBar`. Read at flyout
-     *  time rather than captured, so `setFlyoutTrigger` can arrive later than
-     *  this module does (the bar is built after the sidebar). */
-    let flyoutAnchor: HTMLElement = tabEl;
-
-    /** Anchor the flyout as a dropdown directly BELOW its trigger, aligned to
-     *  the panel's docked side — the trigger itself never moves, so the cursor
-     *  stays over it (no moving target). Positioned inline; CSS gives it card
-     *  chrome. */
-    function positionFlyout(): void {
-        const r = flyoutAnchor.getBoundingClientRect();
-        const flyoutTop = Math.round(r.bottom + FLYOUT_GAP);
-        panel.style.top = `${flyoutTop}px`;
-        panel.style.left = tocRight
-            ? `${Math.round(Math.max(8, r.right - FLYOUT_WIDTH))}px`
-            : `${Math.round(r.left)}px`;
-        // The docked drawer sets an inline `height` (updatePanelPosition); clear it
-        // so the flyout card sizes to its content via CSS (height:auto capped by
-        // max-height) instead of inheriting the full drawer height and padding its
-        // footer with empty space when the heading list is short.
-        panel.style.height = "";
-        // The invisible hover band above the panel spans the whole gap up to the
-        // content-area top (the toolbar's bottom), so the flyout stays open while
-        // the pointer is anywhere in that column — no hyper-precise mousing down.
-        const bandHeight = Math.max(FLYOUT_GAP, flyoutTop - getTopbarBottom());
-        panel.style.setProperty("--toc-flyout-band-h", `${bandHeight}px`);
-    }
-    /** Fully remove the flyout box (after the exit transition, or immediately for
-     *  the dock-open path) and restore the docked drawer's CSS positioning. */
-    function teardownFlyout(): void {
-        cancelFlyoutCleanup();
-        // Released HERE rather than in `hideFlyout`, because the box is still
-        // on screen through the exit transition and every path that removes it
-        // for good arrives here: the fade-out, the dock-open, and a live
-        // visibility change.
-        releaseExclusiveChrome(exclusiveFlyout);
-        // A flyout that retracts with the keyboard inside it (Tab moved focus
-        // in; the reveal tab's blur timer still fires) must not strand focus
-        // on a hidden box. Skipped when the teardown is the dock-open path,
-        // where the panel stays visible and keeps its focus.
-        if (!isOpen) { restoreFocusToEditor(); }
-        panel.classList.remove("toc-panel--flyout", "toc-panel--flyout-in");
-        document.body.classList.remove("toc-flyout-open");
-        panel.style.left = "";
-        panel.style.removeProperty("--toc-flyout-band-h");
-        // Reassert the docked drawer's inline top+height (positionFlyout cleared
-        // the height so the flyout could auto-size) so a later dock-open is
-        // full-height and correctly positioned again.
-        updatePanelPosition();
-        syncTabOverflow(); // back on the docked width — re-measure
-    }
-    function showFlyout(): void {
-        cancelFlyoutHide();
-        cancelFlyoutCleanup(); // interrupt a pending exit teardown, if any
-        if (isOpen) { return; }
-        if (flyoutOpen) {
-            // Re-entered mid-exit-fade: just re-assert the shown state.
-            panel.classList.add("toc-panel--flyout-in");
-            return;
-        }
-        flyoutOpen = true;
-        // The flyout shows the ToC itself, so the tab's "Show table of contents"
-        // tooltip is redundant (and would overlap the panel) — dismiss it.
-        hideTooltip();
-        // ...and any toolbar dropdown, for the same reason one level up: two
-        // transient surfaces out at once is the editor answering "what else is
-        // here" twice. `hideFlyout` is the dismissal, not `teardownFlyout`,
-        // so being swept looks exactly like retracting on its own.
-        claimExclusiveChrome(exclusiveFlyout, panel, hideFlyout);
-        renderActiveView();
-        // Enter with transitions SUPPRESSED (--flyout-enter): the closed drawer's
-        // transform is translateX(±100%), and animating straight to the flyout's
-        // translateY(-6px) interpolates diagonally — a sideways sweep in from the
-        // viewport edge. Snap to the flyout's start state first, then release the
-        // transition so only the translateY + opacity animate.
-        panel.classList.add("toc-panel--flyout", "toc-panel--flyout-enter");
-        document.body.classList.add("toc-flyout-open");
-        positionFlyout();
-        // The flyout has its OWN width (fixed 260px, controls hidden), so the
-        // list-vs-select decision must be re-measured for it — never inherited
-        // from the docked drawer's geometry.
-        syncTabOverflow();
-        // Commit the initial (down + faded) state with no transition, then release
-        // it and transition to shown, so the reveal is a slight slide-DOWN + fade.
-        void panel.offsetWidth;
-        panel.classList.remove("toc-panel--flyout-enter");
-        panel.classList.add("toc-panel--flyout-in");
-        // Open at the reader's place in the document, never at the top: the
-        // list renders before the card's capped geometry exists, so the active
-        // row can sit far below the fold. Center it now that the final layout
-        // is committed (manual scroll math — scrollIntoView would also scroll
-        // the window). The enter transition is transform/opacity only, so the
-        // geometry is already final here.
-        // Only the Contents tab tracks an active row; the review tabs don't.
-        const active = activeTab === "contents"
-            ? list.querySelector<HTMLElement>(".toc-item--active")
-            : null;
-        if (active) {
-            const listRect = list.getBoundingClientRect();
-            const itemRect = active.getBoundingClientRect();
-            list.scrollTop += itemRect.top - listRect.top - (list.clientHeight - itemRect.height) / 2;
-        }
-    }
-    /** Retract with a fade + slight slide-UP, tearing the box down only once the
-     *  exit transition finishes — so it never animates back through the full
-     *  drawer (the visible "shrink to hidden full size" artifact). */
-    function hideFlyout(): void {
-        cancelFlyoutHide();
-        if (!flyoutOpen) { return; }
-        flyoutOpen = false;
-        panel.classList.remove("toc-panel--flyout-in"); // start the exit transition
-        cancelFlyoutCleanup();
-        flyoutCleanupTimer = setTimeout(teardownFlyout, FLYOUT_EXIT_MS + 20);
-    }
-    /** Drop the flyout with no exit transition — for the click/keyboard path that
-     *  docks the panel open, so the flyout box never overlaps the opening drawer. */
-    function hideFlyoutImmediate(): void {
-        cancelFlyoutHide();
-        if (!flyoutOpen && !flyoutCleanupTimer) { return; }
-        flyoutOpen = false;
-        teardownFlyout();
-    }
-    function scheduleFlyoutHide(): void {
-        cancelFlyoutHide();
-        // Never retract mid-drag: a reorder/refile drag moves the pointer around
-        // (and off the tab), which must not yank the panel out from under it. The
-        // drag end restores normal hover via the next pointer move.
-        if (document.body.classList.contains("block-dragging")) { return; }
-        // A short grace period lets the pointer cross the gap from tab to panel.
-        flyoutHideTimer = setTimeout(hideFlyout, 220);
-    }
-
-    /** Wire one element as the hover/focus preview trigger. */
-    function armFlyoutTrigger(el: HTMLElement): void {
-        el.addEventListener("mouseenter", showFlyout);
-        el.addEventListener("mouseleave", scheduleFlyoutHide);
-        el.addEventListener("focus", showFlyout);
-        el.addEventListener("blur", scheduleFlyoutHide);
-    }
-    if (!toggleInBar) { armFlyoutTrigger(tabEl); }
-    // Moving onto the flown-out panel keeps it; leaving it retracts (unless a
-    // click already promoted it to a persistent open, when flyoutOpen is false).
-    panel.addEventListener("mouseenter", () => { if (flyoutOpen) { cancelFlyoutHide(); } });
-    panel.addEventListener("mouseleave", () => { if (flyoutOpen) { scheduleFlyoutHide(); } });
-    // The keyboard half of the hover pair (MAR-295 follow-up): Tabbing from
-    // the reveal tab into the flyout fires the tab's blur, and the hide that
-    // blur scheduled had no canceller — the flyout retracted under the
-    // keyboard ~400ms later (reproduced against the built bundle). Focus
-    // arriving anywhere in the panel cancels the pending hide, exactly like
-    // mouseenter; the focusout handler below re-arms it when focus leaves, so
-    // blur-out still retracts and the flyout never turns sticky.
-    panel.addEventListener("focusin", () => { if (flyoutOpen) { cancelFlyoutHide(); } });
-    panel.addEventListener("focusout", (e) => {
-        if (flyoutOpen && !panel.contains(e.relatedTarget as Node | null)) {
-            scheduleFlyoutHide();
-        }
-    });
-    // A drag holds the flyout open (scheduleFlyoutHide bails while block-dragging),
-    // but drag-end fires no mouseleave — so on mouseup, once the drag has settled,
-    // retract if the pointer no longer rests on the tab/panel/band. Without this
-    // the flyout is stuck open after a drag that ends off the panel.
-    document.addEventListener("mouseup", () => {
-        if (!flyoutOpen) { return; }
-        requestAnimationFrame(() => {
-            if (flyoutOpen && !panel.matches(":hover") && !flyoutAnchor.matches(":hover")) {
-                scheduleFlyoutHide();
-            }
-        });
-    }, true);
-
-    // ── Auto-expand detection ─────────────────────────────
-    // Docked when the viewport can hold the drawer plus a comfortable content
-    // column beside it — a pure viewport measure, identical in fixed and
-    // full-width mode. Fixed mode used to key off the editor's measured left/right
-    // gap, but the content now recenters into the space beside a docked drawer
-    // (see style.css `body:not(.editor-width-auto)`), so its position depends on
-    // the drawer state: measuring it would be circular and could oscillate.
-    function hasEnoughSpace(): boolean {
-        return window.innerWidth >= tocWidth + DOCKED_MIN_CONTENT_WIDTH;
-    }
-
-    function resolveMode(): TocMode {
-        return hasEnoughSpace() ? "docked" : "overlay";
-    }
-
-    function checkResponsiveMode(): void {
-        const nextMode = resolveMode();
-        if (nextMode === tocMode) {
-            return;
-        }
-
-        tocMode = nextMode;
-        if (tocMode === "docked") {
-            const headings = getHeadings();
-            isOpen = userToggled ? !dockedUserCollapsed : shouldAutoOpen(headings);
-        } else {
-            isOpen = false;
-        }
-        syncTocState();
     }
 
     // ── Flip the panel to the opposite edge (header button + setting echo) ──
@@ -1581,7 +1194,7 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
      *  both call this, so the two cannot drift and the button is the command
      *  rather than a copy of it. */
     function swapSide(): void {
-        const next: "left" | "right" = tocRight ? "left" : "right";
+        const next: "left" | "right" = shell.isRight() ? "left" : "right";
         // Apply optimistically for instant feedback; the setting echo re-applies
         // the same value (idempotent) once persisted.
         setPosition(next);
@@ -1590,29 +1203,14 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
 
     function setPosition(position: "left" | "right"): void {
         const nextRight = position === "right";
-        if (nextRight === tocRight) {
+        if (nextRight === shell.isRight()) {
             return;
         }
-        tocRight = nextRight;
-        document.body.classList.toggle("toc-right", tocRight);
-        panel.classList.toggle("toc-panel--right", tocRight);
+        // The shell moves the drawer and the tab, re-evaluates docked/overlay
+        // and re-commits; the panel's own controls follow the new side.
+        shell.setSide(nextRight);
         updateFlipTooltip();
         updateHideButton();
-        // The available side-space changed, so re-evaluate docked/overlay, then
-        // re-sync classes and the tab's side/position (syncTocState → updateTab).
-        updatePanelPosition();
-        checkResponsiveMode();
-        syncTocState();
-    }
-
-    // ── Dynamically align to the bottom of the topbar and sync the tab's vertical position ──────────
-    function updatePanelPosition(): void {
-        const topbarBottom = getTopbarBottom();
-        panel.style.top = `${topbarBottom}px`;
-        panel.style.height = `calc(100vh - ${topbarBottom}px)`;
-        // Land the reveal tab exactly where the header hide button was, so the
-        // glyph doesn't shift on toggle (header padding-top offset from the top).
-        tabEl.style.top = `${topbarBottom + TAB_TOP_INSET}px`;
     }
 
     // ── TOC's own scroll detection: update the active state of the currently visible heading ──────
@@ -1664,7 +1262,7 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
     const onProofreadFindingsChanged = (): void => {
         // Findings appearing/clearing is what shows/hides the Proofreading tab.
         scheduleTabVisibility();
-        if (isPanelVisible() && activeTab === "proofreading") {
+        if (shell.isVisible() && activeTab === "proofreading") {
             proofreadView.refresh(getEditorView());
         }
     };
@@ -1680,10 +1278,10 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
     window.addEventListener("proofread-config-changed", onProofreadConfigChanged);
 
     requestAnimationFrame(() => {
-        tocMode = resolveMode();
+        const mode = shell.settleMode();
         const headings = getHeadings();
-        isOpen = userToggled ? tocMode === "docked" && !dockedUserCollapsed : shouldAutoOpen(headings);
-        updatePanelPosition();
+        shell.setOpen(userToggled ? mode === "docked" && !dockedUserCollapsed : shouldAutoOpen(headings));
+        shell.updatePosition();
         syncTocState();
         syncTabOverflow();
         // The other half of the load reveal (see initialLoad) — transitions
@@ -1697,11 +1295,8 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         scheduleTabVisibility();
     });
 
-    eventManager.onWindow("resize", () => {
-        updatePanelPosition();
-        checkResponsiveMode();
-    });
     // Listen for scroll events to update the TOC active state independently
+    // (the shell owns the resize listener).
     eventManager.onWindow("scroll", scheduleScrollUpdate, { passive: true });
 
     return {
@@ -1714,14 +1309,16 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         applyVisibility,
         // A one-shot width change (settings edit echoed here) must also
         // re-evaluate docked↔overlay, which a new width can flip — the drag path
-        // does this on mouseup, but per-move `setTocWidth` deliberately doesn't.
-        setWidth: (width: number) => { setTocWidth(width); checkResponsiveMode(); },
-        isOpen: () => isOpen,
-        isRight: () => tocRight,
+        // does this on mouseup, but per-move `setWidth` deliberately doesn't.
+        setWidth: (width: number) => { shell.setWidth(width); shell.checkResponsiveMode(); },
+        isOpen: () => shell.isOpen(),
+        isRight: () => shell.isRight(),
+        dockedReserve: shell.dockedReserve,
+        checkResponsiveMode: shell.checkResponsiveMode,
         setNotesMarkers: (markers: string[]) => {
             notesView.setMarkers(markers);
             scheduleTabVisibility(); // a new marker set can create/clear notes
-            if (isPanelVisible() && activeTab === "notes") {
+            if (shell.isVisible() && activeTab === "notes") {
                 notesView.refresh(getEditorView());
             }
         },
@@ -1738,9 +1335,9 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
             // Explicit intent overrides has-entries visibility: show the tab even
             // before findings arrive (it renders its own empty state).
             tabProofread.hidden = false;
-            hideFlyoutImmediate();
+            shell.hideFlyoutImmediate();
             setActiveTab("proofreading");
-            if (!isOpen) {
+            if (!shell.isOpen()) {
                 applyVisiblePreference(true); // open + remember the intent
                 notifyTocVisibility("shown");
             }
@@ -1751,14 +1348,10 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         },
         focusPanel,
         setFlyoutTrigger: (el: HTMLElement) => {
-            // Only where the surface withdrew the reveal tab. Called on any
-            // other surface this would arm a SECOND trigger and leave the tab's
-            // own listeners in place, so the guard is here rather than at the
-            // call site: the caller knows which button it has, not which
-            // triggers are already live.
-            if (!toggleInBar) { return; }
-            flyoutAnchor = el;
-            armFlyoutTrigger(el);
+            // Only where the surface withdrew the reveal tab: the shell refuses
+            // it anywhere else, since the caller knows which button it has, not
+            // which triggers are already live.
+            shell.setFlyoutTrigger(el);
         },
         dispose: () => {
             window.removeEventListener(PROOFREAD_FINDINGS_CHANGED, onProofreadFindingsChanged);
@@ -1766,6 +1359,7 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
             tabVisibilityIdle?.cancel();
             tabVisibilityIdle = null;
             dnd.dispose();
+            shell.dispose();
         },
     };
 }

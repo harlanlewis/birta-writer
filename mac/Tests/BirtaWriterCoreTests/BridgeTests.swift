@@ -276,6 +276,66 @@ final class BridgeTests: XCTestCase {
         XCTAssertFalse(BootConfig(tocWidth: 320).userScript(themeClass: "vscode-dark").contains("--toc-width"))
     }
 
+    /// The file explorer's messages, both ways (MAR-457). The page's names are
+    /// the ones `shared/messages.ts` spells; a parse that filed any of these
+    /// under `.other` would be a row a person can activate that does nothing.
+    func testTheFileExplorersMessagesShouldParseAndEncode() {
+        XCTAssertEqual(WebviewMessage.parse(#"{"type":"listDirectory","id":"l1","path":"notes/sub"}"#),
+                       .listDirectory(id: "l1", path: "notes/sub"))
+        XCTAssertEqual(WebviewMessage.parse(#"{"type":"listDirectory","id":"l2"}"#),
+                       .listDirectory(id: "l2", path: ""), "an absent path is the root, not a refusal")
+        XCTAssertEqual(WebviewMessage.parse(#"{"type":"listDirectory","path":"x"}"#),
+                       .other(type: "listDirectory"), "no id means no way to answer")
+        XCTAssertEqual(WebviewMessage.parse(#"{"type":"openProjectFile","path":"a/b.md"}"#),
+                       .openProjectFile(path: "a/b.md"))
+        XCTAssertEqual(WebviewMessage.parse(#"{"type":"fileExplorerWidth","width":300}"#), .fileExplorerWidth(300))
+        XCTAssertEqual(WebviewMessage.parse(#"{"type":"fileExplorerVisibility","visible":false}"#),
+                       .fileExplorerVisibility(false))
+        XCTAssertEqual(WebviewMessage.parse(#"{"type":"setFileExplorerShowHidden","value":true}"#),
+                       .setFileExplorerShowHidden(true))
+
+        let rooted = HostMessage.projectRoot(name: "notes", path: "/n", showHidden: false).jsonObject()
+        XCTAssertEqual(rooted["type"] as? String, "projectRoot")
+        XCTAssertEqual((rooted["root"] as? [String: Any])?["name"] as? String, "notes")
+        XCTAssertEqual(rooted["showHidden"] as? Bool, false)
+        let loose = HostMessage.projectRoot(name: nil, path: nil, showHidden: false).jsonObject()
+        XCTAssertTrue(loose["root"] is NSNull, "a single-file window is told it has no root")
+
+        let entry = DirectoryListing.Entry(name: "a.md", kind: .file, openable: true, hidden: false)
+        let listing = HostMessage.directoryListing(id: "l1", path: "", entries: [entry], error: nil).jsonObject()
+        XCTAssertEqual(listing["id"] as? String, "l1")
+        XCTAssertEqual((listing["entries"] as? [[String: Any]])?.first?["name"] as? String, "a.md")
+        XCTAssertNil(listing["error"], "no error key on a listing that worked")
+        let refused = HostMessage.directoryListing(id: "l3", path: "../x", entries: nil, error: "outside the root").jsonObject()
+        XCTAssertTrue(refused["entries"] is NSNull)
+        XCTAssertEqual(refused["error"] as? String, "outside the root")
+
+        XCTAssertEqual(HostMessage.currentProjectFile(path: "a/b.md").jsonObject()["path"] as? String, "a/b.md")
+        XCTAssertTrue(HostMessage.currentProjectFile(path: nil).jsonObject()["path"] is NSNull)
+        XCTAssertEqual(HostMessage.directoryChanged(paths: ["", "a"]).jsonObject()["paths"] as? [String], ["", "a"])
+        XCTAssertEqual(HostMessage.fileExplorerConfig(showHidden: true).jsonObject()["showHidden"] as? Bool, true)
+    }
+
+    func testTheExplorersMemoriesShouldReachThePageOnTheOutlinePanelsChannels() {
+        XCTAssertEqual(BootConfig(fileExplorerWidth: 280).tocRootStyle, ":root { --files-width: 280px; }")
+        XCTAssertEqual(BootConfig(tocWidth: 320, fileExplorerWidth: 280).tocRootStyle,
+                       ":root { --toc-width: 320px; }:root { --files-width: 280px; }")
+        XCTAssertEqual(BootConfig(fileExplorerVisibility: "hidden").i18nObject()["fileExplorerVisible"] as? Bool, false)
+        XCTAssertEqual(BootConfig().i18nObject()["fileExplorerVisible"] as? Bool, true,
+                       "the explorer ships out, unlike the outline panel")
+    }
+
+    func testThePaletteCommandListShouldParseAndSkipRowsNobodyCanRun() {
+        let parsed = WebviewMessage.parse(
+            #"{"type":"paletteCommands","items":[{"id":"toggleBold","title":"Bold","section":"Format"},{"id":"x"},{"id":"foo","title":"Foo"}]}"#)
+        XCTAssertEqual(parsed, .paletteCommands(items: [
+            PaletteCommand(id: "toggleBold", title: "Bold", section: "Format"),
+            PaletteCommand(id: "foo", title: "Foo", section: "Editor"),
+        ]))
+        XCTAssertEqual(WebviewMessage.parse(#"{"type":"paletteCommands"}"#), .paletteCommands(items: []))
+        XCTAssertEqual(HostMessage.requestPaletteCommands.jsonObject()["type"] as? String, "requestPaletteCommands")
+    }
+
     /// What the reader has said about the Checks, handed back at the next page
     /// load, which this window does on every file it opens.
     ///

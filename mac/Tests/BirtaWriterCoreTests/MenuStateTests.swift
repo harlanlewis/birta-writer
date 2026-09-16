@@ -51,13 +51,13 @@ final class MenuStateTests: XCTestCase {
     /// count assertion below could only have failed if an entry were deleted,
     /// which is a list a new case never joins.
     ///
-    /// The six above them are written out because they are in no enum: four
+    /// The eight above them are written out because they are in no enum: four
     /// gate keys the page owns (`ProofreadOptionKey` in shared/messages.ts) and
-    /// the two toggles that are not proofreading options at all.
+    /// the four toggles that are not proofreading options at all.
     private static let everyToggle: [MenuToggle] =
         [.proofread("proofreading"), .proofread("spellCheck"),
          .proofread("grammarCheck"), .proofread("styleCheck"),
-         .noteHighlight, .tocShown]
+         .noteHighlight, .tocShown, .explorerShown, .hiddenFilesShown]
         + StyleCategory.allCases.map { MenuToggle.proofread($0.rawValue) }
 
     func testEveryToggleTheMenusDrawShouldAlsoBeOneTheyCanRecord() {
@@ -68,7 +68,7 @@ final class MenuStateTests: XCTestCase {
         // Against the registry, not against the literal: this fails when a new
         // category stops being swept, which a floor on the literal's own length
         // never could.
-        XCTAssertEqual(Self.everyToggle.count, StyleCategory.allCases.count + 6)
+        XCTAssertEqual(Self.everyToggle.count, StyleCategory.allCases.count + 8)
         XCTAssertGreaterThan(StyleCategory.allCases.count, 10)
         for toggle in Self.everyToggle {
             var state = MenuState()

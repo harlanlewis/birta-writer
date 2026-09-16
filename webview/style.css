@@ -749,13 +749,16 @@ body.editor-width-auto {
         margin-right: 0;
     }
 
+    /* A left TOC's terms carry `--files-reserve` (the file explorer's room on
+       the same edge, see "The file explorer beside the content" below): the
+       fallback is 0px, so a page with no explorer computes what it did. */
     &.toc-docked:not(.toc-open):not(.toc-right),
     &.toc-overlay:not(.toc-overlay-open):not(.toc-right) {
         #editor,
         .frontmatter-panel {
             --toc-editor-offset: max(
                 0px,
-                calc(var(--toc-tab-width, 20px) + var(--toc-content-gap, 100px) - var(--editor-content-left-padding))
+                calc(var(--files-reserve, 0px) + var(--toc-tab-width, 20px) + var(--toc-content-gap, 100px) - var(--editor-content-left-padding))
             );
             width: calc(100% - var(--toc-editor-offset));
             margin-left: var(--toc-editor-offset);
@@ -767,7 +770,7 @@ body.editor-width-auto {
         .frontmatter-panel {
             --toc-editor-offset: max(
                 0px,
-                calc(var(--toc-width, 260px) + var(--toc-content-gap, 100px) - var(--editor-content-left-padding))
+                calc(var(--files-reserve, 0px) + var(--toc-width, 260px) + var(--toc-content-gap, 100px) - var(--editor-content-left-padding))
             );
             width: calc(100% - var(--toc-editor-offset));
             margin-left: var(--toc-editor-offset);
@@ -816,6 +819,70 @@ body.editor-width-auto {
     }
 }
 
+/* ─── The file explorer beside the content (MAR-460) ───
+   A second docked panel, always on the leading edge (components/fileExplorer,
+   composing the same shell as the TOC). Everything about it here is keyed on
+   `body.files-open`, the class the shell writes while the explorer is docked
+   open, so a page that never builds the panel (every VS Code page, and a
+   single-file window) compiles to exactly the values above and below.
+   `--files-reserve` is the room it takes: its width while docked open and
+   nothing otherwise, read everywhere with a 0px fallback.
+
+   Two compositions, by where the TOC is. Docked open on the SAME edge, the
+   TOC's own terms move over by the reserve (the `+ var(--files-reserve, 0px)`
+   inside the left-TOC rules above and below) and the TOC panel starts past
+   the explorer, so the content clears both with one margin. Right, closed or
+   absent, the explorer's clearance is a leading margin of its own, and in
+   full-width mode the width gives up both panels' offsets. In fixed-width
+   mode the content centres in the space the open panels leave, with the
+   explorer's clearance as the floor, exactly as the TOC's own rule does one
+   panel at a time; both open, the right clearance is a fixed margin too, so a
+   tight window shrinks the column between them rather than sliding it under
+   the TOC. The bw-* breakout math further down mirrors every margin here. */
+body.files-open {
+    --files-reserve: var(--files-width, 220px);
+
+    /* A left TOC starts where the explorer ends. Its flyout positions itself
+       inline and is excluded; a right TOC is untouched. */
+    .toc-panel:not(.toc-panel--right):not(.toc-panel--flyout) {
+        left: var(--files-reserve);
+    }
+
+    /* And so does its reveal tab while it is closed. The tab's inset from
+       the edge is an inline `left` the shell writes (sidePanel/revealTab.ts,
+       matching the drawer's hide button), so the room the explorer takes is
+       added as a margin, which a fixed box measures from its `left`: the tab
+       keeps its inset, from where the explorer ends. CSS rather than a number
+       written on the tab's commit because the explorer opens, closes and is
+       dragged wider with no commit of the TOC, and the drawer's `left` above
+       moves the same way; the flyout anchors on the tab's box and follows.
+       Nothing transitions this margin, so the tab snaps with the sash. A
+       right TOC's tab is on the other edge and is untouched. */
+    &:not(.toc-right) .toc-toggle-tab {
+        margin-left: var(--files-reserve);
+    }
+}
+
+/* The cases where the explorer's clearance is a margin of its own: a right
+   TOC in any state, no TOC panel at all, and a left TOC floating open as an
+   overlay (which imposes no margin). A left TOC docked, open or closed, is
+   the other composition: its own rules above already carry the reserve. */
+body.editor-width-auto.files-open {
+    &.toc-right,
+    &:not(.toc-docked):not(.toc-overlay),
+    &.toc-overlay-open:not(.toc-right) {
+        #editor,
+        .frontmatter-panel {
+            --files-editor-offset: max(
+                0px,
+                calc(var(--files-reserve) + var(--toc-content-gap, 100px) - var(--editor-content-left-padding))
+            );
+            width: calc(100% - var(--files-editor-offset) - var(--toc-editor-offset, 0px));
+            margin-left: var(--files-editor-offset);
+        }
+    }
+}
+
 /* ─── Fixed-width content beside a docked TOC ───
    In fixed-width mode the content box is capped at --editor-max-width and
    centered with `margin: 0 auto` (below), which centers it in the WHOLE
@@ -845,11 +912,28 @@ body:not(.editor-width-auto) {
         .frontmatter-panel {
             --toc-editor-offset: max(
                 0px,
-                calc(var(--toc-width, 260px) + var(--toc-content-gap, 100px) - var(--editor-content-left-padding))
+                calc(var(--files-reserve, 0px) + var(--toc-width, 260px) + var(--toc-content-gap, 100px) - var(--editor-content-left-padding))
             );
             margin-left: max(
                 var(--toc-editor-offset),
-                calc(var(--toc-width, 260px) + (100% - var(--toc-width, 260px) - var(--editor-max-width)) / 2)
+                calc(var(--files-reserve, 0px) + var(--toc-width, 260px) + (100% - var(--files-reserve, 0px) - var(--toc-width, 260px) - var(--editor-max-width)) / 2)
+            );
+            margin-right: auto;
+        }
+    }
+
+    /* The explorer alone (no TOC docked open on either edge): centre in the
+       space it leaves, its clearance the floor, like the TOC's rule above. */
+    &.files-open:not(.toc-open) {
+        #editor,
+        .frontmatter-panel {
+            --files-editor-offset: max(
+                0px,
+                calc(var(--files-reserve) + var(--toc-content-gap, 100px) - var(--editor-content-left-padding))
+            );
+            margin-left: max(
+                var(--files-editor-offset),
+                calc(var(--files-reserve) + (100% - var(--files-reserve) - var(--editor-max-width)) / 2)
             );
             margin-right: auto;
         }
@@ -867,6 +951,27 @@ body:not(.editor-width-auto) {
                 calc(var(--toc-width, 260px) + (100% - var(--toc-width, 260px) - var(--editor-max-width)) / 2)
             );
             margin-left: auto;
+        }
+    }
+
+    /* The explorer left and the TOC right, both open: centre between them,
+       and hold the TOC's clearance as a fixed right margin so a tight window
+       shrinks the column rather than sliding it under the TOC (with `width:
+       auto` and `max-width`, a roomy window ignores the right margin and a
+       tight one honours both). After the TOC's right rule, so it takes both
+       margins from it; the TOC's `--toc-editor-offset` stays that rule's. */
+    &.files-open.toc-right.toc-open {
+        #editor,
+        .frontmatter-panel {
+            --files-editor-offset: max(
+                0px,
+                calc(var(--files-reserve) + var(--toc-content-gap, 100px) - var(--editor-content-left-padding))
+            );
+            margin-left: max(
+                var(--files-editor-offset),
+                calc(var(--files-reserve) + (100% - var(--files-reserve) - var(--toc-width, 260px) - var(--editor-max-width)) / 2)
+            );
+            margin-right: var(--toc-editor-offset);
         }
     }
 }
@@ -925,22 +1030,47 @@ body:not(.editor-width-auto) {
         --bw-target-right: var(--editor-content-right-padding, 48px);
     }
 
+    /* Every left-TOC term carries `--files-reserve` (0px with no explorer),
+       mirroring the container rules above. */
     &.toc-docked:not(.toc-open):not(.toc-right) #editor,
     &.toc-overlay:not(.toc-overlay-open):not(.toc-right) #editor {
         --bw-target-left: max(
             var(--editor-content-left-padding, 76px),
-            calc(var(--toc-tab-width, 20px) + var(--toc-content-gap, 100px))
+            calc(var(--files-reserve, 0px) + var(--toc-tab-width, 20px) + var(--toc-content-gap, 100px))
         );
     }
 
     &.toc-open:not(.toc-right) #editor {
-        --bw-target-left: max(48px, calc(var(--toc-width, 260px) + var(--toc-content-gap, 100px)));
+        --bw-target-left: max(48px, calc(var(--files-reserve, 0px) + var(--toc-width, 260px) + var(--toc-content-gap, 100px)));
         /* Mirrors the container's docked-open margin-left exactly (the
            center-in-leftover formula, --bw-emax-px standing in for
            --editor-max-width so a code block's monospace ch can't skew it). */
         --bw-col-ml: max(
             var(--toc-editor-offset, 0px),
-            calc(var(--toc-width, 260px) + (var(--bw-pane, 100vw) - var(--toc-width, 260px) - var(--bw-emax-px)) / 2)
+            calc(var(--files-reserve, 0px) + var(--toc-width, 260px) + (var(--bw-pane, 100vw) - var(--files-reserve, 0px) - var(--toc-width, 260px) - var(--bw-emax-px)) / 2)
+        );
+    }
+
+    /* The explorer with no left TOC docked open: the breakout starts past
+       the explorer's clearance, and the column margin mirrors the
+       `files-open:not(.toc-open)` rule above. The both-open composition with a
+       right TOC follows inside `&.toc-right`. */
+    &.files-open:not(.toc-open) #editor {
+        --bw-col-ml: max(
+            var(--files-editor-offset, 0px),
+            calc(var(--files-reserve) + (var(--bw-pane, 100vw) - var(--files-reserve) - var(--bw-emax-px)) / 2)
+        );
+    }
+
+    /* The breakout's start edge clears the explorer alone in the same three
+       cases the full-width rule names; a docked left TOC's rules above carry
+       the reserve in their own term. */
+    &.files-open.toc-right #editor,
+    &.files-open:not(.toc-docked):not(.toc-overlay) #editor,
+    &.files-open.toc-overlay-open:not(.toc-right) #editor {
+        --bw-target-left: max(
+            var(--editor-content-left-padding, 76px),
+            calc(var(--files-reserve) + var(--toc-content-gap, 100px))
         );
     }
 
@@ -963,6 +1093,21 @@ body:not(.editor-width-auto) {
                     var(--toc-editor-offset, 0px),
                     calc(var(--toc-width, 260px) + (var(--bw-pane, 100vw) - var(--toc-width, 260px) - var(--bw-emax-px)) / 2)
                 )
+            );
+        }
+
+        /* Both open: the column's margin-left is the explorer's rule (centred
+           between the two panels, its clearance the floor), and the breakout
+           starts past the explorer's clearance. `--bw-target-right` is the
+           TOC's, from the rule above. */
+        &.toc-open.files-open #editor {
+            --bw-target-left: max(
+                var(--editor-content-left-padding, 76px),
+                calc(var(--files-reserve) + var(--toc-content-gap, 100px))
+            );
+            --bw-col-ml: max(
+                var(--files-editor-offset, 0px),
+                calc(var(--files-reserve) + (var(--bw-pane, 100vw) - var(--files-reserve) - var(--toc-width, 260px) - var(--bw-emax-px)) / 2)
             );
         }
     }

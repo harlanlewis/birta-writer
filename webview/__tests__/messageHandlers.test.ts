@@ -32,6 +32,11 @@ function stubDeps(): MessageHandlerDeps {
             getEditorView: () => null,
             refreshToc: () => {},
             setLineNumbers: () => {},
+            setProjectRoot: () => {},
+            applyDirectoryListing: () => {},
+            setCurrentProjectFile: () => {},
+            directoryChanged: () => {},
+            setFileExplorerShowHidden: () => {},
         },
         topbarTb: null,
     };

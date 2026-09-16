@@ -38,6 +38,7 @@ import {
     IconSearch,
     IconFileCode,
     IconPanelLeft,
+    IconFolder,
     IconAlertTriangle,
     IconPencil,
     IconEye,
@@ -54,6 +55,7 @@ import { createSettingsMenu } from "./settingsMenu";
 import { createDebugMenu, type DebugOpts } from "./debugMenu";
 import { createToolbarLayout, type ToolbarLayout } from "./layout";
 import { ITEM_MUTATES, hostAvailableItems, type ToolbarItemId } from "./registry";
+import { commandAvailable } from "../../../shared/commandAvailability";
 import { isReadOnly, setReadOnly, subscribeReadOnly } from "@/readOnly";
 import { computeToolbarActiveState, DETACHED_STATE, type ToolbarActiveState } from "./activeState";
 import { notifyOpenSettings, notifyOpenKeybindings, notifyResolveSyncConflict } from "@/messaging";
@@ -419,8 +421,31 @@ export function initToolbar(
         ));
     }
 
+    // ── File explorer (MAR-460) ─────────────────────────
+    // The other panel control, pinned beside the TOC's rather than placed:
+    // it exists only on a host that opens windows on folders (`projectFiles`),
+    // which no VS Code host does, so a `toolbar.items.files` placement setting
+    // would be a knob in VS Code's Settings UI for a control it can never
+    // draw. The debug dropdown and the status badges are the precedent for a
+    // pinned, non-placeable item. Pressed state is the panel's own body
+    // classes, keyed in CSS, for the reason the TOC button's is: the button
+    // holds no copy of a state it does not own.
+    //
+    // Built whether or not THIS window is rooted at a folder, because the bar
+    // is built once and a folder arrives on a message; the panel's gate holds
+    // the button as its flyout trigger from then on (index.ts), and a
+    // single-file window has a button that runs an inert command.
+    const filesItem = commandAvailable("toggleFileExplorer")
+        ? wrap("files", btn(
+            IconFolder,
+            withChord(t("Toggle File Explorer"), "toggleFileExplorer"),
+            () => runEditorCommand("toggleFileExplorer", getEditor),
+            "tb-files-btn",
+        ))
+        : null;
+
     // ── Placement, overflow, customize mode, whole-bar visibility ──
-    layout = createToolbarLayout({ topbar, items, dbgItem, syncConflictItem, logseqItem });
+    layout = createToolbarLayout({ topbar, items, dbgItem, syncConflictItem, logseqItem, filesItem });
 
     // Paint the launch state, then repaint from the mode's one announcement —
     // never from a private copy, and never defensively on menu open.

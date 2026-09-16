@@ -626,6 +626,21 @@
                 "category": "Birta Writer"
             },
             {
+                "command": "birta.editor.toggleFileExplorer",
+                "title": "%command.editor.toggleFileExplorer.title%",
+                "category": "Birta Writer"
+            },
+            {
+                "command": "birta.editor.focusFileExplorer",
+                "title": "%command.editor.focusFileExplorer.title%",
+                "category": "Birta Writer"
+            },
+            {
+                "command": "birta.editor.toggleHiddenFiles",
+                "title": "%command.editor.toggleHiddenFiles.title%",
+                "category": "Birta Writer"
+            },
+            {
                 "command": "birta.editor.duplicateBlockUp",
                 "title": "%command.editor.duplicateBlockUp.title%",
                 "category": "Birta Writer"
@@ -1367,6 +1382,18 @@
                 {
                     "command": "birta.editor.focusReviewSidebar",
                     "when": "activeCustomEditorId == 'birta.editor'"
+                },
+                {
+                    "command": "birta.editor.toggleFileExplorer",
+                    "when": "false"
+                },
+                {
+                    "command": "birta.editor.focusFileExplorer",
+                    "when": "false"
+                },
+                {
+                    "command": "birta.editor.toggleHiddenFiles",
+                    "when": "false"
                 },
                 {
                     "command": "birta.editor.duplicateBlockUp",

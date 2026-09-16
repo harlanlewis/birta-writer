@@ -66,6 +66,11 @@ enum Prefs {
         case styleExceptions
         case noteHighlight
         case syntaxSets
+        case openSet
+        case explorerVisibility
+        case explorerWidth
+        case explorerShowsHidden
+        case paletteRecents
     }
 
     /// The keys a reset must NOT clear, each for a reason of its own.
@@ -311,6 +316,51 @@ enum Prefs {
                            scratchpad: stored(.scratchpadPath))
     }
 
+    /// The file a window bound through `slot` is on NOW, and the slot that
+    /// supplies it: the same precedence `activeURL` walks, entered at the
+    /// window's own slot rather than at the top.
+    ///
+    /// This is what lets a settings change reach every window without moving
+    /// any of them onto one file. `activeURL` answers for the app: a document,
+    /// then the current note, then the scratchpad. A window holding the
+    /// `.currentNote` slot is not on the document, whatever the document
+    /// setting says, so it enters the walk one step down and the document
+    /// setting is never consulted for it; a `.scratchpad` window enters at the
+    /// bottom. A `.document` window enters at the top, which is what Back to
+    /// My Notes relies on: it clears the document setting and expects the
+    /// binding to fall through to the next slot down.
+    ///
+    /// Through the accessors, which drop a path that is not on disk, so a
+    /// deleted New Note falls back to the scratchpad exactly as `activeURL`
+    /// does. `storedBinding(enteringAt:)` is the same walk without that
+    /// filter, for the question "did somebody move a setting".
+    static func binding(enteringAt slot: ActiveBinding.Slot) -> (url: URL, slot: ActiveBinding.Slot) {
+        let document = slot == .document ? documentURL : nil
+        let note = slot != .scratchpad ? currentNoteURL : nil
+        return (ActiveBinding.url(document: document, currentNote: note, scratchpad: scratchpadURL),
+                ActiveBinding.slot(hasDocument: document != nil, hasCurrentNote: note != nil))
+    }
+
+    /// The file `slot`'s settings NAME, entered at `slot`, with no existence
+    /// filter. See `storedActiveURL` for why the two readings differ.
+    static func storedBinding(enteringAt slot: ActiveBinding.Slot) -> URL {
+        let document = slot == .document ? stored(.documentPath) : nil
+        let note = slot != .scratchpad ? stored(.currentNotePath) : nil
+        return ActiveBinding.url(document: document, currentNote: note, scratchpad: storedScratchpadURL)
+    }
+
+    /// The windows as they stood when last recorded, so a launch can put them
+    /// back. `BirtaWriterCore.OpenSet` is the shape and the launch rules;
+    /// `WindowSet` is what records it and when.
+    ///
+    /// Empty rather than nil for a store holding nothing, or bytes from a
+    /// shape this build does not read: either way the launch has nothing to
+    /// restore and says so, which is the single-window rule.
+    static var openSet: OpenSet {
+        get { d.data(forKey: Key.openSet.rawValue).flatMap(OpenSet.decoded) ?? OpenSet() }
+        set { d.set(try? newValue.encoded(), forKey: Key.openSet.rawValue) }
+    }
+
     /// Write a moved file's new path back to the setting it came from.
     ///
     /// Asking which slot is in force cannot answer this: `currentNoteURL`'s
@@ -524,6 +574,36 @@ enum Prefs {
     static var tocWidth: Int? {
         get { d.object(forKey: Key.tocWidth.rawValue) == nil ? nil : d.integer(forKey: Key.tocWidth.rawValue) }
         set { d.set(newValue, forKey: Key.tocWidth.rawValue) }
+    }
+
+    /// The file explorer as the reader last left it, the outline panel's two
+    /// memories again and for the same reason (MAR-457). "shown" is the
+    /// first-launch answer, unlike the outline's: a window opened on a folder
+    /// is a window opened FOR its files, and an explorer that has to be asked
+    /// for is a folder window that looks like a file window.
+    static var explorerVisibility: String {
+        get { d.string(forKey: Key.explorerVisibility.rawValue) ?? "shown" }
+        set { d.set(newValue, forKey: Key.explorerVisibility.rawValue) }
+    }
+
+    static var explorerWidth: Int? {
+        get { d.object(forKey: Key.explorerWidth.rawValue) == nil ? nil : d.integer(forKey: Key.explorerWidth.rawValue) }
+        set { d.set(newValue, forKey: Key.explorerWidth.rawValue) }
+    }
+
+    /// Whether the explorer lists dotfiles and the files the Finder hides.
+    /// Off by default, as the Finder's is; the same chord flips it.
+    static var explorerShowsHidden: Bool {
+        get { d.bool(forKey: Key.explorerShowsHidden.rawValue) }
+        set { d.set(newValue, forKey: Key.explorerShowsHidden.rawValue) }
+    }
+
+    /// The palette rows picked lately, most recent first, by item id
+    /// (`PaletteModel.recording` keeps the list and its cap). What puts a row
+    /// somebody keeps reaching for at the top of its section.
+    static var paletteRecents: [String] {
+        get { d.stringArray(forKey: Key.paletteRecents.rawValue) ?? [] }
+        set { d.set(Array(newValue.prefix(PaletteModel.recentsKept)), forKey: Key.paletteRecents.rawValue) }
     }
 
     /// The editor's own memory of a DOCUMENT: where it was scrolled, which
@@ -1011,7 +1091,11 @@ enum Prefs {
     ///   to be read here from the URL, and the caller then overwrote it, so
     ///   this computed a bag that was always discarded under a comment
     ///   describing the rule it no longer followed.
-    static func bootConfig(viewState: String?) -> BootConfig {
+    /// - Parameter explorerRoot: the folder the window is rooted at, or nil for
+    ///   a window on a loose file. What decides whether this page is offered
+    ///   the `projectFiles` capability at all: a host provides a directory of
+    ///   files only to a window that has one.
+    static func bootConfig(viewState: String?, explorerRoot: URL?) -> BootConfig {
         BootConfig(
             toolbarJSON: toolbarLayout.json,
             fontPreset: fontPreset,
@@ -1022,6 +1106,8 @@ enum Prefs {
             noteHighlight: noteHighlight,
             tocVisibility: tocVisibility,
             tocWidth: tocWidth,
+            fileExplorerVisibility: explorerVisibility,
+            fileExplorerWidth: explorerWidth,
             networkEnabled: networkEnabled,
             syntaxSets: SyntaxScope.stored(syntaxSets),
             // HOST_PROFILES.mac in shared/hostProfile.ts is the source;
@@ -1039,8 +1125,13 @@ enum Prefs {
             // provides, and with `/ai` switched off, or with no command to
             // run, this host provides no agent. `BootConfigTests` holds both
             // arms.
-            hostCapabilities: ["spellAndGrammar", "imageUpload", "toc", "appPreferences", "agent"]
-                .filter { $0 != "agent" || agentAvailable },
+            //
+            // Withdrawing `projectFiles` is the same shape: a window on a loose
+            // file is a host with no directory to provide, so the page it
+            // mounts is never offered the explorer (MAR-457).
+            hostCapabilities: ["spellAndGrammar", "imageUpload", "toc", "appPreferences", "agent", "projectFiles"]
+                .filter { $0 != "agent" || agentAvailable }
+                .filter { $0 != "projectFiles" || explorerRoot != nil },
             viewStateJSON: viewState,
             hostShortcuts: AppMenu.shortcuts
         )

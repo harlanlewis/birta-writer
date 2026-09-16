@@ -25,7 +25,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding {
     /// than a coordinator, so this is the one place that question is answered.
     private var front: Coordinator? { windows.key }
     private var settingsWindow: SettingsWindowController?
+    /// The command palette, built on first use and kept, like the settings
+    /// window: it re-reads its catalog on every open, so keeping the panel
+    /// keeps only the panel (MAR-458).
+    private lazy var palette = PaletteWindowController(
+        catalog: { [weak self] in self?.paletteCatalog() ?? PaletteCatalog() },
+        onPick: { [weak self] action in self?.perform(action) })
     private var showItem: NSMenuItem!
+    /// The File menu and its Close row, held so the row can read Close Tab
+    /// while the window in front has tabs.
+    private var fileMenu: NSMenu?
+    private var closeItem: NSMenuItem?
     private var terminationSignal: DispatchSourceSignal?
     /// The view the overflow menu was opened from, for the sharing picker,
     /// which needs somewhere on screen to point at.
@@ -129,11 +139,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding {
     /// Open With in the Finder, a drop on the Dock icon, and `open -a` all
     /// arrive here.
     ///
-    /// ONE file, because this app has one buffer and one panel;
-    /// `DocumentTypes.firstToOpen` is which one and why. `Info.plist`'s
-    /// `CFBundleDocumentTypes` is what decides which files reach this at all,
-    /// and `Coordinator.openDocument` turns away anything else, since `open -a`
-    /// consults nothing.
+    /// ONE item, a file or a folder; `DocumentTypes.firstToOpen` is which one
+    /// and why. `Info.plist`'s `CFBundleDocumentTypes` is what decides which
+    /// items reach this at all (the Markdown types and `public.folder`), and
+    /// `WindowSet.openDocument` turns away anything else, since `open -a`
+    /// consults nothing. A folder becomes a directory window (MAR-457).
     func application(_ application: NSApplication, open urls: [URL]) {
         guard let url = DocumentTypes.firstToOpen(from: urls) else { return }
         guard !windows.windows.isEmpty else {
@@ -166,20 +176,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding {
         // scratchpad, and a note carried in afterwards can land on the path
         // the panel is already editing. `StrandedNotes` holds the decision.
         NotesMoveOffer.offerAtLaunch()
-        // Before the Coordinator exists, so a launch that came from Open With
+        // Before any Coordinator exists, so a launch that came from Open With
         // mounts against the file it was asked for rather than mounting the
-        // last note and swapping it out a moment later. `document` is the slot
-        // that outranks the other two, so writing it here is what decides the
-        // URL handed to the Coordinator on the next line.
+        // last note and swapping it out a moment later. `WindowSet.openAtLaunch`
+        // puts it in front of whatever else comes back.
         let launchedWith = pendingOpen
         pendingOpen = nil
-        if let launchedWith { Prefs.documentURL = launchedWith.standardizedFileURL }
         windows.openPreferences = { [weak self] in self?.menuOpenSettings() }
         windows.hidePreferences = { [weak self] in self?.settingsWindow?.close() }
-        let first = windows.openFirstWindow()
+        windows.paletteProbe = { [weak self] query, mode in
+            self?.probePalette(query: query, mode: mode) ?? "unavailable"
+        }
+        let first = windows.openAtLaunch(launchedWith: launchedWith)
         buildStatusMenu()
         applyMenuBarPresence()
-        first.start()
+        windows.startAll()
         // After the window, because the summon key and the measurement signals
         // both act on a window and there has to be one to act on.
         windows.start()
@@ -408,7 +419,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding {
         // turns `close` into a hide).
         for item in fileMenu.items where item.action != nil { item.target = self }
         fileMenu.addItem(.separator())
-        fileMenu.addItem(withTitle: "Close", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
+        // Close reads Close Tab while the window in front holds several tabs
+        // (`menuNeedsUpdate` retitles it), as every tabbed macOS app's does;
+        // it still travels the responder chain, so it closes the Settings
+        // window when that is in front and the selected tab when the panel is.
+        closeItem = fileMenu.addItem(withTitle: "Close", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
+        // Every tab of the window in front, the chord the HIG reserves for it.
+        let closeWindow = fileMenu.addItem(withTitle: "Close Window", action: #selector(menuCloseWindow),
+                                           keyEquivalent: "W")
+        closeWindow.keyEquivalentModifierMask = [.command, .shift]
+        closeWindow.target = self
+        self.fileMenu = fileMenu
         let fileItem = NSMenuItem(); fileItem.submenu = fileMenu; main.addItem(fileItem)
 
         let editMenu = NSMenu(title: "Edit")
@@ -591,6 +612,114 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding {
     @objc private func copyEverything() { front?.copyEverything() }
     @objc func menuSaveNow() { front?.saveNow() }
     @objc func menuNewNote() { windows.newNote() }
+
+    /// Cmd+T: a tab beside the window in front, and a plain new window when
+    /// nothing is in front to put a tab beside.
+    @objc func menuNewTab() {
+        if let front { windows.newTab(in: front) } else { windows.newNote() }
+    }
+
+    /// Shift+Cmd+W: every tab of the window in front.
+    @objc func menuCloseWindow() {
+        guard let front else { return }
+        windows.closeWindow(front)
+    }
+
+    /// Cmd+Shift+E: the file explorer of the window in front, which is the
+    /// page's own command; the row is withdrawn where there is no root.
+    @objc func menuToggleExplorer() {
+        front?.runEditorCommand("toggleFileExplorer", arg: nil)
+    }
+
+    /// Cmd+Shift+.: the Finder's chord, flipping the app's setting for every
+    /// rooted window at once.
+    @objc func menuToggleHiddenFiles() {
+        windows.setShowHiddenFiles(!Prefs.explorerShowsHidden)
+    }
+
+    /// Cmd+Shift+P: the palette over everything, above the window in front.
+    @objc func menuOpenPalette() {
+        openPalette(mode: .all)
+    }
+
+    /// Cmd+P: the palette over files alone, which is Go to File.
+    @objc func menuGoToFile() {
+        openPalette(mode: .files)
+    }
+
+    private func openPalette(mode: PaletteMode) {
+        // The file list is built off the main thread and swapped in; the
+        // palette opens on what is there and refreshes when the rest lands.
+        windows.invalidateNotesIndex()
+        palette.open(mode: mode, over: front?.window)
+    }
+
+    /// What the palette lists: the app as it stands at this moment, read from
+    /// the same places the menu bar and Settings read it. `PaletteSources`
+    /// says what each source is.
+    private func paletteCatalog() -> PaletteCatalog {
+        let root = front?.explorerRoot
+        var context = PaletteSources.Context(front: front,
+                                             allows: { [weak self] selector in self?.allows(selector) ?? false })
+        context.windows = windows.windows
+        context.menuState = menuState()
+        context.syntaxSets = Prefs.syntaxSets
+        context.pageCommands = front?.paletteCommands ?? []
+        context.recents = Prefs.recentDocuments
+        let refresh: () -> Void = { [weak self] in self?.palette.refresh() }
+        if let root {
+            context.root = root
+            context.rootIndex = windows.fileIndex(for: root, whenBuilt: refresh)
+        } else {
+            context.notesFolder = Prefs.notesDirectory
+            context.notesIndex = windows.fileIndex(for: Prefs.notesDirectory, whenBuilt: refresh)
+        }
+        return PaletteSources.catalog(context)
+    }
+
+    /// Do what a palette pick asks, after the palette has closed. A menu row
+    /// goes through the selector and payload its menu item would carry, so
+    /// the palette and the menu bar cannot disagree about what a row does.
+    private func perform(_ action: PaletteAction) {
+        switch action {
+        case let .menu(row):
+            // Asked again at the pick, not only at the listing: the state a
+            // gate reads can change while the palette is up.
+            if let selector = row.action.selector, !allows(selector) { return }
+            switch row.action {
+            case let .app(selector):
+                NSApp.sendAction(selector, to: self, from: nil)
+            case let .command(id, arg):
+                front?.runEditorCommand(id, arg: arg)
+            case let .link(link):
+                NSWorkspace.shared.open(link.url)
+            case .submenu, .recents:
+                break
+            }
+        case let .pageCommand(id):
+            front?.runEditorCommand(id, arg: nil)
+        case let .window(coordinator):
+            coordinator.selectTab()
+            coordinator.show()
+        case let .file(url):
+            windows.openDocument(at: url)
+        case let .setting(pane, row):
+            menuOpenSettings()
+            settingsWindow?.show(paneNamed: pane, revealing: row)
+        }
+    }
+
+    /// The palette as `measure.sh` drives it: open in `mode`, type `query`,
+    /// report the top rows, close. What comes back is the trace line's tail.
+    func probePalette(query: String, mode: String) -> String {
+        openPalette(mode: mode == "files" ? .files : .all)
+        palette.setQuery(query)
+        let top = palette.rows.prefix(3).map { "\($0.title)|\($0.item.detail ?? "-")" }
+        let line = "mode=\(mode) query=\(query) rows=\(palette.rows.count) open=\(palette.isOpen)"
+            + " top=\(top.joined(separator: ";"))"
+        palette.close()
+        return line
+    }
     @objc func menuOpenDocument() { windows.openDocumentPanel() }
 
     /// Raise the recents list from a control that is not a menu row: the
@@ -991,6 +1120,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding {
                 refusedSummonCombo: { [weak self] in self?.windows.refusedSummonCombo },
                 onChange: { [weak self] work in self?.front?.preferencesChanged(beforeReload: work) },
                 onChangeEverywhere: { [weak self] in self?.windows.preferencesChangedEverywhere() },
+                onReset: { [weak self] in self?.windows.settingsWereReset() },
                 onShowWelcome: { [weak self] in self?.showWelcome() },
                 onCheckForUpdates: { [weak self] in self?.menuCheckForUpdates() })
         }
@@ -1019,6 +1149,11 @@ extension AppDelegate: NSMenuDelegate, NSMenuItemValidation {
             showItem.title = windows.isAnyVisible ? "Hide \(AppFlavor.current.displayName)" : "Show \(AppFlavor.current.displayName)"
             showItem.keyEquivalent = combo.menuKeyEquivalent
             showItem.keyEquivalentModifierMask = combo.menuModifierMask
+        } else if menu === fileMenu {
+            // What Cmd+W will do, said before it is pressed. With one tab it
+            // is the window (or the hide the last window does), and with
+            // several it is the tab.
+            closeItem?.title = (front?.tabCount ?? 1) > 1 ? "Close Tab" : "Close"
         } else if menu === viewMenu || menu === formatMenu {
             // One call for both, because both menus are asking the same
             // question of the same table: which of my rows is withdrawn right
@@ -1052,28 +1187,44 @@ extension AppDelegate: NSMenuDelegate, NSMenuItemValidation {
     func menuState() -> MenuState {
         front?.menuState ?? MenuState(proofreadOptions: Prefs.proofreadOptions,
                                       noteHighlight: Prefs.noteHighlight,
-                                      tocShown: Prefs.tocVisibility == "shown")
+                                      tocShown: Prefs.tocVisibility == "shown",
+                                      explorerShown: Prefs.explorerVisibility == "shown",
+                                      hiddenFilesShown: Prefs.explorerShowsHidden)
     }
 
     /// Enablement for the main menu and the status menu, which keep their items
     /// between openings.
     func validateMenuItem(_ item: NSMenuItem) -> Bool {
+        guard let action = item.action else { return true }
+        return allows(action)
+    }
+
+    /// Whether a menu row's action can run right now: THE gate, asked by the
+    /// menu bar for each item and by the command palette for each row it
+    /// lists and each pick it runs, so the palette can never offer a row the
+    /// menu would have dimmed (`PaletteSources`).
+    func allows(_ action: Selector) -> Bool {
         // Nothing that touches the document while the first-run screen is up.
         // Hiding the web view walls off the mouse and, with the first
         // responder moved, the keyboard; the menu bar reaches past both. Cmd+N
         // there would make a note in the folder the screen is still asking
         // about and bind to it, outranking the answer being given, and its
         // status message would be drawn behind the screen.
-        if front?.isWelcoming == true, let action = item.action, Self.documentCommands.contains(action) {
+        if front?.isWelcoming == true, Self.documentCommands.contains(action) {
             return false
         }
-        switch item.action {
+        switch action {
         case #selector(copyEverything), #selector(menuSaveAs), #selector(shareNote):
             return front?.hasContent ?? false
         case #selector(revealLastSave):
             return front?.lastSavedURL != nil
         case #selector(menuClearRecentDocuments):
             return !Prefs.recentDocuments.isEmpty
+        case #selector(menuToggleExplorer), #selector(menuToggleHiddenFiles):
+            // Live only in a window rooted at a folder, which is the only kind
+            // with an explorer to show or hide. Disabled rather than withdrawn
+            // (`AppMenu.viewRows` says why).
+            return front?.explorerRoot != nil
         case #selector(menuBackToNotes):
             // Dead unless THIS window is actually on a document, which today
             // only an install carrying an older `documentPath` can be. The
@@ -1089,7 +1240,7 @@ extension AppDelegate: NSMenuDelegate, NSMenuItemValidation {
     /// Every menu command that reads or writes the note. Named once so the
     /// first-run gate above cannot drift out of step with the File menu.
     private static let documentCommands: Set<Selector> = [
-        #selector(menuNewNote), #selector(menuOpenDocument),
+        #selector(menuNewNote), #selector(menuNewTab), #selector(menuOpenDocument),
         #selector(menuOpenRecent(_:)), #selector(menuOpenRecentDocument(_:)),
         #selector(menuSaveNow), #selector(menuSaveAs),
         #selector(copyEverything), #selector(shareNote), #selector(revealLastSave),

@@ -60,6 +60,139 @@ final class Coordinator {
     private var titlebarBandHeight: CGFloat {
         panel.frame.height - panel.contentLayoutRect.height
     }
+
+    /// The tab bar's row, or zero with no tab bar (MAR-393).
+    ///
+    /// AppKit draws the tab bar as a titlebar accessory of its own, a second
+    /// row under the title row, so the row's height is the height of every
+    /// accessory this window did not add. Asked of the window rather than
+    /// written down, for the reason the band is: it is the system's number.
+    private var tabBarHeight: CGFloat {
+        panel.titlebarAccessoryViewControllers
+            .filter { $0 !== titleBar }
+            .reduce(0) { $0 + $1.view.frame.height }
+    }
+
+    /// The row the title and the page's first toolbar row share: the band
+    /// less the tab bar. `TabGroupPolicy.bandSplit` is the arithmetic.
+    private var titleRowHeight: CGFloat {
+        CGFloat(TabGroupPolicy.bandSplit(band: titlebarBandHeight, tabBar: tabBarHeight).titleRow)
+    }
+
+    /// The tab bar came or went, or a tab joined or left: the band the page
+    /// and the drag strip are laid out against has changed height, and no
+    /// layout pass of the content view notices, because the content view is
+    /// full-size and does not move. `WindowSet` calls this on every window it
+    /// knows is affected.
+    func tabsChanged() {
+        layoutTitlebarDrag()
+        refreshTitle()
+    }
+
+    // MARK: the file explorer (MAR-457)
+
+    /// Tell the page which folder this window is rooted at, and which of its
+    /// files this is. Nil root is the message that keeps a file window's page
+    /// from ever building an explorer.
+    private func sendProjectRoot() {
+        host.send(.projectRoot(name: explorerRoot?.lastPathComponent,
+                               path: explorerRoot?.standardizedFileURL.path,
+                               showHidden: Prefs.explorerShowsHidden))
+        if explorerRoot != nil { sendCurrentProjectFile() }
+        if measure.enabled {
+            measure.trace("explorerRoot=\(explorerRoot?.path ?? "none") current=\(currentProjectPath ?? "none")")
+        }
+    }
+
+    /// This window's file as the page names it, or nil for a file outside the
+    /// root (a note the explorer cannot show a row for).
+    private var currentProjectPath: String? {
+        guard let explorerRoot else { return nil }
+        return DirectoryListing.relativePath(of: boundURL, in: explorerRoot)
+    }
+
+    /// Say which row is this window's, so the page selects and reveals it.
+    /// Sent on load and whenever the file changes under a root; a Finder open
+    /// that lands in this window as a tab reaches this through that tab's own
+    /// load.
+    func sendCurrentProjectFile() {
+        guard explorerRoot != nil, state == .warm else { return }
+        host.send(.currentProjectFile(path: currentProjectPath))
+    }
+
+    /// Answer one `listDirectory`. A path that would leave the root, or a
+    /// folder that cannot be read, is answered with an error rather than
+    /// dropped: the page draws the error where the rows would be and stops
+    /// waiting.
+    private func answerListing(id: String, path: String) {
+        guard let explorerRoot else {
+            host.send(.directoryListing(id: id, path: path, entries: nil, error: "This window has no folder."))
+            return
+        }
+        guard let folder = DirectoryListing.resolve(path, in: explorerRoot) else {
+            host.send(.directoryListing(id: id, path: path, entries: nil, error: "Outside this window's folder."))
+            return
+        }
+        do {
+            let entries = try DirectoryListing.entries(of: folder, accepts: DocumentTypes.accepts)
+            host.send(.directoryListing(id: id, path: path, entries: entries, error: nil))
+            if measure.enabled { measure.trace("listing path=\(path.isEmpty ? "." : path) entries=\(entries.count)") }
+        } catch {
+            host.send(.directoryListing(id: id, path: path, entries: nil, error: error.localizedDescription))
+        }
+    }
+
+    /// A row was activated. An openable file goes to the app's routing, which
+    /// lands it as a tab here; anything else (an image, a PDF) is a file the
+    /// editor does not open, handed to whatever does.
+    private func openProjectFile(relative path: String) {
+        guard let explorerRoot, let file = DirectoryListing.resolve(path, in: explorerRoot) else { return }
+        if DocumentTypes.accepts(file) {
+            onOpenProjectFile?(file)
+        } else {
+            NSWorkspace.shared.open(file)
+        }
+    }
+
+    /// Folders under this window's root changed on disk, as the watcher the
+    /// app runs per root reports them; the page re-lists the ones it has open.
+    func directoryChanged(_ folders: [URL]) {
+        guard let explorerRoot, state == .warm else { return }
+        let paths = folders.compactMap { DirectoryListing.relativePath(of: $0, in: explorerRoot) }
+        guard !paths.isEmpty else { return }
+        host.send(.directoryChanged(paths: paths))
+        if measure.enabled { measure.trace("directoryChanged paths=\(paths.map { $0.isEmpty ? "." : $0 }.joined(separator: ";"))") }
+    }
+
+    /// The hidden-files setting as the app now has it, for this window's page
+    /// and its menu mirror.
+    func applyShowHiddenFiles(_ shown: Bool) {
+        menuState.record(.hiddenFilesShown, on: shown)
+        guard explorerRoot != nil, state == .warm else { return }
+        host.send(.fileExplorerConfig(showHidden: shown))
+    }
+
+    /// Make this the showing tab of its group.
+    func selectTab() {
+        panel.tabGroup?.selectedWindow = panel
+    }
+
+    /// Make the tab at `index` (in bar order) the showing one; out of range
+    /// selects nothing.
+    func selectTab(at index: Int) {
+        guard let group = panel.tabGroup, group.windows.indices.contains(index) else { return }
+        group.selectedWindow = group.windows[index]
+    }
+
+    /// The group this window's tab bar belongs to, as an identity two windows
+    /// can be compared on, or nil for a window in no group.
+    var tabGroupIdentity: ObjectIdentifier? { panel.tabGroup.map(ObjectIdentifier.init) }
+
+    /// Where this window sits in its tab bar, or nil for a window in no group.
+    var tabIndex: Int? { panel.tabGroup?.windows.firstIndex { $0 === panel } }
+
+    /// How many tabs share this window's bar; one for a window in no group.
+    var tabCount: Int { panel.tabGroup?.windows.count ?? 1 }
     private let statusOverlay = StatusOverlay()
     /// The one message in the panel that does not go on its own: what the app
     /// did to itself while nobody was watching. `UpdateNotice` holds the
@@ -122,11 +255,55 @@ final class Coordinator {
     /// one is the app's, so a window can only ask.
     var onNewWindowRequest: (() -> Void)?
 
+    /// Ask the app for a new tab in THIS window's group: the tab bar's `+`,
+    /// the system's New Tab rows, and Cmd+T all arrive here. What a tab is
+    /// (a note, beside this one) is the app's to decide (`WindowSet.newTab`).
+    var onNewTabRequest: (() -> Void)?
+
+    /// A row of this window's file explorer was activated. Where the file
+    /// lands is the app's rule (`OpenRouting`, through `WindowSet.openDocument`),
+    /// so the window only asks.
+    var onOpenProjectFile: ((URL) -> Void)?
+
+    /// The hidden-files setting was flipped from this window's page. The
+    /// setting is the app's and every rooted window's page has to hear it,
+    /// so the app stores it and fans it out (`WindowSet.setShowHiddenFiles`).
+    var onShowHiddenChanged: ((Bool) -> Void)?
+
+    /// Open a folder as a directory window, under BIRTA_MAC_MEASURE only.
+    var onOpenDirectoryRequest: ((URL) -> Void)?
+
     /// Ask the app to open a file, under BIRTA_MAC_MEASURE only, and answer
     /// how many windows are open once it has. Which window takes the file is
     /// the app's rule (`WindowSet.openDocument`) and the count is what says
     /// which way it went.
     var onOpenRequest: ((URL) -> Int)?
+
+    /// This window is on a different file than it was, or has moved or been
+    /// resized, so the app can record the open set again (`WindowSet`
+    /// persists it; `BirtaWriterCore.OpenSet` is what a launch restores).
+    /// Two hooks rather than one because they fire from different places for
+    /// different reasons, and a reader of either wants to know which.
+    var onBindingChanged: (() -> Void)?
+    var onFrameChanged: (() -> Void)?
+
+    /// Ask the app to take a settings change to every window, under
+    /// BIRTA_MAC_MEASURE only: the Settings toggle that does this is a switch a
+    /// script cannot flip, and the rule under test is the app's (MAR-456).
+    var onReloadEverywhereRequest: (() -> Void)?
+
+    /// The open set as the app would record it now, under BIRTA_MAC_MEASURE
+    /// only, so a script can read what a relaunch is about to restore.
+    var onOpenSetRequest: (() -> String)?
+
+    /// Drive the command palette over this window, under BIRTA_MAC_MEASURE
+    /// only: the mode and the query, answered with what the palette listed
+    /// (`AppDelegate.probePalette`).
+    var onPaletteRequest: ((_ query: String, _ mode: String) -> String)?
+
+    /// The window itself, for a surface that has to sit over it (the palette
+    /// centres on it). Nothing else about the panel is exposed.
+    var window: NSWindow { panel }
 
     /// Ask the app for the recents menu. Which files the OTHER windows hold is
     /// a fact about the set, so a window can only ask; the missing-file card's
@@ -185,9 +362,32 @@ final class Coordinator {
     /// still checking spelling. Picking it would then turn the thing OFF from a
     /// row that said it was already off, which is worse than a menu that simply
     /// omitted the state.
-    private(set) var menuState = MenuState(proofreadOptions: Prefs.proofreadOptions,
-                                           noteHighlight: Prefs.noteHighlight,
-                                           tocShown: Prefs.tocVisibility == "shown")
+    private(set) var menuState = MenuState()
+
+    /// The menu mirror as the stored settings and this window's root answer
+    /// it. One builder for the two moments it is seeded (construction and
+    /// every page boot), so the two cannot disagree about a field.
+    private func menuStateFromPrefs() -> MenuState {
+        MenuState(proofreadOptions: Prefs.proofreadOptions,
+                  noteHighlight: Prefs.noteHighlight,
+                  tocShown: Prefs.tocVisibility == "shown",
+                  explorerShown: Prefs.explorerVisibility == "shown",
+                  hiddenFilesShown: Prefs.explorerShowsHidden)
+    }
+
+    /// The editor commands the page says it can run in this window, as last
+    /// answered (`requestPaletteCommands`), for the app's palette (MAR-458).
+    private(set) var paletteCommands: [PaletteCommand] = []
+
+    /// The folder this window is rooted at, for a directory window, or nil
+    /// for a window on a loose file (MAR-457). Decided at construction and
+    /// never rebound: a root is what a window IS, the way its file is what it
+    /// is on, and a tab opened from its explorer is a window with the same
+    /// root. It is what the page is told in `projectRoot`, what the page's
+    /// listings are resolved against, and the folder the page may read images
+    /// from (`ResourceRoots.document`), because a note in a rooted window
+    /// refers to images anywhere under the root rather than only beside it.
+    let explorerRoot: URL?
     /// Per run, the file holding the agent's own version while the page's
     /// merge decides whether the document ended up with all of it.
     private var agentRescues: [String: URL] = [:]
@@ -285,7 +485,7 @@ final class Coordinator {
         didSet {
             guard boundURL != oldValue else { return }
             host.schemeHandler.roots =
-                host.schemeHandler.roots.rebound(toDocument: boundURL.deletingLastPathComponent())
+                host.schemeHandler.roots.rebound(toDocument: explorerRoot ?? boundURL.deletingLastPathComponent())
             refreshTitle()
             // Both files join the recents list: the one being left and the one
             // arriving, oldest first.
@@ -320,8 +520,18 @@ final class Coordinator {
             // is. `noteMovedOnDisk` rebinds and re-watches in one step, so it
             // is the one caller this must not fire for twice.
             startWatching()
+            onBindingChanged?()
         }
     }
+
+    /// Where this window is, for the open set's recording of it: nil for a
+    /// window that has neither been placed nor been handed a frame to be put
+    /// back at (`AppPanel.frameToRecord`).
+    var windowFrame: NSRect? { panel.frameToRecord }
+
+    /// Whether this window has a position of its own yet, which is what a
+    /// window cascading off it needs it to have.
+    var isPlaced: Bool { panel.isPlaced }
     private let flushTimeout: TimeInterval = 1.0
     private let measure = Measure()
 
@@ -337,6 +547,21 @@ final class Coordinator {
     func cascade(after other: Coordinator, from point: NSPoint?) -> NSPoint {
         panel.cascade(after: other.panel, from: point)
     }
+
+    /// Make `other` a tab of this window, selected. AppKit's window tabbing:
+    /// each tab stays a window of its own, sharing this one's frame and tab
+    /// bar (MAR-393).
+    func attachTab(_ other: Coordinator) {
+        other.panel.adoptGroupFrame(of: panel)
+        panel.addTabbedWindow(other.panel, ordered: .above)
+    }
+
+    /// The tab group as AppKit reports it, for the app's rules about summon,
+    /// dismissal and closing: every window sharing this one's tab bar, in
+    /// bar order, and which of them is showing. Nil while this window is in no
+    /// group.
+    var tabbedWindows: [NSWindow]? { panel.tabGroup?.windows }
+    var isSelectedTab: Bool { panel.tabGroup?.selectedWindow === panel }
 
     /// Let this window go, after `prepareToClose` has said it may.
     ///
@@ -424,15 +649,28 @@ final class Coordinator {
     /// - Parameter remembersFrame: whether this is the window that keeps its
     ///   size and position between launches. Exactly one is; `AppPanel` says
     ///   why it cannot be all of them.
-    init(boundTo url: URL, slot: ActiveBinding.Slot?, remembersFrame: Bool) {
+    /// - Parameter frame: where a launch putting this window back wants it, or
+    ///   nil for a window nobody is restoring. Required rather than defaulted
+    ///   for the reason the file is: a restore that forgot to pass it would
+    ///   read as a window that was never placed.
+    /// - Parameter explorerRoot: the folder this is a directory window of, or
+    ///   nil for a window on a loose file. Required for the reason the file
+    ///   is: a default would make every window a file window with none of
+    ///   the call sites saying so.
+    init(boundTo url: URL, slot: ActiveBinding.Slot?, remembersFrame: Bool, frame: NSRect?, explorerRoot: URL?) {
         boundURL = url
         bindingSlot = slot
-        panel = AppPanel(remembersFrame: remembersFrame)
+        self.explorerRoot = explorerRoot
+        panel = AppPanel(remembersFrame: remembersFrame, restoredFrame: frame,
+                         tabbingIdentifier: TabGroupPolicy.tabbingIdentifier(
+                             bundleID: AppFlavor.current.bundleID,
+                             root: explorerRoot?.standardizedFileURL.path))
         let webRoot = Coordinator.locateWebRoot()
-        host = WebHost(webRoot: webRoot, documentDirectory: url.deletingLastPathComponent())
+        host = WebHost(webRoot: webRoot, documentDirectory: explorerRoot ?? url.deletingLastPathComponent())
         writer = CoalescingWriter(onError: { error in
             NSLog("Birta Writer: write failed: \(error)")
         })
+        menuState = menuStateFromPrefs()
     }
 
     // MARK: lifecycle
@@ -450,13 +688,11 @@ final class Coordinator {
             // and a reload re-reads `Prefs`, which another window may have
             // written since. Seeded only at construction, this window's menus
             // would go on drawing the state its page had before the reload.
-            self.menuState = MenuState(proofreadOptions: Prefs.proofreadOptions,
-                                       noteHighlight: Prefs.noteHighlight,
-                                       tocShown: Prefs.tocVisibility == "shown")
+            self.menuState = self.menuStateFromPrefs()
             // The view state is the load's, not the file's: `loadPage` has
             // already decided whether this page is opening a file or
             // remounting one, and that decision is what seeds the shim.
-            return Prefs.bootConfig(viewState: self.mountedViewStateJSON)
+            return Prefs.bootConfig(viewState: self.mountedViewStateJSON, explorerRoot: self.explorerRoot)
         }
         host.onMessage = { [weak self] m in self?.handle(m) }
         host.onProcessTerminated = { [weak self] in self?.contentProcessDied() }
@@ -600,15 +836,31 @@ final class Coordinator {
                 MainActor.assumeIsolated {
                     guard let self else { return }
                     self.titleBar.titleView.setWindowKey(key)
-                    if key { self.onBecameKey?() }
+                    if key {
+                        self.onBecameKey?()
+                        // A tab coming forward may have joined or left a group
+                        // through a gesture the app never saw (a tab torn off,
+                        // Merge All Windows), so the band is measured again.
+                        self.layoutTitlebarDrag()
+                    }
                     self.applyChromeVisibility()
                 }
+            })
+        }
+        // Where the window is, for the open set. The end of a live resize
+        // rather than every resize event, so a drag records once when it lands.
+        for name in [NSWindow.didMoveNotification, NSWindow.didEndLiveResizeNotification] {
+            observers.append(NotificationCenter.default.addObserver(
+                forName: name, object: panel, queue: .main
+            ) { [weak self] _ in
+                MainActor.assumeIsolated { self?.onFrameChanged?() }
             })
         }
         titleBar.titleView.setWindowKey(panel.isKeyWindow)
         refreshTitle()
         panel.contentView = contentView
         panel.onHideRequest = { [weak self] in self?.onCloseRequest?() }
+        panel.onNewTabRequest = { [weak self] in self?.onNewTabRequest?() }
         applyTheme(initial: true)
 
         // The activation policy the Dock switch decides, as the app actually
@@ -757,6 +1009,31 @@ final class Coordinator {
                 measure.trace("prefs autosave=\(Prefs.autosave ? "yes" : "no")")
                 return
             }
+            // A settings change that reaches every window, exactly as
+            // toggling a publishing target does, without the switch: the rule
+            // under test is that no window moves onto another's file, and
+            // each window traces `rebind at=` as it reloads (MAR-456).
+            if obj["type"] as? String == "__birtaReloadEverywhere" {
+                measure.mark("debug-reload-everywhere")
+                onReloadEverywhereRequest?()
+                return
+            }
+            // The open set as the app would record it now, which is what the
+            // next launch restores. Read from the set rather than from the
+            // defaults domain, whose stored form is bytes a shell cannot read.
+            if obj["type"] as? String == "__birtaOpenSet" {
+                measure.trace("openset \(onOpenSetRequest?() ?? "unavailable")")
+                return
+            }
+            // The palette, opened over this window in `mode` ("all" or
+            // "files") with `query` typed, traced with its top rows and
+            // closed again. A script cannot press its chord or type in it.
+            if obj["type"] as? String == "__birtaPalette" {
+                let query = obj["query"] as? String ?? ""
+                let mode = obj["mode"] as? String ?? "all"
+                measure.trace("palette \(onPaletteRequest?(query, mode) ?? "unavailable")")
+                return
+            }
             // An explicit save, exactly as Cmd+S makes one.
             //
             // Here because the other ways to provoke a write from a script are
@@ -784,6 +1061,35 @@ final class Coordinator {
             if obj["type"] as? String == "__birtaNewWindow" {
                 measure.mark("debug-new-window")
                 onNewWindowRequest?()
+                return
+            }
+            // A directory window, as Cmd+O on a folder or `open -a` makes one;
+            // the chooser is skipped and `WindowSet.openDirectory` is not.
+            if obj["type"] as? String == "__birtaOpenDirectory", let path = obj["path"] as? String {
+                measure.mark("debug-open-directory")
+                onOpenDirectoryRequest?(URL(fileURLWithPath: path, isDirectory: true))
+                return
+            }
+            // One listing, as the page asks for it when a folder is opened,
+            // traced with its entry count.
+            if obj["type"] as? String == "__birtaListDirectory" {
+                answerListing(id: "measure", path: obj["path"] as? String ?? "")
+                return
+            }
+            // A new tab in this window's group, as the tab bar's `+` makes
+            // one; a shell cannot click the button.
+            if obj["type"] as? String == "__birtaNewTab" {
+                measure.mark("debug-new-tab")
+                onNewTabRequest?()
+                return
+            }
+            // The tab bar as the window server drew it, which nothing in
+            // `mac/Tests` can see: how many tabs, which is showing, whether
+            // the bar is up, what it did to the titlebar band the page sizes
+            // its first row from, and where every piece of titlebar chrome
+            // sits. `traceTabs` states what each number is for.
+            if obj["type"] as? String == "__birtaTabs" {
+                traceTabs()
                 return
             }
             // Open a file, exactly as Cmd+O and the titlebar's folder button
@@ -1168,6 +1474,15 @@ final class Coordinator {
                                lineOffset: doc.lineOffset, syncVersion: guardState.version,
                                viewStateJSON: mountedViewStateJSON))
             state = .warm
+            // The explorer's two facts, on every load: which folder this
+            // window is rooted at (nil keeps the explorer off a file window)
+            // and which of its files this is. After `initDoc`, so the editor
+            // is on the paint path and the tree settles in behind it.
+            sendProjectRoot()
+            // And the commands the page can run here, for the app's palette;
+            // asked rather than volunteered, so a host with no palette is
+            // never sent the list.
+            host.send(.requestPaletteCommands)
             // A fresh page starts with its chrome shown; tell it where the
             // pointer is, and say which file it is now bound to.
             refreshTitle()
@@ -1359,6 +1674,23 @@ final class Coordinator {
             // and a message a host declines is the protocol working.
             break
         case let .setTocWidth(w): Prefs.tocWidth = w
+        case let .listDirectory(id, path):
+            answerListing(id: id, path: path)
+        case let .openProjectFile(path):
+            openProjectFile(relative: path)
+        case let .fileExplorerWidth(w): Prefs.explorerWidth = w
+        case let .fileExplorerVisibility(visible):
+            Prefs.explorerVisibility = visible ? "shown" : "hidden"
+            menuState.record(.explorerShown, on: visible)
+        case let .setFileExplorerShowHidden(value):
+            // The setting is the app's, so every rooted window's page hears
+            // about it, this one included; `WindowSet` fans it out.
+            onShowHiddenChanged?(value)
+        case let .paletteCommands(items):
+            // What the page can run here right now, kept for the app's
+            // palette (MAR-458); the page re-posts it when the publishing
+            // targets change, so this is always the current list.
+            paletteCommands = items
         case let .focusState(focused):
             if focused { measure.mark("caret-ready") }
         case let .crash(message, source):
@@ -1561,14 +1893,24 @@ final class Coordinator {
     ///
     /// The buffer is rescued before a deliberate rebind, because it is still
     /// the only copy of a note nobody has answered for.
+    ///
+    /// Entered at THIS window's slot, never at the top. The app-wide answer
+    /// (`Prefs.activeURL`) is one file for the whole app, and a settings
+    /// change reaches every window: read at the top, it moved every window
+    /// onto that one file, two buffers over one path, which is the hazard
+    /// `WindowSet.openDocument` exists to prevent (MAR-456). A window holding
+    /// no slot is on a file no setting names, so no setting can have moved it,
+    /// and it stays where it is.
     private func rebindFromSettings() {
+        guard let slot = bindingSlot else { return }
+        let binding = Prefs.binding(enteringAt: slot)
         if !noteMissing {
-            boundURL = Prefs.activeURL
-            bindingSlot = Prefs.activeSlot
-        } else if Prefs.storedActiveURL.standardizedFileURL != boundURL.standardizedFileURL {
+            boundURL = binding.url
+            bindingSlot = binding.slot
+        } else if Prefs.storedBinding(enteringAt: slot).standardizedFileURL != boundURL.standardizedFileURL {
             rescueMissingNote()
-            boundURL = Prefs.activeURL
-            bindingSlot = Prefs.activeSlot
+            boundURL = binding.url
+            bindingSlot = binding.slot
         }
     }
 
@@ -2251,7 +2593,12 @@ final class Coordinator {
     /// nowhere left to write. Throwing rather than reporting, so each caller
     /// puts the message where its own gesture was made.
     static func makeNoteFile() throws -> URL {
-        let directory = Prefs.notesDirectory
+        try makeNoteFile(in: Prefs.notesDirectory)
+    }
+
+    /// The same note, in a folder the caller names: a directory window's root,
+    /// where New Note and New Tab make their notes (MAR-457).
+    static func makeNoteFile(in directory: URL) throws -> URL {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let target = Coordinator.unusedNoteURL(in: directory)
         try AtomicFile.writeString("", to: target)
@@ -3166,7 +3513,10 @@ final class Coordinator {
             titleChromeWidth: titleView.chromeWidth,
             trailingControlsWidth: titlebarControlsWidth))
         let leading = titleView.convert(titleView.bounds, to: contentView).maxX
-        let bandHeight = titlebarBandHeight
+        // The TITLE ROW, not the whole band. With tabs the band has a second
+        // row under the title, the tab bar, and a strip laid over the whole
+        // band would lie over the tabs and take their clicks.
+        let bandHeight = titleRowHeight
         guard bandHeight > 0,
               let span = TitlebarBand.draggableSpan(
                   windowWidth: contentView.bounds.width,
@@ -3185,8 +3535,9 @@ final class Coordinator {
         // for an ordering reason of its own; the send is guarded on the value
         // having moved, so whichever of the two is second costs nothing.
         host.setTitlebarBandHeight(bandHeight)
+        host.setTabBarHeight(tabBarHeight)
         // The content view is flipped-free AppKit geometry, so the band is at
-        // the TOP, which is the high end of y.
+        // the TOP, which is the high end of y; the title row is the top of it.
         titlebarDrag.frame = NSRect(x: span.x,
                                     y: contentView.bounds.height - bandHeight,
                                     width: span.width,
@@ -3218,7 +3569,8 @@ final class Coordinator {
         // row still on its fallback, and every number that comes back
         // describes a layout that is about to change. Two evaluations on one
         // web view run in the order they were made.
-        host.setTitlebarBandHeight(titlebarBandHeight)
+        host.setTitlebarBandHeight(titleRowHeight)
+        host.setTabBarHeight(tabBarHeight)
         host.reportTitlebarControls { [weak self] controls in
             MainActor.assumeIsolated {
                 guard let self, let controls else { return }
@@ -3411,6 +3763,53 @@ final class Coordinator {
             frame.origin.x, screenHeight - frame.maxY, frame.width, frame.height))
     }
 
+    /// The tab bar and the titlebar band around it, read off the live window.
+    ///
+    /// Three numbers decide the tab design and none can be read anywhere else
+    /// (MAR-393). `band` is `titlebarBandHeight`, the number the page sizes
+    /// its first toolbar row from: if the tab bar grows it, the row balloons
+    /// and the band has to be split. `titlebar` is the system's titlebar
+    /// container and `tabbar` its tab bar view, found by class name in the
+    /// theme frame because neither is a view this app made; their frames say
+    /// where the bar sits and how tall it is. `drag` is the strip
+    /// `layoutTitlebarDrag` lays over the band, which must not lie over the
+    /// tabs. The snapview walk under it is the whole titlebar hierarchy, for
+    /// whatever question the numbers above do not answer.
+    private func traceTabs() {
+        guard measure.enabled else { return }
+        let group = panel.tabGroup
+        let names = (group?.windows ?? []).map { ($0 as? AppPanel)?.title ?? "?" }
+        let selected = (group?.selectedWindow as? AppPanel)?.title ?? "none"
+        let accessories = panel.titlebarAccessoryViewControllers.map {
+            "\(type(of: $0)):\(NSStringFromRect($0.view.frame))"
+        }
+        var titlebar = "none"
+        var tabbar = "none"
+        var newTab = "none"
+        func walk(_ view: NSView, depth: Int) {
+            guard depth < 10 else { return }
+            for sub in view.subviews {
+                let name = String(describing: type(of: sub))
+                let frame = NSStringFromRect(sub.convert(sub.bounds, to: nil))
+                if name.contains("TitlebarContainer") { titlebar = frame }
+                if name == "NSTabBar" || name.hasSuffix("TabBar") { tabbar = frame }
+                if name.contains("NewTab") { newTab = frame }
+                if name.contains("Titlebar") || name.contains("Tab") || depth < 2 {
+                    measure.trace("tabview \(String(repeating: "  ", count: depth))\(name) frame=\(frame) hidden=\(sub.isHidden)")
+                }
+                walk(sub, depth: depth + 1)
+            }
+        }
+        if let theme = panel.contentView?.superview { walk(theme, depth: 0) }
+        measure.trace("tabs count=\(names.count) names=\(names.joined(separator: ";")) selected=\(selected)"
+                      + " barVisible=\(group?.isTabBarVisible == true) mode=\(panel.tabbingMode.rawValue)"
+                      + " identifier=\(panel.tabbingIdentifier) band=\(titlebarBandHeight) tabBarHeight=\(tabBarHeight)"
+                      + " frame=\(NSStringFromRect(panel.frame)) contentLayout=\(NSStringFromRect(panel.contentLayoutRect))"
+                      + " titlebar=\(titlebar) tabbar=\(tabbar) newTab=\(newTab)"
+                      + " drag=\(NSStringFromRect(titlebarDrag.frame)) dragHidden=\(titlebarDrag.isHidden)"
+                      + " accessories=\(accessories.joined(separator: ";"))")
+    }
+
     private func traceTitleBar() {
         guard measure.enabled else { return }
         traceWindowLevel()
@@ -3516,6 +3915,12 @@ final class Coordinator {
         let edited = WindowTitle.showsEdited(hasUnwrittenBytes: isEdited,
                                              autosaveEnabled: Prefs.autosave)
         titleBar.titleView.show(url: boundURL, edited: edited)
+        // The window's own title is hidden from the titlebar (the accessory
+        // draws the name), and is still read in two places: the tab bar
+        // labels each tab with it, and the Window menu lists windows by it.
+        // Left as the app's name, every tab and every row read alike.
+        panel.title = WindowTitle.displayName(of: boundURL)
+        panel.tab.toolTip = boundURL.path
         // The dot in the close button, which macOS draws for us from this one
         // property. THE SAME boolean the word Edited is drawn from, and it has
         // to stay the same one: they are two spellings of a single claim about
@@ -3694,6 +4099,10 @@ final class Coordinator {
                 // window, which is one of the two gestures that rebind by
                 // writing a slot rather than by naming a path.
                 self.rebindFromSettings()
+                // Which file this window is on after the rebind, per window,
+                // so a run with two of them can read that neither moved onto
+                // the other's file (MAR-456).
+                self.measure.trace("rebind at=\(self.boundURL.lastPathComponent) slot=\(self.bindingSlot?.rawValue ?? "none")")
                 self.reloadFromDisk = true
                 self.loadPage()
                 // The bound file may have changed; the titlebar names it.

@@ -15,7 +15,7 @@ import { PROOFREAD_FINDINGS_CHANGED } from "../plugins/proofread";
 import type { EventManager } from "../eventManager";
 import type { EditorView, Node as PmNode } from "../pm";
 
-const fakeEventManager = { onWindow: vi.fn() } as unknown as EventManager;
+const fakeEventManager = { onWindow: vi.fn(() => () => {}) } as unknown as EventManager;
 
 function clickTab(tab: Element): void {
     tab.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));

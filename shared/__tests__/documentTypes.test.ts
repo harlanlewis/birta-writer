@@ -55,11 +55,21 @@ function swiftString(source: string, name: string): string {
     return value;
 }
 
+/**
+ * The one system type the app claims that is not a document at all: a folder,
+ * which opens as a directory window (MAR-457). It has no extension to derive
+ * and is declared by macOS rather than imported here, so the document checks
+ * below leave it out and it gets its own.
+ */
+const FOLDER_TYPE = "public.folder";
+
 /** The type identifiers each `CFBundleDocumentTypes` entry claims. */
-const claimed = plistDicts(plist, "CFBundleDocumentTypes").map((entry) => ({
+const allClaims = plistDicts(plist, "CFBundleDocumentTypes").map((entry) => ({
     entry,
     types: plistStrings(entry, "LSItemContentTypes"),
 }));
+const folderClaims = allClaims.filter((c) => c.types.includes(FOLDER_TYPE));
+const claimed = allClaims.filter((c) => !c.types.includes(FOLDER_TYPE));
 
 /** The types the bundle describes for itself, by identifier. */
 const imported = new Map<string, PlistDict>(
@@ -106,6 +116,20 @@ describe("the Mac app's document types", () => {
         // cannot see it.
         expect(sorted(declared), "an extension is tagged twice").toEqual([...new Set(declared)].sort());
         expect(sorted(declared)).toEqual(expected);
+    });
+
+    it("should claim folders as a viewer that never becomes the default", () => {
+        // Exactly one folder claim, carrying only the folder type: a folder
+        // has no extension to derive, so it must not ride on a document entry
+        // where the derivation above would read it as a type with none.
+        // `Viewer` and `Alternate` because the app looks at a folder rather
+        // than owning it, and a fresh install must never become what
+        // double-clicking a folder opens.
+        expect(folderClaims.length, "folder claims").toBe(1);
+        const [folder] = folderClaims;
+        expect(folder!.types).toEqual([FOLDER_TYPE]);
+        expect(folder!.entry.CFBundleTypeRole).toBe("Viewer");
+        expect(folder!.entry.LSHandlerRank).toBe("Alternate");
     });
 
     it("should join the Open With list without taking the default away", () => {

@@ -2457,6 +2457,256 @@ echo "RSS with two windows $((RSS_TWO / 1024)) MB   (app + $(printf '%s' "$WK_TW
 echo "idle RSS app         $((RSS_APP / 1024)) MB"
 echo "idle RSS helpers     $((RSS_HELPERS / 1024)) MB   (WebKit helpers that appeared since launch: ${WK_OURS:-none})"
 
+# A settings change that reaches EVERY window leaves each on its own file.
+#
+# The rule is `Coordinator.rebindFromSettings`, entered at the window's own
+# slot (MAR-456). Read at the top of the app-wide precedence instead, it moved
+# every window onto the one active file: two buffers over one path, which is
+# the hazard the Open gesture refuses. `__birtaReloadEverywhere` is the
+# publishing-target toggle without the switch, and each window traces the file
+# it is on as it reloads, so the check is that the set of files after is the
+# set of files before.
+#
+# The set before is read from the app rather than reasoned about from which
+# arms ran above, because the arms above open and close windows and this must
+# not have to know how many are left.
+printf '{"type":"__birtaOpenSet"}' > "$SCRATCH_DIR/.debug-message.json"
+kill -URG $PID; sleep 0.6
+rm -f "$SCRATCH_DIR/.debug-message.json"
+# `|| true` because an answer that has not arrived is the failure the guard
+# below reports, and `pipefail` would otherwise end the script on the empty
+# grep before it could say so.
+SET_BEFORE="$(grep "^birta-trace openset " "$LOG" | tail -1 | sed 's/^birta-trace openset //' || true)"
+SET_COUNT="$(printf '%s' "$SET_BEFORE" | sed -n 's/.*count=\([0-9]*\).*/\1/p')"
+SET_FRONT="$(printf '%s' "$SET_BEFORE" | sed -n 's/.*front=\(.*\)$/\1/p')"
+if [ -z "$SET_COUNT" ] || [ "$SET_COUNT" -lt 2 ]; then
+    echo "rebind per window    FAILED: fewer than two windows are open, so nothing below is measured ($SET_BEFORE)" >&2
+    exit 1
+fi
+REBINDS_BEFORE=$(grep -c "^birta-trace rebind " "$LOG" || true)
+printf '{"type":"__birtaReloadEverywhere"}' > "$SCRATCH_DIR/.debug-message.json"
+kill -URG $PID
+n=0
+while [ "$(( $(grep -c "^birta-trace rebind " "$LOG" || true) - REBINDS_BEFORE ))" -lt "$SET_COUNT" ]; do
+    sleep 0.2; n=$((n+1))
+    if [ $n -gt 50 ]; then
+        echo "rebind per window    FAILED: only $(( $(grep -c "^birta-trace rebind " "$LOG" || true) - REBINDS_BEFORE )) of $SET_COUNT windows reloaded" >&2
+        grep "^birta-trace rebind " "$LOG" | tail -n "$SET_COUNT" | sed 's/^/  /' >&2; exit 1
+    fi
+done
+rm -f "$SCRATCH_DIR/.debug-message.json"
+REBOUND_DISTINCT="$(grep "^birta-trace rebind " "$LOG" | tail -n "$SET_COUNT" | sed 's/ slot=.*$//' | sort -u | wc -l | tr -d ' ')"
+if [ "$REBOUND_DISTINCT" != "$SET_COUNT" ]; then
+    echo "rebind per window    FAILED: $SET_COUNT windows reloaded onto $REBOUND_DISTINCT distinct files" >&2
+    grep "^birta-trace rebind " "$LOG" | tail -n "$SET_COUNT" | sed 's/^/  /' >&2; exit 1
+fi
+echo "rebind per window    ok: $SET_COUNT windows reloaded and each is still on its own file"
+# The pages have just reloaded; let them settle before anything else asks.
+sleep 2
+
+# A TAB, and what the native tab bar does to the window's chrome (MAR-393).
+#
+# A tab is a window in a tab group, and AppKit draws the bar as a second row
+# of the titlebar band. Three claims only a live window can answer: the bar is
+# up with two tabs and the `+` button with it; the drag strip (TitlebarDrag)
+# has shrunk to the title row rather than lying over the tabs, which is what
+# the height comparison below is; and the page has been told the split, so
+# its first row is still sized by the title row and a gap under it clears the
+# bar. The tab stays open, so the restore arm below carries a group.
+#
+# The count is a difference, not a literal: the system's "prefer tabs when
+# opening documents" setting decides whether the windows the arms above opened
+# already share this bar, so what this arm owns is that ONE tab joined.
+tabs_trace() {
+    printf '{"type":"__birtaTabs"}' > "$SCRATCH_DIR/.debug-message.json"
+    kill -URG $PID; sleep 1
+    rm -f "$SCRATCH_DIR/.debug-message.json"
+    grep "^birta-trace tabs " "$LOG" | tail -1 | sed 's/^birta-trace tabs //' || true
+}
+TABS_BEFORE=$(grep -c "^birta-trace tabs " "$LOG" || true)
+TABS_WERE="$(tabs_trace)"
+TAB_COUNT_BEFORE="$(printf '%s' "$TABS_WERE" | sed -n 's/.*count=\([0-9]*\).*/\1/p')"
+printf '{"type":"__birtaNewTab"}' > "$SCRATCH_DIR/.debug-message.json"
+kill -URG $PID; sleep 3
+rm -f "$SCRATCH_DIR/.debug-message.json"
+TABS="$(tabs_trace)"
+if [ "$(grep -c "^birta-trace tabs " "$LOG" || true)" -le "$((TABS_BEFORE + 1))" ] || [ -z "$TABS" ] || [ -z "$TAB_COUNT_BEFORE" ]; then
+    echo "tab bar              FAILED: the app never reported its tabs" >&2; exit 1
+fi
+TAB_COUNT="$(printf '%s' "$TABS" | sed -n 's/.*count=\([0-9]*\).*/\1/p')"
+TAB_BAR="$(printf '%s' "$TABS" | sed -n 's/.*barVisible=\([a-z]*\).*/\1/p')"
+TAB_BAND="$(printf '%s' "$TABS" | sed -n 's/.*band=\([0-9.]*\).*/\1/p')"
+# The bar's height as the APP measures it (the accessory row AppKit inserted),
+# which is the number the page is told; the inner strip view is shorter than
+# its row and is not what the split is made from.
+TAB_BAR_H="$(printf '%s' "$TABS" | sed -n 's/.*tabBarHeight=\([0-9.]*\).*/\1/p')"
+TAB_DRAG_H="$(printf '%s' "$TABS" | sed -n 's/.*drag={{[0-9.-]*, [0-9.-]*}, {[0-9.-]*, \([0-9.]*\)}}.*/\1/p')"
+TAB_PLUS="$(printf '%s' "$TABS" | sed -n 's/.*newTab=\([^ ]*\).*/\1/p')"
+if [ "$TAB_COUNT" != "$((TAB_COUNT_BEFORE + 1))" ] || [ "$TAB_COUNT" -lt 2 ] || [ "$TAB_BAR" != "true" ] || [ -z "$TAB_BAR_H" ] || [ "$TAB_BAR_H" = "0.0" ] || [ "$TAB_PLUS" = "none" ]; then
+    echo "tab bar              FAILED: expected one tab to join ($TAB_COUNT_BEFORE before) with the bar and its + button up" >&2
+    echo "  $TABS" >&2; exit 1
+fi
+# The strip's height plus the bar's is the band: the strip took the title row
+# and left the tabs their row.
+if [ "$(awk -v d="$TAB_DRAG_H" -v b="$TAB_BAR_H" -v band="$TAB_BAND" 'BEGIN { print (d + b == band) ? "ok" : "no" }')" != "ok" ]; then
+    echo "tab bar              FAILED: the drag strip does not stop at the tab bar (strip $TAB_DRAG_H + bar $TAB_BAR_H != band $TAB_BAND)" >&2
+    echo "  $TABS" >&2; exit 1
+fi
+echo "tab bar              ok: a tab joined ($TAB_COUNT_BEFORE to $TAB_COUNT), bar and + up, the drag strip keeps to the title row ($TAB_DRAG_H of $TAB_BAND)"
+
+# A DIRECTORY WINDOW (MAR-457): a folder opens as a window rooted at it, the
+# page's listing request is answered with the folder's entries, a change on
+# disk is reported to the page, and a file under the root opened from outside
+# lands as a tab in that window rather than as a window of its own.
+#
+# The tree is throwaway and beside the scratchpad, so the trap removes it. The
+# window stays open, so the restore arm below carries a rooted group.
+TREE="$SCRATCH_DIR/tree"
+mkdir -p "$TREE/sub"
+printf '# a\n' > "$TREE/a.md"
+printf '# b\n' > "$TREE/sub/b.md"
+printf 'not a note\n' > "$TREE/photo.png"
+ROOTS_BEFORE=$(grep -c "^birta-trace explorerRoot=" "$LOG" || true)
+printf '{"type":"__birtaOpenDirectory","path":"%s"}' "$TREE" > "$SCRATCH_DIR/.debug-message.json"
+kill -URG $PID
+n=0
+while [ "$(grep -c "^birta-trace explorerRoot=$TREE " "$LOG" || true)" -le 0 ]; do
+    sleep 0.2; n=$((n+1))
+    if [ $n -gt 50 ]; then
+        echo "directory window     FAILED: no window reported being rooted at the folder" >&2
+        grep "^birta-trace explorerRoot=" "$LOG" | tail -3 | sed 's/^/  /' >&2; exit 1
+    fi
+done
+rm -f "$SCRATCH_DIR/.debug-message.json"
+sleep 1.5
+ROOTED="$(grep "^birta-trace explorerRoot=$TREE " "$LOG" | tail -1)"
+case "$ROOTED" in
+    *"current=a.md"*) ;;
+    *) echo "directory window     FAILED: the window did not open on the folder's newest note: $ROOTED" >&2; exit 1 ;;
+esac
+printf '{"type":"__birtaListDirectory","path":""}' > "$SCRATCH_DIR/.debug-message.json"
+kill -URG $PID; sleep 1
+rm -f "$SCRATCH_DIR/.debug-message.json"
+LISTING="$(grep "^birta-trace listing path=. " "$LOG" | tail -1 || true)"
+case "$LISTING" in
+    *"entries=3"*) ;;
+    *) echo "directory window     FAILED: the root listing did not name its three entries: ${LISTING:-<none>}" >&2; exit 1 ;;
+esac
+CHANGES_BEFORE=$(grep -c "^birta-trace directoryChanged " "$LOG" || true)
+printf '# c\n' > "$TREE/c.md"
+n=0
+while [ "$(grep -c "^birta-trace directoryChanged " "$LOG" || true)" -le "$CHANGES_BEFORE" ]; do
+    sleep 0.2; n=$((n+1))
+    if [ $n -gt 25 ]; then
+        echo "directory window     FAILED: a file written into the root was never reported to the page" >&2; exit 1
+    fi
+done
+# A file under the root, opened as the Finder or Open Recent would open it,
+# joins the rooted window as a tab: the count of tabs in that window grows by
+# one and the new tab is the file.
+printf '{"type":"__birtaOpen","path":"%s"}' "$TREE/sub/b.md" > "$SCRATCH_DIR/.debug-message.json"
+kill -URG $PID; sleep 3
+rm -f "$SCRATCH_DIR/.debug-message.json"
+printf '{"type":"__birtaTabs"}' > "$SCRATCH_DIR/.debug-message.json"
+kill -URG $PID; sleep 1
+rm -f "$SCRATCH_DIR/.debug-message.json"
+ROOT_TABS="$(grep "^birta-trace tabs " "$LOG" | tail -1 | sed 's/^birta-trace tabs //' || true)"
+case "$ROOT_TABS" in
+    *"names=a.md;b.md"*) echo "directory window     ok: rooted at the folder, listing answered, change reported, b.md joined as a tab" ;;
+    *) echo "directory window     FAILED: a file under the root did not join the rooted window as a tab" >&2
+       echo "  $ROOT_TABS" >&2; exit 1 ;;
+esac
+
+# THE COMMAND PALETTE (MAR-458), over the rooted window the arm above left in
+# front. Two claims only the live app can answer, because the catalog is read
+# off the app's own state: typing "bold" ranks Bold first with the chord the
+# menu binds beside it, and Go to File over the folder lists the folder's
+# files (the index is built off the main thread, so the second probe waits
+# for it). The palette is opened, read and closed by the probe itself.
+palette_probe() {
+    printf '{"type":"__birtaPalette","query":"%s","mode":"%s"}' "$1" "$2" > "$SCRATCH_DIR/.debug-message.json"
+    kill -URG $PID; sleep 1.5
+    rm -f "$SCRATCH_DIR/.debug-message.json"
+    grep "^birta-trace palette " "$LOG" | tail -1 | sed 's/^birta-trace palette //' || true
+}
+PALETTE_BEFORE=$(grep -c "^birta-trace palette " "$LOG" || true)
+PALETTE="$(palette_probe bold all)"
+if [ "$(grep -c "^birta-trace palette " "$LOG" || true)" -le "$PALETTE_BEFORE" ]; then
+    echo "command palette      FAILED: the app never reported its palette" >&2; exit 1
+fi
+case "$PALETTE" in
+    *"open=true"*"top=Bold|⌘B"*) ;;
+    *) echo "command palette      FAILED: typing bold did not put Bold and its chord first: $PALETTE" >&2; exit 1 ;;
+esac
+# The first files probe may find the index still building; the second reads
+# the built one.
+FILES="$(palette_probe b.md files)"
+case "$FILES" in
+    *"top=b.md|sub"*) ;;
+    *) FILES="$(palette_probe b.md files)" ;;
+esac
+case "$FILES" in
+    *"top=b.md|sub"*) echo "command palette      ok: bold ranks Bold ⌘B first; Go to File finds sub/b.md under the root" ;;
+    *) echo "command palette      FAILED: Go to File did not list the root's file with its folder: $FILES" >&2; exit 1 ;;
+esac
+
+# The windows come back after a quit, the same ones with the same one in
+# front, tabs grouped as they were (MAR-421, MAR-393).
+#
+# The claim is a difference between two launches, so the app is ended through
+# its own SIGTERM path (which is how anything managing the process ends it,
+# and what writes the autosave-off stamp checked at teardown) and launched
+# again under the SAME throwaway defaults domain. `WindowSet.openAtLaunch`
+# traces what it restored; the check is that it matches what the last launch
+# recorded. Nothing is shown: restoration happens in the prewarm.
+#
+# The set is read AGAIN here, because the tab arm above changed it: the new
+# tab is the window in front now.
+printf '{"type":"__birtaOpenSet"}' > "$SCRATCH_DIR/.debug-message.json"
+kill -URG $PID; sleep 0.6
+rm -f "$SCRATCH_DIR/.debug-message.json"
+SET_BEFORE="$(grep "^birta-trace openset " "$LOG" | tail -1 | sed 's/^birta-trace openset //' || true)"
+SET_COUNT="$(printf '%s' "$SET_BEFORE" | sed -n 's/.*count=\([0-9]*\).*/\1/p')"
+SET_FRONT="$(printf '%s' "$SET_BEFORE" | sed -n 's/.*front=\(.*\)$/\1/p')"
+if [ -z "$SET_COUNT" ]; then
+    echo "restore across quit  FAILED: the app did not report its open set before the quit" >&2; exit 1
+fi
+end_app
+sleep 1
+READY_BEFORE=$(marks ready)
+RESTORED_BEFORE=$(grep -c "^birta-trace windows restored=" "$LOG" || true)
+BIRTA_MAC_MEASURE=1 "$APP" 2>>"$LOG" &
+PID=$!
+n=0
+while [ "$(grep -c "^birta-trace windows restored=" "$LOG" || true)" -le "$RESTORED_BEFORE" ]; do
+    sleep 0.1; n=$((n+1))
+    if [ $n -gt 200 ]; then echo "restore across quit  FAILED: the relaunch never reported what it restored" >&2; tail -20 "$LOG" >&2; exit 1; fi
+done
+RESTORED="$(grep "^birta-trace windows restored=" "$LOG" | tail -1 | sed 's/^birta-trace windows //')"
+RESTORED_WINDOWS="$(printf '%s' "$RESTORED" | sed -n 's/.*restored=\([0-9]*\).*/\1/p')"
+RESTORED_GROUPS="$(printf '%s' "$RESTORED" | sed -n 's/.*groups=\([0-9]*\).*/\1/p')"
+RESTORED_FRONT="$(printf '%s' "$RESTORED" | sed -n 's/.*front=\(.*\)$/\1/p')"
+# The set counts GROUPS (a tab bar is one group), and the tab arm left one
+# group holding two tabs, so the windows restored must exceed the groups.
+if [ "$RESTORED_GROUPS" != "$SET_COUNT" ] || [ "$RESTORED_FRONT" != "$SET_FRONT" ] \
+   || [ "${RESTORED_WINDOWS:-0}" -le "${RESTORED_GROUPS:-0}" ]; then
+    echo "restore across quit  FAILED: recorded $SET_COUNT groups with $SET_FRONT in front; relaunch restored $RESTORED_WINDOWS windows in ${RESTORED_GROUPS:-?} groups with ${RESTORED_FRONT:-nothing} in front" >&2
+    exit 1
+fi
+echo "restore across quit  ok: $RESTORED_WINDOWS windows in $RESTORED_GROUPS groups came back with $RESTORED_FRONT in front"
+# Every page mounts again in the prewarm; the teardown below needs the app up.
+# Its own counter: the wait above spent some of `n`, and a mount budget cut by
+# however long the restore took is a flake on a loaded machine.
+n=0
+while [ "$(marks ready)" -le "$READY_BEFORE" ]; do
+    sleep 0.1; n=$((n+1))
+    if [ $n -gt 400 ]; then echo "restore across quit  FAILED: the relaunched app never mounted a page" >&2; tail -20 "$LOG" >&2; exit 1; fi
+done
+# The helpers are the relaunched app's now, or the teardown check below would
+# be asking after processes the first app already took with it.
+sleep 2
+WK_OURS="$(comm -13 <(printf '%s\n' "$WC_BEFORE") <(pgrep -f com.apple.WebKit | sort || true) | tr '\n' ' ')"
+
 # This run takes its own processes with it.
 #
 # WebKit's helpers are NOT children of the app, so nothing reaps them for us:

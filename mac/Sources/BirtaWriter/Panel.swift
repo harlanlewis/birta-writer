@@ -40,6 +40,23 @@ import BirtaWriterCore
 final class AppPanel: NSPanel {
     var onHideRequest: (() -> Void)?
 
+    /// The tab bar's `+` button, and the system's New Tab rows. AppKit offers
+    /// both only when something in the responder chain answers
+    /// `newWindowForTab:`, so this is what turns them on; what a new tab IS
+    /// (a note, in this window's group) is the app's, and it is asked.
+    var onNewTabRequest: (() -> Void)?
+
+    override func newWindowForTab(_ sender: Any?) {
+        onNewTabRequest?()
+    }
+
+    /// Which windows may share a tab bar with this one. Set explicitly rather
+    /// than left to the heuristic AppKit derives from the class, so it can
+    /// differ by what a window is rooted at; `TabGroupPolicy.tabbingIdentifier`
+    /// is the rule.
+    static let notesTabbingIdentifier =
+        TabGroupPolicy.tabbingIdentifier(bundleID: AppFlavor.current.bundleID, root: nil)
+
     /// Whether this window is the one that remembers its size and position
     /// between launches.
     ///
@@ -56,6 +73,18 @@ final class AppPanel: NSPanel {
     /// The rest cascade off whichever window spawned them.
     private let remembersFrame: Bool
 
+    /// Where a launch that is putting this window BACK wants it, from the
+    /// recorded open set (`BirtaWriterCore.OpenSet`), or nil for a window
+    /// nobody is restoring.
+    ///
+    /// Outranks the autosave name, because it is per window where the name is
+    /// per app: with three windows coming back, the historic autosave can
+    /// answer for one of them, and this answers for each. Ignored when no
+    /// screen shows any of it, so a frame recorded on a display that is not
+    /// plugged in this morning does not put the window where nobody can reach
+    /// it; the window then opens as one that was never placed.
+    private let restoredFrame: NSRect?
+
     /// Whether this window has been given a position yet.
     ///
     /// `placeIfUnplaced` runs from every `show`, and a summon now shows every
@@ -63,8 +92,23 @@ final class AppPanel: NSPanel {
     /// somewhere would be re-centred under the pointer on the next summon.
     private var placed = false
 
-    init(remembersFrame: Bool) {
+    /// Whether this window has a position of its own yet. A window built and
+    /// not yet shown sits at the placeholder `init` gave it, and nothing that
+    /// records or cascades off a frame may read that as a place.
+    var isPlaced: Bool { placed }
+
+    /// The frame worth recording for the next launch: this window's own once
+    /// it has been placed, and until then the one a launch handed it, so a
+    /// quit before the first summon carries the recorded arrangement forward
+    /// rather than replacing it with a row of placeholders.
+    var frameToRecord: NSRect? { placed ? frame : restoredFrame }
+
+    /// - Parameter tabbingIdentifier: which windows this one may share a tab
+    ///   bar with; `TabGroupPolicy.tabbingIdentifier` names one per root.
+    init(remembersFrame: Bool, restoredFrame: NSRect? = nil,
+         tabbingIdentifier: String = AppPanel.notesTabbingIdentifier) {
         self.remembersFrame = remembersFrame
+        self.restoredFrame = restoredFrame
         // All three window buttons, and the style mask each one needs: a panel
         // showing a lone close button reads as a window with something missing.
         // A placeholder rather than the opening size. What the window opens at
@@ -87,6 +131,23 @@ final class AppPanel: NSPanel {
         applyWindowPolicy()
         isReleasedWhenClosed = false
         becomesKeyOnlyIfNeeded = false
+        // `.automatic`, the default, on purpose: whether a NEW window arrives
+        // as a tab is the system's "Prefer tabs when opening documents"
+        // setting to decide, and this honours it. An explicit New Tab adds a
+        // tab whatever that setting says (`addTabbedWindow`).
+        tabbingMode = .automatic
+        self.tabbingIdentifier = tabbingIdentifier
+        // A window being put back takes its frame NOW rather than on first
+        // show, unlike a window the rule places, because the rule needs a
+        // screen and a restored frame is already a place on one. Taking it
+        // here is what lets a tab attached to this window before either is
+        // shown copy a real frame (`adoptGroupFrame`); attached to a window
+        // still at its placeholder, the tab keeps the placeholder, and the
+        // frame AppKit syncs across the group on first show is the wrong one.
+        if let restoredFrame, Self.isReachable(restoredFrame) {
+            setFrame(restoredFrame, display: false)
+            placed = true
+        }
         // The system's own show and hide, not a chosen one.
         animationBehavior = .default
         minSize = PanelSize.minimum
@@ -158,6 +219,15 @@ final class AppPanel: NSPanel {
         onHideRequest()
     }
 
+    /// Take the frame of the window whose tab group this one is joining, and
+    /// count as placed by it. Done before `addTabbedWindow`, so a tab attached
+    /// while both windows are hidden (a launch restoring a group) already sits
+    /// where the group does when the group first comes forward.
+    func adoptGroupFrame(of other: AppPanel) {
+        setFrame(other.frame, display: false)
+        placed = true
+    }
+
     /// Put this window one step down and right of `point`, at the size of the
     /// window it was spawned from, and answer where the NEXT one goes.
     ///
@@ -183,6 +253,10 @@ final class AppPanel: NSPanel {
     func placeIfUnplaced() {
         guard !placed else { return }
         placed = true
+        // A tab never reaches this: `adoptGroupFrame` placed it at the group's
+        // frame when it was attached, and a window AppKit tabs on its own (the
+        // system's "prefer tabs" setting) is placed here first and grouped as
+        // it is ordered front.
         // Guarded for the reason the autosave above is, and separately:
         // `setFrameUsingName` reads that defaults key whether or not this
         // window ever named itself, so without this a checking run would still
@@ -195,6 +269,14 @@ final class AppPanel: NSPanel {
         // The FRAME's size, not the content's: the title bar is part of what
         // has to stay on the screen, and it is the part that goes off the top.
         setFrameOrigin(PanelSize.origin(for: frame.size, visible: visible))
+    }
+
+    /// Whether a recorded frame is somewhere a person can reach: it has a
+    /// size, and some screen shows part of it. A frame from a display that is
+    /// gone fails this and the window is placed as if it had never been.
+    static func isReachable(_ frame: NSRect, screens: [NSRect] = NSScreen.screens.map(\.visibleFrame)) -> Bool {
+        guard frame.width >= PanelSize.minimum.width, frame.height >= PanelSize.minimum.height else { return false }
+        return screens.contains { $0.intersects(frame) }
     }
 }
 

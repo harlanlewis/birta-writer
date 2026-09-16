@@ -417,7 +417,7 @@ describe("TOC drop-zone provider (document/TOC drags into the outline)", () => {
 });
 
 describe("initToc drag integration", () => {
-    const fakeEventManager = { onWindow: vi.fn() } as unknown as EventManager;
+    const fakeEventManager = { onWindow: vi.fn(() => () => {}) } as unknown as EventManager;
     let rafQueue: FrameRequestCallback[] = [];
 
     function flushRaf(): void {

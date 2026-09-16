@@ -1,0 +1,77 @@
+<!doctype html>
+<!-- e2e harness page for the file explorer (MAR-460): the mac profile plus
+     `projectFiles`, the way a directory window declares itself, with the host
+     stubbed by an in-memory tree. The bootstrap is e2e/macHost/index.html's;
+     what this page adds is the answer to `listDirectory`, which no other
+     harness page gives.
+
+     `?root=0` sends `projectRoot` with a null root, which is a single-file
+     window: the same page, the same profile, and no panel may be built.
+
+     `?toc=left` is the VS Code-shaped pairing: the same capabilities with
+     `fixedTocSide` and `tocToggleInBar` withdrawn and no `toc-right`, so the
+     TOC docks on the SAME edge as the explorer and keeps its reveal tab. That
+     composition is unreachable on the Mac profile, and it is the one where
+     the left-TOC terms in style.css carry `--files-reserve`.
+
+     The tree is four levels deep, carries a dotfile, a `.txt` the host will
+     not open in place, and a folder the host cannot read, so every row kind
+     the panel draws has a row here to be found. -->
+<meta charset="utf-8">
+<link rel="stylesheet" href="dist/hostPalette.css">
+<style>
+  body { background: var(--vscode-editor-background); color: var(--vscode-editor-foreground); margin: 0; }
+  .editor-topbar { min-height: 40px; box-sizing: border-box; }
+</style>
+<script>
+  document.addEventListener("DOMContentLoaded", () => document.body.classList.add("editor-width-auto", "vscode-dark"));
+  const PARAMS = new URLSearchParams(location.search);
+  const WITH_ROOT = PARAMS.get("root") !== "0";
+  const LEFT_TOC = PARAMS.get("toc") === "left";
+  const ARRANGEMENTS = ["typographyInGearMenu", "formattingInSecondRow", "fixedToolbarLayout", "barMenusOnClick", "nativeFindBar", "nativeDatePicker", "fixedTocSide", "tocToggleInBar"]
+    .filter((a) => !LEFT_TOC || (a !== "fixedTocSide" && a !== "tocToggleInBar"));
+  window.__i18n = { translations: {}, isMac: true, toolbar: { placements: {}, order: [] }, tocAutoHideThreshold: 3, tocVisibility: "hidden", host: { capabilities: ["spellAndGrammar", "imageUpload", "toc", "appPreferences", "agent", "projectFiles"], arrangements: ARRANGEMENTS, shortcuts: [] } };
+  window.__posted = [];
+  const CONTENT = "# One\n\nSome text.\n\n```js\nconst x = 1;\n```\n\n## Two\n\ntext\n";
+  const d = (name, hidden = false) => ({ name, kind: "dir", openable: true, hidden });
+  const f = (name, openable = true, hidden = false) => ({ name, kind: "file", openable, hidden });
+  // Deliberately unsorted, so the panel's ordering is its own doing.
+  const TREE = {
+    "": [f("zzz.md"), f("readme.md"), d("locked"), f("notes.txt", false), d("docs"), f(".hidden.md", true, true), d("assets")],
+    "docs": [f("b.md"), d("guide"), f("a.md")],
+    "docs/guide": [f("intro.md"), d("deep")],
+    "docs/guide/deep": [f("target.md")],
+    "assets": [f("logo.png", false)],
+  };
+  const reply = (msg) => setTimeout(() => window.postMessage(msg, "*"), 0);
+  window.acquireVsCodeApi = () => ({
+    postMessage: (msg) => {
+      window.__posted.push(msg);
+      if (msg.type === "ready") {
+        window.postMessage({ type: "init", content: CONTENT, frontmatter: "", syncVersion: 1 }, "*");
+        reply({ type: "projectRoot", root: WITH_ROOT ? { name: "Notes", path: "/Users/me/Notes" } : null, showHidden: false });
+        // A host with a palette of its own asks once, after init.
+        reply({ type: "requestPaletteCommands" });
+      }
+      if (msg.type === "listDirectory") {
+        if (msg.path === "locked") {
+          reply({ type: "directoryListing", id: msg.id, path: msg.path, entries: null, error: "Permission denied" });
+        } else if (msg.path in TREE) {
+          reply({ type: "directoryListing", id: msg.id, path: msg.path, entries: TREE[msg.path] });
+        } else {
+          reply({ type: "directoryListing", id: msg.id, path: msg.path, entries: null, error: "No such folder" });
+        }
+      }
+    },
+    getState: () => window.__state,
+    setState: (s) => { window.__state = s; },
+  });
+</script>
+<link rel="stylesheet" href="dist/webview.css">
+<body class="toc-right">
+<!-- The TOC reads its side off the body as the bundle runs, before
+     DOMContentLoaded, so the class comes off in a classic script here. -->
+<script>if (LEFT_TOC) { document.body.classList.remove("toc-right"); }</script>
+<div class="editor-topbar"></div>
+<div id="editor"></div>
+<script type="module" src="dist/webview.js"></script>

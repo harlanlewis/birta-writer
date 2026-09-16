@@ -80,6 +80,8 @@ declare global {
             tocAutoHideThreshold?: number;
             /** ToC show/hide preference (birta.tocVisibility); "auto" (or absent) uses the heading-count heuristic. */
             tocVisibility?: import("../../shared/messages").TocVisibility;
+            /** The file explorer's remembered show/hide choice (MAR-460); absent means open when it can dock. */
+            fileExplorerVisible?: boolean;
             /** Frontmatter panel expanded on open (birta.frontmatterExpanded). */
             frontmatterExpanded?: boolean;
             /** Add-metadata button on frontmatter-less documents (birta.frontmatterAddButton). */

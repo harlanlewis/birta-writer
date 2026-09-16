@@ -257,11 +257,21 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     /// outlives this window.
     private let onCheckForUpdates: () -> Void
 
+    /// Every setting has just gone back to its default, and the window in
+    /// front should land on the default note. A third closure rather than a
+    /// call to `onChange`, because the ordinary reload leaves a window bound
+    /// through no slot where it is (`Coordinator.rebindFromSettings`), and the
+    /// front window is regularly slotless; `WindowSet.settingsWereReset` is
+    /// what hands it the scratchpad first. Defaulted so a test building this
+    /// window need not wire an app behind it.
+    private let onReset: () -> Void
+
     init(flavour: AppFlavor,
          onHotkeyChange: @escaping () -> OSStatus,
          refusedSummonCombo: @escaping () -> HotkeyCombo? = { nil },
          onChange: @escaping (BeforeReload?) -> Void,
          onChangeEverywhere: @escaping () -> Void,
+         onReset: @escaping () -> Void = {},
          onShowWelcome: @escaping () -> Void,
          onCheckForUpdates: @escaping () -> Void) {
         self.flavour = flavour
@@ -269,6 +279,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         self.refusedSummonCombo = refusedSummonCombo
         self.onChange = onChange
         self.onChangeEverywhere = onChangeEverywhere
+        self.onReset = onReset
         self.onShowWelcome = onShowWelcome
         self.onCheckForUpdates = onCheckForUpdates
         let window = NSWindow(
@@ -489,9 +500,27 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     /// ignored rather than fatal: the variable is a probe, and a typo in it
     /// should not stop the app.
     func selectTabForTesting(_ name: String) {
+        show(paneNamed: name, revealing: nil)
+    }
+
+    /// The pane names `show(paneNamed:revealing:)` answers to, in tab order,
+    /// for the palette to group Settings by; unknown names are ignored there.
+    static var paneNames: [String] { Tab.allCases.map(\.rawValue) }
+
+    /// The panes' titles in the same order, for a check that the palette's
+    /// groups say what the toolbar says.
+    static var paneTitles: [String] { Tab.allCases.map(\.title) }
+
+    /// Show the pane named `name` and, given a row, scroll it into view: what
+    /// picking a Settings row in the command palette does (MAR-458). The row's
+    /// availability is left as the pane drew it; a row that cannot be operated
+    /// still says why, which is what the reader came to see.
+    func show(paneNamed name: String, revealing row: SettingsRow?) {
         guard let tab = Tab(rawValue: name) else { return }
         window?.toolbar?.selectedItemIdentifier = NSToolbarItem.Identifier(tab.rawValue)
         show(tab)
+        guard let row, let view = rowViews[row] else { return }
+        view.scrollToVisible(view.bounds)
     }
 
     /// Show every row an answer above it can take away, and every caption that
@@ -1476,7 +1505,10 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
             AppDelegate.shared?.applyMenuBarPresence()
             _ = self.onHotkeyChange()
             self.syncControlsFromPrefs()
-            self.onChange(nil)
+            // The reload, with the front window pointed at the default note
+            // first; the header on `onReset` says why `onChange` alone cannot
+            // keep the sentence in the sheet true.
+            self.onReset()
         }
     }
 

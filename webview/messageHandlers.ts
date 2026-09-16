@@ -44,6 +44,7 @@ import { renderFrontmatterPanel, refreshFrontmatterEmptyState } from "./componen
 import { dispatchFmSuggestions } from "./components/frontmatter/suggestMenu";
 import { runEditorCommand } from "./editorCommands";
 import { refreshShortcutsHelpIfLoaded } from "./components/shortcutsHelp/loader";
+import { answerPaletteCommandsRequest, repostPaletteCommandsIfAsked } from "./paletteCommands";
 import { hideTooltip, showTooltipForRect } from "./ui/tooltip";
 import {
     handleImageUploaded,
@@ -165,6 +166,17 @@ export interface EditorActions {
      * layer from the DOM.
      */
     setLineNumbers: (enabled: boolean) => void;
+    /**
+     * The file explorer's five inbound messages (MAR-460), each straight
+     * through to the lazily-loaded panel's gate (utils/fileExplorerLoader.ts),
+     * which buffers what arrives before its chunk has landed. `projectRoot`
+     * with a non-null root is what loads the chunk in the first place.
+     */
+    setProjectRoot: (root: import("../shared/messages").ProjectRoot | null, showHidden: boolean) => void;
+    applyDirectoryListing: (listing: Extract<ToWebviewMessage, { type: "directoryListing" }>) => void;
+    setCurrentProjectFile: (path: string | null) => void;
+    directoryChanged: (paths: string[]) => void;
+    setFileExplorerShowHidden: (showHidden: boolean) => void;
 }
 
 /** Message-handler dependencies. */
@@ -639,6 +651,12 @@ export function createMessageHandlers(
             // would otherwise be read under the target the page loaded with
             // and never again (webview/components/shortcutsHelp/index.ts).
             refreshShortcutsHelpIfLoaded();
+            // A host palette is a third such surface, and it lives outside
+            // the page: it is told rather than re-read, if it ever asked.
+            repostPaletteCommandsIfAsked();
+        },
+        requestPaletteCommands() {
+            answerPaletteCommandsRequest();
         },
         agentRoute(msg) {
             // Display only: it feeds the `/ai` caret hint and nothing else.
@@ -709,6 +727,21 @@ export function createMessageHandlers(
         },
         setTocWidth(msg) {
             setTocWidth(msg.width);
+        },
+        projectRoot(msg) {
+            actions.setProjectRoot(msg.root, msg.showHidden);
+        },
+        directoryListing(msg) {
+            actions.applyDirectoryListing(msg);
+        },
+        currentProjectFile(msg) {
+            actions.setCurrentProjectFile(msg.path);
+        },
+        directoryChanged(msg) {
+            actions.directoryChanged(msg.paths);
+        },
+        fileExplorerConfig(msg) {
+            actions.setFileExplorerShowHidden(msg.showHidden);
         },
         lintResults(msg) {
             applyLintResults(msg.id, msg.results);
