@@ -2542,6 +2542,69 @@ if [ "$(awk -v d="$TAB_DRAG_H" -v b="$TAB_BAR_H" -v band="$TAB_BAND" 'BEGIN { pr
 fi
 echo "tab bar              ok: two tabs, bar and + up, the drag strip keeps to the title row ($TAB_DRAG_H of $TAB_BAND)"
 
+# A DIRECTORY WINDOW (MAR-457): a folder opens as a window rooted at it, the
+# page's listing request is answered with the folder's entries, a change on
+# disk is reported to the page, and a file under the root opened from outside
+# lands as a tab in that window rather than as a window of its own.
+#
+# The tree is throwaway and beside the scratchpad, so the trap removes it. The
+# window stays open, so the restore arm below carries a rooted group.
+TREE="$SCRATCH_DIR/tree"
+mkdir -p "$TREE/sub"
+printf '# a\n' > "$TREE/a.md"
+printf '# b\n' > "$TREE/sub/b.md"
+printf 'not a note\n' > "$TREE/photo.png"
+ROOTS_BEFORE=$(grep -c "^birta-trace explorerRoot=" "$LOG" || true)
+printf '{"type":"__birtaOpenDirectory","path":"%s"}' "$TREE" > "$SCRATCH_DIR/.debug-message.json"
+kill -URG $PID
+n=0
+while [ "$(grep -c "^birta-trace explorerRoot=$TREE " "$LOG" || true)" -le 0 ]; do
+    sleep 0.2; n=$((n+1))
+    if [ $n -gt 50 ]; then
+        echo "directory window     FAILED: no window reported being rooted at the folder" >&2
+        grep "^birta-trace explorerRoot=" "$LOG" | tail -3 | sed 's/^/  /' >&2; exit 1
+    fi
+done
+rm -f "$SCRATCH_DIR/.debug-message.json"
+sleep 1.5
+ROOTED="$(grep "^birta-trace explorerRoot=$TREE " "$LOG" | tail -1)"
+case "$ROOTED" in
+    *"current=a.md"*) ;;
+    *) echo "directory window     FAILED: the window did not open on the folder's newest note: $ROOTED" >&2; exit 1 ;;
+esac
+printf '{"type":"__birtaListDirectory","path":""}' > "$SCRATCH_DIR/.debug-message.json"
+kill -URG $PID; sleep 1
+rm -f "$SCRATCH_DIR/.debug-message.json"
+LISTING="$(grep "^birta-trace listing path=. " "$LOG" | tail -1 || true)"
+case "$LISTING" in
+    *"entries=3"*) ;;
+    *) echo "directory window     FAILED: the root listing did not name its three entries: ${LISTING:-<none>}" >&2; exit 1 ;;
+esac
+CHANGES_BEFORE=$(grep -c "^birta-trace directoryChanged " "$LOG" || true)
+printf '# c\n' > "$TREE/c.md"
+n=0
+while [ "$(grep -c "^birta-trace directoryChanged " "$LOG" || true)" -le "$CHANGES_BEFORE" ]; do
+    sleep 0.2; n=$((n+1))
+    if [ $n -gt 25 ]; then
+        echo "directory window     FAILED: a file written into the root was never reported to the page" >&2; exit 1
+    fi
+done
+# A file under the root, opened as the Finder or Open Recent would open it,
+# joins the rooted window as a tab: the count of tabs in that window grows by
+# one and the new tab is the file.
+printf '{"type":"__birtaOpen","path":"%s"}' "$TREE/sub/b.md" > "$SCRATCH_DIR/.debug-message.json"
+kill -URG $PID; sleep 3
+rm -f "$SCRATCH_DIR/.debug-message.json"
+printf '{"type":"__birtaTabs"}' > "$SCRATCH_DIR/.debug-message.json"
+kill -URG $PID; sleep 1
+rm -f "$SCRATCH_DIR/.debug-message.json"
+ROOT_TABS="$(grep "^birta-trace tabs " "$LOG" | tail -1 | sed 's/^birta-trace tabs //' || true)"
+case "$ROOT_TABS" in
+    *"names=a.md;b.md"*) echo "directory window     ok: rooted at the folder, listing answered, change reported, b.md joined as a tab" ;;
+    *) echo "directory window     FAILED: a file under the root did not join the rooted window as a tab" >&2
+       echo "  $ROOT_TABS" >&2; exit 1 ;;
+esac
+
 # The windows come back after a quit, the same ones with the same one in
 # front, tabs grouped as they were (MAR-421, MAR-393).
 #

@@ -100,6 +100,25 @@ public enum WebviewMessage: Equatable {
     case setTocVisibility(String)
     case setTocPosition(String)
     case setTocWidth(Int)
+    /// The file explorer of a directory window (MAR-457). Paths are relative
+    /// to the window's root, POSIX separators, `""` for the root itself; the
+    /// host resolves them and refuses one that would leave the root
+    /// (`DirectoryListing.resolve`).
+    ///
+    /// One folder per ask, answered with `directoryListing` carrying the same
+    /// `id`: the page opens a folder and asks, so the cost follows the folders
+    /// somebody has opened rather than the tree.
+    case listDirectory(id: String, path: String)
+    /// A row was activated. An openable file goes through the app's routing
+    /// (a tab in this window); anything else opens in its default app.
+    case openProjectFile(path: String)
+    /// The three things the explorer remembers, as the outline panel's are
+    /// remembered: its width and whether it is out, per app, and whether
+    /// dotfiles are listed, which is the host's setting because the host's
+    /// own menu row toggles it too.
+    case fileExplorerWidth(Int)
+    case fileExplorerVisibility(Bool)
+    case setFileExplorerShowHidden(Bool)
     case focusState(Bool)
     case crash(message: String, source: String)
     case uploadImage(id: String, data: Data, mimeType: String, altText: String)
@@ -230,6 +249,16 @@ public enum WebviewMessage: Equatable {
         case "tocVisibility": return str("visibility").map { .setTocVisibility($0) } ?? .other(type: type)
         case "setTocPosition": return str("position").map { .setTocPosition($0) } ?? .other(type: type)
         case "tocWidth": return int("width").map { .setTocWidth($0) } ?? .other(type: type)
+        case "listDirectory":
+            // A listing with no id cannot be answered, so it is not a request;
+            // the root itself is asked for as `""`, so an absent path is the
+            // root rather than a refusal.
+            guard let id = str("id") else { return .other(type: type) }
+            return .listDirectory(id: id, path: str("path") ?? "")
+        case "openProjectFile": return str("path").map { .openProjectFile(path: $0) } ?? .other(type: type)
+        case "fileExplorerWidth": return int("width").map { .fileExplorerWidth($0) } ?? .other(type: type)
+        case "fileExplorerVisibility": return bool("visible").map { .fileExplorerVisibility($0) } ?? .other(type: type)
+        case "setFileExplorerShowHidden": return bool("value").map { .setFileExplorerShowHidden($0) } ?? .other(type: type)
         case "focusState": return bool("focused").map { .focusState($0) } ?? .other(type: type)
         case "crash": return .crash(message: str("message") ?? "", source: str("source") ?? "")
         case "uploadImage":
@@ -346,6 +375,25 @@ public enum HostMessage: Equatable {
     /// there is none. `toggleStyleOption` is why: fourteen Style Options rows
     /// run it, each naming its own category.
     case editorCommand(String, arg: String? = nil)
+    /// The file explorer's half of the protocol, host to page (MAR-457).
+    ///
+    /// `projectRoot` is sent after `init` on every load: the folder this
+    /// window is rooted at, or nil for a window on a loose file, which is what
+    /// keeps the explorer off every single-file window. `showHidden` rides
+    /// with it so the page filters dotfiles from its first listing.
+    case projectRoot(name: String?, path: String?, showHidden: Bool)
+    /// Reply to `listDirectory`, carrying its `id`. `entries` nil with an
+    /// `error` is a folder that could not be read, or a path that would leave
+    /// the root; the page draws the error where the rows would be.
+    case directoryListing(id: String, path: String, entries: [DirectoryListing.Entry]?, error: String?)
+    /// Which of the root's files this window is on, root-relative, so the
+    /// page selects and reveals its row; nil for a file outside the root.
+    case currentProjectFile(path: String?)
+    /// Folders whose contents changed on disk, root-relative; the page
+    /// re-lists the ones it has open.
+    case directoryChanged(paths: [String])
+    /// The hidden-files setting moved, from this window's row or another's.
+    case fileExplorerConfig(showHidden: Bool)
     /// One report about an `/ai` run. `status` drives the gutter marker the
     /// page already draws for the extension.
     case agentRun(requestId: String, status: String, harness: String?, text: String?, message: String?)
@@ -456,6 +504,21 @@ public enum HostMessage: Equatable {
                     "diagnostics": diagnostics.jsonObject]
         case let .getPerfMarks(id):
             return ["type": "__getPerfMarks", "id": id]
+        case let .projectRoot(name, path, showHidden):
+            var root: Any = NSNull()
+            if let name, let path { root = ["name": name, "path": path] }
+            return ["type": "projectRoot", "root": root, "showHidden": showHidden]
+        case let .directoryListing(id, path, entries, error):
+            var out: [String: Any] = ["type": "directoryListing", "id": id, "path": path,
+                                      "entries": entries.map { $0.map(\.jsonObject) } ?? NSNull()]
+            if let error { out["error"] = error }
+            return out
+        case let .currentProjectFile(path):
+            return ["type": "currentProjectFile", "path": path ?? NSNull()]
+        case let .directoryChanged(paths):
+            return ["type": "directoryChanged", "paths": paths]
+        case let .fileExplorerConfig(showHidden):
+            return ["type": "fileExplorerConfig", "showHidden": showHidden]
         case let .editorCommand(command, arg):
             var row: [String: Any] = ["type": "editorCommand", "command": command]
             // Omitted rather than sent as null, the way every other optional
@@ -572,6 +635,13 @@ public struct BootConfig: Equatable {
     public var noteHighlight: Bool
     public var tocVisibility: String
     public var tocWidth: Int?
+    /// The file explorer as the reader last left it, the same two facts the
+    /// outline panel keeps and for the same reason (`Prefs.tocVisibility`):
+    /// "shown" or "hidden", and a width in CSS pixels or nil for the page's
+    /// default. Read only by a window rooted at a folder; a single-file window
+    /// is told it has no root and draws no explorer whatever these say.
+    public var fileExplorerVisibility: String
+    public var fileExplorerWidth: Int?
     public var networkEnabled: Bool
     /// The publishing targets whose syntax the editor OFFERS to write, as the
     /// page's own set names (`shared/syntaxSets.ts`).
@@ -600,6 +670,8 @@ public struct BootConfig: Equatable {
                 noteHighlight: Bool = true,
                 tocVisibility: String = "hidden",
                 tocWidth: Int? = nil,
+                fileExplorerVisibility: String = "shown",
+                fileExplorerWidth: Int? = nil,
                 networkEnabled: Bool = false,
                 syntaxSets: [String] = SyntaxScope.stored(SyntaxScope.all),
                 hostCapabilities: [String] = [],
@@ -615,6 +687,8 @@ public struct BootConfig: Equatable {
         self.noteHighlight = noteHighlight
         self.tocVisibility = tocVisibility
         self.tocWidth = tocWidth
+        self.fileExplorerVisibility = fileExplorerVisibility
+        self.fileExplorerWidth = fileExplorerWidth
         self.networkEnabled = networkEnabled
         self.syntaxSets = syntaxSets
         self.hostCapabilities = hostCapabilities
@@ -633,7 +707,8 @@ public struct BootConfig: Equatable {
     /// keeps its own default rather than being handed a number this side
     /// invented.
     public var tocRootStyle: String {
-        tocWidth.map { ":root { --toc-width: \($0)px; }" } ?? ""
+        (tocWidth.map { ":root { --toc-width: \($0)px; }" } ?? "")
+            + (fileExplorerWidth.map { ":root { --files-width: \($0)px; }" } ?? "")
     }
 
     /// The `__i18n` object. Every consumer in the page reads it with a
@@ -741,6 +816,9 @@ public struct BootConfig: Equatable {
             // editor pane and wrong for a window this size, where the outline
             // is something you ask for.
             "tocVisibility": tocVisibility,
+            // The explorer as the reader last left it, read only by a window
+            // told it has a root (`HostMessage.projectRoot`).
+            "fileExplorerVisibility": fileExplorerVisibility,
         ]
     }
 

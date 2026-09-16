@@ -43,19 +43,28 @@ public enum DocumentTypes {
         opened.contains(url.pathExtension.lowercased())
     }
 
-    /// WHICH of several files a single-buffer app opens.
+    /// Whether `url` names a folder on disk: a directory window's root
+    /// (MAR-457). Asked of the disk rather than of the URL's spelling, because
+    /// `open -a` and the Finder hand over paths with no trailing slash.
+    public static func isDirectory(_ url: URL, fileManager: FileManager = .default) -> Bool {
+        var isDirectory: ObjCBool = false
+        return fileManager.fileExists(atPath: url.path, isDirectory: &isDirectory) && isDirectory.boolValue
+    }
+
+    /// WHICH of several items a single-buffer app opens.
     ///
     /// Selecting five files in the Finder and choosing Open With hands over
     /// five, and this app has one buffer and one panel, so one of them is the
     /// only honest answer available. The first it can open rather than simply
     /// the first, because `open -a` passes anything: a folder of screenshots
     /// with one note in it should open the note rather than refuse on the
-    /// first PNG.
+    /// first PNG. A folder counts as openable, as the root of a directory
+    /// window.
     ///
     /// Falls back to the first URL when none is openable, so the caller still
     /// has something to name in the refusal. Nil only for an empty list.
-    public static func firstToOpen(from urls: [URL]) -> URL? {
-        urls.first(where: accepts) ?? urls.first
+    public static func firstToOpen(from urls: [URL], isDirectory: (URL) -> Bool = { isDirectory($0) }) -> URL? {
+        urls.first(where: { accepts($0) || isDirectory($0) }) ?? urls.first
     }
 
     /// What an open panel that CHOOSES a note to edit should allow.

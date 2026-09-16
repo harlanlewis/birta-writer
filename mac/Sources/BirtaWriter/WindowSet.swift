@@ -152,6 +152,9 @@ final class WindowSet {
             guard let coordinator else { return }
             self?.newTab(in: coordinator)
         }
+        coordinator.onOpenProjectFile = { [weak self] url in self?.openDocument(at: url) }
+        coordinator.onShowHiddenChanged = { [weak self] shown in self?.setShowHiddenFiles(shown) }
+        coordinator.onOpenDirectoryRequest = { [weak self] url in self?.openDirectory(at: url) }
         coordinator.makeRecentsMenu = { [weak self] in self?.recentsMenu() ?? RecentsMenu() }
         coordinator.onOpenRequest = { [weak self] url in
             self?.openDocument(at: url)
@@ -232,6 +235,7 @@ final class WindowSet {
             let members = tabs(of: front)
             let showing = members.first(where: \.isSelectedTab) ?? front
             groups.append(OpenSet.Group(
+                root: front.explorerRoot?.standardizedFileURL.path,
                 tabs: members.map { $0.boundFile.standardizedFileURL.path },
                 selected: members.firstIndex { $0 === showing } ?? 0,
                 frame: showing.windowFrame.map(NSStringFromRect)))
@@ -269,7 +273,11 @@ final class WindowSet {
     ///   Open does, so a rename from its window writes back to that setting.
     @discardableResult
     func openAtLaunch(launchedWith: URL?) -> Coordinator {
-        let asked = launchedWith?.standardizedFileURL
+        // A folder the launch was asked to open is a directory window, made
+        // after the set comes back so it lands in front of it; the plan below
+        // is about files.
+        let askedFolder = launchedWith.flatMap { DocumentTypes.isDirectory($0) ? $0.standardizedFileURL : nil }
+        let asked = askedFolder == nil ? launchedWith?.standardizedFileURL : nil
         let scratchpad = Prefs.scratchpadURL!
         let currentNote = Prefs.currentNoteURL
         let plan = OpenSet.launchPlan(
@@ -302,6 +310,11 @@ final class WindowSet {
             sameFile: { FileIdentity.sameFile(URL(fileURLWithPath: $0), URL(fileURLWithPath: $1)) })
         if let asked { Prefs.documentURL = asked }
         for group in plan.groups {
+            // A directory group comes back rooted where it was, if the folder
+            // is still there; a folder that has gone leaves its tabs to come
+            // back as loose files rather than as a window over nothing.
+            let root = group.root.map { URL(fileURLWithPath: $0, isDirectory: true) }
+                .flatMap { DocumentTypes.isDirectory($0) ? $0 : nil }
             // The first tab takes the group's frame; the rest join its bar in
             // recorded order, and the tab that was showing is selected last,
             // after every tab exists to be selected among.
@@ -314,10 +327,10 @@ final class WindowSet {
                 // of: joining every tab beside the FIRST would put them in
                 // the bar in reverse.
                 if let previous = made.last {
-                    made.append(makeWindow(on: url, slot: slot(for: url), inGroupOf: previous))
+                    made.append(makeWindow(on: url, slot: slot(for: url), inGroupOf: previous, explorerRoot: root))
                 } else {
                     made.append(makeWindow(on: url, slot: slot(for: url),
-                                           frame: frame.flatMap { $0.isEmpty ? nil : $0 }))
+                                           frame: frame.flatMap { $0.isEmpty ? nil : $0 }, explorerRoot: root))
                 }
             }
             if made.indices.contains(group.selected) {
@@ -330,6 +343,7 @@ final class WindowSet {
         if plan.opensBlankNote, let note = Self.startBlankNote() {
             makeWindow(on: note, slot: .currentNote, frame: nil)
         }
+        if let askedFolder { openDirectory(at: askedFolder, atLaunch: true) }
         // Nothing restored and no note could be made: the settings' own
         // answer, which is never empty. The scratchpad is a good fallback for
         // a blank note that failed, because the setting says where to START,
@@ -387,6 +401,14 @@ final class WindowSet {
     /// being left at all, and the window it is in keeps it.
     func newNote() {
         do {
+            // In a directory window the note goes in the folder, as a tab of
+            // that window, so it appears in the explorer beside the rest:
+            // New Note in a folder window is a note in the folder.
+            if let here = key, let root = here.explorerRoot {
+                let target = try Coordinator.makeNoteFile(in: root)
+                open(makeWindow(on: target, slot: nil, inGroupOf: here, explorerRoot: root))
+                return
+            }
             let target = try Coordinator.makeNoteFile()
             Prefs.currentNoteURL = target
             open(makeWindow(on: target, slot: .currentNote))
@@ -400,18 +422,107 @@ final class WindowSet {
     /// as a tab beside the one in `spawn`'s window (MAR-393).
     ///
     /// A tab is a window, so this is `newNote` with the window placed into
-    /// `spawn`'s tab group instead of cascaded off it. The note takes the
-    /// current-note slot exactly as Cmd+N's does; the two gestures differ in
-    /// where the window goes and in nothing else.
+    /// `spawn`'s tab group instead of cascaded off it. In a directory window
+    /// the note is made in the root and the tab shares the root, so it shows
+    /// up in the explorer beside the rest; the current-note slot stays with
+    /// the notes folder, because a note in somebody's project is not the
+    /// app's current note. Elsewhere the note takes the slot exactly as
+    /// Cmd+N's does; the two gestures differ in where the window goes and in
+    /// nothing else.
     func newTab(in spawn: Coordinator) {
         do {
-            let target = try Coordinator.makeNoteFile()
-            Prefs.currentNoteURL = target
-            open(makeWindow(on: target, slot: .currentNote, inGroupOf: spawn))
+            if let root = spawn.explorerRoot {
+                let target = try Coordinator.makeNoteFile(in: root)
+                open(makeWindow(on: target, slot: nil, inGroupOf: spawn, explorerRoot: root))
+            } else {
+                let target = try Coordinator.makeNoteFile()
+                Prefs.currentNoteURL = target
+                open(makeWindow(on: target, slot: .currentNote, inGroupOf: spawn))
+            }
         } catch {
             NSLog("Birta Writer: could not make a new note: \(error)")
             spawn.flashStatus("Could not make a new note.")
         }
+    }
+
+    // MARK: directory windows (MAR-457)
+
+    /// One watcher per open root, shared by every window rooted there, keyed
+    /// by the root's standardized path. A change under a root reaches every
+    /// tab of the group, because each tab's page has its own tree.
+    private var roots: [String: DirectoryWatcher] = [:]
+
+    /// The windows rooted at `root`, in the set's order.
+    private func windows(rootedAt root: URL) -> [Coordinator] {
+        windows.filter { $0.explorerRoot.map { FileIdentity.sameFile($0, root) } ?? false }
+    }
+
+    /// Watch `root` if nothing does yet, and hand its events to every window
+    /// rooted there. The watcher outlives no window: `releaseUnwatchedRoots`
+    /// drops it once the last one closes.
+    private func watch(_ root: URL) {
+        let key = root.standardizedFileURL.path
+        guard roots[key] == nil else { return }
+        let watcher = DirectoryWatcher(root: root)
+        watcher.onChange = { [weak self] folders in
+            self?.windows(rootedAt: root).forEach { $0.directoryChanged(folders) }
+        }
+        watcher.start()
+        roots[key] = watcher
+    }
+
+    private func releaseUnwatchedRoots() {
+        for (key, watcher) in roots where windows(rootedAt: watcher.root).isEmpty {
+            watcher.stop()
+            roots.removeValue(forKey: key)
+        }
+    }
+
+    /// Open a folder as a directory window: the file the folder's own history
+    /// suggests, with the explorer over the folder. A folder already open
+    /// somewhere fronts that window rather than opening a second one over the
+    /// same tree.
+    ///
+    /// Which file the window opens on is `DirectoryListing.firstToOpen`'s
+    /// rule; a folder with nothing openable gets a new note made in it,
+    /// because a window is always one buffer and an empty folder somebody
+    /// opened in a notes app is a folder they are about to write in.
+    ///
+    /// - Parameter atLaunch: build the window without mounting or showing it,
+    ///   because launch mounts every window at once afterwards.
+    @discardableResult
+    func openDirectory(at folder: URL, atLaunch: Bool = false) -> Coordinator? {
+        let root = folder.standardizedFileURL
+        if let open = windows(rootedAt: root).last {
+            if !atLaunch { open.show() }
+            return open
+        }
+        let file: URL
+        if let found = DirectoryListing.firstToOpen(in: root, recents: Prefs.recentDocuments,
+                                                    accepts: DocumentTypes.accepts) {
+            file = found
+        } else {
+            do {
+                file = try Coordinator.makeNoteFile(in: root)
+            } catch {
+                NSLog("Birta Writer: could not make a note in \(root.path): \(error)")
+                key?.flashStatus("Could not open \(root.lastPathComponent).")
+                return nil
+            }
+        }
+        // A file in the folder may be open as a loose window already; it
+        // joins the folder's window rather than staying beside it, which is
+        // the same answer `openDocument` gives a file under an open root.
+        let made = makeWindow(on: file, slot: slot(for: file), explorerRoot: root)
+        if !atLaunch { open(made) }
+        return made
+    }
+
+    /// The hidden-files setting, flipped from a menu row or a page, applied
+    /// to the store and to every rooted window's page and menu mirror.
+    func setShowHiddenFiles(_ shown: Bool) {
+        Prefs.explorerShowsHidden = shown
+        windows.forEach { $0.applyShowHiddenFiles(shown) }
     }
 
     /// Open a file: the Finder's Open With, a drop on the Dock icon, `open -a`,
@@ -450,25 +561,50 @@ final class WindowSet {
     /// with unsaved text is left alone; the coordinator states the reason.
     func openDocument(at url: URL) {
         let target = url.standardizedFileURL
+        if DocumentTypes.isDirectory(target) {
+            openDirectory(at: target)
+            return
+        }
         guard DocumentTypes.accepts(target) else {
             summonAll()
             key?.flashStatus("Birta Writer does not open \(target.lastPathComponent).")
             return
         }
-        if let open = windows.first(where: { FileIdentity.sameFile($0.boundFile, target) }) {
+        // WHERE the file lands is `OpenRouting`'s, decided over the windows
+        // as they stand; each arm below is the app carrying out one answer.
+        let routed = OpenRouting.destination(
+            for: target.path,
+            windows: windows.map {
+                OpenRouting.Window(file: $0.boundFile.path,
+                                   root: $0.explorerRoot?.standardizedFileURL.path,
+                                   isVacant: $0.isVacant)
+            },
+            sameFile: { FileIdentity.sameFile(URL(fileURLWithPath: $0), URL(fileURLWithPath: $1)) },
+            isInside: { DirectoryListing.isInside(URL(fileURLWithPath: $0), root: URL(fileURLWithPath: $1, isDirectory: true)) })
+        switch routed {
+        case let .existing(index):
+            let open = windows[index]
+            open.selectTab()
             open.show()
-            return
-        }
-        Prefs.documentURL = target
-        if let here = key, here.isVacant {
+        case let .tabIn(index):
+            // A file under an open folder joins that folder's window as a
+            // tab with the same root, so its row is selected in the explorer
+            // by the tab's own load; it takes no app-wide slot, because a
+            // file in somebody's project is not the app's document.
+            let host = windows[index]
+            open(makeWindow(on: target, slot: nil, inGroupOf: host, explorerRoot: host.explorerRoot))
+        case .vacantFront:
+            Prefs.documentURL = target
+            guard let here = key else { return }
             // The same release every spawn does, and needed for the same
             // reason: only one window may hold a slot, or two would both write
             // a rename back to one setting.
             releaseSlot(.document, except: here)
             here.openInPlace(target, slot: .document)
-            return
+        case .newWindow:
+            Prefs.documentURL = target
+            open(makeWindow(on: target, slot: .document))
         }
-        open(makeWindow(on: target, slot: .document))
     }
 
     /// Cmd+O. Ask for a file, then open it the way the Finder's Open With does.
@@ -491,9 +627,12 @@ final class WindowSet {
         NSApp.activate(ignoringOtherApps: true)
         let chooser = NSOpenPanel()
         chooser.title = "Open"
-        chooser.allowedContentTypes = DocumentTypes.openedContentTypes
+        chooser.allowedContentTypes = DocumentTypes.openedContentTypes + [.folder]
         chooser.allowsMultipleSelection = false
-        chooser.canChooseDirectories = false
+        // A folder opens as a directory window (MAR-457). One chooser for
+        // both rather than an Open Folder row beside Open, because the Finder
+        // hands both over through one gesture too.
+        chooser.canChooseDirectories = true
         chooser.canChooseFiles = true
         chooser.directoryURL = (key?.boundFile ?? Prefs.activeURL).deletingLastPathComponent()
         guard chooser.runModal() == .OK, let url = chooser.url else { return }
@@ -540,6 +679,7 @@ final class WindowSet {
             // The tab that went may have been the second-to-last of its bar,
             // which then disappears and hands its row back to the page.
             self.windows.forEach { $0.tabsChanged() }
+            self.releaseUnwatchedRoots()
             self.recordOpenSetSoon()
         }
     }
@@ -565,6 +705,7 @@ final class WindowSet {
                 self.windows.removeAll { $0 === tab }
                 tab.tearDown()
                 self.windows.forEach { $0.tabsChanged() }
+                self.releaseUnwatchedRoots()
                 self.recordOpenSetSoon()
                 next()
             }
@@ -642,9 +783,11 @@ final class WindowSet {
     ///   for a window made now, which cascades off the window in front.
     /// - Parameter inGroupOf: the window whose tab group the new window joins,
     ///   as its selected tab, instead of taking a frame of its own.
+    /// - Parameter explorerRoot: the folder the new window is rooted at, for a
+    ///   directory window; the root is watched from here.
     @discardableResult
     private func makeWindow(on url: URL, slot: ActiveBinding.Slot?, frame: NSRect? = nil,
-                            inGroupOf group: Coordinator? = nil) -> Coordinator {
+                            inGroupOf group: Coordinator? = nil, explorerRoot: URL? = nil) -> Coordinator {
         // Only one window may hold a slot, so taking it releases whoever had
         // it. Otherwise two windows would both believe a rename of their file
         // should be written to the same setting, and the second would overwrite
@@ -654,9 +797,11 @@ final class WindowSet {
         // what a panel somebody positioned before the open set was recorded
         // restores from; the set's own frame outranks it once there is one
         // (`AppPanel.restoredFrame`).
-        let made = Coordinator(boundTo: url, slot: slot, remembersFrame: windows.isEmpty, frame: frame)
+        let made = Coordinator(boundTo: url, slot: slot, remembersFrame: windows.isEmpty, frame: frame,
+                               explorerRoot: explorerRoot)
         adopt(made)
         releaseSlot(slot, except: made)
+        if let explorerRoot { watch(explorerRoot) }
         // Off a window that HAS a place. At launch the window in front is a
         // restored one that has not been shown yet, still at its construction
         // placeholder, and a cascade off that would put the new window one

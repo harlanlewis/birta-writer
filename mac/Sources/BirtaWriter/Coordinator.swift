@@ -89,6 +89,89 @@ final class Coordinator {
         refreshTitle()
     }
 
+    // MARK: the file explorer (MAR-457)
+
+    /// Tell the page which folder this window is rooted at, and which of its
+    /// files this is. Nil root is the message that keeps a file window's page
+    /// from ever building an explorer.
+    private func sendProjectRoot() {
+        host.send(.projectRoot(name: explorerRoot?.lastPathComponent,
+                               path: explorerRoot?.standardizedFileURL.path,
+                               showHidden: Prefs.explorerShowsHidden))
+        if explorerRoot != nil { sendCurrentProjectFile() }
+        if measure.enabled {
+            measure.trace("explorerRoot=\(explorerRoot?.path ?? "none") current=\(currentProjectPath ?? "none")")
+        }
+    }
+
+    /// This window's file as the page names it, or nil for a file outside the
+    /// root (a note the explorer cannot show a row for).
+    private var currentProjectPath: String? {
+        guard let explorerRoot else { return nil }
+        return DirectoryListing.relativePath(of: boundURL, in: explorerRoot)
+    }
+
+    /// Say which row is this window's, so the page selects and reveals it.
+    /// Sent on load and whenever the file changes under a root; a Finder open
+    /// that lands in this window as a tab reaches this through that tab's own
+    /// load.
+    func sendCurrentProjectFile() {
+        guard explorerRoot != nil, state == .warm else { return }
+        host.send(.currentProjectFile(path: currentProjectPath))
+    }
+
+    /// Answer one `listDirectory`. A path that would leave the root, or a
+    /// folder that cannot be read, is answered with an error rather than
+    /// dropped: the page draws the error where the rows would be and stops
+    /// waiting.
+    private func answerListing(id: String, path: String) {
+        guard let explorerRoot else {
+            host.send(.directoryListing(id: id, path: path, entries: nil, error: "This window has no folder."))
+            return
+        }
+        guard let folder = DirectoryListing.resolve(path, in: explorerRoot) else {
+            host.send(.directoryListing(id: id, path: path, entries: nil, error: "Outside this window's folder."))
+            return
+        }
+        do {
+            let entries = try DirectoryListing.entries(of: folder, accepts: DocumentTypes.accepts)
+            host.send(.directoryListing(id: id, path: path, entries: entries, error: nil))
+            if measure.enabled { measure.trace("listing path=\(path.isEmpty ? "." : path) entries=\(entries.count)") }
+        } catch {
+            host.send(.directoryListing(id: id, path: path, entries: nil, error: error.localizedDescription))
+        }
+    }
+
+    /// A row was activated. An openable file goes to the app's routing, which
+    /// lands it as a tab here; anything else (an image, a PDF) is a file the
+    /// editor does not open, handed to whatever does.
+    private func openProjectFile(relative path: String) {
+        guard let explorerRoot, let file = DirectoryListing.resolve(path, in: explorerRoot) else { return }
+        if DocumentTypes.accepts(file) {
+            onOpenProjectFile?(file)
+        } else {
+            NSWorkspace.shared.open(file)
+        }
+    }
+
+    /// Folders under this window's root changed on disk, as the watcher the
+    /// app runs per root reports them; the page re-lists the ones it has open.
+    func directoryChanged(_ folders: [URL]) {
+        guard let explorerRoot, state == .warm else { return }
+        let paths = folders.compactMap { DirectoryListing.relativePath(of: $0, in: explorerRoot) }
+        guard !paths.isEmpty else { return }
+        host.send(.directoryChanged(paths: paths))
+        if measure.enabled { measure.trace("directoryChanged paths=\(paths.map { $0.isEmpty ? "." : $0 }.joined(separator: ";"))") }
+    }
+
+    /// The hidden-files setting as the app now has it, for this window's page
+    /// and its menu mirror.
+    func applyShowHiddenFiles(_ shown: Bool) {
+        menuState.record(.hiddenFilesShown, on: shown)
+        guard explorerRoot != nil, state == .warm else { return }
+        host.send(.fileExplorerConfig(showHidden: shown))
+    }
+
     /// Make this the showing tab of its group.
     func selectTab() {
         panel.tabGroup?.selectedWindow = panel
@@ -177,6 +260,19 @@ final class Coordinator {
     /// (a note, beside this one) is the app's to decide (`WindowSet.newTab`).
     var onNewTabRequest: (() -> Void)?
 
+    /// A row of this window's file explorer was activated. Where the file
+    /// lands is the app's rule (`OpenRouting`, through `WindowSet.openDocument`),
+    /// so the window only asks.
+    var onOpenProjectFile: ((URL) -> Void)?
+
+    /// The hidden-files setting was flipped from this window's page. The
+    /// setting is the app's and every rooted window's page has to hear it,
+    /// so the app stores it and fans it out (`WindowSet.setShowHiddenFiles`).
+    var onShowHiddenChanged: ((Bool) -> Void)?
+
+    /// Open a folder as a directory window, under BIRTA_MAC_MEASURE only.
+    var onOpenDirectoryRequest: ((URL) -> Void)?
+
     /// Ask the app to open a file, under BIRTA_MAC_MEASURE only, and answer
     /// how many windows are open once it has. Which window takes the file is
     /// the app's rule (`WindowSet.openDocument`) and the count is what says
@@ -257,9 +353,28 @@ final class Coordinator {
     /// still checking spelling. Picking it would then turn the thing OFF from a
     /// row that said it was already off, which is worse than a menu that simply
     /// omitted the state.
-    private(set) var menuState = MenuState(proofreadOptions: Prefs.proofreadOptions,
-                                           noteHighlight: Prefs.noteHighlight,
-                                           tocShown: Prefs.tocVisibility == "shown")
+    private(set) var menuState = MenuState()
+
+    /// The menu mirror as the stored settings and this window's root answer
+    /// it. One builder for the two moments it is seeded (construction and
+    /// every page boot), so the two cannot disagree about a field.
+    private func menuStateFromPrefs() -> MenuState {
+        MenuState(proofreadOptions: Prefs.proofreadOptions,
+                  noteHighlight: Prefs.noteHighlight,
+                  tocShown: Prefs.tocVisibility == "shown",
+                  explorerShown: Prefs.explorerVisibility == "shown",
+                  hiddenFilesShown: Prefs.explorerShowsHidden)
+    }
+
+    /// The folder this window is rooted at, for a directory window, or nil
+    /// for a window on a loose file (MAR-457). Decided at construction and
+    /// never rebound: a root is what a window IS, the way its file is what it
+    /// is on, and a tab opened from its explorer is a window with the same
+    /// root. It is what the page is told in `projectRoot`, what the page's
+    /// listings are resolved against, and the folder the page may read images
+    /// from (`ResourceRoots.document`), because a note in a rooted window
+    /// refers to images anywhere under the root rather than only beside it.
+    let explorerRoot: URL?
     /// Per run, the file holding the agent's own version while the page's
     /// merge decides whether the document ended up with all of it.
     private var agentRescues: [String: URL] = [:]
@@ -357,7 +472,7 @@ final class Coordinator {
         didSet {
             guard boundURL != oldValue else { return }
             host.schemeHandler.roots =
-                host.schemeHandler.roots.rebound(toDocument: boundURL.deletingLastPathComponent())
+                host.schemeHandler.roots.rebound(toDocument: explorerRoot ?? boundURL.deletingLastPathComponent())
             refreshTitle()
             // Both files join the recents list: the one being left and the one
             // arriving, oldest first.
@@ -525,15 +640,24 @@ final class Coordinator {
     ///   nil for a window nobody is restoring. Required rather than defaulted
     ///   for the reason the file is: a restore that forgot to pass it would
     ///   read as a window that was never placed.
-    init(boundTo url: URL, slot: ActiveBinding.Slot?, remembersFrame: Bool, frame: NSRect?) {
+    /// - Parameter explorerRoot: the folder this is a directory window of, or
+    ///   nil for a window on a loose file. Required for the reason the file
+    ///   is: a default would make every window a file window with none of
+    ///   the call sites saying so.
+    init(boundTo url: URL, slot: ActiveBinding.Slot?, remembersFrame: Bool, frame: NSRect?, explorerRoot: URL?) {
         boundURL = url
         bindingSlot = slot
-        panel = AppPanel(remembersFrame: remembersFrame, restoredFrame: frame)
+        self.explorerRoot = explorerRoot
+        panel = AppPanel(remembersFrame: remembersFrame, restoredFrame: frame,
+                         tabbingIdentifier: TabGroupPolicy.tabbingIdentifier(
+                             bundleID: AppFlavor.current.bundleID,
+                             root: explorerRoot?.standardizedFileURL.path))
         let webRoot = Coordinator.locateWebRoot()
-        host = WebHost(webRoot: webRoot, documentDirectory: url.deletingLastPathComponent())
+        host = WebHost(webRoot: webRoot, documentDirectory: explorerRoot ?? url.deletingLastPathComponent())
         writer = CoalescingWriter(onError: { error in
             NSLog("Birta Writer: write failed: \(error)")
         })
+        menuState = menuStateFromPrefs()
     }
 
     // MARK: lifecycle
@@ -551,13 +675,11 @@ final class Coordinator {
             // and a reload re-reads `Prefs`, which another window may have
             // written since. Seeded only at construction, this window's menus
             // would go on drawing the state its page had before the reload.
-            self.menuState = MenuState(proofreadOptions: Prefs.proofreadOptions,
-                                       noteHighlight: Prefs.noteHighlight,
-                                       tocShown: Prefs.tocVisibility == "shown")
+            self.menuState = self.menuStateFromPrefs()
             // The view state is the load's, not the file's: `loadPage` has
             // already decided whether this page is opening a file or
             // remounting one, and that decision is what seeds the shim.
-            return Prefs.bootConfig(viewState: self.mountedViewStateJSON)
+            return Prefs.bootConfig(viewState: self.mountedViewStateJSON, explorerRoot: self.explorerRoot)
         }
         host.onMessage = { [weak self] m in self?.handle(m) }
         host.onProcessTerminated = { [weak self] in self?.contentProcessDied() }
@@ -917,6 +1039,19 @@ final class Coordinator {
             if obj["type"] as? String == "__birtaNewWindow" {
                 measure.mark("debug-new-window")
                 onNewWindowRequest?()
+                return
+            }
+            // A directory window, as Cmd+O on a folder or `open -a` makes one;
+            // the chooser is skipped and `WindowSet.openDirectory` is not.
+            if obj["type"] as? String == "__birtaOpenDirectory", let path = obj["path"] as? String {
+                measure.mark("debug-open-directory")
+                onOpenDirectoryRequest?(URL(fileURLWithPath: path, isDirectory: true))
+                return
+            }
+            // One listing, as the page asks for it when a folder is opened,
+            // traced with its entry count.
+            if obj["type"] as? String == "__birtaListDirectory" {
+                answerListing(id: "measure", path: obj["path"] as? String ?? "")
                 return
             }
             // A new tab in this window's group, as the tab bar's `+` makes
@@ -1317,6 +1452,11 @@ final class Coordinator {
                                lineOffset: doc.lineOffset, syncVersion: guardState.version,
                                viewStateJSON: mountedViewStateJSON))
             state = .warm
+            // The explorer's two facts, on every load: which folder this
+            // window is rooted at (nil keeps the explorer off a file window)
+            // and which of its files this is. After `initDoc`, so the editor
+            // is on the paint path and the tree settles in behind it.
+            sendProjectRoot()
             // A fresh page starts with its chrome shown; tell it where the
             // pointer is, and say which file it is now bound to.
             refreshTitle()
@@ -1508,6 +1648,18 @@ final class Coordinator {
             // and a message a host declines is the protocol working.
             break
         case let .setTocWidth(w): Prefs.tocWidth = w
+        case let .listDirectory(id, path):
+            answerListing(id: id, path: path)
+        case let .openProjectFile(path):
+            openProjectFile(relative: path)
+        case let .fileExplorerWidth(w): Prefs.explorerWidth = w
+        case let .fileExplorerVisibility(visible):
+            Prefs.explorerVisibility = visible ? "shown" : "hidden"
+            menuState.record(.explorerShown, on: visible)
+        case let .setFileExplorerShowHidden(value):
+            // The setting is the app's, so every rooted window's page hears
+            // about it, this one included; `WindowSet` fans it out.
+            onShowHiddenChanged?(value)
         case let .focusState(focused):
             if focused { measure.mark("caret-ready") }
         case let .crash(message, source):
@@ -2410,7 +2562,12 @@ final class Coordinator {
     /// nowhere left to write. Throwing rather than reporting, so each caller
     /// puts the message where its own gesture was made.
     static func makeNoteFile() throws -> URL {
-        let directory = Prefs.notesDirectory
+        try makeNoteFile(in: Prefs.notesDirectory)
+    }
+
+    /// The same note, in a folder the caller names: a directory window's root,
+    /// where New Note and New Tab make their notes (MAR-457).
+    static func makeNoteFile(in directory: URL) throws -> URL {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let target = Coordinator.unusedNoteURL(in: directory)
         try AtomicFile.writeString("", to: target)

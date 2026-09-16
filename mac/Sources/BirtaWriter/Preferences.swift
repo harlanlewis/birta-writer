@@ -67,6 +67,9 @@ enum Prefs {
         case noteHighlight
         case syntaxSets
         case openSet
+        case explorerVisibility
+        case explorerWidth
+        case explorerShowsHidden
     }
 
     /// The keys a reset must NOT clear, each for a reason of its own.
@@ -572,6 +575,28 @@ enum Prefs {
         set { d.set(newValue, forKey: Key.tocWidth.rawValue) }
     }
 
+    /// The file explorer as the reader last left it, the outline panel's two
+    /// memories again and for the same reason (MAR-457). "shown" is the
+    /// first-launch answer, unlike the outline's: a window opened on a folder
+    /// is a window opened FOR its files, and an explorer that has to be asked
+    /// for is a folder window that looks like a file window.
+    static var explorerVisibility: String {
+        get { d.string(forKey: Key.explorerVisibility.rawValue) ?? "shown" }
+        set { d.set(newValue, forKey: Key.explorerVisibility.rawValue) }
+    }
+
+    static var explorerWidth: Int? {
+        get { d.object(forKey: Key.explorerWidth.rawValue) == nil ? nil : d.integer(forKey: Key.explorerWidth.rawValue) }
+        set { d.set(newValue, forKey: Key.explorerWidth.rawValue) }
+    }
+
+    /// Whether the explorer lists dotfiles and the files the Finder hides.
+    /// Off by default, as the Finder's is; the same chord flips it.
+    static var explorerShowsHidden: Bool {
+        get { d.bool(forKey: Key.explorerShowsHidden.rawValue) }
+        set { d.set(newValue, forKey: Key.explorerShowsHidden.rawValue) }
+    }
+
     /// The editor's own memory of a DOCUMENT: where it was scrolled, which
     /// sections were folded, where the caret was.
     ///
@@ -1057,7 +1082,11 @@ enum Prefs {
     ///   to be read here from the URL, and the caller then overwrote it, so
     ///   this computed a bag that was always discarded under a comment
     ///   describing the rule it no longer followed.
-    static func bootConfig(viewState: String?) -> BootConfig {
+    /// - Parameter explorerRoot: the folder the window is rooted at, or nil for
+    ///   a window on a loose file. What decides whether this page is offered
+    ///   the `projectFiles` capability at all: a host provides a directory of
+    ///   files only to a window that has one.
+    static func bootConfig(viewState: String?, explorerRoot: URL?) -> BootConfig {
         BootConfig(
             toolbarJSON: toolbarLayout.json,
             fontPreset: fontPreset,
@@ -1068,6 +1097,8 @@ enum Prefs {
             noteHighlight: noteHighlight,
             tocVisibility: tocVisibility,
             tocWidth: tocWidth,
+            fileExplorerVisibility: explorerVisibility,
+            fileExplorerWidth: explorerWidth,
             networkEnabled: networkEnabled,
             syntaxSets: SyntaxScope.stored(syntaxSets),
             // HOST_PROFILES.mac in shared/hostProfile.ts is the source;
@@ -1085,8 +1116,13 @@ enum Prefs {
             // provides, and with `/ai` switched off, or with no command to
             // run, this host provides no agent. `BootConfigTests` holds both
             // arms.
-            hostCapabilities: ["spellAndGrammar", "imageUpload", "toc", "appPreferences", "agent"]
-                .filter { $0 != "agent" || agentAvailable },
+            //
+            // Withdrawing `projectFiles` is the same shape: a window on a loose
+            // file is a host with no directory to provide, so the page it
+            // mounts is never offered the explorer (MAR-457).
+            hostCapabilities: ["spellAndGrammar", "imageUpload", "toc", "appPreferences", "agent", "projectFiles"]
+                .filter { $0 != "agent" || agentAvailable }
+                .filter { $0 != "projectFiles" || explorerRoot != nil },
             viewStateJSON: viewState,
             hostShortcuts: AppMenu.shortcuts
         )

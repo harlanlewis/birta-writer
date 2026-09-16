@@ -575,6 +575,23 @@ enum AppMenu {
         .init(title: "Show Table of Contents",
               action: .command("toggleToc"), menu: .view, group: 2,
               state: .title(.tocShown, whenOn: "Hide Table of Contents")),
+        // The file explorer, which only a window rooted at a folder has. Both
+        // rows are DISABLED rather than withdrawn in a window on a loose file
+        // (`AppDelegate.validateMenuItem`), because a top-level row may not
+        // come and go with state: it would leave its group's rule standing
+        // over nothing, which is what `testNoTopLevelViewRowShouldBeWithdrawableByState`
+        // holds. `.app` rows rather than command rows, because the second
+        // flips a setting the APP owns and fans it out to every rooted window
+        // (`WindowSet.setShowHiddenFiles`), and the first is the page's
+        // command sent to the window in front. Cmd+Shift+E is the chord VS
+        // Code's own explorer answers to; Cmd+Shift+. is the Finder's for
+        // hidden files (MAR-457).
+        .init(title: "Show Files", key: "e", modifiers: [.command, .shift],
+              action: .app(#selector(AppDelegate.menuToggleExplorer)), menu: .view, group: 2,
+              state: .title(.explorerShown, whenOn: "Hide Files")),
+        .init(title: "Show Hidden Files", key: ".", modifiers: [.command, .shift],
+              action: .app(#selector(AppDelegate.menuToggleHiddenFiles)), menu: .view, group: 2,
+              state: .checkmark(.hiddenFilesShown)),
 
         .init(title: "Proofreading", action: .submenu, menu: .view, group: 3,
               // Not gated on itself: the disclosure that holds the gate has to

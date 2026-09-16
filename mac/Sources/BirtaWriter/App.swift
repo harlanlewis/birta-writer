@@ -133,11 +133,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding {
     /// Open With in the Finder, a drop on the Dock icon, and `open -a` all
     /// arrive here.
     ///
-    /// ONE file, because this app has one buffer and one panel;
-    /// `DocumentTypes.firstToOpen` is which one and why. `Info.plist`'s
-    /// `CFBundleDocumentTypes` is what decides which files reach this at all,
-    /// and `Coordinator.openDocument` turns away anything else, since `open -a`
-    /// consults nothing.
+    /// ONE item, a file or a folder; `DocumentTypes.firstToOpen` is which one
+    /// and why. `Info.plist`'s `CFBundleDocumentTypes` is what decides which
+    /// items reach this at all (the Markdown types and `public.folder`), and
+    /// `WindowSet.openDocument` turns away anything else, since `open -a`
+    /// consults nothing. A folder becomes a directory window (MAR-457).
     func application(_ application: NSApplication, open urls: [URL]) {
         guard let url = DocumentTypes.firstToOpen(from: urls) else { return }
         guard !windows.windows.isEmpty else {
@@ -615,6 +615,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding {
         guard let front else { return }
         windows.closeWindow(front)
     }
+
+    /// Cmd+Shift+E: the file explorer of the window in front, which is the
+    /// page's own command; the row is withdrawn where there is no root.
+    @objc func menuToggleExplorer() {
+        front?.runEditorCommand("toggleFileExplorer", arg: nil)
+    }
+
+    /// Cmd+Shift+.: the Finder's chord, flipping the app's setting for every
+    /// rooted window at once.
+    @objc func menuToggleHiddenFiles() {
+        windows.setShowHiddenFiles(!Prefs.explorerShowsHidden)
+    }
     @objc func menuOpenDocument() { windows.openDocumentPanel() }
 
     /// Raise the recents list from a control that is not a menu row: the
@@ -1082,7 +1094,9 @@ extension AppDelegate: NSMenuDelegate, NSMenuItemValidation {
     func menuState() -> MenuState {
         front?.menuState ?? MenuState(proofreadOptions: Prefs.proofreadOptions,
                                       noteHighlight: Prefs.noteHighlight,
-                                      tocShown: Prefs.tocVisibility == "shown")
+                                      tocShown: Prefs.tocVisibility == "shown",
+                                      explorerShown: Prefs.explorerVisibility == "shown",
+                                      hiddenFilesShown: Prefs.explorerShowsHidden)
     }
 
     /// Enablement for the main menu and the status menu, which keep their items
@@ -1104,6 +1118,11 @@ extension AppDelegate: NSMenuDelegate, NSMenuItemValidation {
             return front?.lastSavedURL != nil
         case #selector(menuClearRecentDocuments):
             return !Prefs.recentDocuments.isEmpty
+        case #selector(menuToggleExplorer), #selector(menuToggleHiddenFiles):
+            // Live only in a window rooted at a folder, which is the only kind
+            // with an explorer to show or hide. Disabled rather than withdrawn
+            // (`AppMenu.viewRows` says why).
+            return front?.explorerRoot != nil
         case #selector(menuBackToNotes):
             // Dead unless THIS window is actually on a document, which today
             // only an install carrying an older `documentPath` can be. The

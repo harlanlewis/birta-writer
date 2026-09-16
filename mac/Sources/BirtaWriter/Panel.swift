@@ -103,7 +103,10 @@ final class AppPanel: NSPanel {
     /// rather than replacing it with a row of placeholders.
     var frameToRecord: NSRect? { placed ? frame : restoredFrame }
 
-    init(remembersFrame: Bool, restoredFrame: NSRect? = nil) {
+    /// - Parameter tabbingIdentifier: which windows this one may share a tab
+    ///   bar with; `TabGroupPolicy.tabbingIdentifier` names one per root.
+    init(remembersFrame: Bool, restoredFrame: NSRect? = nil,
+         tabbingIdentifier: String = AppPanel.notesTabbingIdentifier) {
         self.remembersFrame = remembersFrame
         self.restoredFrame = restoredFrame
         // All three window buttons, and the style mask each one needs: a panel
@@ -133,7 +136,7 @@ final class AppPanel: NSPanel {
         // setting to decide, and this honours it. An explicit New Tab adds a
         // tab whatever that setting says (`addTabbedWindow`).
         tabbingMode = .automatic
-        tabbingIdentifier = Self.notesTabbingIdentifier
+        self.tabbingIdentifier = tabbingIdentifier
         // A window being put back takes its frame NOW rather than on first
         // show, unlike a window the rule places, because the rule needs a
         // screen and a restored frame is already a place on one. Taking it
