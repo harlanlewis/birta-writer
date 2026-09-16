@@ -26,6 +26,7 @@
  * disagreement between them is likeliest there.
  */
 import { describe, it, expect, afterEach } from "vitest";
+import { budget } from "./helpers/testBudget";
 import type { Editor } from "@milkdown/core";
 import { moveFits } from "../editing/moveBlocks";
 import { visibleBoundaryPositions } from "../components/blockMenu";
@@ -51,7 +52,7 @@ const fixtures = loadCorpusFixtures();
 // measures it). The default ceiling sat inside the runner's own noise, so
 // this matches the other corpus sweeps (blockSourceRoundTrip,
 // conversionSurfaceParity) rather than raising the project default.
-const SWEEP_TIMEOUT = 120_000;
+const SWEEP_TIMEOUT = budget(120_000);
 
 let editors: Editor[] = [];
 

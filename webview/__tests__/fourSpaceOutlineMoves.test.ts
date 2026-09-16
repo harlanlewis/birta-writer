@@ -22,6 +22,7 @@
  * and the verified merge must not.
  */
 import { describe, it, expect, vi, afterEach } from "vitest";
+import { budget } from "./helpers/testBudget";
 import { parserCtx, type Editor } from "@milkdown/core";
 import { getMarkdown } from "@milkdown/utils";
 import { applyMinimalChanges } from "@birta/minimal-diff";
@@ -152,7 +153,7 @@ describe("four-space outline moves (MAR-343)", () => {
     // Three is the shallowest depth that reproduces; eight is the fixture's.
     for (const depth of [3, 4, 5, 6, 7, 8]) {
         it(`a ${depth}-level four-space outline should survive every reachable move`, {
-            timeout: 120_000,
+            timeout: budget(120_000),
         }, async () => {
             const { executed, serializerClean, rawDamaged, verifiedDamaged } = await sweep(
                 fourSpaceOutline(depth),
@@ -261,7 +262,7 @@ describe("four-space outline moves (MAR-343)", () => {
             `${verifiedDamaged} of ${serializerClean} paste positions the serializer handled ` +
                 `cleanly still corrupt a four-space outline on save`,
         ).toBe(0);
-    }, 180_000);
+    }, budget(180_000));
 
     // The merge must not decide anything differently because a file uses CRLF.
     //
@@ -308,7 +309,7 @@ describe("four-space outline moves (MAR-343)", () => {
             divergent,
             `${divergent} of ${lfOuts.length} moves merge differently on a CRLF file`,
         ).toBe(0);
-    }, 180_000);
+    }, budget(180_000));
 
     // The relocation gate read its signal off a flag that was EOL-sensitive:
     // `coreOf` compared line content with the trailing `\r` still attached, so
@@ -326,7 +327,7 @@ describe("four-space outline moves (MAR-343)", () => {
             verifiedDamaged,
             `${verifiedDamaged} of ${serializerClean} CRLF moves corrupt on save`,
         ).toBe(0);
-    }, 180_000);
+    }, budget(180_000));
 
     // The fixture the ticket's census measured: every damaged pair it found
     // was in this file, and none in the other forty. Sampled rather than swept
@@ -334,7 +335,7 @@ describe("four-space outline moves (MAR-343)", () => {
     // ladder above exists — it is exhaustive, and it is where the guarantee
     // actually comes from.
     it("four-space-outline.md should survive a sampled sweep of its move space", {
-        timeout: 180_000,
+        timeout: budget(180_000),
     }, async () => {
         const fixture = loadCorpusFixtures().find((f) => f.name === "four-space-outline.md");
         expect(fixture, "four-space-outline.md is missing from the corpus").toBeTruthy();

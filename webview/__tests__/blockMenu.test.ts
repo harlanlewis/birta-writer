@@ -7,6 +7,7 @@
  * renders, exactly like the browser. acquireVsCodeApi is injected by setup.ts.
  */
 import { describe, it, expect, afterEach, beforeEach, vi } from "vitest";
+import { budget } from "./helpers/testBudget";
 import { Editor, rootCtx, defaultValueCtx, editorViewCtx } from "@milkdown/core";
 import type { EditorView } from "../pm";
 import { getMarkdown } from "@milkdown/utils";
@@ -446,7 +447,7 @@ describe("Turn-into from a directive or a Notion callout", () => {
  * Scoped to this describe on purpose, so the tight default still catches an
  * ordinary test that becomes slow.
  */
-const TURN_INTO_SWEEP_TIMEOUT_MS = 20_000;
+const TURN_INTO_SWEEP_TIMEOUT_MS = budget(20_000);
 
 /**
  * A degrading conversion says what it costs, in the row's hint slot (MAR-115).

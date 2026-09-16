@@ -11,6 +11,7 @@
  * fixtures that come back as one chunk are named rather than counted.
  */
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { budget } from "./helpers/testBudget";
 import { parserCtx, type Editor } from "@milkdown/core";
 import type { Node as ProseNode } from "../pm";
 import { findSafeCuts, segmentBlocks } from "../utils/blockSegmenter";
@@ -72,7 +73,7 @@ describe("findSafeCuts against the parser, over the corpus", () => {
         expect(cuts).toBeGreaterThan(300);
         // Two parses per cut over the whole corpus: seconds alone, and several
         // times that on a busy machine, so the timeout is sized from that.
-    }, 60_000);
+    }, budget(60_000));
 
     it("the fixtures that come back as one chunk should be exactly the ones carrying definitions, plus the one-list outlines", () => {
         const whole = fixtures.filter((f) => findSafeCuts(splitLines(f.content)).length === 0).map((f) => f.name).sort();
@@ -102,7 +103,7 @@ describe("findSafeCuts against the parser, over the corpus", () => {
         }
         expect(tried).toBeGreaterThan(10);
         expect(refused).toBeGreaterThan(0);
-    }, 60_000);
+    }, budget(60_000));
 });
 
 describe("findSafeCuts on the constructs it refuses", () => {

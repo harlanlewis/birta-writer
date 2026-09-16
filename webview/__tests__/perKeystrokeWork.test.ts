@@ -27,6 +27,7 @@
  * looking for one.
  */
 import { describe, it, expect, beforeAll, beforeEach, afterEach, vi } from "vitest";
+import { budget } from "./helpers/testBudget";
 import { editorViewCtx, type Editor } from "@milkdown/core";
 import type { EditorView } from "../pm";
 import { createEditor } from "../editor";
@@ -34,7 +35,7 @@ import { applyLintResults, clearStyleCache } from "../plugins/proofread";
 import { clearLintCache } from "../proofread/lintCache";
 import type { LintBlock } from "../../shared/messages";
 
-vi.setConfig({ testTimeout: 40_000, hookTimeout: 40_000 });
+vi.setConfig({ testTimeout: budget(40_000), hookTimeout: budget(40_000) });
 
 beforeAll(() => {
     if (typeof globalThis.ResizeObserver === "undefined") {

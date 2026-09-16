@@ -26,6 +26,7 @@
  * (`color: inherit`), and saying so is the point.
  */
 import { describe, it, expect } from "vitest";
+import { budget } from "./helpers/testBudget";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, dirname, relative } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -142,7 +143,7 @@ let scanned: Unit[] | undefined;
  * (AGENTS.md, "Choosing what to assert"). The corpus suites take the same
  * shape for the same reason.
  */
-const SCAN_TIMEOUT_MS = 30_000;
+const SCAN_TIMEOUT_MS = budget(30_000);
 
 /**
  * The declarations belonging to the block that encloses `index`, excluding any

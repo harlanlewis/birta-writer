@@ -15,6 +15,7 @@
  * fails here, before it fails in a user's editor.
  */
 import { describe, it, expect } from "vitest";
+import { budget } from "../../webview/__tests__/helpers/testBudget";
 import * as esbuild from "esbuild";
 import { createContext, runInContext } from "node:vm";
 import { join } from "node:path";
@@ -94,5 +95,5 @@ describe("the verify worker's shipped script", () => {
             { type: "verdict", id: 2, reopens: false },
         ]);
         await parser.destroy();
-    }, 60_000);
+    }, budget(60_000));
 });

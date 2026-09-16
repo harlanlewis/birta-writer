@@ -24,6 +24,7 @@
  * rather than a stored figure, so it cannot go stale as the fixture changes.
  */
 import { describe, it, expect, beforeAll, afterEach, vi } from "vitest";
+import { budget } from "./helpers/testBudget";
 import { editorViewCtx, type Editor } from "@milkdown/core";
 import type { EditorView } from "../pm";
 import { createEditor } from "../editor";
@@ -33,7 +34,7 @@ import { setHeadingLevelAt } from "../plugins/headingFold";
 import type { LintBlock } from "../../shared/messages";
 
 // Mounting a real editor over a 121-block document, twice per case.
-vi.setConfig({ testTimeout: 60_000, hookTimeout: 60_000 });
+vi.setConfig({ testTimeout: budget(60_000), hookTimeout: budget(60_000) });
 
 beforeAll(() => {
     if (typeof globalThis.ResizeObserver === "undefined") {

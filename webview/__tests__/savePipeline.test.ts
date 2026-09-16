@@ -17,6 +17,7 @@
  * acquireVsCodeApi is injected globally by setup.ts.
  */
 import { describe, it, expect, beforeAll, beforeEach, afterEach, vi } from "vitest";
+import { budget } from "./helpers/testBudget";
 import { mockVscodeApi } from "./setup";
 
 // Vitest's 5s default testTimeout is not a fit for a suite that drives the REAL
@@ -38,7 +39,7 @@ import { mockVscodeApi } from "./setup";
 // plugins here to save time would forfeit exactly the production fidelity this
 // file exists to assert. Scoped per-file (not project-wide) so a genuine hang in
 // an ordinary webview test still trips the 5s default.
-vi.setConfig({ testTimeout: 30_000, hookTimeout: 30_000 });
+vi.setConfig({ testTimeout: budget(30_000), hookTimeout: budget(30_000) });
 
 // The full production plugin stack (headingSticky, ...) observes layout;
 // jsdom has no ResizeObserver and (without pretendToBeVisual) no rAF.

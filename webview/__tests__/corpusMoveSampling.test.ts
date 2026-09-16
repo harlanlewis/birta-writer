@@ -37,6 +37,7 @@
  * seed with MDW_MOVE_SEED=<number>; every failure message carries the seed.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { budget } from "./helpers/testBudget";
 import { parserCtx, type Editor } from "@milkdown/core";
 import { getMarkdown } from "@milkdown/utils";
 import type { EditorView } from "../pm";
@@ -108,7 +109,7 @@ const SAMPLE_SIZE = Number(process.env["MDW_MOVE_SAMPLE"] ?? "12");
  * The number below is headroom over a MEASURED cost, not a guess at one, and it
  * is scoped to these suites so ordinary tests keep the tight default.
  */
-const CORPUS_TIMEOUT_MS = 30_000;
+const CORPUS_TIMEOUT_MS = budget(30_000);
 
 // This gate holds EVERY fixture to strict content conservation under block
 // moves. It carried a carve-out for the tab-indented Logseq outlines for most of

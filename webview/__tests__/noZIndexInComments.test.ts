@@ -39,6 +39,7 @@
  * comment; `e2e/toolbarMenu/checks.mjs` already does this for the topbar.
  */
 import { describe, it, expect } from "vitest";
+import { budget } from "./helpers/testBudget";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, dirname, relative } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -179,7 +180,7 @@ function findCitations(): string[] {
  * Scoped to this describe on purpose, so the tight default still catches an
  * ordinary test that becomes slow.
  */
-const SWEEP_TIMEOUT_MS = 30_000;
+const SWEEP_TIMEOUT_MS = budget(30_000);
 
 describe("z-index values are never quoted in comments", { timeout: SWEEP_TIMEOUT_MS }, () => {
     it("the sweep should actually reach the source it claims to guard", () => {

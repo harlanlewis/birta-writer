@@ -1,6 +1,19 @@
 import { defineConfig, configDefaults } from "vitest/config";
 import path from "path";
 
+// Whether this run is instrumented for coverage (`pnpm test:coverage`, the
+// nightly's gate). Instrumentation multiplies every parse and call, so a
+// timeout that fits the bare suite reads as a failure there with nothing wrong
+// in the tree. The default timeout takes the same factor the per-test budgets
+// take (webview/__tests__/helpers/testBudget.ts), and every worker is handed
+// the variable that helper reads, so the two halves cannot disagree about
+// which instrument is running. Decided here, from the command line, rather
+// than by each script exporting a variable: one place, and a `--coverage`
+// passed by hand is covered too.
+const coverageRun = process.argv.includes("--coverage");
+const DEFAULT_TIMEOUT_MS = 5_000;
+const COVERAGE_FACTOR = 4;
+
 export default defineConfig({
     resolve: {
         alias: {
@@ -91,6 +104,8 @@ export default defineConfig({
         // This is the default today, but vitest's own CLI help advertises
         // `parallel`, so it is spelled out rather than relied upon.
         sequence: { hooks: "stack" },
+        testTimeout: coverageRun ? DEFAULT_TIMEOUT_MS * COVERAGE_FACTOR : DEFAULT_TIMEOUT_MS,
+        env: { BIRTA_TEST_COVERAGE: coverageRun ? "1" : "0" },
         coverage: {
             provider: "v8",
             reporter: ["text", "lcov", "html"],

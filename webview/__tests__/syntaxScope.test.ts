@@ -9,6 +9,7 @@
  * somebody notices their bullet lists went away with their task lists.
  */
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { budget } from "./helpers/testBudget";
 import { offeredItems, hostAvailableItems } from "../components/toolbar/registry";
 import { resolveVisible, ITEM_SYNTAX, FLOATING_TOOLBAR_ITEM_IDS } from "../components/selectionToolbar/registry";
 import { SLASH_MENU_ITEMS } from "../components/slashMenu/registry";
@@ -119,7 +120,7 @@ describe("the floating palette under a narrowed target", () => {
 // the load rather than the code teaches the next reader to re-run instead of
 // read, which is how a real intermittent gets buried. Read the current cost
 // with `pnpm vitest run webview/__tests__/syntaxScope.test.ts --reporter=verbose`.
-describe("the slash menu under a narrowed target", { timeout: 30_000 }, () => {
+describe("the slash menu under a narrowed target", { timeout: budget(30_000) }, () => {
     /**
      * The rows a menu built NOW actually renders, read off its DOM.
      *

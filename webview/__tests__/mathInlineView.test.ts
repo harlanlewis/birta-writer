@@ -5,6 +5,7 @@
  * mutations, KaTeX churn is ignored). KaTeX renders through jsdom.
  */
 import { describe, it, expect, beforeEach, vi } from "vitest";
+import { budget } from "./helpers/testBudget";
 import { createMathInlineView } from "../components/math";
 
 /** A minimal PMNode stub: type identity (shared reference) + textContent. */
@@ -22,7 +23,7 @@ function makeNode(text: string, type: object = MATH_TYPE) {
 // fires and forgets — a single-macrotask flush loses the race when the first
 // import is slow (observed under coverage instrumentation). Poll instead.
 const katexRendered = (render: HTMLElement) =>
-    vi.waitFor(() => expect(render.textContent).not.toBe(""), { timeout: 5000 });
+    vi.waitFor(() => expect(render.textContent).not.toBe(""), { timeout: budget(5000) });
 
 describe("inline math NodeView", () => {
     beforeEach(() => {

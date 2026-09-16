@@ -21,6 +21,7 @@
  * function's return value.
  */
 import { describe, it, expect, beforeAll, beforeEach, afterEach, vi } from "vitest";
+import { budget } from "./helpers/testBudget";
 import { editorViewCtx, type Editor } from "@milkdown/core";
 import type { EditorView } from "../pm";
 import { createEditor } from "../editor";
@@ -38,7 +39,7 @@ import type { Node as ProseNode } from "../pm";
 
 // Same budget rationale as proofreadRescanMeasure.test.ts: the full Milkdown
 // stack is built per test, plus the one-time deferred first pass.
-vi.setConfig({ testTimeout: 20_000, hookTimeout: 20_000 });
+vi.setConfig({ testTimeout: budget(20_000), hookTimeout: budget(20_000) });
 
 beforeAll(() => {
     if (typeof globalThis.ResizeObserver === "undefined") {

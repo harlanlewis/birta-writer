@@ -30,6 +30,7 @@
  * The real measurement, and the scroll, are exercised by e2e/proofreadWindow.
  */
 import { describe, it, expect, beforeAll, beforeEach, afterEach, vi } from "vitest";
+import { budget } from "./helpers/testBudget";
 import { Editor, rootCtx, defaultValueCtx, parserCtx, editorViewCtx } from "@milkdown/core";
 import type { EditorView, Node as ProseNode } from "../pm";
 import type { DecorationSet } from "../pm";
@@ -48,7 +49,7 @@ import {
 import { ignoreStyleSession } from "../proofread/engine";
 import type { ProofreadConfig } from "../../shared/messages";
 
-vi.setConfig({ testTimeout: 40_000, hookTimeout: 40_000 });
+vi.setConfig({ testTimeout: budget(40_000), hookTimeout: budget(40_000) });
 
 beforeAll(() => {
     if (typeof globalThis.ResizeObserver === "undefined") {

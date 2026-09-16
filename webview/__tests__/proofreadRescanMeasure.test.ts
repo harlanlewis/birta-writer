@@ -20,6 +20,7 @@
  * fake timers advance.
  */
 import { describe, it, expect, beforeAll, beforeEach, afterEach, vi } from "vitest";
+import { budget } from "./helpers/testBudget";
 import { editorViewCtx, type Editor } from "@milkdown/core";
 import type { EditorView } from "../pm";
 import { createEditor } from "../editor";
@@ -27,7 +28,7 @@ import { createEditor } from "../editor";
 // Building the full Milkdown stack per test plus the one-time deferred-pass
 // charge needs headroom over the 5 s default under full-suite load — same
 // budget rationale as proofreadDeferred.test.ts.
-vi.setConfig({ testTimeout: 20_000, hookTimeout: 20_000 });
+vi.setConfig({ testTimeout: budget(20_000), hookTimeout: budget(20_000) });
 
 beforeAll(() => {
     if (typeof globalThis.ResizeObserver === "undefined") {

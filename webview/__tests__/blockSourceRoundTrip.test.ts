@@ -13,6 +13,7 @@
  * anything; that is why its count is asserted from below.
  */
 import { describe, expect, it } from "vitest";
+import { budget } from "./helpers/testBudget";
 import { editorViewCtx, parserCtx, serializerCtx } from "@milkdown/core";
 import type { Node as ProseNode } from "@/pm";
 import { blocksFromSource, sourceOfBlocks, type BlockSourcePipeline } from "@/editing/blockSource";
@@ -92,7 +93,7 @@ describe("block source round trip", () => {
         expect(aloneDrifts.length).toBeGreaterThanOrEqual(10);
 
         expect(scopedDrifts).toEqual([]);
-    }, 120_000);
+    }, budget(120_000));
 });
 
 describe("blocksFromSource", () => {
