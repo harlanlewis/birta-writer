@@ -8,6 +8,12 @@
      `?root=0` sends `projectRoot` with a null root, which is a single-file
      window: the same page, the same profile, and no panel may be built.
 
+     `?toc=left` is the VS Code-shaped pairing: the same capabilities with
+     `fixedTocSide` and `tocToggleInBar` withdrawn and no `toc-right`, so the
+     TOC docks on the SAME edge as the explorer and keeps its reveal tab. That
+     composition is unreachable on the Mac profile, and it is the one where
+     the left-TOC terms in style.css carry `--files-reserve`.
+
      The tree is four levels deep, carries a dotfile, a `.txt` the host will
      not open in place, and a folder the host cannot read, so every row kind
      the panel draws has a row here to be found. -->
@@ -19,9 +25,13 @@
 </style>
 <script>
   document.addEventListener("DOMContentLoaded", () => document.body.classList.add("editor-width-auto", "vscode-dark"));
-  window.__i18n = { translations: {}, isMac: true, toolbar: { placements: {}, order: [] }, tocAutoHideThreshold: 3, tocVisibility: "hidden", host: { capabilities: ["spellAndGrammar", "imageUpload", "toc", "appPreferences", "agent", "projectFiles"], arrangements: ["typographyInGearMenu", "formattingInSecondRow", "fixedToolbarLayout", "barMenusOnClick", "nativeFindBar", "nativeDatePicker", "fixedTocSide", "tocToggleInBar"], shortcuts: [] } };
+  const PARAMS = new URLSearchParams(location.search);
+  const WITH_ROOT = PARAMS.get("root") !== "0";
+  const LEFT_TOC = PARAMS.get("toc") === "left";
+  const ARRANGEMENTS = ["typographyInGearMenu", "formattingInSecondRow", "fixedToolbarLayout", "barMenusOnClick", "nativeFindBar", "nativeDatePicker", "fixedTocSide", "tocToggleInBar"]
+    .filter((a) => !LEFT_TOC || (a !== "fixedTocSide" && a !== "tocToggleInBar"));
+  window.__i18n = { translations: {}, isMac: true, toolbar: { placements: {}, order: [] }, tocAutoHideThreshold: 3, tocVisibility: "hidden", host: { capabilities: ["spellAndGrammar", "imageUpload", "toc", "appPreferences", "agent", "projectFiles"], arrangements: ARRANGEMENTS, shortcuts: [] } };
   window.__posted = [];
-  const WITH_ROOT = new URLSearchParams(location.search).get("root") !== "0";
   const CONTENT = "# One\n\nSome text.\n\n```js\nconst x = 1;\n```\n\n## Two\n\ntext\n";
   const d = (name, hidden = false) => ({ name, kind: "dir", openable: true, hidden });
   const f = (name, openable = true, hidden = false) => ({ name, kind: "file", openable, hidden });
@@ -59,6 +69,9 @@
 </script>
 <link rel="stylesheet" href="dist/webview.css">
 <body class="toc-right">
+<!-- The TOC reads its side off the body as the bundle runs, before
+     DOMContentLoaded, so the class comes off in a classic script here. -->
+<script>if (LEFT_TOC) { document.body.classList.remove("toc-right"); }</script>
 <div class="editor-topbar"></div>
 <div id="editor"></div>
 <script type="module" src="dist/webview.js"></script>

@@ -847,6 +847,20 @@ body.files-open {
     .toc-panel:not(.toc-panel--right):not(.toc-panel--flyout) {
         left: var(--files-reserve);
     }
+
+    /* And so does its reveal tab while it is closed. The tab's inset from
+       the edge is an inline `left` the shell writes (sidePanel/revealTab.ts,
+       matching the drawer's hide button), so the room the explorer takes is
+       added as a margin, which a fixed box measures from its `left`: the tab
+       keeps its inset, from where the explorer ends. CSS rather than a number
+       written on the tab's commit because the explorer opens, closes and is
+       dragged wider with no commit of the TOC, and the drawer's `left` above
+       moves the same way; the flyout anchors on the tab's box and follows.
+       Nothing transitions this margin, so the tab snaps with the sash. A
+       right TOC's tab is on the other edge and is untouched. */
+    &:not(.toc-right) .toc-toggle-tab {
+        margin-left: var(--files-reserve);
+    }
 }
 
 /* The cases where the explorer's clearance is a margin of its own: a right
