@@ -62,6 +62,11 @@ enum PaletteSources {
         var windows: [Coordinator] = []
         var menuState = MenuState()
         var syntaxSets: Set<SyntaxSet> = SyntaxScope.all
+        /// Whether a row's action can run right now: `AppDelegate.allows`, the
+        /// same gate the menu bar asks per item, so a row the menu dims (no
+        /// content to save, no explorer to show, the first-run screen up) is
+        /// left out here rather than offered and run.
+        var allows: (Selector) -> Bool = { _ in true }
         /// The page's editor commands, from the front window.
         var pageCommands: [PaletteCommand] = []
         /// The front window's root and its index, when it is rooted; nil
@@ -79,13 +84,6 @@ enum PaletteSources {
     /// can see.
     private static let selfSelectors: [Selector] = [
         #selector(AppDelegate.menuOpenPalette), #selector(AppDelegate.menuGoToFile),
-    ]
-
-    /// Menu rows that are live only in a window rooted at a folder, as
-    /// `AppDelegate.validateMenuItem` disables them elsewhere. The menu dims
-    /// them; the palette, which lists what can be done, leaves them out.
-    private static let rootedSelectors: [Selector] = [
-        #selector(AppDelegate.menuToggleExplorer), #selector(AppDelegate.menuToggleHiddenFiles),
     ]
 
     /// The settings panes as the palette groups them, each under the name
@@ -157,8 +155,6 @@ enum PaletteSources {
             return nil
         case let .app(selector) where selfSelectors.contains(selector):
             return nil
-        case let .app(selector) where rootedSelectors.contains(selector) && context.root == nil:
-            return nil
         case .app, .command, .link:
             return PaletteItem(id: menuId(row), title: title(of: row, context),
                                detail: row.symbols.isEmpty ? nil : row.symbols,
@@ -168,8 +164,12 @@ enum PaletteSources {
 
     private static func menuId(_ row: AppMenu.Row) -> String { "menu:" + row.itemIdentifier.rawValue }
 
+    /// Gated as the menu bar gates the same row: withdrawn by state or a
+    /// publishing target (`AppMenu.applyState`), or dimmed by what the window
+    /// in front can do right now (`AppDelegate.allows`).
     private static func offered(_ row: AppMenu.Row, _ context: Context) -> Bool {
         guard row.needs.allSatisfy({ context.menuState.isOn($0) }) else { return false }
+        if let selector = row.action.selector, !context.allows(selector) { return false }
         guard let command = row.action.commandId else { return true }
         return SyntaxScope.allows(command: command, in: context.syntaxSets)
     }

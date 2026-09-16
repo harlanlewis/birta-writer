@@ -456,7 +456,10 @@ export function createSidePanelShell(opts: SidePanelShellOptions): SidePanelShel
         applyTooltip(tabEl, opts.trigger.tooltip, { placement: "below" });
     }
 
-    opts.eventManager.onWindow("resize", () => {
+    // Kept to unbind on dispose: a resize after the panel is gone would
+    // otherwise re-sync it and write its body classes back, and the editor's
+    // margin math would make room for a panel that does not exist.
+    const offResize = opts.eventManager.onWindow("resize", () => {
         updatePosition();
         checkResponsiveMode();
     });
@@ -499,6 +502,7 @@ export function createSidePanelShell(opts: SidePanelShellOptions): SidePanelShel
             if (outsideArmTimer) { clearTimeout(outsideArmTimer); outsideArmTimer = null; }
             outsideOff?.();
             outsideOff = null;
+            offResize();
             flyout.dispose();
         },
     };

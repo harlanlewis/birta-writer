@@ -51,11 +51,10 @@ public struct OpenSet: Codable, Equatable, Sendable {
     /// One window, or one group of tabs sharing a frame.
     public struct Group: Codable, Equatable, Sendable {
         /// The directory a window is rooted at, for a window with a file
-        /// explorer. Nil for an ordinary file window. Recorded here so the
-        /// shape needs no change when directory windows land (MAR-457).
+        /// explorer. Nil for an ordinary file window.
         public var root: String?
-        /// The files open as tabs, in tab order. One entry until window
-        /// tabbing lands (MAR-393); the shape is the same either way.
+        /// The files open as tabs, in bar order; one entry for a window with
+        /// no tab bar.
         public var tabs: [String]
         /// Which tab was showing.
         public var selected: Int

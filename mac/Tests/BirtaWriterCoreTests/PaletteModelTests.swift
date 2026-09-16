@@ -56,6 +56,14 @@ final class PaletteModelTests: XCTestCase {
         XCTAssertEqual(titles(tie).first, "Alpine", "recency decides between equals")
     }
 
+    func testEqualMatchesKeepTheOrderTheListWasGivenIn() {
+        let rows = PaletteModel.rank([
+            PaletteItem(id: "z", title: "Zeta thing", section: "S", kind: .command),
+            PaletteItem(id: "a", title: "Alpha thing", section: "S", kind: .command),
+        ], query: "thing", mode: .all, recents: [])
+        XCTAssertEqual(titles(rows), ["Zeta thing", "Alpha thing"], "the menu's order, not the alphabet's")
+    }
+
     func testAFileMatchesOnItsFolderToo() {
         let rows = PaletteModel.rank(all, query: "finance", mode: .files, recents: [])
         XCTAssertEqual(titles(rows), ["budget.md"])

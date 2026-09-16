@@ -136,6 +136,12 @@ final class PaletteWindowController: NSObject, NSTextFieldDelegate, NSTableViewD
     func close() {
         guard panel.isVisible else { return }
         panel.orderOut(nil)
+        // The catalog holds live windows in its actions; a closed palette
+        // must not keep a window it listed alive after the app closed it.
+        catalog = PaletteCatalog()
+        levels = []
+        displayed = []
+        selectedIndex = nil
     }
 
     // MARK: the list

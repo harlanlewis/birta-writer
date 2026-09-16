@@ -343,7 +343,12 @@ final class WindowSet {
                 moveToFront(made[group.selected])
             }
         }
-        if plan.opensBlankNote, let note = Self.startBlankNote() {
+        // A launch asked to open a folder gets the folder in front and no
+        // blank note beside it, the rule `OpenSet.launchPlan` applies to a
+        // file it was asked for; the folder is not a tab, so the plan cannot
+        // see it and the rule is applied here.
+        let opensBlankNote = plan.opensBlankNote && askedFolder == nil
+        if opensBlankNote, let note = Self.startBlankNote() {
             makeWindow(on: note, slot: .currentNote, frame: nil)
         }
         if let askedFolder { openDirectory(at: askedFolder, atLaunch: true) }
@@ -354,7 +359,7 @@ final class WindowSet {
         if windows.isEmpty {
             makeWindow(on: Prefs.activeURL, slot: Prefs.activeSlot, frame: nil)
         }
-        Measure.trace("windows restored=\(windows.count) groups=\(plan.groups.count + (plan.opensBlankNote ? 1 : 0))"
+        Measure.trace("windows restored=\(windows.count) groups=\(plan.groups.count + (opensBlankNote ? 1 : 0))"
                       + " front=\(windows.last?.boundFile.lastPathComponent ?? "")")
         return windows.last!
     }

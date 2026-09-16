@@ -166,9 +166,13 @@ export type HostCapability =
      * A host fact and not an editor feature, by the usual test: the page
      * cannot read a directory, so every listing and every open is the
      * host's to answer (`listDirectory`, `openProjectFile` in
-     * shared/messages.ts). Declaring it says the host CAN answer, not that
-     * this window is rooted at a folder; that is the `projectRoot` message,
-     * sent after `init`, and a single-file window sends it with a null root.
+     * shared/messages.ts). The Mac app declares it per WINDOW, only for a
+     * window rooted at a folder (`Prefs.bootConfig` filters it out for a
+     * window on a loose file, the way it filters `agent`), because the
+     * declaration is what puts the explorer's toolbar button on the bar and
+     * a single-file window must show none of it. Which folder is the
+     * `projectRoot` message, sent after `init`; a window that declared the
+     * capability and then loses its root sends it with a null root.
      *
      * App-only, like `appPreferences`: VS Code has an explorer of its own
      * beside every editor, and drawing a second one inside the page would be

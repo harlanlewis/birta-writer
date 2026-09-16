@@ -12,7 +12,10 @@ import { LISTING_TIMEOUT_MS } from "../components/fileExplorer";
 import type { EventManager } from "../eventManager";
 import type { ProjectEntry, ToExtensionMessage } from "../../shared/messages";
 
-const fakeEventManager = { onWindow: vi.fn() } as unknown as EventManager;
+// `onWindow` hands back an unbind, as the real one does: teardown is asserted
+// to call it, so a fake returning nothing would hide a leaked resize listener.
+const offResize = vi.fn();
+const fakeEventManager = { onWindow: vi.fn(() => offResize) } as unknown as EventManager;
 
 type Posted = ToExtensionMessage;
 const posted = (): Posted[] => mockVscodeApi.postMessage.mock.calls.map((c) => c[0] as Posted);
@@ -120,9 +123,33 @@ describe("the file explorer gate", () => {
     it("a null root after a panel exists should tear it down and leave no body class behind", async () => {
         await mounted(gate);
         expect([...document.body.classList].some((c) => c.startsWith("files-"))).toBe(true);
+        const trigger = document.createElement("button");
+        document.body.appendChild(trigger);
+        gate.setFlyoutTrigger(trigger);
+        offResize.mockClear();
         gate.setProjectRoot(null, false);
         expect(panel()).toBeNull();
         expect([...document.body.classList].filter((c) => c.startsWith("files-"))).toEqual([]);
+        // And nothing of the panel is left listening: a resize or a hover on
+        // the bar's button after teardown must not write its classes back.
+        expect(offResize).toHaveBeenCalledTimes(1);
+        trigger.dispatchEvent(new Event("mouseenter"));
+        expect([...document.body.classList].filter((c) => c.startsWith("files-"))).toEqual([]);
+        trigger.remove();
+    });
+
+    it("a host without the capability should queue nothing for a panel that will never load", async () => {
+        (globalThis as { __i18n?: unknown }).__i18n = {
+            translations: {}, isMac: true,
+            host: { capabilities: [], arrangements: [], shortcuts: [] },
+        };
+        gate.setProjectRoot(ROOT, false);
+        gate.setCurrentProjectFile("docs/a.md");
+        gate.directoryChanged([""]);
+        expect(gate.queuedForTesting()).toBe(0);
+        // And nothing loads: the root was never recorded.
+        await new Promise((r) => setTimeout(r, 0));
+        expect(panel()).toBeNull();
     });
 
     it("the root listing should draw folders first, then files, dimming the non-openable", async () => {

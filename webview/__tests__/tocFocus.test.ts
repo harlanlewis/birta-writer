@@ -16,7 +16,7 @@ import { mockVscodeApi } from "./setup";
 import { Schema, EditorState } from "../pm";
 import type { EditorView, Node as PmNode } from "../pm";
 
-const fakeEventManager = { onWindow: vi.fn() } as unknown as EventManager;
+const fakeEventManager = { onWindow: vi.fn(() => () => {}) } as unknown as EventManager;
 
 const schema = new Schema({
     nodes: {

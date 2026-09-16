@@ -95,18 +95,18 @@ public enum PaletteModel {
             let rest = eligible.filter { !pickedIds.contains($0.id) }
             return (picked + rest).map { PaletteRow(item: $0, title: $0.title, matched: [], score: 0) }
         }
+        // Three components, each outranking the next whatever its size: the
+        // match, then whether the row was picked lately, then the order the
+        // list was given in, so two equal matches keep the order their menu
+        // has them in rather than falling to the alphabet.
         var rows: [PaletteRow] = []
         for (order, item) in flattened(eligible).enumerated() {
             guard let match = best(trimmed, for: item) else { continue }
-            let recent = recents.firstIndex(of: item.item.id).map { recentsKept - $0 } ?? 0
-            let boost = recent > 0 ? recentBonus : 0
+            let boost = recents.contains(item.item.id) ? recentBonus : 0
             rows.append(PaletteRow(item: item.item, title: item.title, matched: match.ranges,
-                                   score: match.score * 100 + boost * 10 + (1000 - min(order, 999)) / 1000))
+                                   score: match.score * 10_000 + boost * 1_000 + (999 - min(order, 999))))
         }
-        return rows.sorted { a, b in
-            if a.score != b.score { return a.score > b.score }
-            return a.title.localizedStandardCompare(b.title) == .orderedAscending
-        }
+        return rows.sorted { $0.score > $1.score }
     }
 
     /// The rows grouped by section, in the order the sections first appear.

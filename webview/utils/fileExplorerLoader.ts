@@ -43,6 +43,9 @@ export interface FileExplorerGate {
     dockedReserve(): number;
     /** Re-decide docked against overlay; nothing to decide before the panel exists. */
     checkResponsiveMode(): void;
+    /** How many messages wait for the chunk: a test's view of the buffer, which
+     *  must stay empty on a host that will never load it. */
+    queuedForTesting(): number;
 }
 
 export function createFileExplorerGate(deps: FileExplorerDeps): FileExplorerGate {
@@ -86,15 +89,19 @@ export function createFileExplorerGate(deps: FileExplorerDeps): FileExplorerGate
 
     return {
         setProjectRoot(next, nextShowHidden) {
-            root = next;
-            showHidden = nextShowHidden;
             if (!next) {
+                root = null;
                 queue.length = 0;
                 controller?.dispose();
                 controller = null;
                 return;
             }
+            // Before the root is recorded: with no capability nothing will
+            // ever load, and a recorded root would make `withController`
+            // queue every later message into a queue nothing drains.
             if (!hostHas("projectFiles")) { return; }
+            root = next;
+            showHidden = nextShowHidden;
             if (controller) { controller.setRoot(next, nextShowHidden); } else { load(); }
         },
         applyDirectoryListing: (msg) => withController((c) => c.applyListing(msg)),
@@ -113,5 +120,6 @@ export function createFileExplorerGate(deps: FileExplorerDeps): FileExplorerGate
         },
         dockedReserve: () => controller?.dockedReserve() ?? 0,
         checkResponsiveMode: () => controller?.checkResponsiveMode(),
+        queuedForTesting: () => queue.length,
     };
 }

@@ -9,7 +9,7 @@ import { createSidePanelShell, type SidePanelShellOptions } from "../components/
 import { TAB_EDGE_INSET, TAB_TOP_INSET } from "../components/sidePanel/revealTab";
 import type { EventManager } from "../eventManager";
 
-const fakeEventManager = { onWindow: vi.fn() } as unknown as EventManager;
+const fakeEventManager = { onWindow: vi.fn(() => () => {}) } as unknown as EventManager;
 
 function addTopbar(bottom: number): void {
     const topbar = document.createElement("div");

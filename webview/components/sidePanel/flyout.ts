@@ -217,11 +217,23 @@ export function createFlyout(opts: FlyoutOptions): Flyout {
         hideTimer = setTimeout(hide, FLYOUT_HIDE_DELAY_MS);
     }
 
+    // The trigger outlives the panel (the toolbar's button does), so what was
+    // armed on it is unarmed on dispose, or hovering the button after the
+    // panel is gone flies a detached node out and claims the exclusive chrome
+    // for it.
+    let disarmTrigger: (() => void) | null = null;
     function armTrigger(el: HTMLElement): void {
+        disarmTrigger?.();
         el.addEventListener("mouseenter", show);
         el.addEventListener("mouseleave", scheduleHide);
         el.addEventListener("focus", show);
         el.addEventListener("blur", scheduleHide);
+        disarmTrigger = () => {
+            el.removeEventListener("mouseenter", show);
+            el.removeEventListener("mouseleave", scheduleHide);
+            el.removeEventListener("focus", show);
+            el.removeEventListener("blur", scheduleHide);
+        };
     }
     if (opts.armTab) { armTrigger(opts.tab); }
 
@@ -268,6 +280,8 @@ export function createFlyout(opts: FlyoutOptions): Flyout {
             cancelCleanup();
             releaseExclusiveChrome(exclusiveFlyout);
             document.removeEventListener("mouseup", onDocumentMouseUp, true);
+            disarmTrigger?.();
+            disarmTrigger = null;
         },
     };
 }

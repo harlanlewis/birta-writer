@@ -662,6 +662,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding {
         var context = PaletteSources.Context(front: front)
         context.windows = windows.windows
         context.menuState = menuState()
+        context.allows = { [weak self] selector in self?.allows(selector) ?? false }
         context.syntaxSets = Prefs.syntaxSets
         context.pageCommands = front?.paletteCommands ?? []
         context.recents = Prefs.recentDocuments
@@ -682,6 +683,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding {
     private func perform(_ action: PaletteAction) {
         switch action {
         case let .menu(row):
+            // Asked again at the pick, not only at the listing: the state a
+            // gate reads can change while the palette is up.
+            if let selector = row.action.selector, !allows(selector) { return }
             switch row.action {
             case let .app(selector):
                 NSApp.sendAction(selector, to: self, from: nil)
@@ -1191,16 +1195,25 @@ extension AppDelegate: NSMenuDelegate, NSMenuItemValidation {
     /// Enablement for the main menu and the status menu, which keep their items
     /// between openings.
     func validateMenuItem(_ item: NSMenuItem) -> Bool {
+        guard let action = item.action else { return true }
+        return allows(action)
+    }
+
+    /// Whether a menu row's action can run right now: THE gate, asked by the
+    /// menu bar for each item and by the command palette for each row it
+    /// lists and each pick it runs, so the palette can never offer a row the
+    /// menu would have dimmed (`PaletteSources`).
+    func allows(_ action: Selector) -> Bool {
         // Nothing that touches the document while the first-run screen is up.
         // Hiding the web view walls off the mouse and, with the first
         // responder moved, the keyboard; the menu bar reaches past both. Cmd+N
         // there would make a note in the folder the screen is still asking
         // about and bind to it, outranking the answer being given, and its
         // status message would be drawn behind the screen.
-        if front?.isWelcoming == true, let action = item.action, Self.documentCommands.contains(action) {
+        if front?.isWelcoming == true, Self.documentCommands.contains(action) {
             return false
         }
-        switch item.action {
+        switch action {
         case #selector(copyEverything), #selector(menuSaveAs), #selector(shareNote):
             return front?.hasContent ?? false
         case #selector(revealLastSave):

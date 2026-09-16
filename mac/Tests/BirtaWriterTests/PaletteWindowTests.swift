@@ -33,9 +33,16 @@ final class PaletteWindowTests: XCTestCase {
 
     // MARK: the catalog off the real tables
 
+    /// The gate a window on a loose file with content answers: the explorer
+    /// rows are dimmed there, everything else is live (`AppDelegate.allows`).
+    private static let looseFileGate: (Selector) -> Bool = {
+        $0 != #selector(AppDelegate.menuToggleExplorer) && $0 != #selector(AppDelegate.menuToggleHiddenFiles)
+    }
+
     private func realCatalog() -> PaletteCatalog {
         var context = PaletteSources.Context(front: nil)
         context.recents = [URL(fileURLWithPath: "/tmp/palette-tests/recent.md")]
+        context.allows = Self.looseFileGate
         return PaletteSources.catalog(context)
     }
 
@@ -70,13 +77,25 @@ final class PaletteWindowTests: XCTestCase {
         XCTAssertFalse(listed.contains("Hide Files"), "an explorer row in a window with no explorer")
     }
 
-    func testTheExplorerRowsShouldBeOfferedOnlyInARootedWindow() {
-        var rooted = PaletteSources.Context(front: nil)
-        rooted.root = URL(fileURLWithPath: "/tmp/palette-tests/root", isDirectory: true)
-        rooted.rootIndex = .empty
-        let titles = flattened(PaletteSources.catalog(rooted).items).map(\.title)
-        XCTAssertTrue(titles.contains("Hide Files"), "shown by default, so the row offers to hide")
-        XCTAssertTrue(titles.contains("Show Hidden Files"))
+    func testARowTheMenuBarWouldDimShouldNotBeOffered() {
+        // The gate is the app's, handed in; what the catalog owns is asking it
+        // for every row that has a selector, the editor commands included.
+        var context = PaletteSources.Context(front: nil)
+        var asked = Set<Selector>()
+        context.allows = { selector in
+            asked.insert(selector)
+            return selector != #selector(AppDelegate.menuSaveAs) && selector != #selector(AppDelegate.menuRunEditorCommand(_:))
+        }
+        let titles = flattened(PaletteSources.catalog(context).items).map(\.title)
+        XCTAssertFalse(titles.contains("Save a Copy As…"), "dimmed for a window with nothing to save")
+        XCTAssertFalse(titles.contains("Bold"), "every editor command shares one selector, refused as one")
+        XCTAssertTrue(titles.contains("New Note"))
+        XCTAssertTrue(asked.contains(#selector(AppDelegate.menuNewNote)), "the gate was asked, not assumed")
+        // With everything allowed the explorer rows come back: nothing in the
+        // catalog itself decides they need a root.
+        var open = PaletteSources.Context(front: nil)
+        open.allows = { _ in true }
+        XCTAssertTrue(flattened(PaletteSources.catalog(open).items).map(\.title).contains("Hide Files"))
     }
 
     func testASubmenuShouldBeAGroupHoldingItsRowsAndPickingAChildRunsTheChild() {

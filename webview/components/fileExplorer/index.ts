@@ -301,7 +301,13 @@ export function createFileExplorer(host: FileExplorerHost): FileExplorerControll
         roving.refresh();
         if (pendingReveal && selectedPath !== null) {
             const el = rowEls.get(selectedPath);
-            if (el && !el.hidden) {
+            if (!el || el.hidden) {
+                // Nothing more is coming that could draw the row (a dotfile
+                // with the switch off, a folder the host could not read): the
+                // reveal is given up, or every later render would scroll to
+                // the row the moment something else made it visible.
+                if (inflight.size === 0) { pendingReveal = false; }
+            } else {
                 pendingReveal = false;
                 el.scrollIntoView?.({ block: "nearest" });
             }
@@ -388,8 +394,10 @@ export function createFileExplorer(host: FileExplorerHost): FileExplorerControll
     }
 
     // The load reveal snaps rather than slides, like the TOC's: the panel is
-    // part of the window the reader opened, not a response to anything.
-    requestAnimationFrame(() => {
+    // part of the window the reader opened, not a response to anything. The
+    // frame is cancelled on dispose, so a root withdrawn in the same frame
+    // the chunk landed cannot sync a panel that was already swept.
+    const mountFrame = requestAnimationFrame(() => {
         const mode = shell.settleMode();
         shell.setOpen(mode === "docked" && !userCollapsed);
         shell.updatePosition();
@@ -437,6 +445,7 @@ export function createFileExplorer(host: FileExplorerHost): FileExplorerControll
             for (const { timer } of inflight.values()) { clearTimeout(timer); }
             inflight.clear();
             inflightByPath.clear();
+            cancelAnimationFrame(mountFrame);
             roving.dispose();
             shell.close();
             shell.dispose();

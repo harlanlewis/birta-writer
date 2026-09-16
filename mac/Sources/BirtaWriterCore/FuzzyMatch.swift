@@ -5,13 +5,13 @@ import Foundation
 ///
 /// A subsequence match, case-insensitive: every character of the query has
 /// to appear in the candidate, in order, not necessarily adjacent, so `ital`
-/// finds Italic and `sfc` finds Save a Copy As. What separates a good match
+/// finds Italic and `sca` finds Save a Copy As. What separates a good match
 /// from a poor one is where the letters land, and the score says so:
 ///
 /// * a letter that starts a word (the first character, or one after a space,
 ///   slash, dot, dash or underscore, or a capital after a lowercase) is worth
 ///   the most, because `sca` should read Save a Copy As before it reads
-///   Strikethrough;
+///   Select Next Occurrence, where the same three letters sit inside words;
 /// * a letter adjacent to the previous match is worth more than one that is
 ///   not, so a typed run of a word beats the same letters scattered;
 /// * every candidate character skipped between matches costs a little, so a
