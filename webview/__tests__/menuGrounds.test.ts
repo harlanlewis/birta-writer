@@ -108,6 +108,7 @@ interface Unit {
  * learned exactly this, MAR-260).
  */
 function scanUnits(): Unit[] {
+    if (scanned) return scanned;
     const units: Unit[] = [];
     for (const file of collectFiles(webviewRoot)) {
         if (!file.endsWith(".css")) continue;
@@ -120,8 +121,28 @@ function scanUnits(): Unit[] {
     for (const source of cssSourcesInTypeScript(webviewRoot)) {
         units.push({ file: source.file, text: source.text, startLine: source.startLine });
     }
+    scanned = units;
     return units;
 }
+
+/**
+ * The scan, once per file. Three tests read the same tree, and the tree is
+ * read and its TypeScript parsed for the stylesheets it embeds each time, so
+ * the cost is a whole-tree read per test rather than per file. The tree only
+ * grows, and coverage instrumentation multiplies every parse.
+ */
+let scanned: Unit[] | undefined;
+
+/**
+ * Sized to what these tests DO, a read and parse of every stylesheet source
+ * under `webview/`, rather than left at the default a shared CI runner can
+ * trip: under coverage the scan has twice reached the default on the nightly
+ * runner (2026-09-13, 2026-09-16) with nothing wrong in the tree, and a red
+ * nobody can act on teaches the next reader to re-run rather than read
+ * (AGENTS.md, "Choosing what to assert"). The corpus suites take the same
+ * shape for the same reason.
+ */
+const SCAN_TIMEOUT_MS = 30_000;
 
 /**
  * The declarations belonging to the block that encloses `index`, excluding any
@@ -208,7 +229,7 @@ function unsharedGrounds(units = scanUnits()): string[] {
     return violations.sort();
 }
 
-describe("floating chrome paints one ground", () => {
+describe("floating chrome paints one ground", { timeout: SCAN_TIMEOUT_MS }, () => {
     it("a widget-ground theme token outside the --ui-card-bg definition should be reported", () => {
         expect(unsharedGrounds()).toEqual([]);
     });
@@ -253,7 +274,7 @@ describe("floating chrome paints one ground", () => {
     });
 });
 
-describe("both rules reach every place CSS is authored", () => {
+describe("both rules reach every place CSS is authored", { timeout: SCAN_TIMEOUT_MS }, () => {
     // Both rules report by returning an empty array, so silently scanning
     // nothing is indistinguishable from scanning a clean tree. Assert the
     // INPUTS (noColorLiterals.test.ts, MAR-260).
@@ -282,7 +303,7 @@ function rowFillsWithoutInk(units = scanUnits()): string[] {
     return violations.sort();
 }
 
-describe("a fill ground never travels without its ink", () => {
+describe("a fill ground never travels without its ink", { timeout: SCAN_TIMEOUT_MS }, () => {
     it("a menu row filled from an accent-capable token with no color in the same block should be reported", () => {
         expect(rowFillsWithoutInk()).toEqual([]);
     });
