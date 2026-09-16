@@ -659,10 +659,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding {
     /// says what each source is.
     private func paletteCatalog() -> PaletteCatalog {
         let root = front?.explorerRoot
-        var context = PaletteSources.Context(front: front)
+        var context = PaletteSources.Context(front: front,
+                                             allows: { [weak self] selector in self?.allows(selector) ?? false })
         context.windows = windows.windows
         context.menuState = menuState()
-        context.allows = { [weak self] selector in self?.allows(selector) ?? false }
         context.syntaxSets = Prefs.syntaxSets
         context.pageCommands = front?.paletteCommands ?? []
         context.recents = Prefs.recentDocuments

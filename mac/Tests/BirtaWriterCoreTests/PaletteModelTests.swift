@@ -47,8 +47,12 @@ final class PaletteModelTests: XCTestCase {
     }
 
     func testARecentPickOutranksAnEqualMatchAndNotABetterOne() {
-        let recent = PaletteModel.rank([bold, italic], query: "i", mode: .all, recents: ["toggleBold"])
-        XCTAssertEqual(titles(recent).first, "Italic", "a word-start match beats a recent that merely contains the letter")
+        // Both rows match `b`: Bold on its first letter, Table Border on the
+        // start of its second word, past a skipped word. The recent one is the
+        // weaker match, and stays second.
+        let border = PaletteItem(id: "tableBorder", title: "Table Border", section: "Format", kind: .command)
+        let recent = PaletteModel.rank([bold, border], query: "b", mode: .all, recents: ["tableBorder"])
+        XCTAssertEqual(titles(recent), ["Bold", "Table Border"], "a better match beats a recent weaker one")
         let tie = PaletteModel.rank([
             PaletteItem(id: "a", title: "Alpha", section: "S", kind: .command),
             PaletteItem(id: "b", title: "Alpine", section: "S", kind: .command),

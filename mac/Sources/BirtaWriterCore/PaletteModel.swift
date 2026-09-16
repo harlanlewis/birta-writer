@@ -98,16 +98,21 @@ public enum PaletteModel {
         // Three components, each outranking the next whatever its size: the
         // match, then whether the row was picked lately, then the order the
         // list was given in, so two equal matches keep the order their menu
-        // has them in rather than falling to the alphabet.
+        // has them in rather than falling to the alphabet. The order term
+        // holds past any list this palette builds (`FileIndex` caps a folder's
+        // files well under it).
         var rows: [PaletteRow] = []
         for (order, item) in flattened(eligible).enumerated() {
             guard let match = best(trimmed, for: item) else { continue }
             let boost = recents.contains(item.item.id) ? recentBonus : 0
             rows.append(PaletteRow(item: item.item, title: item.title, matched: match.ranges,
-                                   score: match.score * 10_000 + boost * 1_000 + (999 - min(order, 999))))
+                                   score: match.score * 1_000_000 + boost * 100_000 + (orderCeiling - min(order, orderCeiling))))
         }
         return rows.sorted { $0.score > $1.score }
     }
+
+    /// The last list position the order term can tell apart.
+    private static let orderCeiling = 99_999
 
     /// The rows grouped by section, in the order the sections first appear.
     public static func sections(_ rows: [PaletteRow]) -> [(section: String, rows: [PaletteRow])] {

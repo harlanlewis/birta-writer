@@ -40,9 +40,8 @@ final class PaletteWindowTests: XCTestCase {
     }
 
     private func realCatalog() -> PaletteCatalog {
-        var context = PaletteSources.Context(front: nil)
+        var context = PaletteSources.Context(front: nil, allows: Self.looseFileGate)
         context.recents = [URL(fileURLWithPath: "/tmp/palette-tests/recent.md")]
-        context.allows = Self.looseFileGate
         return PaletteSources.catalog(context)
     }
 
@@ -80,12 +79,11 @@ final class PaletteWindowTests: XCTestCase {
     func testARowTheMenuBarWouldDimShouldNotBeOffered() {
         // The gate is the app's, handed in; what the catalog owns is asking it
         // for every row that has a selector, the editor commands included.
-        var context = PaletteSources.Context(front: nil)
         var asked = Set<Selector>()
-        context.allows = { selector in
+        let context = PaletteSources.Context(front: nil, allows: { selector in
             asked.insert(selector)
             return selector != #selector(AppDelegate.menuSaveAs) && selector != #selector(AppDelegate.menuRunEditorCommand(_:))
-        }
+        })
         let titles = flattened(PaletteSources.catalog(context).items).map(\.title)
         XCTAssertFalse(titles.contains("Save a Copy As…"), "dimmed for a window with nothing to save")
         XCTAssertFalse(titles.contains("Bold"), "every editor command shares one selector, refused as one")
@@ -93,8 +91,7 @@ final class PaletteWindowTests: XCTestCase {
         XCTAssertTrue(asked.contains(#selector(AppDelegate.menuNewNote)), "the gate was asked, not assumed")
         // With everything allowed the explorer rows come back: nothing in the
         // catalog itself decides they need a root.
-        var open = PaletteSources.Context(front: nil)
-        open.allows = { _ in true }
+        let open = PaletteSources.Context(front: nil, allows: { _ in true })
         XCTAssertTrue(flattened(PaletteSources.catalog(open).items).map(\.title).contains("Hide Files"))
     }
 
@@ -110,7 +107,7 @@ final class PaletteWindowTests: XCTestCase {
     }
 
     func testAGatedRowShouldNotBeOfferedWhileItsGateIsOff() {
-        var off = PaletteSources.Context(front: nil)
+        var off = PaletteSources.Context(front: nil, allows: Self.looseFileGate)
         off.menuState = MenuState(proofreadOptions: ["proofreading": false])
         let withGateOff = flattened(PaletteSources.catalog(off).items).map(\.title)
         XCTAssertFalse(withGateOff.contains("Check Spelling"), "withdrawn as the menu withdraws it")
@@ -120,7 +117,7 @@ final class PaletteWindowTests: XCTestCase {
     }
 
     func testARowThatRenamesItselfShouldBeOfferedUnderWhatPickingItDoes() {
-        var shown = PaletteSources.Context(front: nil)
+        var shown = PaletteSources.Context(front: nil, allows: Self.looseFileGate)
         shown.menuState = MenuState(tocShown: true)
         XCTAssertTrue(flattened(PaletteSources.catalog(shown).items).map(\.title).contains("Hide Table of Contents"))
         XCTAssertTrue(flattened(realCatalog().items).map(\.title).contains("Show Table of Contents"),
@@ -146,7 +143,7 @@ final class PaletteWindowTests: XCTestCase {
     }
 
     func testPageCommandsShouldJoinOnlyWhereNoMenuRowNamesTheCommand() {
-        var context = PaletteSources.Context(front: nil)
+        var context = PaletteSources.Context(front: nil, allows: Self.looseFileGate)
         context.pageCommands = [
             PaletteCommand(id: "toggleBold", title: "Bold", section: "Format"),
             PaletteCommand(id: "editFrontmatterFromPage", title: "Edit Frontmatter (page)", section: "Editor"),
@@ -162,7 +159,7 @@ final class PaletteWindowTests: XCTestCase {
     }
 
     func testFilesShouldComeFromTheRootIndexInARootedWindowWithTheFolderAsDetail() {
-        var context = PaletteSources.Context(front: nil)
+        var context = PaletteSources.Context(front: nil, allows: Self.looseFileGate)
         context.root = URL(fileURLWithPath: "/tmp/palette-tests/root", isDirectory: true)
         context.rootIndex = FileIndex(paths: ["a.md", "sub/deep/b.md"], truncated: true)
         context.recents = [URL(fileURLWithPath: "/elsewhere/c.md")]
@@ -177,7 +174,7 @@ final class PaletteWindowTests: XCTestCase {
     }
 
     func testFilesShouldBeTheNotesFolderThenTheRecentsElsewhere() {
-        var context = PaletteSources.Context(front: nil)
+        var context = PaletteSources.Context(front: nil, allows: Self.looseFileGate)
         context.notesFolder = URL(fileURLWithPath: "/tmp/palette-tests/notes", isDirectory: true)
         context.notesIndex = FileIndex(paths: ["today.md"], truncated: false)
         context.recents = [URL(fileURLWithPath: "/tmp/palette-tests/notes/today.md"),
@@ -187,7 +184,7 @@ final class PaletteWindowTests: XCTestCase {
     }
 
     func testWithNoIndexYetTheFileSectionShouldHoldOnlyTheRecents() {
-        var context = PaletteSources.Context(front: nil)
+        var context = PaletteSources.Context(front: nil, allows: Self.looseFileGate)
         context.root = URL(fileURLWithPath: "/tmp/palette-tests/root", isDirectory: true)
         context.rootIndex = nil
         context.recents = [URL(fileURLWithPath: "/elsewhere/c.md")]

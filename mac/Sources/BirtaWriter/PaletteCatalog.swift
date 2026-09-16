@@ -58,15 +58,21 @@ enum PaletteSources {
     struct Context {
         /// The window the palette was opened over, or nil with none open.
         var front: Coordinator?
+        /// Whether a row's action can run right now: `AppDelegate.allows`, the
+        /// same gate the menu bar asks per item, so a row the menu dims (no
+        /// content to save, no explorer to show, the first-run screen up) is
+        /// left out here rather than offered and run. Required rather than
+        /// defaulted, so a context built without the gate does not compile.
+        let allows: (Selector) -> Bool
+
+        init(front: Coordinator?, allows: @escaping (Selector) -> Bool) {
+            self.front = front
+            self.allows = allows
+        }
         /// Every window, oldest first, as `WindowSet.windows` keeps them.
         var windows: [Coordinator] = []
         var menuState = MenuState()
         var syntaxSets: Set<SyntaxSet> = SyntaxScope.all
-        /// Whether a row's action can run right now: `AppDelegate.allows`, the
-        /// same gate the menu bar asks per item, so a row the menu dims (no
-        /// content to save, no explorer to show, the first-run screen up) is
-        /// left out here rather than offered and run.
-        var allows: (Selector) -> Bool = { _ in true }
         /// The page's editor commands, from the front window.
         var pageCommands: [PaletteCommand] = []
         /// The front window's root and its index, when it is rooted; nil

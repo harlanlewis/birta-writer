@@ -545,9 +545,17 @@ final class WindowSet {
             if !atLaunch { open.show() }
             return open
         }
+        // A file in the folder that is open as a loose window already is not
+        // a candidate: a window is one buffer, and a second one over the same
+        // path is the hazard `openDocument` guards against for every other
+        // route in. The folder's window opens on the next candidate, or on a
+        // new note when the open file was the only one.
+        let openElsewhere: (URL) -> Bool = { [windows] candidate in
+            windows.contains { FileIdentity.sameFile($0.boundFile, candidate) }
+        }
         let file: URL
         if let found = DirectoryListing.firstToOpen(in: root, recents: Prefs.recentDocuments,
-                                                    accepts: DocumentTypes.accepts) {
+                                                    accepts: { DocumentTypes.accepts($0) && !openElsewhere($0) }) {
             file = found
         } else {
             do {
@@ -558,9 +566,6 @@ final class WindowSet {
                 return nil
             }
         }
-        // A file in the folder may be open as a loose window already; it
-        // joins the folder's window rather than staying beside it, which is
-        // the same answer `openDocument` gives a file under an open root.
         let made = makeWindow(on: file, slot: slot(for: file), explorerRoot: root)
         if !atLaunch { open(made) }
         return made
