@@ -366,6 +366,10 @@ final class Coordinator {
                   hiddenFilesShown: Prefs.explorerShowsHidden)
     }
 
+    /// The editor commands the page says it can run in this window, as last
+    /// answered (`requestPaletteCommands`), for the app's palette (MAR-458).
+    private(set) var paletteCommands: [PaletteCommand] = []
+
     /// The folder this window is rooted at, for a directory window, or nil
     /// for a window on a loose file (MAR-457). Decided at construction and
     /// never rebound: a root is what a window IS, the way its file is what it
@@ -1457,6 +1461,10 @@ final class Coordinator {
             // and which of its files this is. After `initDoc`, so the editor
             // is on the paint path and the tree settles in behind it.
             sendProjectRoot()
+            // And the commands the page can run here, for the app's palette;
+            // asked rather than volunteered, so a host with no palette is
+            // never sent the list.
+            host.send(.requestPaletteCommands)
             // A fresh page starts with its chrome shown; tell it where the
             // pointer is, and say which file it is now bound to.
             refreshTitle()
@@ -1660,6 +1668,11 @@ final class Coordinator {
             // The setting is the app's, so every rooted window's page hears
             // about it, this one included; `WindowSet` fans it out.
             onShowHiddenChanged?(value)
+        case let .paletteCommands(items):
+            // What the page can run here right now, kept for the app's
+            // palette (MAR-458); the page re-posts it when the publishing
+            // targets change, so this is always the current list.
+            paletteCommands = items
         case let .focusState(focused):
             if focused { measure.mark("caret-ready") }
         case let .crash(message, source):

@@ -28,6 +28,21 @@ public enum BinaryPayload {
     }
 }
 
+/// One editor command as the page offers it to the app's palette: the id
+/// `editorCommand` runs it by, the title a row reads, and the section it prints
+/// under (the host's menu name where the host binds it, else "Editor").
+public struct PaletteCommand: Equatable, Sendable {
+    public let id: String
+    public let title: String
+    public let section: String
+
+    public init(id: String, title: String, section: String) {
+        self.id = id
+        self.title = title
+        self.section = section
+    }
+}
+
 public enum WebviewMessage: Equatable {
     case ready
     case update(content: String, baseSyncVersion: Int, seq: Int)
@@ -119,6 +134,11 @@ public enum WebviewMessage: Equatable {
     case fileExplorerWidth(Int)
     case fileExplorerVisibility(Bool)
     case setFileExplorerShowHidden(Bool)
+    /// The reply to `requestPaletteCommands`: every editor command the page
+    /// can run on this host right now, for the app's own palette (MAR-458).
+    /// Posted again on its own whenever the publishing targets change, once
+    /// asked.
+    case paletteCommands(items: [PaletteCommand])
     case focusState(Bool)
     case crash(message: String, source: String)
     case uploadImage(id: String, data: Data, mimeType: String, altText: String)
@@ -259,6 +279,15 @@ public enum WebviewMessage: Equatable {
         case "fileExplorerWidth": return int("width").map { .fileExplorerWidth($0) } ?? .other(type: type)
         case "fileExplorerVisibility": return bool("visible").map { .fileExplorerVisibility($0) } ?? .other(type: type)
         case "setFileExplorerShowHidden": return bool("value").map { .setFileExplorerShowHidden($0) } ?? .other(type: type)
+        case "paletteCommands":
+            // A row without an id or a title is not a command anybody can
+            // run or read, so it is skipped rather than failing the list.
+            let items = (dict["items"] as? [Any] ?? []).compactMap { entry -> PaletteCommand? in
+                guard let row = entry as? [String: Any],
+                      let id = row["id"] as? String, let title = row["title"] as? String else { return nil }
+                return PaletteCommand(id: id, title: title, section: row["section"] as? String ?? "Editor")
+            }
+            return .paletteCommands(items: items)
         case "focusState": return bool("focused").map { .focusState($0) } ?? .other(type: type)
         case "crash": return .crash(message: str("message") ?? "", source: str("source") ?? "")
         case "uploadImage":
@@ -394,6 +423,9 @@ public enum HostMessage: Equatable {
     case directoryChanged(paths: [String])
     /// The hidden-files setting moved, from this window's row or another's.
     case fileExplorerConfig(showHidden: Bool)
+    /// Ask the page which editor commands it can run here, answered with
+    /// `paletteCommands`. A host that never asks is never sent the list.
+    case requestPaletteCommands
     /// One report about an `/ai` run. `status` drives the gutter marker the
     /// page already draws for the extension.
     case agentRun(requestId: String, status: String, harness: String?, text: String?, message: String?)
@@ -519,6 +551,8 @@ public enum HostMessage: Equatable {
             return ["type": "directoryChanged", "paths": paths]
         case let .fileExplorerConfig(showHidden):
             return ["type": "fileExplorerConfig", "showHidden": showHidden]
+        case .requestPaletteCommands:
+            return ["type": "requestPaletteCommands"]
         case let .editorCommand(command, arg):
             var row: [String: Any] = ["type": "editorCommand", "command": command]
             // Omitted rather than sent as null, the way every other optional
@@ -817,8 +851,10 @@ public struct BootConfig: Equatable {
             // is something you ask for.
             "tocVisibility": tocVisibility,
             // The explorer as the reader last left it, read only by a window
-            // told it has a root (`HostMessage.projectRoot`).
-            "fileExplorerVisibility": fileExplorerVisibility,
+            // told it has a root (`HostMessage.projectRoot`). A boolean under
+            // the page's own key (`webview/i18n/index.ts`); the string is this
+            // side's storage, kept in the outline panel's spelling.
+            "fileExplorerVisible": fileExplorerVisibility == "shown",
         ]
     }
 

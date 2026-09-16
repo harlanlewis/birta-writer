@@ -320,10 +320,20 @@ final class BridgeTests: XCTestCase {
         XCTAssertEqual(BootConfig(fileExplorerWidth: 280).tocRootStyle, ":root { --files-width: 280px; }")
         XCTAssertEqual(BootConfig(tocWidth: 320, fileExplorerWidth: 280).tocRootStyle,
                        ":root { --toc-width: 320px; }:root { --files-width: 280px; }")
-        XCTAssertEqual(BootConfig(fileExplorerVisibility: "hidden").i18nObject()["fileExplorerVisibility"] as? String,
-                       "hidden")
-        XCTAssertEqual(BootConfig().i18nObject()["fileExplorerVisibility"] as? String, "shown",
+        XCTAssertEqual(BootConfig(fileExplorerVisibility: "hidden").i18nObject()["fileExplorerVisible"] as? Bool, false)
+        XCTAssertEqual(BootConfig().i18nObject()["fileExplorerVisible"] as? Bool, true,
                        "the explorer ships out, unlike the outline panel")
+    }
+
+    func testThePaletteCommandListShouldParseAndSkipRowsNobodyCanRun() {
+        let parsed = WebviewMessage.parse(
+            #"{"type":"paletteCommands","items":[{"id":"toggleBold","title":"Bold","section":"Format"},{"id":"x"},{"id":"foo","title":"Foo"}]}"#)
+        XCTAssertEqual(parsed, .paletteCommands(items: [
+            PaletteCommand(id: "toggleBold", title: "Bold", section: "Format"),
+            PaletteCommand(id: "foo", title: "Foo", section: "Editor"),
+        ]))
+        XCTAssertEqual(WebviewMessage.parse(#"{"type":"paletteCommands"}"#), .paletteCommands(items: []))
+        XCTAssertEqual(HostMessage.requestPaletteCommands.jsonObject()["type"] as? String, "requestPaletteCommands")
     }
 
     /// What the reader has said about the Checks, handed back at the next page
