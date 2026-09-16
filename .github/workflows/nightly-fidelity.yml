@@ -67,8 +67,9 @@ jobs:
           echo "sample=$SAMPLE" >> "$GITHUB_OUTPUT"
           echo "Deep sweep: seed=$SEED sample=$SAMPLE"
 
-      # Only the two corpus fidelity suites — this job exists for depth on those,
-      # not to re-run the whole unit suite that every PR already ran.
+      # Only the corpus fidelity suites the filter names by substring (both
+      # round-trip suites and the move sampler): this job exists for depth on
+      # those, not to re-run the whole unit suite that every PR already ran.
       - name: Deep corpus move sampling
         env:
           MDW_MOVE_SEED: ${{ steps.cfg.outputs.seed }}
@@ -117,6 +118,12 @@ jobs:
   # the same scheduled-failure email as the sweep above. A breach is main's
   # problem, not a PR author's: `git log` since the last green nightly names
   # the commits that could have moved it.
+  #
+  # The run leaves out the corpus sweeps (`CORPUS_SWEEPS` in vitest.config.ts):
+  # they run bare on every push, and the job above runs the move sampler
+  # again with the nightly seed and both round-trip corpus suites again as
+  # they are. Under instrumentation they are the slow tail, and the
+  # threshold is measured over the rest of the suite.
   coverage:
     name: Coverage thresholds
     runs-on: ubuntu-latest

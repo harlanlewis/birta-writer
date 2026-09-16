@@ -9,10 +9,40 @@ import path from "path";
 // the variable that helper reads, so the two halves cannot disagree about
 // which instrument is running. Decided here, from the command line, rather
 // than by each script exporting a variable: one place, and a `--coverage`
-// passed by hand is covered too.
-const coverageRun = process.argv.includes("--coverage");
+// passed by hand is covered too, in its flag and dotted (`--coverage.enabled`)
+// spellings. Not covered, on purpose: `coverage.enabled` written into a
+// config file, which nothing here does, and the watch-mode toggle.
+const coverageRun = process.argv.some((arg) => arg === "--coverage" || arg.startsWith("--coverage."));
 const DEFAULT_TIMEOUT_MS = 5_000;
 const COVERAGE_FACTOR = 4;
+
+// The corpus sweeps: suites that walk every fixture under samples/ and the
+// perf fixtures through a real editor. They are fidelity gates, and they run
+// bare on every push (`pnpm test`); the nightly fidelity job runs the move
+// sampler again with a seed and the two round-trip suites again as they
+// are. Under instrumentation they are the slow tail
+// of the coverage run, so the coverage run leaves them out: thin cloud, thick
+// local. Membership is a measurement, not a taste: a suite stays IN the
+// coverage run when a production file is reached by it and little else,
+// which a pair of coverage runs with and without the suite shows file by
+// file, and two corpus walks stay in on those grounds (each says so on its
+// fixture import). `shared/__tests__/testBudgets.test.ts` holds that each
+// file named here exists (a missing one is a silent no-op), that each is a
+// budgeted suite, and that every budgeted test loading the corpus fixtures
+// or the perf fixtures is either listed here or annotated as kept.
+const CORPUS_SWEEPS = [
+    "webview/__tests__/agentPending.test.ts",
+    "webview/__tests__/blockSourceRoundTrip.test.ts",
+    "webview/__tests__/corpusMoveSampling.test.ts",
+    "webview/__tests__/dropSlotLegality.test.ts",
+    "webview/__tests__/fourSpaceOutlineMoves.test.ts",
+    "webview/__tests__/headlessParser.test.ts",
+    "webview/__tests__/perfFixtureConstructs.test.ts",
+    "webview/__tests__/progressiveOpen.test.ts",
+    "webview/__tests__/protectionLifecycle.test.ts",
+    "webview/__tests__/roundTripCorpus.test.ts",
+    "webview/__tests__/roundTripCorpusMdx.test.ts",
+];
 
 export default defineConfig({
     resolve: {
@@ -93,7 +123,7 @@ export default defineConfig({
         // The @vscode/test-electron integration suite (src/test/**, compiled to
         // out/**) runs in a real Extension Host via Mocha — never under Vitest.
         // It uses bare Mocha globals and the real `vscode` API, so exclude it here.
-        exclude: [...configDefaults.exclude, "src/test/**", "out/**"],
+        exclude: [...configDefaults.exclude, "src/test/**", "out/**", ...(coverageRun ? CORPUS_SWEEPS : [])],
         // Pinned, not inherited. `"stack"` runs after-hooks in reverse
         // registration order, which is what puts the timer-clearing `afterAll`
         // in `webview/__tests__/setup.ts` (registered first, so it runs last)

@@ -18,7 +18,7 @@ import { diffFingerprints, fingerprintDoc, formatFingerprintDiff } from "../plug
 import { moveBlocks } from "../editing/moveBlocks";
 import { markdownProfile, computeRoundTripProtection } from "../utils/minimalDiff";
 import { mergeVerified, mergeVerifiedWith, reopensAs, type VerifiedMerge } from "../utils/verifiedMerge";
-import { editorView, enumerateMovePairs, loadCorpusFixtures, makeCorpusEditor } from "./helpers/moveFuzz";
+import { editorView, enumerateMovePairs, loadCorpusFixtures, makeCorpusEditor } from "./helpers/moveFuzz"; // corpus-sweep-kept: webview/utils/verifiedMerge.ts is reached by this suite and little else
 
 vi.mock("../editing/rangeIndicator", () => ({
     flashRange: vi.fn(),
