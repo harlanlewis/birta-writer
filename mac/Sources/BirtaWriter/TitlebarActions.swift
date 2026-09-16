@@ -50,6 +50,15 @@ import BirtaWriterCore
 /// `arrow.uturn.backward` is Undo everywhere else in this app's menus and
 /// would be a second meaning for a gesture that already has one.
 ///
+/// `command` is the Command Palette (MAR-458): the key that opens it, which is
+/// also what the palette is full of. The alternatives each say a different
+/// thing. `magnifyingglass` is Find, a gesture this app already binds and
+/// draws; `line.3.horizontal` is a menu, and the palette is what you reach
+/// for when the menus are the long way round; `filemenu.and.selection` and
+/// `rectangle.and.text.magnifyingglass` are each three marks deep at this
+/// size. The looped square is symmetrical, so it balances with the three
+/// beside it without argument, which `TitlebarSymbolsTests` confirms.
+///
 /// It carries no disclosure chevron, though it opens a menu. There is no room
 /// for one that would not come out of the file's name, and every button in
 /// this strip is drawn as a bare symbol, so a chevron on one of the three
@@ -150,10 +159,15 @@ final class TitlebarActionsView: NSView {
     ///
     /// Open Recent sits after Open because it is the same verb reached a
     /// shorter way, and the two read as a pair.
+    ///
+    /// The command palette comes last, after the three file verbs: it is a
+    /// different kind of thing (a way to reach every row, not a row), and the
+    /// strip reads as the file's controls and then the way in to the rest.
     static let shipped: [Action] = [
         .init(selector: #selector(AppDelegate.menuNewNote), symbol: "plus.square"),
         .init(selector: #selector(AppDelegate.menuOpenDocument), symbol: "folder"),
         .init(selector: #selector(AppDelegate.menuOpenRecent(_:)), symbol: "clock"),
+        .init(selector: #selector(AppDelegate.menuOpenPalette), symbol: "command"),
     ]
 
     /// One entry per button: the menu row it repeats, and the symbol it draws.

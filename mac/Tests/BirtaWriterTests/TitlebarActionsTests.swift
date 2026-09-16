@@ -54,16 +54,17 @@ final class TitlebarActionsTests: XCTestCase {
     func testEachButtonShouldTakeItsLabelAndChordFromTheMenuRowItRepeats() {
         let view = boundTitle()
         let labels = view.actionsView.buttons.map { $0.accessibilityLabel() ?? "" }
-        XCTAssertEqual(labels, ["New Note", "Open…", "Open Recent"])
+        XCTAssertEqual(labels, ["New Note", "Open…", "Open Recent", "Command Palette…"])
         // The chord is the menu's, not a literal: a tooltip is a claim about a
         // binding, and this is the only thing holding the two together. Open
         // Recent binds no key, so its tooltip is the title alone rather than a
         // title with a bare modifier string after it.
         let tips = view.actionsView.buttons.compactMap { $0.label }
-        XCTAssertEqual(tips.count, 3)
+        XCTAssertEqual(tips.count, 4)
         XCTAssertTrue(tips[0].hasSuffix("⌘N"), tips[0])
         XCTAssertTrue(tips[1].hasSuffix("⌘O"), tips[1])
         XCTAssertEqual(tips[2], "Open Recent")
+        XCTAssertTrue(tips[3].hasSuffix("⇧⌘P"), tips[3])
     }
 
     func testPointingAtAButtonShouldAskThePageToLabelIt() {
@@ -172,13 +173,17 @@ final class TitlebarActionsTests: XCTestCase {
         // button correctly and left the drag strip lying over it, because the
         // strip's origin is the accessory's trailing edge. Asserted as the
         // difference one button makes, so it stays true when the box is tuned.
+        let one = TitlebarActionsView(actions: [Self.shippedActions[0]])
         let two = TitlebarActionsView(actions: Array(Self.shippedActions.prefix(2)))
-        let three = TitlebarActionsView(actions: Self.shippedActions)
-        XCTAssertGreaterThan(three.room, two.room)
-        XCTAssertEqual(three.room - two.room, two.room - TitlebarActionsView(actions: [Self.shippedActions[0]]).room)
+        let all = TitlebarActionsView(actions: Self.shippedActions)
+        XCTAssertGreaterThan(all.room, two.room)
+        // One button's worth of room is one button's worth of room, from the
+        // second to the last: the shipped set is compared against the pair.
+        let perButton = two.room - one.room
+        XCTAssertEqual(all.room - two.room, perButton * CGFloat(Self.shippedActions.count - 2))
         // And the view is BUILT at the room it reports, or its own layout and
         // the window's measurement of it start from different numbers.
-        XCTAssertEqual(three.frame.width, three.room)
+        XCTAssertEqual(all.frame.width, all.room)
     }
 
     // MARK: geometry does not move under the pointer
