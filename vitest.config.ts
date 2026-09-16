@@ -25,10 +25,10 @@ const COVERAGE_FACTOR = 4;
 // coverage run when a production file is reached by it and little else,
 // which a pair of coverage runs with and without the suite shows file by
 // file, and two corpus walks stay in on those grounds (each says so on its
-// `loadCorpusFixtures` import). `shared/__tests__/testBudgets.test.ts` holds
-// that each file named here exists (a missing one is a silent no-op), that
-// each is a budgeted suite, and that every budgeted corpus walk is either
-// listed here or annotated as kept.
+// fixture import). `shared/__tests__/testBudgets.test.ts` holds that each
+// file named here exists (a missing one is a silent no-op), that each is a
+// budgeted suite, and that every budgeted test loading the corpus fixtures
+// or the perf fixtures is either listed here or annotated as kept.
 const CORPUS_SWEEPS = [
     "webview/__tests__/agentPending.test.ts",
     "webview/__tests__/blockSourceRoundTrip.test.ts",

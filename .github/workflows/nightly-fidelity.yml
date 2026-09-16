@@ -67,8 +67,9 @@ jobs:
           echo "sample=$SAMPLE" >> "$GITHUB_OUTPUT"
           echo "Deep sweep: seed=$SEED sample=$SAMPLE"
 
-      # Only the two corpus fidelity suites — this job exists for depth on those,
-      # not to re-run the whole unit suite that every PR already ran.
+      # Only the corpus fidelity suites the filter names by substring (both
+      # round-trip suites and the move sampler): this job exists for depth on
+      # those, not to re-run the whole unit suite that every PR already ran.
       - name: Deep corpus move sampling
         env:
           MDW_MOVE_SEED: ${{ steps.cfg.outputs.seed }}
