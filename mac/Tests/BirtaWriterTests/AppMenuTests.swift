@@ -170,7 +170,8 @@ final class AppMenuTests: XCTestCase {
     func testTheViewMenuShouldPutFoldingBehindOneRow() throws {
         let view = build(.view)
         XCTAssertEqual(titles(of: view), [
-            "Zoom In", "Zoom Out", "Actual Size",
+            "Command Palette…",
+            "-", "Zoom In", "Zoom Out", "Actual Size",
             "-", "Font", "Folding",
             "-", "Show Table of Contents", "Show Files", "Show Hidden Files",
             "-", "Proofreading",
@@ -252,7 +253,7 @@ final class AppMenuTests: XCTestCase {
 
     func testTheFileMenuShouldOpenRecentThroughASubmenuOfItsOwn() {
         let file = build(.file)
-        XCTAssertEqual(titles(of: file), ["New Note", "New Tab", "Open…", "Open Recent", "Save", "Save a Copy As…"])
+        XCTAssertEqual(titles(of: file), ["New Note", "New Tab", "Open…", "Open Recent", "Go to File…", "Save", "Save a Copy As…"])
         let item = file.items.first { $0.title == "Open Recent" }
         // A submenu row and nothing else. The selector the table gives this
         // row is for the titlebar's button; leaving it on the menu item would
@@ -620,8 +621,8 @@ final class AppMenuTests: XCTestCase {
         // macOS File menu puts the pair, and above Save. Asserted on the built
         // menu rather than on the table, because the order a person reads is
         // the one `fill` produces.
-        XCTAssertEqual(Array(titles(of: build(.file))[0..<5]),
-                       ["New Note", "New Tab", "Open…", "Open Recent", "Save"])
+        XCTAssertEqual(Array(titles(of: build(.file))[0..<6]),
+                       ["New Note", "New Tab", "Open…", "Open Recent", "Go to File…", "Save"])
     }
 
     func testARowShouldBeReachableByItsSelectorAndPrintItsOwnChord() {

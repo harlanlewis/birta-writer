@@ -360,6 +360,11 @@ enum AppMenu {
         .init(title: "Open…", key: "o", modifiers: [.command],
               action: .app(#selector(AppDelegate.menuOpenDocument)), menu: .file),
         .init(title: "Open Recent", action: .recents, menu: .file),
+        // Go to File: the palette over files alone (MAR-458). Beside Open,
+        // because it is the other way of naming a file to open, with the
+        // chord VS Code gives the same gesture.
+        .init(title: "Go to File…", key: "p", modifiers: [.command],
+              action: .app(#selector(AppDelegate.menuGoToFile)), menu: .file),
         .init(title: "Save", key: "s", modifiers: [.command],
               action: .app(#selector(AppDelegate.menuSaveNow)), menu: .file),
         .init(title: "Save a Copy As…", key: "s", modifiers: [.command, .shift],
@@ -547,14 +552,20 @@ enum AppMenu {
     private static let gate = MenuToggle.proofread("proofreading")
 
     private static let viewRows: [Row] = [
-        .init(title: "Zoom In", key: "+", modifiers: [.command],
-              action: .command("increaseFontSize"), menu: .view, group: 0),
-        .init(title: "Zoom Out", key: "-", modifiers: [.command],
-              action: .command("decreaseFontSize"), menu: .view, group: 0),
-        .init(title: "Actual Size", key: "0", modifiers: [.command],
-              action: .command("resetFontSize"), menu: .view, group: 0),
+        // The palette, first and alone, where VS Code's View menu puts its
+        // own (MAR-458). An `.app` row: the palette is the app's surface,
+        // and the page has no command that could open it.
+        .init(title: "Command Palette…", key: "p", modifiers: [.command, .shift],
+              action: .app(#selector(AppDelegate.menuOpenPalette)), menu: .view, group: 0),
 
-        .init(title: "Font", action: .submenu, menu: .view, group: 1),
+        .init(title: "Zoom In", key: "+", modifiers: [.command],
+              action: .command("increaseFontSize"), menu: .view, group: 1),
+        .init(title: "Zoom Out", key: "-", modifiers: [.command],
+              action: .command("decreaseFontSize"), menu: .view, group: 1),
+        .init(title: "Actual Size", key: "0", modifiers: [.command],
+              action: .command("resetFontSize"), menu: .view, group: 1),
+
+        .init(title: "Font", action: .submenu, menu: .view, group: 2),
         .init(title: "Sans-Serif",
               action: .command("fontSans"), menu: .view, submenu: "Font", group: 0),
         .init(title: "Serif",
@@ -562,7 +573,7 @@ enum AppMenu {
         .init(title: "Monospace",
               action: .command("fontMono"), menu: .view, submenu: "Font", group: 0),
 
-        .init(title: "Folding", action: .submenu, menu: .view, group: 1),
+        .init(title: "Folding", action: .submenu, menu: .view, group: 2),
         .init(title: "Fold", key: "[", modifiers: [.command, .option],
               action: .command("fold"), menu: .view, submenu: "Folding", group: 0),
         .init(title: "Unfold", key: "]", modifiers: [.command, .option],
@@ -573,7 +584,7 @@ enum AppMenu {
               action: .command("unfoldAll"), menu: .view, submenu: "Folding", group: 1),
 
         .init(title: "Show Table of Contents",
-              action: .command("toggleToc"), menu: .view, group: 2,
+              action: .command("toggleToc"), menu: .view, group: 3,
               state: .title(.tocShown, whenOn: "Hide Table of Contents")),
         // The file explorer, which only a window rooted at a folder has. Both
         // rows are DISABLED rather than withdrawn in a window on a loose file
@@ -587,13 +598,13 @@ enum AppMenu {
         // Code's own explorer answers to; Cmd+Shift+. is the Finder's for
         // hidden files (MAR-457).
         .init(title: "Show Files", key: "e", modifiers: [.command, .shift],
-              action: .app(#selector(AppDelegate.menuToggleExplorer)), menu: .view, group: 2,
+              action: .app(#selector(AppDelegate.menuToggleExplorer)), menu: .view, group: 3,
               state: .title(.explorerShown, whenOn: "Hide Files")),
         .init(title: "Show Hidden Files", key: ".", modifiers: [.command, .shift],
-              action: .app(#selector(AppDelegate.menuToggleHiddenFiles)), menu: .view, group: 2,
+              action: .app(#selector(AppDelegate.menuToggleHiddenFiles)), menu: .view, group: 3,
               state: .checkmark(.hiddenFilesShown)),
 
-        .init(title: "Proofreading", action: .submenu, menu: .view, group: 3,
+        .init(title: "Proofreading", action: .submenu, menu: .view, group: 4,
               // Not gated on itself: the disclosure that holds the gate has to
               // be reachable to turn it back on.
               state: nil),

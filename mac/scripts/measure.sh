@@ -2605,6 +2605,39 @@ case "$ROOT_TABS" in
        echo "  $ROOT_TABS" >&2; exit 1 ;;
 esac
 
+# THE COMMAND PALETTE (MAR-458), over the rooted window the arm above left in
+# front. Two claims only the live app can answer, because the catalog is read
+# off the app's own state: typing "bold" ranks Bold first with the chord the
+# menu binds beside it, and Go to File over the folder lists the folder's
+# files (the index is built off the main thread, so the second probe waits
+# for it). The palette is opened, read and closed by the probe itself.
+palette_probe() {
+    printf '{"type":"__birtaPalette","query":"%s","mode":"%s"}' "$1" "$2" > "$SCRATCH_DIR/.debug-message.json"
+    kill -URG $PID; sleep 1.5
+    rm -f "$SCRATCH_DIR/.debug-message.json"
+    grep "^birta-trace palette " "$LOG" | tail -1 | sed 's/^birta-trace palette //' || true
+}
+PALETTE_BEFORE=$(grep -c "^birta-trace palette " "$LOG" || true)
+PALETTE="$(palette_probe bold all)"
+if [ "$(grep -c "^birta-trace palette " "$LOG" || true)" -le "$PALETTE_BEFORE" ]; then
+    echo "command palette      FAILED: the app never reported its palette" >&2; exit 1
+fi
+case "$PALETTE" in
+    *"open=true"*"top=Bold|⌘B"*) ;;
+    *) echo "command palette      FAILED: typing bold did not put Bold and its chord first: $PALETTE" >&2; exit 1 ;;
+esac
+# The first files probe may find the index still building; the second reads
+# the built one.
+FILES="$(palette_probe b.md files)"
+case "$FILES" in
+    *"top=b.md|sub"*) ;;
+    *) FILES="$(palette_probe b.md files)" ;;
+esac
+case "$FILES" in
+    *"top=b.md|sub"*) echo "command palette      ok: bold ranks Bold ⌘B first; Go to File finds sub/b.md under the root" ;;
+    *) echo "command palette      FAILED: Go to File did not list the root's file with its folder: $FILES" >&2; exit 1 ;;
+esac
+
 # The windows come back after a quit, the same ones with the same one in
 # front, tabs grouped as they were (MAR-421, MAR-393).
 #

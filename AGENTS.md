@@ -156,6 +156,8 @@ webview/components/table/tableView.ts         Table NodeView (overlay chrome: gr
 webview/components/table/reorder.ts           Pure row/column block-reorder + drop-index helpers
 webview/components/codeBlock/index.ts         Code block UI
 webview/components/toc/index.ts               Table of contents (TOC) panel
+webview/components/sidePanel/shell.ts         THE docked side panel every drawer composes: side, width and resize, docked against overlay, reveal tab, flyout; the TOC and the file explorer are two of it
+webview/components/fileExplorer/index.ts      The file explorer over a host-provided directory (`projectFiles`): a lazy chunk, host-driven selection, one listing per opened folder
 webview/components/linkPopup/index.ts         Link hover popup
 webview/components/imageView/index.ts         Image NodeView (selection/lightbox/toolbar)
 webview/ui/hostPalette.css                    The --vscode-* palette a non-VS-Code host links (the Mac app, the e2e harness); guarded by hostPalette.test.ts
@@ -201,6 +203,16 @@ mac/Sources/BirtaWriter/UpdateCheckPrompt.swift  The answer to a check somebody 
 mac/Sources/BirtaWriterCore/SystemRequirements.swift  Which Macs a build of the app runs on, decided off the bundle rather than off a floor written here; the two update paths' preflight
 mac/Sources/BirtaWriterCore/AgentRequest.swift   /ai command composition, a literal port of src/agentBridge/askAgent.ts; same test cases both sides
 mac/Sources/BirtaWriterCore/AgentReference.swift What Copy Reference puts on the clipboard, a port of src/agentBridge/format.ts; mirrored test cases, and its header names the two places the two deliberately differ
+mac/Sources/BirtaWriterCore/OpenSet.swift        What a launch opens: the recorded windows and tabs, pruned, with the file the launch was asked for and the blank-note setting applied; why the three file settings no longer decide it
+mac/Sources/BirtaWriterCore/TabGroupPolicy.swift Which windows share a tab bar, what Close does as the count changes, which chord picks which tab, and how the titlebar band splits once the bar has taken a row
+mac/Sources/BirtaWriterCore/DirectoryListing.swift  A folder's entries as the explorer lists them, and the root-relative path rule that keeps a page from naming a file outside its root
+mac/Sources/BirtaWriterCore/OpenRouting.swift    Which window a file opened from outside lands in: its own tab, a tab of the window rooted over it, a vacant window, or a new one
+mac/Sources/BirtaWriter/DirectoryWatcher.swift   FSEvents on a directory window's root, one per root shared by its tabs; what the page is told and when
+mac/Sources/BirtaWriterCore/FuzzyMatch.swift     The palette's subsequence scorer: word starts and runs outrank buried letters, and the matched ranges come back for drawing; no dependency, on purpose
+mac/Sources/BirtaWriterCore/PaletteModel.swift   What the palette lists and in what order, with no window: modes, sections, nested rows, recents
+mac/Sources/BirtaWriterCore/FileIndex.swift      The files Go to File can reach in a rooted window: one capped walk, rebuilt when the root changes
+mac/Sources/BirtaWriter/PaletteCatalog.swift     Where the palette's rows come from (the menu table, the page's commands, the windows, Settings, the files) and what a pick does; nothing here is a second table
+mac/Sources/BirtaWriter/PaletteWindow.swift      The palette panel: draws and dispatches, readable unshown
 mac/scripts/update.sh                     The other-machine path: fetch the app off the newest GitHub Release, verify, install (ad-hoc signed, so it clears quarantine)
 e2e/enterCaret/                               Return must leave the caret in the block it just made; the WebKit-only class of defect that gate exists for
 e2e/frameHost/                                The editor in a frame of a page that is not an editor: the host contract docs/HOSTING.md describes, run against the real bundle

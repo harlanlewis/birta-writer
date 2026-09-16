@@ -164,6 +164,9 @@ final class WindowSet {
         coordinator.onFrameChanged = { [weak self] in self?.recordOpenSetSoon() }
         coordinator.onReloadEverywhereRequest = { [weak self] in self?.preferencesChangedEverywhere() }
         coordinator.onOpenSetRequest = { [weak self] in self?.describeOpenSet() ?? "" }
+        coordinator.onPaletteRequest = { [weak self] query, mode in
+            self?.paletteProbe?(query, mode) ?? "unavailable"
+        }
         coordinator.onBecameKey = { [weak self, weak coordinator] in
             guard let coordinator else { return }
             self?.moveToFront(coordinator)
@@ -466,6 +469,9 @@ final class WindowSet {
         let watcher = DirectoryWatcher(root: root)
         watcher.onChange = { [weak self] folders in
             self?.windows(rootedAt: root).forEach { $0.directoryChanged(folders) }
+            // The Go to File index is a picture of the tree, and the tree
+            // moved; the next palette open rebuilds it.
+            self?.fileIndexes.removeValue(forKey: key)
         }
         watcher.start()
         roots[key] = watcher
@@ -475,7 +481,44 @@ final class WindowSet {
         for (key, watcher) in roots where windows(rootedAt: watcher.root).isEmpty {
             watcher.stop()
             roots.removeValue(forKey: key)
+            fileIndexes.removeValue(forKey: key)
         }
+    }
+
+    // MARK: the palette's file index
+
+    /// The Go to File index per folder, built off the main thread on first
+    /// ask and kept until the folder's watcher reports a change (a root) or
+    /// the next palette open (the notes folder, which has no watcher).
+    private var fileIndexes: [String: FileIndex] = [:]
+    private var indexing: Set<String> = []
+
+    /// Where the app answers a `__birtaPalette` probe (`AppDelegate` sets it).
+    var paletteProbe: ((_ query: String, _ mode: String) -> String)?
+
+    /// The index of `folder`, or nil while it is being built, in which case
+    /// `whenBuilt` runs on the main thread once it is.
+    func fileIndex(for folder: URL, whenBuilt: @escaping () -> Void) -> FileIndex? {
+        let key = folder.standardizedFileURL.path
+        if let index = fileIndexes[key] { return index }
+        guard indexing.insert(key).inserted else { return nil }
+        DispatchQueue.global(qos: .userInitiated).async {
+            let built = FileIndex.build(root: folder, accepts: DocumentTypes.accepts)
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                self.indexing.remove(key)
+                self.fileIndexes[key] = built
+                whenBuilt()
+            }
+        }
+        return nil
+    }
+
+    /// Forget the notes folder's index, so the next ask walks the folder
+    /// again. Nothing watches that folder for the palette, so this is what
+    /// keeps a note made a minute ago findable.
+    func invalidateNotesIndex() {
+        fileIndexes.removeValue(forKey: Prefs.notesDirectory.standardizedFileURL.path)
     }
 
     /// Open a folder as a directory window: the file the folder's own history

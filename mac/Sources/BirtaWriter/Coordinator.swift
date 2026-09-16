@@ -296,6 +296,15 @@ final class Coordinator {
     /// only, so a script can read what a relaunch is about to restore.
     var onOpenSetRequest: (() -> String)?
 
+    /// Drive the command palette over this window, under BIRTA_MAC_MEASURE
+    /// only: the mode and the query, answered with what the palette listed
+    /// (`AppDelegate.probePalette`).
+    var onPaletteRequest: ((_ query: String, _ mode: String) -> String)?
+
+    /// The window itself, for a surface that has to sit over it (the palette
+    /// centres on it). Nothing else about the panel is exposed.
+    var window: NSWindow { panel }
+
     /// Ask the app for the recents menu. Which files the OTHER windows hold is
     /// a fact about the set, so a window can only ask; the missing-file card's
     /// Open Recent button is the one control here that raises it.
@@ -1014,6 +1023,15 @@ final class Coordinator {
             // defaults domain, whose stored form is bytes a shell cannot read.
             if obj["type"] as? String == "__birtaOpenSet" {
                 measure.trace("openset \(onOpenSetRequest?() ?? "unavailable")")
+                return
+            }
+            // The palette, opened over this window in `mode` ("all" or
+            // "files") with `query` typed, traced with its top rows and
+            // closed again. A script cannot press its chord or type in it.
+            if obj["type"] as? String == "__birtaPalette" {
+                let query = obj["query"] as? String ?? ""
+                let mode = obj["mode"] as? String ?? "all"
+                measure.trace("palette \(onPaletteRequest?(query, mode) ?? "unavailable")")
                 return
             }
             // An explicit save, exactly as Cmd+S makes one.

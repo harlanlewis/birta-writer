@@ -70,6 +70,7 @@ enum Prefs {
         case explorerVisibility
         case explorerWidth
         case explorerShowsHidden
+        case paletteRecents
     }
 
     /// The keys a reset must NOT clear, each for a reason of its own.
@@ -595,6 +596,14 @@ enum Prefs {
     static var explorerShowsHidden: Bool {
         get { d.bool(forKey: Key.explorerShowsHidden.rawValue) }
         set { d.set(newValue, forKey: Key.explorerShowsHidden.rawValue) }
+    }
+
+    /// The palette rows picked lately, most recent first, by item id
+    /// (`PaletteModel.recording` keeps the list and its cap). What puts a row
+    /// somebody keeps reaching for at the top of its section.
+    static var paletteRecents: [String] {
+        get { d.stringArray(forKey: Key.paletteRecents.rawValue) ?? [] }
+        set { d.set(Array(newValue.prefix(PaletteModel.recentsKept)), forKey: Key.paletteRecents.rawValue) }
     }
 
     /// The editor's own memory of a DOCUMENT: where it was scrolled, which

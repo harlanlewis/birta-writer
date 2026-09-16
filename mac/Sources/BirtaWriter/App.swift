@@ -25,6 +25,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding {
     /// than a coordinator, so this is the one place that question is answered.
     private var front: Coordinator? { windows.key }
     private var settingsWindow: SettingsWindowController?
+    /// The command palette, built on first use and kept, like the settings
+    /// window: it re-reads its catalog on every open, so keeping the panel
+    /// keeps only the panel (MAR-458).
+    private lazy var palette = PaletteWindowController(
+        catalog: { [weak self] in self?.paletteCatalog() ?? PaletteCatalog() },
+        onPick: { [weak self] action in self?.perform(action) })
     private var showItem: NSMenuItem!
     /// The File menu and its Close row, held so the row can read Close Tab
     /// while the window in front has tabs.
@@ -178,6 +184,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding {
         pendingOpen = nil
         windows.openPreferences = { [weak self] in self?.menuOpenSettings() }
         windows.hidePreferences = { [weak self] in self?.settingsWindow?.close() }
+        windows.paletteProbe = { [weak self] query, mode in
+            self?.probePalette(query: query, mode: mode) ?? "unavailable"
+        }
         let first = windows.openAtLaunch(launchedWith: launchedWith)
         buildStatusMenu()
         applyMenuBarPresence()
@@ -626,6 +635,86 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding {
     /// rooted window at once.
     @objc func menuToggleHiddenFiles() {
         windows.setShowHiddenFiles(!Prefs.explorerShowsHidden)
+    }
+
+    /// Cmd+Shift+P: the palette over everything, above the window in front.
+    @objc func menuOpenPalette() {
+        openPalette(mode: .all)
+    }
+
+    /// Cmd+P: the palette over files alone, which is Go to File.
+    @objc func menuGoToFile() {
+        openPalette(mode: .files)
+    }
+
+    private func openPalette(mode: PaletteMode) {
+        // The file list is built off the main thread and swapped in; the
+        // palette opens on what is there and refreshes when the rest lands.
+        windows.invalidateNotesIndex()
+        palette.open(mode: mode, over: front?.window)
+    }
+
+    /// What the palette lists: the app as it stands at this moment, read from
+    /// the same places the menu bar and Settings read it. `PaletteSources`
+    /// says what each source is.
+    private func paletteCatalog() -> PaletteCatalog {
+        let root = front?.explorerRoot
+        var context = PaletteSources.Context(front: front)
+        context.windows = windows.windows
+        context.menuState = menuState()
+        context.syntaxSets = Prefs.syntaxSets
+        context.pageCommands = front?.paletteCommands ?? []
+        context.recents = Prefs.recentDocuments
+        let refresh: () -> Void = { [weak self] in self?.palette.refresh() }
+        if let root {
+            context.root = root
+            context.rootIndex = windows.fileIndex(for: root, whenBuilt: refresh)
+        } else {
+            context.notesFolder = Prefs.notesDirectory
+            context.notesIndex = windows.fileIndex(for: Prefs.notesDirectory, whenBuilt: refresh)
+        }
+        return PaletteSources.catalog(context)
+    }
+
+    /// Do what a palette pick asks, after the palette has closed. A menu row
+    /// goes through the selector and payload its menu item would carry, so
+    /// the palette and the menu bar cannot disagree about what a row does.
+    private func perform(_ action: PaletteAction) {
+        switch action {
+        case let .menu(row):
+            switch row.action {
+            case let .app(selector):
+                NSApp.sendAction(selector, to: self, from: nil)
+            case let .command(id, arg):
+                front?.runEditorCommand(id, arg: arg)
+            case let .link(link):
+                NSWorkspace.shared.open(link.url)
+            case .submenu, .recents:
+                break
+            }
+        case let .pageCommand(id):
+            front?.runEditorCommand(id, arg: nil)
+        case let .window(coordinator):
+            coordinator.selectTab()
+            coordinator.show()
+        case let .file(url):
+            windows.openDocument(at: url)
+        case let .setting(pane, row):
+            menuOpenSettings()
+            settingsWindow?.show(paneNamed: pane, revealing: row)
+        }
+    }
+
+    /// The palette as `measure.sh` drives it: open in `mode`, type `query`,
+    /// report the top rows, close. What comes back is the trace line's tail.
+    func probePalette(query: String, mode: String) -> String {
+        openPalette(mode: mode == "files" ? .files : .all)
+        palette.setQuery(query)
+        let top = palette.rows.prefix(3).map { "\($0.title)|\($0.item.detail ?? "-")" }
+        let line = "mode=\(mode) query=\(query) rows=\(palette.rows.count) open=\(palette.isOpen)"
+            + " top=\(top.joined(separator: ";"))"
+        palette.close()
+        return line
     }
     @objc func menuOpenDocument() { windows.openDocumentPanel() }
 

@@ -500,9 +500,27 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     /// ignored rather than fatal: the variable is a probe, and a typo in it
     /// should not stop the app.
     func selectTabForTesting(_ name: String) {
+        show(paneNamed: name, revealing: nil)
+    }
+
+    /// The pane names `show(paneNamed:revealing:)` answers to, in tab order,
+    /// for the palette to group Settings by; unknown names are ignored there.
+    static var paneNames: [String] { Tab.allCases.map(\.rawValue) }
+
+    /// The panes' titles in the same order, for a check that the palette's
+    /// groups say what the toolbar says.
+    static var paneTitles: [String] { Tab.allCases.map(\.title) }
+
+    /// Show the pane named `name` and, given a row, scroll it into view: what
+    /// picking a Settings row in the command palette does (MAR-458). The row's
+    /// availability is left as the pane drew it; a row that cannot be operated
+    /// still says why, which is what the reader came to see.
+    func show(paneNamed name: String, revealing row: SettingsRow?) {
         guard let tab = Tab(rawValue: name) else { return }
         window?.toolbar?.selectedItemIdentifier = NSToolbarItem.Identifier(tab.rawValue)
         show(tab)
+        guard let row, let view = rowViews[row] else { return }
+        view.scrollToVisible(view.bounds)
     }
 
     /// Show every row an answer above it can take away, and every caption that
