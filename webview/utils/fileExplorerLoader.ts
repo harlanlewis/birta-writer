@@ -25,7 +25,7 @@ import type {
     FileExplorerHost,
 } from "../components/fileExplorer";
 
-export type FileExplorerDeps = Pick<FileExplorerHost, "eventManager" | "getEditorView" | "neighborReserve">;
+export type FileExplorerDeps = Pick<FileExplorerHost, "eventManager" | "getEditorView" | "neighborReserve" | "onReserveChange">;
 
 export interface FileExplorerGate {
     /** The window's root, or null for a single-file window. Loads the chunk on the first folder. */
@@ -41,6 +41,8 @@ export interface FileExplorerGate {
     setFlyoutTrigger(el: HTMLElement): void;
     /** What the docked-open panel takes off the viewport, for the TOC's own docking decision. */
     dockedReserve(): number;
+    /** Re-decide docked against overlay; nothing to decide before the panel exists. */
+    checkResponsiveMode(): void;
 }
 
 export function createFileExplorerGate(deps: FileExplorerDeps): FileExplorerGate {
@@ -110,5 +112,6 @@ export function createFileExplorerGate(deps: FileExplorerDeps): FileExplorerGate
             controller?.setFlyoutTrigger(el);
         },
         dockedReserve: () => controller?.dockedReserve() ?? 0,
+        checkResponsiveMode: () => controller?.checkResponsiveMode(),
     };
 }

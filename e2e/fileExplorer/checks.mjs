@@ -152,7 +152,26 @@ export async function run({ page, check, baseUrl }) {
         bw.left === Math.max(LEFT_PAD, filesWidth + GAP) && bw.before > bw.left && bw.target.includes(`${filesWidth}px`),
         JSON.stringify(bw));
 
-    // Both panels open (TOC right): centred between them in fixed mode.
+    // At the runner's width the TOC cannot dock beside the docked explorer
+    // (1000 - 220 leaves less than the TOC's 260 + 720), so opening it floats
+    // it: the decision is re-made when the explorer's reserve landed, not
+    // left as it stood at load with no explorer yet.
+    await press(".tb-toc-btn");
+    await page.waitForTimeout(SETTLE);
+    const floated = await page.evaluate(() => ({
+        docked: document.body.classList.contains("toc-open"),
+        overlayOpen: document.body.classList.contains("toc-overlay-open"),
+        marginLeft: Math.round(parseFloat(getComputedStyle(document.querySelector("#editor")).marginLeft)),
+    }));
+    check("fixed width, both panels at the runner's width: the TOC floats rather than docking into the content",
+        !floated.docked && floated.overlayOpen && Math.abs(floated.marginLeft - centred) <= 1, JSON.stringify(floated));
+    await press(".tb-toc-btn"); // close the floating TOC
+    await page.waitForTimeout(SETTLE);
+
+    // Both panels docked open (TOC right), on a viewport that holds them:
+    // centred between them in fixed mode.
+    await page.setViewportSize({ width: 1400, height: 900 });
+    await page.waitForTimeout(SETTLE);
     await press(".tb-toc-btn");
     await page.waitForTimeout(SETTLE);
     const both = await page.evaluate(() => {
@@ -192,6 +211,8 @@ export async function run({ page, check, baseUrl }) {
             && fullBoth.marginRight >= both.tocWidth + GAP - 48 - 1,
         JSON.stringify(fullBoth));
     await press(".tb-toc-btn"); // close the TOC again
+    await page.waitForTimeout(SETTLE);
+    await page.setViewportSize({ width: 1000, height: 900 });
     await page.waitForTimeout(SETTLE);
 
     // ── Expanding a folder asks for exactly one listing ──────────────────

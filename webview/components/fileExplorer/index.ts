@@ -65,6 +65,8 @@ export interface FileExplorerHost {
     getEditorView: () => EditorView | null;
     /** Pixels the other docked side panel (the TOC) takes on the viewport. */
     neighborReserve: () => number;
+    /** This panel's docked footprint changed; the TOC re-decides its mode. */
+    onReserveChange?: () => void;
     root: ProjectRoot;
     showHidden: boolean;
     /** The remembered show/hide choice, when the host has one. */
@@ -89,6 +91,8 @@ export interface FileExplorerController {
     isOpen: () => boolean;
     /** The width this panel takes off the viewport while docked open, else 0. */
     dockedReserve: () => number;
+    /** Re-decide docked against overlay: what the TOC's `onReserveChange` runs. */
+    checkResponsiveMode: () => void;
     dispose: () => void;
 }
 
@@ -118,6 +122,7 @@ export function createFileExplorer(host: FileExplorerHost): FileExplorerControll
         },
         dockedMinContentWidth: DOCKED_MIN_CONTENT_WIDTH,
         neighborReserve: host.neighborReserve,
+        onReserveChange: host.onReserveChange,
         // The bar carries the button that shows this panel; it registers
         // itself through `setFlyoutTrigger`. No reveal tab of its own.
         trigger: { kind: "external" },
@@ -426,7 +431,8 @@ export function createFileExplorer(host: FileExplorerHost): FileExplorerControll
         },
         setFlyoutTrigger: (el) => shell.setFlyoutTrigger(el),
         isOpen: () => shell.isOpen(),
-        dockedReserve: () => (shell.isOpen() && shell.mode() === "docked" ? shell.width() : 0),
+        dockedReserve: shell.dockedReserve,
+        checkResponsiveMode: shell.checkResponsiveMode,
         dispose() {
             for (const { timer } of inflight.values()) { clearTimeout(timer); }
             inflight.clear();

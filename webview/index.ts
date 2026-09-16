@@ -660,15 +660,21 @@ const eventManager = createEventManager();
 // panel's chunk (utils/fileExplorerLoader.ts). It is built before the TOC
 // because the two ask each other how much viewport the other's docked panel
 // takes, and this one's answer is only ever asked for on a message, which is
-// after everything below has run.
+// after everything below has run. Each also tells the other when its own
+// docked footprint moves, so a panel docked into room the other has since
+// taken floats at that moment rather than at the next window resize.
 const fileExplorer = createFileExplorerGate({
     eventManager,
     getEditorView: () => getEditorView(),
     neighborReserve: () => toc?.dockedReserve() ?? 0,
+    onReserveChange: () => toc?.checkResponsiveMode(),
 });
 mark("toc-start");
 const toc = hostHas("toc")
-    ? initToc(eventManager, () => getEditorView(), { neighborReserve: () => fileExplorer.dockedReserve() })
+    ? initToc(eventManager, () => getEditorView(), {
+        neighborReserve: () => fileExplorer.dockedReserve(),
+        onReserveChange: () => fileExplorer.checkResponsiveMode(),
+    })
     : null;
 if (toc) { document.body.appendChild(toc.panel); }
 mark("toc-end");

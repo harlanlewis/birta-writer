@@ -90,6 +90,11 @@ export interface SidePanelShellOptions {
     /** Pixels another docked panel already takes on the viewport (a second
      *  side panel on the same surface). Read at every mode decision. */
     neighborReserve?: () => number;
+    /** This panel's own `dockedReserve` just changed (it opened or closed
+     *  docked, flipped mode, or was resized): what a NEIGHBOUR wires to its
+     *  own `checkResponsiveMode`, so the two panels' docking decisions are
+     *  re-made when either moves rather than only on a viewport resize. */
+    onReserveChange?: () => void;
     trigger: SidePanelTrigger;
     /** What the reveal tab's click and Enter/Space run. Defaults to `toggle`;
      *  a composer that persists the choice passes its own. */
@@ -137,6 +142,10 @@ export interface SidePanelShell {
     settleMode: () => SidePanelMode;
     /** Re-read the viewport; on a mode change, decide open-ness and commit. */
     checkResponsiveMode: () => void;
+    /** The width this panel takes off the viewport while docked open, else
+     *  0: what a second side panel subtracts before deciding whether it can
+     *  dock (its `neighborReserve`). */
+    dockedReserve: () => number;
     /** Align the drawer under the topbar and land the tab over the controls. */
     updatePosition: () => void;
     setSide: (right: boolean) => void;
@@ -163,6 +172,7 @@ export function createSidePanelShell(opts: SidePanelShellOptions): SidePanelShel
     const { prefix } = opts;
     const body = document.body;
     const neighborReserve = opts.neighborReserve ?? (() => 0);
+    const onReserveChange = opts.onReserveChange ?? (() => {});
     const dragInFlight = opts.dragInFlight ?? (() => false);
     const onPresentationSync = opts.onPresentationSync ?? (() => {});
     const onFlyoutShown = opts.onFlyoutShown ?? (() => {});
@@ -207,6 +217,26 @@ export function createSidePanelShell(opts: SidePanelShellOptions): SidePanelShel
         document.documentElement.style.setProperty(opts.width.cssVar, `${width}px`);
         updateTab();
         onPresentationSync(); // the row's available width changed
+        notifyReserve();
+    }
+
+    function dockedReserve(): number {
+        return isOpen && mode === "docked" ? width : 0;
+    }
+
+    // The neighbour is told only when the number it reads actually moved, so
+    // a commit that changes nothing about the docked footprint (a flyout, a
+    // body re-render) costs it nothing, and the two panels cannot ping-pong:
+    // each tells the other only on a change, and a change a re-check causes
+    // is at most one more.
+    let lastReserve = 0;
+    function notifyReserve(): void {
+        const next = dockedReserve();
+        if (next === lastReserve) {
+            return;
+        }
+        lastReserve = next;
+        onReserveChange();
     }
 
     function updateTab(): void {
@@ -303,6 +333,7 @@ export function createSidePanelShell(opts: SidePanelShellOptions): SidePanelShel
             void panel.offsetWidth;
             setInstant(false);
         }
+        notifyReserve();
     }
 
     function close(): void {
@@ -448,6 +479,7 @@ export function createSidePanelShell(opts: SidePanelShellOptions): SidePanelShel
             return mode;
         },
         checkResponsiveMode,
+        dockedReserve,
         updatePosition,
         setSide,
         sideIcon: () => sideIcon(right),

@@ -59,6 +59,8 @@ export interface TocOptions {
      * into room the other is standing in.
      */
     neighborReserve?: () => number;
+    /** This panel's docked footprint changed; the neighbour re-decides. */
+    onReserveChange?: () => void;
 }
 
 export function initToc(eventManager: EventManager, getEditorView: () => EditorView | null, options: TocOptions = {}): {
@@ -67,6 +69,9 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
     /** The width this panel takes off the viewport while docked open, else 0:
      *  what a second side panel subtracts before deciding whether it can dock. */
     dockedReserve: () => number;
+    /** Re-decide docked against overlay from the viewport and the neighbour's
+     *  reserve: what the neighbour's `onReserveChange` runs. */
+    checkResponsiveMode: () => void;
     /** Full re-sync (presentation + content) — load time, and any caller whose
      *  own state may have changed. Not for doc changes: see refreshContent. */
     refresh: () => void;
@@ -184,6 +189,7 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         },
         dockedMinContentWidth: DOCKED_MIN_CONTENT_WIDTH,
         neighborReserve: options.neighborReserve ?? (() => 0),
+        onReserveChange: options.onReserveChange,
         // Under `tocToggleInBar` the reveal tab is never put on the page: the
         // bar already carries a button that does exactly this, and two of them
         // a few pixels apart is one control drawn twice. The surface registers
@@ -1307,7 +1313,8 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         setWidth: (width: number) => { shell.setWidth(width); shell.checkResponsiveMode(); },
         isOpen: () => shell.isOpen(),
         isRight: () => shell.isRight(),
-        dockedReserve: () => (shell.isOpen() && shell.mode() === "docked" ? shell.width() : 0),
+        dockedReserve: shell.dockedReserve,
+        checkResponsiveMode: shell.checkResponsiveMode,
         setNotesMarkers: (markers: string[]) => {
             notesView.setMarkers(markers);
             scheduleTabVisibility(); // a new marker set can create/clear notes

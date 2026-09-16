@@ -163,6 +163,45 @@ describe("side-panel shell: docked vs overlay from the viewport", () => {
         expect(shell.settleMode()).toBe("overlay");
     });
 
+    it("the neighbour should be told when, and only when, the docked footprint moves", () => {
+        setViewportWidth(1200);
+        const onReserveChange = vi.fn();
+        const shell = createSidePanelShell(filesOptions({ onReserveChange }));
+        shell.settleMode();
+        expect(shell.dockedReserve()).toBe(0);
+        shell.open();
+        expect(shell.dockedReserve()).toBe(220);
+        expect(onReserveChange).toHaveBeenCalledTimes(1);
+        shell.sync(); // a re-render with nothing moved
+        expect(onReserveChange).toHaveBeenCalledTimes(1);
+        shell.setWidth(300); // wider while docked open: the footprint grew
+        expect(shell.dockedReserve()).toBe(300);
+        expect(onReserveChange).toHaveBeenCalledTimes(2);
+        setViewportWidth(700); // 300 + 600 no longer fits: the flip frees the room
+        shell.checkResponsiveMode();
+        expect(shell.mode()).toBe("overlay");
+        expect(shell.dockedReserve()).toBe(0);
+        expect(onReserveChange).toHaveBeenCalledTimes(3);
+        shell.close(); // closed overlay to closed overlay: nothing moved
+        expect(onReserveChange).toHaveBeenCalledTimes(3);
+    });
+
+    it("a neighbour opening should be able to float this panel through checkResponsiveMode", () => {
+        setViewportWidth(900); // room for 220 + 600 alone
+        let neighbour = 0;
+        const shell = createSidePanelShell(filesOptions({ neighborReserve: () => neighbour }));
+        shell.settleMode();
+        shell.open();
+        expect(shell.mode()).toBe("docked");
+        neighbour = 100; // the other panel docked open
+        shell.checkResponsiveMode();
+        expect(shell.mode()).toBe("overlay");
+        expect(shell.isOpen()).toBe(false);
+        neighbour = 0;
+        shell.checkResponsiveMode();
+        expect(shell.mode()).toBe("docked");
+    });
+
     it("a responsive flip to docked should ask the composer whether to reopen", () => {
         setViewportWidth(700);
         const openOnDock = vi.fn(() => true);
