@@ -2513,25 +2513,37 @@ sleep 2
 # the height comparison below is; and the page has been told the split, so
 # its first row is still sized by the title row and a gap under it clears the
 # bar. The tab stays open, so the restore arm below carries a group.
+#
+# The count is a difference, not a literal: the system's "prefer tabs when
+# opening documents" setting decides whether the windows the arms above opened
+# already share this bar, so what this arm owns is that ONE tab joined.
+tabs_trace() {
+    printf '{"type":"__birtaTabs"}' > "$SCRATCH_DIR/.debug-message.json"
+    kill -URG $PID; sleep 1
+    rm -f "$SCRATCH_DIR/.debug-message.json"
+    grep "^birta-trace tabs " "$LOG" | tail -1 | sed 's/^birta-trace tabs //' || true
+}
 TABS_BEFORE=$(grep -c "^birta-trace tabs " "$LOG" || true)
+TABS_WERE="$(tabs_trace)"
+TAB_COUNT_BEFORE="$(printf '%s' "$TABS_WERE" | sed -n 's/.*count=\([0-9]*\).*/\1/p')"
 printf '{"type":"__birtaNewTab"}' > "$SCRATCH_DIR/.debug-message.json"
 kill -URG $PID; sleep 3
 rm -f "$SCRATCH_DIR/.debug-message.json"
-printf '{"type":"__birtaTabs"}' > "$SCRATCH_DIR/.debug-message.json"
-kill -URG $PID; sleep 1
-rm -f "$SCRATCH_DIR/.debug-message.json"
-TABS="$(grep "^birta-trace tabs " "$LOG" | tail -1 | sed 's/^birta-trace tabs //' || true)"
-if [ "$(grep -c "^birta-trace tabs " "$LOG" || true)" -le "$TABS_BEFORE" ] || [ -z "$TABS" ]; then
+TABS="$(tabs_trace)"
+if [ "$(grep -c "^birta-trace tabs " "$LOG" || true)" -le "$((TABS_BEFORE + 1))" ] || [ -z "$TABS" ] || [ -z "$TAB_COUNT_BEFORE" ]; then
     echo "tab bar              FAILED: the app never reported its tabs" >&2; exit 1
 fi
 TAB_COUNT="$(printf '%s' "$TABS" | sed -n 's/.*count=\([0-9]*\).*/\1/p')"
 TAB_BAR="$(printf '%s' "$TABS" | sed -n 's/.*barVisible=\([a-z]*\).*/\1/p')"
 TAB_BAND="$(printf '%s' "$TABS" | sed -n 's/.*band=\([0-9.]*\).*/\1/p')"
-TAB_BAR_H="$(printf '%s' "$TABS" | sed -n 's/.*tabbar={{[0-9.-]*, [0-9.-]*}, {[0-9.-]*, \([0-9.]*\)}}.*/\1/p')"
+# The bar's height as the APP measures it (the accessory row AppKit inserted),
+# which is the number the page is told; the inner strip view is shorter than
+# its row and is not what the split is made from.
+TAB_BAR_H="$(printf '%s' "$TABS" | sed -n 's/.*tabBarHeight=\([0-9.]*\).*/\1/p')"
 TAB_DRAG_H="$(printf '%s' "$TABS" | sed -n 's/.*drag={{[0-9.-]*, [0-9.-]*}, {[0-9.-]*, \([0-9.]*\)}}.*/\1/p')"
 TAB_PLUS="$(printf '%s' "$TABS" | sed -n 's/.*newTab=\([^ ]*\).*/\1/p')"
-if [ "$TAB_COUNT" != "2" ] || [ "$TAB_BAR" != "true" ] || [ -z "$TAB_BAR_H" ] || [ "$TAB_PLUS" = "none" ]; then
-    echo "tab bar              FAILED: expected two tabs with the bar and its + button up" >&2
+if [ "$TAB_COUNT" != "$((TAB_COUNT_BEFORE + 1))" ] || [ "$TAB_COUNT" -lt 2 ] || [ "$TAB_BAR" != "true" ] || [ -z "$TAB_BAR_H" ] || [ "$TAB_BAR_H" = "0.0" ] || [ "$TAB_PLUS" = "none" ]; then
+    echo "tab bar              FAILED: expected one tab to join ($TAB_COUNT_BEFORE before) with the bar and its + button up" >&2
     echo "  $TABS" >&2; exit 1
 fi
 # The strip's height plus the bar's is the band: the strip took the title row
@@ -2540,7 +2552,7 @@ if [ "$(awk -v d="$TAB_DRAG_H" -v b="$TAB_BAR_H" -v band="$TAB_BAND" 'BEGIN { pr
     echo "tab bar              FAILED: the drag strip does not stop at the tab bar (strip $TAB_DRAG_H + bar $TAB_BAR_H != band $TAB_BAND)" >&2
     echo "  $TABS" >&2; exit 1
 fi
-echo "tab bar              ok: two tabs, bar and + up, the drag strip keeps to the title row ($TAB_DRAG_H of $TAB_BAND)"
+echo "tab bar              ok: a tab joined ($TAB_COUNT_BEFORE to $TAB_COUNT), bar and + up, the drag strip keeps to the title row ($TAB_DRAG_H of $TAB_BAND)"
 
 # A DIRECTORY WINDOW (MAR-457): a folder opens as a window rooted at it, the
 # page's listing request is answered with the folder's entries, a change on

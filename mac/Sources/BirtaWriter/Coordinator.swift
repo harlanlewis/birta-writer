@@ -3803,7 +3803,7 @@ final class Coordinator {
         if let theme = panel.contentView?.superview { walk(theme, depth: 0) }
         measure.trace("tabs count=\(names.count) names=\(names.joined(separator: ";")) selected=\(selected)"
                       + " barVisible=\(group?.isTabBarVisible == true) mode=\(panel.tabbingMode.rawValue)"
-                      + " identifier=\(panel.tabbingIdentifier) band=\(titlebarBandHeight)"
+                      + " identifier=\(panel.tabbingIdentifier) band=\(titlebarBandHeight) tabBarHeight=\(tabBarHeight)"
                       + " frame=\(NSStringFromRect(panel.frame)) contentLayout=\(NSStringFromRect(panel.contentLayoutRect))"
                       + " titlebar=\(titlebar) tabbar=\(tabbar) newTab=\(newTab)"
                       + " drag=\(NSStringFromRect(titlebarDrag.frame)) dragHidden=\(titlebarDrag.isHidden)"
