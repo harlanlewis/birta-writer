@@ -8,6 +8,7 @@
  * fixtures where that one differs.
  */
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { budget } from "./helpers/testBudget";
 import { parserCtx, schemaCtx, type Editor } from "@milkdown/core";
 import type { Node as ProseNode, Schema } from "../pm";
 import { markdownParse } from "../format/markdown/parse";
@@ -62,10 +63,10 @@ describe("the headless parser against the live editor's", () => {
         }
         expect(differing).toEqual([]);
         expect(compared).toBe(fixtures.length);
-    }, 60_000);
+    }, budget(60_000));
 
     it("a parser built from commonmark alone should differ somewhere, so the comparison discriminates", () => {
         const differing = fixtures.filter((f) => !sameTree(liveParse(f.content), commonmarkOnly.parse(f.content)));
         expect(differing.length).toBeGreaterThan(0);
-    }, 60_000);
+    }, budget(60_000));
 });

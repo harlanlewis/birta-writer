@@ -25,6 +25,7 @@
  * needs a DOM.
  */
 import { describe, it, expect } from "vitest";
+import { budget } from "./helpers/testBudget";
 import { FIXTURES, HEAVY_FIXTURES } from "../../e2e/perf/fixtures.mjs";
 import { makeCorpusEditor, editorView } from "./helpers/moveFuzz";
 
@@ -76,7 +77,7 @@ describe("launch-perf fixture constructs", () => {
                 `${HTML_FIXTURE} produced ${html} html nodes; node types present: ${[...counts.keys()].sort().join(", ")}`,
             ).toBeGreaterThan(50);
         },
-        30_000,
+        budget(30_000),
     );
 
     it(
@@ -89,7 +90,7 @@ describe("launch-perf fixture constructs", () => {
             expect(soleBlock, "block-level html atoms").toBeGreaterThan(0);
             expect(inline, "inline html atoms sharing a paragraph").toBeGreaterThan(0);
         },
-        30_000,
+        budget(30_000),
     );
 
     it(
@@ -104,7 +105,7 @@ describe("launch-perf fixture constructs", () => {
             expect(soleBlock, "block-level html atoms").toBeGreaterThan(0);
             expect(inline, "inline html atoms sharing a paragraph").toBeGreaterThan(0);
         },
-        30_000,
+        budget(30_000),
     );
 
     it(
@@ -129,7 +130,7 @@ describe("launch-perf fixture constructs", () => {
             }
             expect(withHtml.sort()).toEqual([HTML_FIXTURE, GATED_HTML_FIXTURE].sort());
         },
-        120_000,
+        budget(120_000),
     );
 
     /**
@@ -175,6 +176,6 @@ describe("launch-perf fixture constructs", () => {
                 expect(at(type), `${type} nodes; node types present: ${present}`).toBe(0);
             }
         },
-        120_000,
+        budget(120_000),
     );
 });

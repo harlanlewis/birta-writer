@@ -26,6 +26,7 @@
  * a qualifying gesture, and each premise is asserted before the invariant.
  */
 import { describe, it, expect, vi, beforeAll, afterEach } from "vitest";
+import { budget } from "./helpers/testBudget";
 import { editorViewCtx, parserCtx, serializerCtx, type Editor } from "@milkdown/core";
 import { getMarkdown } from "@milkdown/utils";
 import { applyMinimalChanges, serializerFallback } from "@birta/minimal-diff";
@@ -65,7 +66,7 @@ vi.mock("../editing/rangeIndicator", () => ({
 // Driving the real production stack, like savePipeline.test.ts: jsdom has no
 // ResizeObserver and no rAF, and the first editor built in a process pays a
 // one-time deferred-plugin charge the 5s default does not fit.
-vi.setConfig({ testTimeout: 60_000, hookTimeout: 60_000 });
+vi.setConfig({ testTimeout: budget(60_000), hookTimeout: budget(60_000) });
 beforeAll(() => {
     if (typeof globalThis.ResizeObserver === "undefined") {
         globalThis.ResizeObserver = class {

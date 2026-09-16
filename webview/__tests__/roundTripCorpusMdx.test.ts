@@ -11,6 +11,7 @@
  * the day an mdx line-ending bug is found.
  */
 import { describe, it, expect } from "vitest";
+import { budget } from "./helpers/testBudget";
 import { editorViewCtx } from "@milkdown/core";
 import { getMarkdown } from "@milkdown/utils";
 import { applyMinimalChanges, computeRoundTripProtection } from "../utils/minimalDiff";
@@ -94,7 +95,7 @@ async function reparsedShape(mdx: string): Promise<string[]> {
     return kinds;
 }
 
-const INVARIANT_C_TIMEOUT_MS = 30_000;
+const INVARIANT_C_TIMEOUT_MS = budget(30_000);
 
 describe("mdx corpus invariant C — typing inside a block never restructures the document", { timeout: INVARIANT_C_TIMEOUT_MS }, () => {
     for (const { name, content } of fixtures) {

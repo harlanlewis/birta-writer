@@ -36,6 +36,7 @@
  * performs. Each carries its own reasoning at the section.
  */
 import { describe, it, expect } from "vitest";
+import { budget } from "./helpers/testBudget";
 import { editorViewCtx } from "@milkdown/core";
 import { getMarkdown } from "@milkdown/utils";
 import { applyMinimalChanges, computeRoundTripProtection } from "../utils/minimalDiff";
@@ -176,7 +177,7 @@ function stridedSample<T>(items: readonly T[], budget: number): T[] {
 // On the largest fixture (`content-inventory.md`) that measured 6608 ms, above
 // the 5 s default. Headroom over a measured cost, scoped to this suite so the
 // other three invariants keep the tight default.
-const INVARIANT_C_TIMEOUT_MS = 30_000;
+const INVARIANT_C_TIMEOUT_MS = budget(30_000);
 
 describe("corpus invariant C — typing inside a block never restructures the document", { timeout: INVARIANT_C_TIMEOUT_MS }, () => {
     // The stride is the point: a budget taken from the FRONT is a budget a
@@ -255,7 +256,7 @@ describe("corpus invariant C — typing inside a block never restructures the do
  * edits, one save" is an ordinary sitting's work — which is why a gate that
  * saves after every keystroke overstates its coverage.
  */
-const INVARIANT_E_TIMEOUT_MS = 30_000;
+const INVARIANT_E_TIMEOUT_MS = budget(30_000);
 
 describe("corpus invariant E — one save carrying several edits never restructures the document", { timeout: INVARIANT_E_TIMEOUT_MS }, () => {
     for (const { name, content } of fixtures) {

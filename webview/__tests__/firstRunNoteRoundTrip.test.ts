@@ -23,6 +23,7 @@
  * tour is held to the bar every other document in the repo is held to.
  */
 import { describe, it, expect, vi } from "vitest";
+import { budget } from "./helpers/testBudget";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { editorViewCtx } from "@milkdown/core";
@@ -43,7 +44,7 @@ import { makeCorpusEditor as makeEditor } from "./helpers/moveFuzz";
 // Per-file, not project-wide, so a genuine hang in an ordinary webview test
 // still trips the 5s default. `npx vitest run
 // webview/__tests__/firstRunNoteRoundTrip.test.ts` is how to see the real cost.
-vi.setConfig({ testTimeout: 30_000, hookTimeout: 30_000 });
+vi.setConfig({ testTimeout: budget(30_000), hookTimeout: budget(30_000) });
 
 const root = path.resolve(__dirname, "../..");
 

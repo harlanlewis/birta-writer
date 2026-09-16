@@ -7,6 +7,7 @@
  * position mapping the run accumulated, refusing where they collide.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { budget } from "./helpers/testBudget";
 import { Editor, rootCtx, defaultValueCtx, editorViewCtx, parserCtx } from "@milkdown/core";
 import { history, undo } from "../pm";
 import { TextSelection } from "../pm";
@@ -505,5 +506,5 @@ describe("applyAgentResult over the corpus", () => {
             }
         }
         expect(refused).toEqual([]);
-    }, 120_000);
+    }, budget(120_000));
 });

@@ -8,6 +8,7 @@
  * else in the suite would notice it.
  */
 import { describe, it, expect, vi, afterEach } from "vitest";
+import { budget } from "./helpers/testBudget";
 import { parserCtx, serializerCtx, type Editor } from "@milkdown/core";
 import { getMarkdown } from "@milkdown/utils";
 import { applyMinimalChanges, serializerFallback } from "@birta/minimal-diff";
@@ -310,7 +311,7 @@ describe("mergeVerifiedWith decides as mergeVerified", () => {
         // The oracle was consulted, so the agreement is not the short-circuit
         // agreeing with itself over a corpus the serializer spells canonically.
         expect(oracle.asked()).toBeGreaterThan(0);
-    }, 120_000);
+    }, budget(120_000));
 
     it("on the merge the corpus is known to damage, both forms should choose the serializer's bytes", async () => {
         const editor = await makeEditor(FOUR_SPACE_DEPTH_3);

@@ -18,6 +18,7 @@
  * sweep that enumerates nothing fails instead of going green.
  */
 import { describe, it, expect, afterEach } from "vitest";
+import { budget } from "./helpers/testBudget";
 import { Editor, rootCtx, defaultValueCtx, editorViewCtx } from "@milkdown/core";
 import { Selection } from "../pm";
 import type { EditorView } from "../pm";
@@ -208,7 +209,7 @@ describe("slash-menu rows against what the editor can actually do", () => {
         }
         expect(checked).toBeGreaterThanOrEqual(100);
         expect(silent).toEqual([]);
-    }, 120_000);
+    }, budget(120_000));
 
     it("a row the placement probe hides should be one that would do nothing", async () => {
         const wrongly: string[] = [];
@@ -239,7 +240,7 @@ describe("slash-menu rows against what the editor can actually do", () => {
         }
         expect(checked).toBeGreaterThanOrEqual(15);
         expect(wrongly).toEqual([]);
-    }, 120_000);
+    }, budget(120_000));
 });
 
 describe("what the probe hides, per context", () => {
@@ -280,5 +281,5 @@ describe("what the probe hides, per context", () => {
             { container: "container_directive", hidden: [] },
             { container: "footnote_definition", hidden: [] },
         ]);
-    }, 60_000);
+    }, budget(60_000));
 });

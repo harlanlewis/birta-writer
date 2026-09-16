@@ -306,7 +306,7 @@ describe("idle deferral", () => {
         reportWordCount(view);
         vi.advanceTimersByTime(DEBOUNCE_MS);
 
-        expect(idleCallbacks[0].opts).toEqual({ timeout: IDLE_TIMEOUT_MS });
+        expect(idleCallbacks[0].opts).toEqual({ timeout: IDLE_TIMEOUT_MS }); // budget-exempt: the reporter's own idle deadline, not a test budget
     });
 
     it("a new report before the idle callback runs should cancel the pending one", () => {

@@ -15,6 +15,7 @@
  * `e2e/progressiveOpen`.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { budget } from "./helpers/testBudget";
 import { editorViewCtx, parserCtx, type Editor } from "@milkdown/core";
 import { getMarkdown } from "@milkdown/utils";
 import type { EditorView, Node as ProseNode } from "../pm";
@@ -63,7 +64,7 @@ function outline(sections: number, headingText = (i: number) => `Section ${i}`):
     return lines.join("\n");
 }
 
-describe("progressive open", { timeout: 60_000 }, () => {
+describe("progressive open", { timeout: budget(60_000) }, () => {
     let editor: Editor | null = null;
     let container: HTMLElement;
     let updates: string[];
@@ -136,7 +137,7 @@ describe("progressive open", { timeout: 60_000 }, () => {
         // Reach: a segmenter that cuts nothing streams nothing, and the loop
         // above passes vacuously.
         expect(streamed.length).toBeGreaterThan(20);
-    }, 240_000);
+    }, budget(240_000));
 
     it("a repeated heading in a later chunk should get the id a whole seed gives it", async () => {
         const text = outline(SECTIONS, () => "Notes");
@@ -183,7 +184,7 @@ describe("progressive open", { timeout: 60_000 }, () => {
         }
         expect(updates).toHaveLength(1);
         expect(updates[0]).toBe(text.replace("Opening paragraph.", "Opening paragraph. edited"));
-    }, 20_000);
+    }, budget(20_000));
 
     it("an external sync while the document arrives should replace it whole and stop the stream", async () => {
         const text = outline(SECTIONS);

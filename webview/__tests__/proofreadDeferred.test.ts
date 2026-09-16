@@ -15,6 +15,7 @@
  * which fake timers advance.
  */
 import { describe, it, expect, beforeAll, beforeEach, afterEach, vi } from "vitest";
+import { budget } from "./helpers/testBudget";
 import { mockVscodeApi } from "./setup";
 
 // Each test loads the editor's module graph from a fresh registry (see
@@ -23,7 +24,7 @@ import { mockVscodeApi } from "./setup";
 // headroom against the 5 s default, which is thin under full-suite load, so the
 // file keeps a per-file override. The cost is the module-graph load, not the
 // wordlist compile — do not re-attribute it without re-measuring.
-vi.setConfig({ testTimeout: 20_000, hookTimeout: 20_000 });
+vi.setConfig({ testTimeout: budget(20_000), hookTimeout: budget(20_000) });
 
 // A pass-through spy on the one call whose cost the disabled-state tests below
 // are about. Compiling the phrase lists into alternation regexes is the

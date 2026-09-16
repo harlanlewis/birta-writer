@@ -9,6 +9,7 @@
  * nothing passes (AGENTS.md, "Choosing what to assert").
  */
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { budget } from "./helpers/testBudget";
 import { TextSelection } from "../pm";
 import { makeCorpusEditor, editorView } from "./helpers/moveFuzz";
 import { collectEmbeds } from "../plugins/embed";
@@ -54,7 +55,7 @@ afterEach(() => {
 // 15 providers, one real Milkdown editor each. Measured cost is dominated by
 // editor construction, not by the assertions; a per-describe timeout keeps the
 // project default from being raised for everyone else.
-describe("the per-provider roster at collectEmbeds", { timeout: 60_000 }, () => {
+describe("the per-provider roster at collectEmbeds", { timeout: budget(60_000) }, () => {
     it("switching a provider off should stop its cards and no others", async () => {
         const covered: EmbedKind[] = [];
         const unreachable: string[] = [];

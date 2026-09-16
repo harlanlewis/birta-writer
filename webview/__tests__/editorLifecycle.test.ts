@@ -15,10 +15,11 @@
  * acquireVsCodeApi is injected globally by setup.ts.
  */
 import { describe, it, expect, beforeAll, beforeEach, vi } from "vitest";
+import { budget } from "./helpers/testBudget";
 
 // Building the full Milkdown stack is real work — same budget rationale as
 // savePipeline.test.ts (one-time proofread wordlist compile can land here).
-vi.setConfig({ testTimeout: 30_000, hookTimeout: 30_000 });
+vi.setConfig({ testTimeout: budget(30_000), hookTimeout: budget(30_000) });
 
 // Controls the mocked grammar loader below: when `fail` is set, a document
 // containing a code fence makes createEditor reject partway through — the
