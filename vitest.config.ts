@@ -18,8 +18,9 @@ const COVERAGE_FACTOR = 4;
 
 // The corpus sweeps: suites that walk every fixture under samples/ and the
 // perf fixtures through a real editor. They are fidelity gates, and they run
-// bare on every push (`pnpm test`); the three the nightly fidelity job names
-// run again there with a seed. Under instrumentation they are the slow tail
+// bare on every push (`pnpm test`); the nightly fidelity job runs the move
+// sampler again with a seed and the two round-trip suites again as they
+// are. Under instrumentation they are the slow tail
 // of the coverage run, so the coverage run leaves them out: thin cloud, thick
 // local. Membership is a measurement, not a taste: a suite stays IN the
 // coverage run when a production file is reached by it and little else,

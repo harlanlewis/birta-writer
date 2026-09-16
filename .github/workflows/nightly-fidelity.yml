@@ -120,10 +120,10 @@ jobs:
   # the commits that could have moved it.
   #
   # The run leaves out the corpus sweeps (`CORPUS_SWEEPS` in vitest.config.ts):
-  # they run bare on every push, and the three the job above names by
-  # substring (both round-trip corpus suites and the move sampler) run again
-  # there with the nightly seed. Under instrumentation they are the slow
-  # tail, and the threshold is measured over the rest of the suite.
+  # they run bare on every push, and the job above runs the move sampler
+  # again with the nightly seed and both round-trip corpus suites again as
+  # they are. Under instrumentation they are the slow tail, and the
+  # threshold is measured over the rest of the suite.
   coverage:
     name: Coverage thresholds
     runs-on: ubuntu-latest

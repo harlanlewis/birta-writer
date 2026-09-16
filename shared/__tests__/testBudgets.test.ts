@@ -134,9 +134,34 @@ function isFixedIn(text: string, expression: string): boolean {
 
 const isFixed = (site: Site): boolean => isFixedIn(readFileSync(join(repo, site.file), "utf8"), site.expression);
 
-/** The import statement that brings `name` in, with any comment on its last line. */
-function importStatement(text: string, name: string): string | undefined {
-    return new RegExp(`import[^;]*\\b${name}\\b[^;]*from[^;]*;[^\\n]*`, "s").exec(text)?.[0];
+/**
+ * The import statement whose module specifier contains `module`, with any
+ * comment on its last line. Keyed on the module rather than an export name,
+ * so every spelling of a loader (`FIXTURES`, `HEAVY_FIXTURES`, a renamed
+ * import) is one import.
+ */
+function importStatement(text: string, module: string): string | undefined {
+    return new RegExp(`import[^;]*from\\s*"[^"]*${module.replace(/[.]/g, "\\.")}[^"]*";[^\\n]*`, "s").exec(text)?.[0];
+}
+
+/**
+ * Where the fixtures come from. The corpus helper also exports the editor
+ * factory, so an import from it counts only when it names the loader; every
+ * export of the perf fixtures module is a fixture.
+ */
+const FIXTURE_LOADERS: { module: string; exportName?: string }[] = [
+    { module: "helpers/moveFuzz", exportName: "loadCorpusFixtures" },
+    { module: "e2e/perf/fixtures" },
+];
+
+/** The import statement through which `text` loads fixtures, if it does. */
+function fixtureImport(text: string): string | undefined {
+    for (const loader of FIXTURE_LOADERS) {
+        const statement = importStatement(text, loader.module);
+        if (!statement) continue;
+        if (!loader.exportName || new RegExp(`\\b${loader.exportName}\\b`).test(statement)) return statement;
+    }
+    return undefined;
 }
 
 describe("the sweep's three shapes, witnessed on text of known shape", { timeout: SCAN_BUDGET_MS }, () => {
@@ -149,6 +174,7 @@ describe("the sweep's three shapes, witnessed on text of known shape", { timeout
         'it("one line", () => { run(); }, 30_000);',
         'it("call with an object and a number", () => { paint({ a: 1 }, 5); });',
         "readTokenResponse({ access_token: 'at' }, 10_000);",
+        "}, budget(3));",
         "it(",
         '    "own line",',
         "    async () => { await sweep(); },",
@@ -161,7 +187,7 @@ describe("the sweep's three shapes, witnessed on text of known shape", { timeout
 
     it("should see the option, positional and own-line shapes, quoted keys and one-line tests included", () => {
         const found = sitesIn(witness, "witness").map((s) => s.expression);
-        expect(found).toEqual(["budget(1)", "30_000", "budget(2)", "5000", "30_000", "60_000"]);
+        expect(found).toEqual(["budget(1)", "30_000", "budget(2)", "5000", "30_000", "budget(3)", "60_000"]);
     });
 
     it("should judge a number, and a name bound to a computation carrying one, as fixed, and a budget as not", () => {
@@ -171,10 +197,12 @@ describe("the sweep's three shapes, witnessed on text of known shape", { timeout
         expect(isFixedIn(witness, "IDLE_MS")).toBe(true);
     });
 
-    it("should find an annotation on the last line of a multi-line import", () => {
+    it("should find an annotation on the last line of a multi-line import, by the module it imports from", () => {
         const text = 'import {\n    a,\n    loadCorpusFixtures,\n} from "./helpers/moveFuzz"; // corpus-sweep-kept: why\n';
-        expect(importStatement(text, "loadCorpusFixtures")).toContain("corpus-sweep-kept: why");
-        expect(importStatement(" * prose naming loadCorpusFixtures in a comment\n", "loadCorpusFixtures")).toBeUndefined();
+        expect(fixtureImport(text)).toContain("corpus-sweep-kept: why");
+        expect(fixtureImport('import { HEAVY_FIXTURES } from "../../e2e/perf/fixtures.mjs";\n')).toBeDefined();
+        expect(fixtureImport('import { makeCorpusEditor } from "./helpers/moveFuzz";\n'), "the editor factory alone").toBeUndefined();
+        expect(fixtureImport(" * prose naming helpers/moveFuzz in a comment\n")).toBeUndefined();
     });
 });
 
@@ -254,21 +282,19 @@ describe("the corpus sweeps the coverage run leaves out", { timeout: SCAN_BUDGET
     it("every budgeted test that loads the corpus or the perf fixtures should be listed, or say on its import why it stays in", () => {
         // The other direction of the same absence: a fixture walk the list
         // never learned about runs under instrumentation with nobody having
-        // decided it should. Two loaders bring the fixtures in: the corpus
-        // helper and the perf fixtures module.
-        const LOADERS = ["loadCorpusFixtures", "FIXTURES"];
+        // decided it should.
         const walks = testFiles(join(repo, "webview/__tests__"))
             .map(relPath)
             .filter((rel) => {
                 const text = readFileSync(join(repo, rel), "utf8");
-                return text.includes("budget(") && LOADERS.some((name) => importStatement(text, name) !== undefined);
+                return text.includes("budget(") && fixtureImport(text) !== undefined;
             });
         expect(walks.length).toBeGreaterThan(8);
         expect(walks).toContain("webview/__tests__/perfFixtureConstructs.test.ts");
+        expect(walks, "imports the editor factory, not the fixtures").not.toContain("webview/__tests__/embedProviderRoster.test.ts");
         const undecided = walks.filter((rel) => {
             if (listed.includes(rel)) return false;
-            const text = readFileSync(join(repo, rel), "utf8");
-            return !LOADERS.some((name) => /corpus-sweep-kept:\s*\S/.test(importStatement(text, name) ?? ""));
+            return !/corpus-sweep-kept:\s*\S/.test(fixtureImport(readFileSync(join(repo, rel), "utf8")) ?? "");
         });
         expect(undecided, "list it in CORPUS_SWEEPS, or annotate its import: corpus-sweep-kept: <reason>").toEqual([]);
     });
