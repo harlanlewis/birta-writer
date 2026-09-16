@@ -188,6 +188,8 @@ describe("chrome surfaces bind activation, not bare mousedown (MAR-217)", () => 
     const SURFACES = [
         "components/toc/index.ts",
         "components/toc/reviewList.ts",
+        "components/sidePanel/shell.ts",
+        "components/sidePanel/revealTab.ts",
         "components/linkPopup/index.ts",
         "components/footnote/index.ts",
         "components/blockMenu/menu.ts",

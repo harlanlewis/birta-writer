@@ -159,6 +159,16 @@ const DELIBERATELY_UNPARSED: Record<string, string> = {
  * the fix rather than a tidy-up.
  */
 const KNOWN_GAPS: Record<string, string> = {
+    // The file explorer's wire (MAR-460), waiting on the Swift half that
+    // decodes it (MAR-457, the directory windows). Each is posted by a page
+    // that declares `projectFiles`, which the Mac profile now does, so until
+    // Bridge.parse grows a case for it the message is reachable and dropped.
+    listDirectory: "MAR-457: the directory windows' Swift half answers this with `directoryListing`; until it lands the explorer's root row times out to an error row",
+    openProjectFile: "MAR-457: the host opens the file in this window and reports it back as `currentProjectFile`",
+    fileExplorerWidth: "MAR-457: the host persists the dragged width and injects it back as `--files-width`",
+    fileExplorerVisibility: "MAR-457: the host remembers the panel's show/hide choice",
+    setFileExplorerShowHidden: "MAR-457: the host owns the dotfile setting and echoes it as `fileExplorerConfig`",
+    paletteCommands: "MAR-457: the reply to a `requestPaletteCommands` the Swift half sends after `init`, decoded there for the native palette MAR-458 builds over it; a host that never asks is never sent it",
     resolveEmbedCard:
         "MAR-390: `queueEmbedCardResolution` states in its own header that it is deliberately NOT gated on the connection, because the extension reads a public resource anonymously. So the page asks for a card on every connector-capable embed it finds, on every host, and the Mac app answers none: each request settles null at `CARD_REPLY_TIMEOUT_MS` and no card is drawn where the extension would draw one. Quieter than `getProjectImages`, which sat on Loading, but the same class",
 };

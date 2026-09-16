@@ -9,8 +9,9 @@
  *
  * The rule: OPENING one of these dismisses the others. Nothing here decides
  * which surfaces those are; a surface joins by claiming, and only the toolbar
- * dropdowns (`components/toolbar/hoverMenu.ts`) and the TOC flyout
- * (`components/toc/index.ts`) do.
+ * dropdowns (`components/toolbar/hoverMenu.ts`) and the side-panel flyout
+ * (`components/sidePanel/flyout.ts`, which every composer of the shell, the
+ * TOC first, gets) do.
  *
  * WHAT DOES NOT BELONG HERE, because the distinction is the whole of the
  * design: a surface the user is WORKING IN is not transient chrome. The find

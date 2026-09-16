@@ -184,6 +184,9 @@ export const COMMAND_EFFECTS: Record<EditorCommandId, CommandEffect> = {
     toggleToc: "reads",
     swapTocSide: "reads",
     focusReviewSidebar: "reads",
+    toggleFileExplorer: "reads",
+    focusFileExplorer: "reads",
+    toggleHiddenFiles: "reads",
     toggleToolbar: "reads",
     // The mode's own toggle. Classified as reading BECAUSE it is: it changes
     // no document byte, and gating it while read-only would be a lock with no
