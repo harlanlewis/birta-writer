@@ -153,3 +153,23 @@ describe("the config and the helper agree on the coverage variable", () => {
         expect(pkg.scripts["test:coverage"]).toMatch(/vitest run .*--coverage/);
     });
 });
+
+describe("the corpus sweeps the coverage run leaves out", () => {
+    const config = readFileSync(join(repo, "vitest.config.ts"), "utf8");
+    const listed = [...(/const CORPUS_SWEEPS = \[([\s\S]*?)\];/.exec(config)?.[1] ?? "").matchAll(/"([^"]+)"/g)].map((m) => m[1]);
+
+    it("should each be a file that exists, or the exclusion is a silent no-op", () => {
+        expect(listed.length).toBeGreaterThan(5);
+        const missing = listed.filter((f) => !statSync(join(repo, f), { throwIfNoEntry: false }));
+        expect(missing).toEqual([]);
+    });
+
+    it("should each be a budgeted suite: a corpus walk that needs a budget is what earns the exclusion", () => {
+        const unbudgeted = listed.filter((f) => !readFileSync(join(repo, f), "utf8").includes("budget("));
+        expect(unbudgeted).toEqual([]);
+    });
+
+    it("should be excluded only on a coverage run, so the bare suite and every push still run them", () => {
+        expect(config).toMatch(/\.\.\.\(coverageRun \? CORPUS_SWEEPS : \[\]\)/);
+    });
+});

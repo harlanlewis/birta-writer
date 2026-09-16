@@ -14,6 +14,32 @@ const coverageRun = process.argv.includes("--coverage");
 const DEFAULT_TIMEOUT_MS = 5_000;
 const COVERAGE_FACTOR = 4;
 
+// The corpus sweeps: suites that walk every fixture under samples/ and the
+// perf fixtures through a real editor. They are fidelity gates, and they run
+// bare on every push (`pnpm test`) and, for the two deepest, again with a
+// nightly seed in the fidelity job beside this one. Under instrumentation
+// they are the slow tail of the coverage run and the only tests that have
+// ever timed out in it. What the threshold measures, which lines the suite
+// reaches, the rest of the suite reaches without them; the threshold check
+// itself is what holds that, on every coverage run. So the coverage run
+// leaves them out: thin cloud, thick local. A file named here that does not
+// exist is a silent no-op, so `shared/__tests__/testBudgets.test.ts` holds
+// that each exists and is a budgeted suite.
+const CORPUS_SWEEPS = [
+    "webview/__tests__/agentPending.test.ts",
+    "webview/__tests__/blockSegmenter.test.ts",
+    "webview/__tests__/blockSourceRoundTrip.test.ts",
+    "webview/__tests__/corpusMoveSampling.test.ts",
+    "webview/__tests__/dropSlotLegality.test.ts",
+    "webview/__tests__/fourSpaceOutlineMoves.test.ts",
+    "webview/__tests__/headlessParser.test.ts",
+    "webview/__tests__/perfFixtureConstructs.test.ts",
+    "webview/__tests__/progressiveOpen.test.ts",
+    "webview/__tests__/roundTripCorpus.test.ts",
+    "webview/__tests__/roundTripCorpusMdx.test.ts",
+    "webview/__tests__/verifiedMerge.test.ts",
+];
+
 export default defineConfig({
     resolve: {
         alias: {
@@ -93,7 +119,7 @@ export default defineConfig({
         // The @vscode/test-electron integration suite (src/test/**, compiled to
         // out/**) runs in a real Extension Host via Mocha — never under Vitest.
         // It uses bare Mocha globals and the real `vscode` API, so exclude it here.
-        exclude: [...configDefaults.exclude, "src/test/**", "out/**"],
+        exclude: [...configDefaults.exclude, "src/test/**", "out/**", ...(coverageRun ? CORPUS_SWEEPS : [])],
         // Pinned, not inherited. `"stack"` runs after-hooks in reverse
         // registration order, which is what puts the timer-clearing `afterAll`
         // in `webview/__tests__/setup.ts` (registered first, so it runs last)

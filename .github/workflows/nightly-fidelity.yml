@@ -117,6 +117,11 @@ jobs:
   # the same scheduled-failure email as the sweep above. A breach is main's
   # problem, not a PR author's: `git log` since the last green nightly names
   # the commits that could have moved it.
+  #
+  # The run leaves out the corpus sweeps (`CORPUS_SWEEPS` in vitest.config.ts):
+  # they run bare on every push and, for the deepest two, in the job above,
+  # and under instrumentation they were the only tests that ever timed out
+  # here. The threshold is measured over the rest of the suite.
   coverage:
     name: Coverage thresholds
     runs-on: ubuntu-latest
