@@ -2504,8 +2504,46 @@ echo "rebind per window    ok: $SET_COUNT windows reloaded and each is still on 
 # The pages have just reloaded; let them settle before anything else asks.
 sleep 2
 
+# A TAB, and what the native tab bar does to the window's chrome (MAR-393).
+#
+# A tab is a window in a tab group, and AppKit draws the bar as a second row
+# of the titlebar band. Three claims only a live window can answer: the bar is
+# up with two tabs and the `+` button with it; the drag strip (TitlebarDrag)
+# has shrunk to the title row rather than lying over the tabs, which is what
+# the height comparison below is; and the page has been told the split, so
+# its first row is still sized by the title row and a gap under it clears the
+# bar. The tab stays open, so the restore arm below carries a group.
+TABS_BEFORE=$(grep -c "^birta-trace tabs " "$LOG" || true)
+printf '{"type":"__birtaNewTab"}' > "$SCRATCH_DIR/.debug-message.json"
+kill -URG $PID; sleep 3
+rm -f "$SCRATCH_DIR/.debug-message.json"
+printf '{"type":"__birtaTabs"}' > "$SCRATCH_DIR/.debug-message.json"
+kill -URG $PID; sleep 1
+rm -f "$SCRATCH_DIR/.debug-message.json"
+TABS="$(grep "^birta-trace tabs " "$LOG" | tail -1 | sed 's/^birta-trace tabs //' || true)"
+if [ "$(grep -c "^birta-trace tabs " "$LOG" || true)" -le "$TABS_BEFORE" ] || [ -z "$TABS" ]; then
+    echo "tab bar              FAILED: the app never reported its tabs" >&2; exit 1
+fi
+TAB_COUNT="$(printf '%s' "$TABS" | sed -n 's/.*count=\([0-9]*\).*/\1/p')"
+TAB_BAR="$(printf '%s' "$TABS" | sed -n 's/.*barVisible=\([a-z]*\).*/\1/p')"
+TAB_BAND="$(printf '%s' "$TABS" | sed -n 's/.*band=\([0-9.]*\).*/\1/p')"
+TAB_BAR_H="$(printf '%s' "$TABS" | sed -n 's/.*tabbar={{[0-9.-]*, [0-9.-]*}, {[0-9.-]*, \([0-9.]*\)}}.*/\1/p')"
+TAB_DRAG_H="$(printf '%s' "$TABS" | sed -n 's/.*drag={{[0-9.-]*, [0-9.-]*}, {[0-9.-]*, \([0-9.]*\)}}.*/\1/p')"
+TAB_PLUS="$(printf '%s' "$TABS" | sed -n 's/.*newTab=\([^ ]*\).*/\1/p')"
+if [ "$TAB_COUNT" != "2" ] || [ "$TAB_BAR" != "true" ] || [ -z "$TAB_BAR_H" ] || [ "$TAB_PLUS" = "none" ]; then
+    echo "tab bar              FAILED: expected two tabs with the bar and its + button up" >&2
+    echo "  $TABS" >&2; exit 1
+fi
+# The strip's height plus the bar's is the band: the strip took the title row
+# and left the tabs their row.
+if [ "$(awk -v d="$TAB_DRAG_H" -v b="$TAB_BAR_H" -v band="$TAB_BAND" 'BEGIN { print (d + b == band) ? "ok" : "no" }')" != "ok" ]; then
+    echo "tab bar              FAILED: the drag strip does not stop at the tab bar (strip $TAB_DRAG_H + bar $TAB_BAR_H != band $TAB_BAND)" >&2
+    echo "  $TABS" >&2; exit 1
+fi
+echo "tab bar              ok: two tabs, bar and + up, the drag strip keeps to the title row ($TAB_DRAG_H of $TAB_BAND)"
+
 # The windows come back after a quit, the same ones with the same one in
-# front (MAR-421).
+# front, tabs grouped as they were (MAR-421, MAR-393).
 #
 # The claim is a difference between two launches, so the app is ended through
 # its own SIGTERM path (which is how anything managing the process ends it,
@@ -2513,6 +2551,18 @@ sleep 2
 # again under the SAME throwaway defaults domain. `WindowSet.openAtLaunch`
 # traces what it restored; the check is that it matches what the last launch
 # recorded. Nothing is shown: restoration happens in the prewarm.
+#
+# The set is read AGAIN here, because the tab arm above changed it: the new
+# tab is the window in front now.
+printf '{"type":"__birtaOpenSet"}' > "$SCRATCH_DIR/.debug-message.json"
+kill -URG $PID; sleep 0.6
+rm -f "$SCRATCH_DIR/.debug-message.json"
+SET_BEFORE="$(grep "^birta-trace openset " "$LOG" | tail -1 | sed 's/^birta-trace openset //' || true)"
+SET_COUNT="$(printf '%s' "$SET_BEFORE" | sed -n 's/.*count=\([0-9]*\).*/\1/p')"
+SET_FRONT="$(printf '%s' "$SET_BEFORE" | sed -n 's/.*front=\(.*\)$/\1/p')"
+if [ -z "$SET_COUNT" ]; then
+    echo "restore across quit  FAILED: the app did not report its open set before the quit" >&2; exit 1
+fi
 end_app
 sleep 1
 READY_BEFORE=$(marks ready)
@@ -2525,13 +2575,17 @@ while [ "$(grep -c "^birta-trace windows restored=" "$LOG" || true)" -le "$RESTO
     if [ $n -gt 200 ]; then echo "restore across quit  FAILED: the relaunch never reported what it restored" >&2; tail -20 "$LOG" >&2; exit 1; fi
 done
 RESTORED="$(grep "^birta-trace windows restored=" "$LOG" | tail -1 | sed 's/^birta-trace windows //')"
-RESTORED_COUNT="$(printf '%s' "$RESTORED" | sed -n 's/.*restored=\([0-9]*\).*/\1/p')"
+RESTORED_WINDOWS="$(printf '%s' "$RESTORED" | sed -n 's/.*restored=\([0-9]*\).*/\1/p')"
+RESTORED_GROUPS="$(printf '%s' "$RESTORED" | sed -n 's/.*groups=\([0-9]*\).*/\1/p')"
 RESTORED_FRONT="$(printf '%s' "$RESTORED" | sed -n 's/.*front=\(.*\)$/\1/p')"
-if [ "$RESTORED_COUNT" != "$SET_COUNT" ] || [ "$RESTORED_FRONT" != "$SET_FRONT" ]; then
-    echo "restore across quit  FAILED: recorded $SET_COUNT windows with $SET_FRONT in front, relaunch restored $RESTORED_COUNT with ${RESTORED_FRONT:-nothing} in front" >&2
+# The set counts GROUPS (a tab bar is one group), and the tab arm left one
+# group holding two tabs, so the windows restored must exceed the groups.
+if [ "$RESTORED_GROUPS" != "$SET_COUNT" ] || [ "$RESTORED_FRONT" != "$SET_FRONT" ] \
+   || [ "${RESTORED_WINDOWS:-0}" -le "${RESTORED_GROUPS:-0}" ]; then
+    echo "restore across quit  FAILED: recorded $SET_COUNT groups with $SET_FRONT in front; relaunch restored $RESTORED_WINDOWS windows in ${RESTORED_GROUPS:-?} groups with ${RESTORED_FRONT:-nothing} in front" >&2
     exit 1
 fi
-echo "restore across quit  ok: $RESTORED_COUNT windows came back with $RESTORED_FRONT in front"
+echo "restore across quit  ok: $RESTORED_WINDOWS windows in $RESTORED_GROUPS groups came back with $RESTORED_FRONT in front"
 # Every page mounts again in the prewarm; the teardown below needs the app up.
 # Its own counter: the wait above spent some of `n`, and a mount budget cut by
 # however long the restore took is a flake on a loaded machine.

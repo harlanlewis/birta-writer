@@ -12,6 +12,10 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ## [Unreleased]
 
+### Added
+
+- Tabs. Birta Writer for Mac now holds several notes in one window as macOS window tabs: New Tab (⌘T) and the tab bar's + button open a note beside the one you are in, ⌘W closes the tab in front (and the whole window when it is the last one, hiding it as before), ⇧⌘W closes every tab in the window, ⌘1 through ⌘9 pick a tab (⌘9 the last), and ⇧⌘] and ⇧⌘[ step through them beside the system's ⌃Tab. The bar appears only with two or more tabs. Tabs come back after a quit grouped as they were, the system's Prefer tabs setting decides whether New Note opens a window or a tab, and the Window menu's tab rows (Show Next Tab, Move Tab to New Window, Merge All Windows) are the system's.
+
 ### Fixed
 
 - Birta Writer for Mac launches on the windows you had open, back where they were, with the one you were last working in at the front. It used to open one window, on a file it chose by the order of its three file settings rather than by what you were doing: a file opened once from the Finder stayed the file every later launch landed on, whatever you had written in since, and a second or third window never came back at all. A file you double-click still comes to the front of whatever comes back, and "New windows open with" set to "New file" now puts a blank note in front of your windows rather than in place of them.

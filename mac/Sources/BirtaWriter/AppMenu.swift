@@ -352,6 +352,11 @@ enum AppMenu {
     private static let fileRows: [Row] = [
         .init(title: "New Note", key: "n", modifiers: [.command],
               action: .app(#selector(AppDelegate.menuNewNote)), menu: .file),
+        // A new note as a tab beside the one in front, where New Note makes a
+        // window (and the system's "prefer tabs" setting may turn that into a
+        // tab too). The chord every tabbed macOS app gives it.
+        .init(title: "New Tab", key: "t", modifiers: [.command],
+              action: .app(#selector(AppDelegate.menuNewTab)), menu: .file),
         .init(title: "Open…", key: "o", modifiers: [.command],
               action: .app(#selector(AppDelegate.menuOpenDocument)), menu: .file),
         .init(title: "Open Recent", action: .recents, menu: .file),

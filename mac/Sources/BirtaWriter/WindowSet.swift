@@ -58,6 +58,7 @@ final class WindowSet {
     private var previousApp: NSRunningApplication?
 
     private var escMonitor: Any?
+    private var tabChordMonitor: Any?
     private var lastEscape: TimeInterval = 0
     private var debugSignals: [DispatchSourceSignal] = []
 
@@ -147,6 +148,10 @@ final class WindowSet {
         coordinator.onHotkeyChanged = { [weak self] in self?.registerHotkey() ?? -1 }
         coordinator.refusedSummonCombo = { [weak self] in self?.refusedSummonCombo }
         coordinator.onNewWindowRequest = { [weak self] in self?.newNote() }
+        coordinator.onNewTabRequest = { [weak self, weak coordinator] in
+            guard let coordinator else { return }
+            self?.newTab(in: coordinator)
+        }
         coordinator.makeRecentsMenu = { [weak self] in self?.recentsMenu() ?? RecentsMenu() }
         coordinator.onOpenRequest = { [weak self] url in
             self?.openDocument(at: url)
@@ -205,9 +210,13 @@ final class WindowSet {
         Prefs.openSet = snapshotOpenSet()
     }
 
-    /// The windows as `OpenSet` spells them: back to front, which is the
-    /// order `windows` is already kept in. One tab per group until window
-    /// tabbing lands (MAR-393).
+    /// The windows as `OpenSet` spells them: one group per tab bar, tabs in
+    /// bar order, groups back to front.
+    ///
+    /// A group's place in the order is its most recently fronted tab's, so the
+    /// groups are collected front to back (the first tab met for a group is
+    /// its most recent) and the list is then turned round. Its frame is the
+    /// showing tab's, and its `selected` is that tab's place in the bar.
     ///
     /// A window's frame is recorded only once it HAS one. A restored window
     /// that has not been shown yet is still at its construction placeholder,
@@ -215,10 +224,19 @@ final class WindowSet {
     /// so a launch followed by a quit with nothing summoned records the same
     /// arrangement it restored rather than a row of placeholders.
     private func snapshotOpenSet() -> OpenSet {
-        OpenSet(groups: windows.map { window in
-            OpenSet.Group(tabs: [window.boundFile.standardizedFileURL.path],
-                          frame: window.windowFrame.map(NSStringFromRect))
-        })
+        var groups: [OpenSet.Group] = []
+        var seen: Set<ObjectIdentifier> = []
+        for front in windows.reversed() {
+            let identity = front.tabGroupIdentity ?? ObjectIdentifier(front)
+            guard seen.insert(identity).inserted else { continue }
+            let members = tabs(of: front)
+            let showing = members.first(where: \.isSelectedTab) ?? front
+            groups.append(OpenSet.Group(
+                tabs: members.map { $0.boundFile.standardizedFileURL.path },
+                selected: members.firstIndex { $0 === showing } ?? 0,
+                frame: showing.windowFrame.map(NSStringFromRect)))
+        }
+        return OpenSet(groups: groups.reversed())
     }
 
     /// One line a checking run can read: how many groups, and which file is
@@ -284,10 +302,30 @@ final class WindowSet {
             sameFile: { FileIdentity.sameFile(URL(fileURLWithPath: $0), URL(fileURLWithPath: $1)) })
         if let asked { Prefs.documentURL = asked }
         for group in plan.groups {
-            guard let path = group.selectedTab else { continue }
-            let url = URL(fileURLWithPath: path)
-            let frame = group.frame.map(NSRectFromString)
-            makeWindow(on: url, slot: slot(for: url), frame: frame.flatMap { $0.isEmpty ? nil : $0 })
+            // The first tab takes the group's frame; the rest join its bar in
+            // recorded order, and the tab that was showing is selected last,
+            // after every tab exists to be selected among.
+            var made: [Coordinator] = []
+            for path in group.tabs {
+                let url = URL(fileURLWithPath: path)
+                let frame = group.frame.map(NSRectFromString)
+                // Each tab joins after the one made before it, because
+                // `addTabbedWindow` inserts beside the window it is asked
+                // of: joining every tab beside the FIRST would put them in
+                // the bar in reverse.
+                if let previous = made.last {
+                    made.append(makeWindow(on: url, slot: slot(for: url), inGroupOf: previous))
+                } else {
+                    made.append(makeWindow(on: url, slot: slot(for: url),
+                                           frame: frame.flatMap { $0.isEmpty ? nil : $0 }))
+                }
+            }
+            if made.indices.contains(group.selected) {
+                made[group.selected].selectTab()
+                // The set is kept most-recently-fronted last, and the tab that
+                // was showing is the one this group was last in.
+                moveToFront(made[group.selected])
+            }
         }
         if plan.opensBlankNote, let note = Self.startBlankNote() {
             makeWindow(on: note, slot: .currentNote, frame: nil)
@@ -299,7 +337,8 @@ final class WindowSet {
         if windows.isEmpty {
             makeWindow(on: Prefs.activeURL, slot: Prefs.activeSlot, frame: nil)
         }
-        Measure.trace("windows restored=\(windows.count) front=\(windows.last?.boundFile.lastPathComponent ?? "")")
+        Measure.trace("windows restored=\(windows.count) groups=\(plan.groups.count + (plan.opensBlankNote ? 1 : 0))"
+                      + " front=\(windows.last?.boundFile.lastPathComponent ?? "")")
         return windows.last!
     }
 
@@ -354,6 +393,24 @@ final class WindowSet {
         } catch {
             NSLog("Birta Writer: could not make a new note: \(error)")
             key?.flashStatus("Could not make a new note.")
+        }
+    }
+
+    /// Cmd+T, the tab bar's `+`, and the system's New Tab rows: a new note,
+    /// as a tab beside the one in `spawn`'s window (MAR-393).
+    ///
+    /// A tab is a window, so this is `newNote` with the window placed into
+    /// `spawn`'s tab group instead of cascaded off it. The note takes the
+    /// current-note slot exactly as Cmd+N's does; the two gestures differ in
+    /// where the window goes and in nothing else.
+    func newTab(in spawn: Coordinator) {
+        do {
+            let target = try Coordinator.makeNoteFile()
+            Prefs.currentNoteURL = target
+            open(makeWindow(on: target, slot: .currentNote, inGroupOf: spawn))
+        } catch {
+            NSLog("Birta Writer: could not make a new note: \(error)")
+            spawn.flashStatus("Could not make a new note.")
         }
     }
 
@@ -456,7 +513,7 @@ final class WindowSet {
     /// it: with autosave off and unwritten bytes it asks, and Cancel leaves the
     /// window where it is.
     func close(_ coordinator: Coordinator) {
-        guard windows.count > 1 else {
+        guard TabGroupPolicy.whatCloseDoes(windows: windows.count) == .closeTab else {
             dismissAll()
             return
         }
@@ -480,8 +537,48 @@ final class WindowSet {
             if coordinator.bindingSlot == .document { Prefs.documentURL = nil }
             self.windows.removeAll { $0 === coordinator }
             coordinator.tearDown()
+            // The tab that went may have been the second-to-last of its bar,
+            // which then disappears and hands its row back to the page.
+            self.windows.forEach { $0.tabsChanged() }
             self.recordOpenSetSoon()
         }
+    }
+
+    /// Shift+Cmd+W: every tab in `coordinator`'s window, through the same
+    /// question a quit asks of each, serially, one Cancel refusing the rest.
+    /// A window holding every window the app has hides instead, which is the
+    /// last-window rule (`TabGroupPolicy.whatCloseWindowDoes`).
+    func closeWindow(_ coordinator: Coordinator) {
+        let members = tabs(of: coordinator)
+        guard TabGroupPolicy.whatCloseWindowDoes(tabsInWindow: members.count, windows: windows.count) == .closeWindow else {
+            dismissAll()
+            return
+        }
+        var remaining = members
+        func next() {
+            guard !remaining.isEmpty else { return }
+            let tab = remaining.removeFirst()
+            tab.prepareToClose { [weak self] proceed in
+                guard proceed, let self else { return }
+                Prefs.rememberRecent(tab.boundFile)
+                if tab.bindingSlot == .document { Prefs.documentURL = nil }
+                self.windows.removeAll { $0 === tab }
+                tab.tearDown()
+                self.windows.forEach { $0.tabsChanged() }
+                self.recordOpenSetSoon()
+                next()
+            }
+        }
+        next()
+    }
+
+    /// The windows sharing `coordinator`'s tab bar, in bar order,
+    /// `coordinator` included; just `coordinator` when it is in no group.
+    private func tabs(of coordinator: Coordinator) -> [Coordinator] {
+        guard let group = coordinator.tabGroupIdentity else { return [coordinator] }
+        return windows
+            .filter { $0.tabGroupIdentity == group }
+            .sorted { ($0.tabIndex ?? 0) < ($1.tabIndex ?? 0) }
     }
 
     /// Mount a freshly made window's page and put it on screen.
@@ -543,8 +640,11 @@ final class WindowSet {
     ///
     /// - Parameter frame: the recorded frame a launch is putting back, or nil
     ///   for a window made now, which cascades off the window in front.
+    /// - Parameter inGroupOf: the window whose tab group the new window joins,
+    ///   as its selected tab, instead of taking a frame of its own.
     @discardableResult
-    private func makeWindow(on url: URL, slot: ActiveBinding.Slot?, frame: NSRect? = nil) -> Coordinator {
+    private func makeWindow(on url: URL, slot: ActiveBinding.Slot?, frame: NSRect? = nil,
+                            inGroupOf group: Coordinator? = nil) -> Coordinator {
         // Only one window may hold a slot, so taking it releases whoever had
         // it. Otherwise two windows would both believe a rename of their file
         // should be written to the same setting, and the second would overwrite
@@ -563,7 +663,13 @@ final class WindowSet {
         // step off the bottom-left corner of the screen and mark it placed;
         // left unplaced instead, it is centred on first show like any window
         // nobody has positioned.
-        if frame == nil, let spawn, spawn.isPlaced {
+        if let group {
+            group.attachTab(made)
+            // The bar has appeared or grown, and no layout pass of either
+            // window's content notices.
+            group.tabsChanged()
+            made.tabsChanged()
+        } else if frame == nil, let spawn, spawn.isPlaced {
             cascadePoint = made.cascade(after: spawn, from: cascadePoint)
         }
         return made
@@ -789,8 +895,36 @@ final class WindowSet {
             NSLog("Birta Writer: hotkey \(Prefs.hotkey.spelling) registration failed (\(status)); another app may own it")
         }
         installEscapeMonitor()
+        installTabChordMonitor()
         observeSpaceChanges()
         if Measure.isEnabled { installDebugSignals() }
+    }
+
+    /// Cmd+1 through Cmd+9 and Shift+Cmd+] / Shift+Cmd+[ select tabs, the
+    /// chords Safari and Terminal give them beside AppKit's own Ctrl+Tab pair.
+    ///
+    /// A monitor rather than menu rows, because eleven rows for tab selection
+    /// is not what a macOS Window menu looks like; AppKit's own tab rows are
+    /// inserted into `NSApp.windowsMenu` by the system, and these sit beside
+    /// them. ONE monitor for the app, like the Escape one. It takes a key
+    /// only from a key window with two or more tabs, so with one tab every
+    /// chord reaches the page exactly as before; `TabGroupPolicy.tabSelection`
+    /// is the rule and says which chords are left alone (Cmd+Option+digit is a
+    /// heading, Cmd+] is indent).
+    private func installTabChordMonitor() {
+        tabChordMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard let self, let front = self.key, front.isKey, front.tabCount > 1 else { return event }
+            let flags = event.modifierFlags
+            let chord = TabGroupPolicy.Chord(characters: event.charactersIgnoringModifiers ?? "",
+                                             command: flags.contains(.command),
+                                             shift: flags.contains(.shift),
+                                             option: flags.contains(.option),
+                                             control: flags.contains(.control))
+            guard let index = TabGroupPolicy.tabSelection(for: chord, count: front.tabCount,
+                                                          selected: front.tabIndex ?? 0) else { return event }
+            front.selectTab(at: index)
+            return nil
+        }
     }
 
     /// Answer the Space switch that bringing a window forward causes, once it

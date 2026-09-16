@@ -60,6 +60,56 @@ final class Coordinator {
     private var titlebarBandHeight: CGFloat {
         panel.frame.height - panel.contentLayoutRect.height
     }
+
+    /// The tab bar's row, or zero with no tab bar (MAR-393).
+    ///
+    /// AppKit draws the tab bar as a titlebar accessory of its own, a second
+    /// row under the title row, so the row's height is the height of every
+    /// accessory this window did not add. Asked of the window rather than
+    /// written down, for the reason the band is: it is the system's number.
+    private var tabBarHeight: CGFloat {
+        panel.titlebarAccessoryViewControllers
+            .filter { $0 !== titleBar }
+            .reduce(0) { $0 + $1.view.frame.height }
+    }
+
+    /// The row the title and the page's first toolbar row share: the band
+    /// less the tab bar. `TabGroupPolicy.bandSplit` is the arithmetic.
+    private var titleRowHeight: CGFloat {
+        CGFloat(TabGroupPolicy.bandSplit(band: titlebarBandHeight, tabBar: tabBarHeight).titleRow)
+    }
+
+    /// The tab bar came or went, or a tab joined or left: the band the page
+    /// and the drag strip are laid out against has changed height, and no
+    /// layout pass of the content view notices, because the content view is
+    /// full-size and does not move. `WindowSet` calls this on every window it
+    /// knows is affected.
+    func tabsChanged() {
+        layoutTitlebarDrag()
+        refreshTitle()
+    }
+
+    /// Make this the showing tab of its group.
+    func selectTab() {
+        panel.tabGroup?.selectedWindow = panel
+    }
+
+    /// Make the tab at `index` (in bar order) the showing one; out of range
+    /// selects nothing.
+    func selectTab(at index: Int) {
+        guard let group = panel.tabGroup, group.windows.indices.contains(index) else { return }
+        group.selectedWindow = group.windows[index]
+    }
+
+    /// The group this window's tab bar belongs to, as an identity two windows
+    /// can be compared on, or nil for a window in no group.
+    var tabGroupIdentity: ObjectIdentifier? { panel.tabGroup.map(ObjectIdentifier.init) }
+
+    /// Where this window sits in its tab bar, or nil for a window in no group.
+    var tabIndex: Int? { panel.tabGroup?.windows.firstIndex { $0 === panel } }
+
+    /// How many tabs share this window's bar; one for a window in no group.
+    var tabCount: Int { panel.tabGroup?.windows.count ?? 1 }
     private let statusOverlay = StatusOverlay()
     /// The one message in the panel that does not go on its own: what the app
     /// did to itself while nobody was watching. `UpdateNotice` holds the
@@ -121,6 +171,11 @@ final class Coordinator {
     /// Ask the app for another window, under BIRTA_MAC_MEASURE only. Making
     /// one is the app's, so a window can only ask.
     var onNewWindowRequest: (() -> Void)?
+
+    /// Ask the app for a new tab in THIS window's group: the tab bar's `+`,
+    /// the system's New Tab rows, and Cmd+T all arrive here. What a tab is
+    /// (a note, beside this one) is the app's to decide (`WindowSet.newTab`).
+    var onNewTabRequest: (() -> Void)?
 
     /// Ask the app to open a file, under BIRTA_MAC_MEASURE only, and answer
     /// how many windows are open once it has. Which window takes the file is
@@ -364,6 +419,21 @@ final class Coordinator {
     func cascade(after other: Coordinator, from point: NSPoint?) -> NSPoint {
         panel.cascade(after: other.panel, from: point)
     }
+
+    /// Make `other` a tab of this window, selected. AppKit's window tabbing:
+    /// each tab stays a window of its own, sharing this one's frame and tab
+    /// bar (MAR-393).
+    func attachTab(_ other: Coordinator) {
+        other.panel.adoptGroupFrame(of: panel)
+        panel.addTabbedWindow(other.panel, ordered: .above)
+    }
+
+    /// The tab group as AppKit reports it, for the app's rules about summon,
+    /// dismissal and closing: every window sharing this one's tab bar, in
+    /// bar order, and which of them is showing. Nil while this window is in no
+    /// group.
+    var tabbedWindows: [NSWindow]? { panel.tabGroup?.windows }
+    var isSelectedTab: Bool { panel.tabGroup?.selectedWindow === panel }
 
     /// Let this window go, after `prepareToClose` has said it may.
     ///
@@ -631,7 +701,13 @@ final class Coordinator {
                 MainActor.assumeIsolated {
                     guard let self else { return }
                     self.titleBar.titleView.setWindowKey(key)
-                    if key { self.onBecameKey?() }
+                    if key {
+                        self.onBecameKey?()
+                        // A tab coming forward may have joined or left a group
+                        // through a gesture the app never saw (a tab torn off,
+                        // Merge All Windows), so the band is measured again.
+                        self.layoutTitlebarDrag()
+                    }
                     self.applyChromeVisibility()
                 }
             })
@@ -649,6 +725,7 @@ final class Coordinator {
         refreshTitle()
         panel.contentView = contentView
         panel.onHideRequest = { [weak self] in self?.onCloseRequest?() }
+        panel.onNewTabRequest = { [weak self] in self?.onNewTabRequest?() }
         applyTheme(initial: true)
 
         // The activation policy the Dock switch decides, as the app actually
@@ -840,6 +917,22 @@ final class Coordinator {
             if obj["type"] as? String == "__birtaNewWindow" {
                 measure.mark("debug-new-window")
                 onNewWindowRequest?()
+                return
+            }
+            // A new tab in this window's group, as the tab bar's `+` makes
+            // one; a shell cannot click the button.
+            if obj["type"] as? String == "__birtaNewTab" {
+                measure.mark("debug-new-tab")
+                onNewTabRequest?()
+                return
+            }
+            // The tab bar as the window server drew it, which nothing in
+            // `mac/Tests` can see: how many tabs, which is showing, whether
+            // the bar is up, what it did to the titlebar band the page sizes
+            // its first row from, and where every piece of titlebar chrome
+            // sits. `traceTabs` states what each number is for.
+            if obj["type"] as? String == "__birtaTabs" {
+                traceTabs()
                 return
             }
             // Open a file, exactly as Cmd+O and the titlebar's folder button
@@ -3232,7 +3325,10 @@ final class Coordinator {
             titleChromeWidth: titleView.chromeWidth,
             trailingControlsWidth: titlebarControlsWidth))
         let leading = titleView.convert(titleView.bounds, to: contentView).maxX
-        let bandHeight = titlebarBandHeight
+        // The TITLE ROW, not the whole band. With tabs the band has a second
+        // row under the title, the tab bar, and a strip laid over the whole
+        // band would lie over the tabs and take their clicks.
+        let bandHeight = titleRowHeight
         guard bandHeight > 0,
               let span = TitlebarBand.draggableSpan(
                   windowWidth: contentView.bounds.width,
@@ -3251,8 +3347,9 @@ final class Coordinator {
         // for an ordering reason of its own; the send is guarded on the value
         // having moved, so whichever of the two is second costs nothing.
         host.setTitlebarBandHeight(bandHeight)
+        host.setTabBarHeight(tabBarHeight)
         // The content view is flipped-free AppKit geometry, so the band is at
-        // the TOP, which is the high end of y.
+        // the TOP, which is the high end of y; the title row is the top of it.
         titlebarDrag.frame = NSRect(x: span.x,
                                     y: contentView.bounds.height - bandHeight,
                                     width: span.width,
@@ -3284,7 +3381,8 @@ final class Coordinator {
         // row still on its fallback, and every number that comes back
         // describes a layout that is about to change. Two evaluations on one
         // web view run in the order they were made.
-        host.setTitlebarBandHeight(titlebarBandHeight)
+        host.setTitlebarBandHeight(titleRowHeight)
+        host.setTabBarHeight(tabBarHeight)
         host.reportTitlebarControls { [weak self] controls in
             MainActor.assumeIsolated {
                 guard let self, let controls else { return }
@@ -3477,6 +3575,53 @@ final class Coordinator {
             frame.origin.x, screenHeight - frame.maxY, frame.width, frame.height))
     }
 
+    /// The tab bar and the titlebar band around it, read off the live window.
+    ///
+    /// Three numbers decide the tab design and none can be read anywhere else
+    /// (MAR-393). `band` is `titlebarBandHeight`, the number the page sizes
+    /// its first toolbar row from: if the tab bar grows it, the row balloons
+    /// and the band has to be split. `titlebar` is the system's titlebar
+    /// container and `tabbar` its tab bar view, found by class name in the
+    /// theme frame because neither is a view this app made; their frames say
+    /// where the bar sits and how tall it is. `drag` is the strip
+    /// `layoutTitlebarDrag` lays over the band, which must not lie over the
+    /// tabs. The snapview walk under it is the whole titlebar hierarchy, for
+    /// whatever question the numbers above do not answer.
+    private func traceTabs() {
+        guard measure.enabled else { return }
+        let group = panel.tabGroup
+        let names = (group?.windows ?? []).map { ($0 as? AppPanel)?.title ?? "?" }
+        let selected = (group?.selectedWindow as? AppPanel)?.title ?? "none"
+        let accessories = panel.titlebarAccessoryViewControllers.map {
+            "\(type(of: $0)):\(NSStringFromRect($0.view.frame))"
+        }
+        var titlebar = "none"
+        var tabbar = "none"
+        var newTab = "none"
+        func walk(_ view: NSView, depth: Int) {
+            guard depth < 10 else { return }
+            for sub in view.subviews {
+                let name = String(describing: type(of: sub))
+                let frame = NSStringFromRect(sub.convert(sub.bounds, to: nil))
+                if name.contains("TitlebarContainer") { titlebar = frame }
+                if name == "NSTabBar" || name.hasSuffix("TabBar") { tabbar = frame }
+                if name.contains("NewTab") { newTab = frame }
+                if name.contains("Titlebar") || name.contains("Tab") || depth < 2 {
+                    measure.trace("tabview \(String(repeating: "  ", count: depth))\(name) frame=\(frame) hidden=\(sub.isHidden)")
+                }
+                walk(sub, depth: depth + 1)
+            }
+        }
+        if let theme = panel.contentView?.superview { walk(theme, depth: 0) }
+        measure.trace("tabs count=\(names.count) names=\(names.joined(separator: ";")) selected=\(selected)"
+                      + " barVisible=\(group?.isTabBarVisible == true) mode=\(panel.tabbingMode.rawValue)"
+                      + " identifier=\(panel.tabbingIdentifier) band=\(titlebarBandHeight)"
+                      + " frame=\(NSStringFromRect(panel.frame)) contentLayout=\(NSStringFromRect(panel.contentLayoutRect))"
+                      + " titlebar=\(titlebar) tabbar=\(tabbar) newTab=\(newTab)"
+                      + " drag=\(NSStringFromRect(titlebarDrag.frame)) dragHidden=\(titlebarDrag.isHidden)"
+                      + " accessories=\(accessories.joined(separator: ";"))")
+    }
+
     private func traceTitleBar() {
         guard measure.enabled else { return }
         traceWindowLevel()
@@ -3582,6 +3727,12 @@ final class Coordinator {
         let edited = WindowTitle.showsEdited(hasUnwrittenBytes: isEdited,
                                              autosaveEnabled: Prefs.autosave)
         titleBar.titleView.show(url: boundURL, edited: edited)
+        // The window's own title is hidden from the titlebar (the accessory
+        // draws the name), and is still read in two places: the tab bar
+        // labels each tab with it, and the Window menu lists windows by it.
+        // Left as the app's name, every tab and every row read alike.
+        panel.title = WindowTitle.displayName(of: boundURL)
+        panel.tab.toolTip = boundURL.path
         // The dot in the close button, which macOS draws for us from this one
         // property. THE SAME boolean the word Edited is drawn from, and it has
         // to stay the same one: they are two spellings of a single claim about

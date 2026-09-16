@@ -26,6 +26,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding {
     private var front: Coordinator? { windows.key }
     private var settingsWindow: SettingsWindowController?
     private var showItem: NSMenuItem!
+    /// The File menu and its Close row, held so the row can read Close Tab
+    /// while the window in front has tabs.
+    private var fileMenu: NSMenu?
+    private var closeItem: NSMenuItem?
     private var terminationSignal: DispatchSourceSignal?
     /// The view the overflow menu was opened from, for the sharing picker,
     /// which needs somewhere on screen to point at.
@@ -406,7 +410,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding {
         // turns `close` into a hide).
         for item in fileMenu.items where item.action != nil { item.target = self }
         fileMenu.addItem(.separator())
-        fileMenu.addItem(withTitle: "Close", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
+        // Close reads Close Tab while the window in front holds several tabs
+        // (`menuNeedsUpdate` retitles it), as every tabbed macOS app's does;
+        // it still travels the responder chain, so it closes the Settings
+        // window when that is in front and the selected tab when the panel is.
+        closeItem = fileMenu.addItem(withTitle: "Close", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
+        // Every tab of the window in front, the chord the HIG reserves for it.
+        let closeWindow = fileMenu.addItem(withTitle: "Close Window", action: #selector(menuCloseWindow),
+                                           keyEquivalent: "W")
+        closeWindow.keyEquivalentModifierMask = [.command, .shift]
+        closeWindow.target = self
+        self.fileMenu = fileMenu
         let fileItem = NSMenuItem(); fileItem.submenu = fileMenu; main.addItem(fileItem)
 
         let editMenu = NSMenu(title: "Edit")
@@ -589,6 +603,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding {
     @objc private func copyEverything() { front?.copyEverything() }
     @objc func menuSaveNow() { front?.saveNow() }
     @objc func menuNewNote() { windows.newNote() }
+
+    /// Cmd+T: a tab beside the window in front, and a plain new window when
+    /// nothing is in front to put a tab beside.
+    @objc func menuNewTab() {
+        if let front { windows.newTab(in: front) } else { windows.newNote() }
+    }
+
+    /// Shift+Cmd+W: every tab of the window in front.
+    @objc func menuCloseWindow() {
+        guard let front else { return }
+        windows.closeWindow(front)
+    }
     @objc func menuOpenDocument() { windows.openDocumentPanel() }
 
     /// Raise the recents list from a control that is not a menu row: the
@@ -1018,6 +1044,11 @@ extension AppDelegate: NSMenuDelegate, NSMenuItemValidation {
             showItem.title = windows.isAnyVisible ? "Hide \(AppFlavor.current.displayName)" : "Show \(AppFlavor.current.displayName)"
             showItem.keyEquivalent = combo.menuKeyEquivalent
             showItem.keyEquivalentModifierMask = combo.menuModifierMask
+        } else if menu === fileMenu {
+            // What Cmd+W will do, said before it is pressed. With one tab it
+            // is the window (or the hide the last window does), and with
+            // several it is the tab.
+            closeItem?.title = (front?.tabCount ?? 1) > 1 ? "Close Tab" : "Close"
         } else if menu === viewMenu || menu === formatMenu {
             // One call for both, because both menus are asking the same
             // question of the same table: which of my rows is withdrawn right
@@ -1088,7 +1119,7 @@ extension AppDelegate: NSMenuDelegate, NSMenuItemValidation {
     /// Every menu command that reads or writes the note. Named once so the
     /// first-run gate above cannot drift out of step with the File menu.
     private static let documentCommands: Set<Selector> = [
-        #selector(menuNewNote), #selector(menuOpenDocument),
+        #selector(menuNewNote), #selector(menuNewTab), #selector(menuOpenDocument),
         #selector(menuOpenRecent(_:)), #selector(menuOpenRecentDocument(_:)),
         #selector(menuSaveNow), #selector(menuSaveAs),
         #selector(copyEverything), #selector(shareNote), #selector(revealLastSave),

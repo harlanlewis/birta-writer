@@ -252,7 +252,7 @@ final class AppMenuTests: XCTestCase {
 
     func testTheFileMenuShouldOpenRecentThroughASubmenuOfItsOwn() {
         let file = build(.file)
-        XCTAssertEqual(titles(of: file), ["New Note", "Open…", "Open Recent", "Save", "Save a Copy As…"])
+        XCTAssertEqual(titles(of: file), ["New Note", "New Tab", "Open…", "Open Recent", "Save", "Save a Copy As…"])
         let item = file.items.first { $0.title == "Open Recent" }
         // A submenu row and nothing else. The selector the table gives this
         // row is for the titlebar's button; leaving it on the menu item would
@@ -613,12 +613,12 @@ final class AppMenuTests: XCTestCase {
         XCTAssertEqual(open?.menu, .file)
         XCTAssertEqual(open?.chord, "Mod-o")
         XCTAssertEqual(open?.action.selector, #selector(AppDelegate.menuOpenDocument))
-        // Between New Note and Open Recent, which is where every macOS File
-        // menu puts the pair, and above Save. Asserted on the built menu rather
-        // than on the table, because the order a person reads is the one `fill`
-        // produces.
-        XCTAssertEqual(Array(titles(of: build(.file))[0..<4]),
-                       ["New Note", "Open…", "Open Recent", "Save"])
+        // After the two New rows and before Open Recent, which is where every
+        // macOS File menu puts the pair, and above Save. Asserted on the built
+        // menu rather than on the table, because the order a person reads is
+        // the one `fill` produces.
+        XCTAssertEqual(Array(titles(of: build(.file))[0..<5]),
+                       ["New Note", "New Tab", "Open…", "Open Recent", "Save"])
     }
 
     func testARowShouldBeReachableByItsSelectorAndPrintItsOwnChord() {
