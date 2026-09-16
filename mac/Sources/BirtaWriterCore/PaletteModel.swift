@@ -74,7 +74,14 @@ public enum PaletteModel {
     /// worth: enough to put a row somebody keeps reaching for above the rest
     /// of its section, not enough to outrank a better match.
     public static let recentsKept = 20
-    private static let recentBonus = 2
+    /// The score's three layers, each outranking everything below it: a
+    /// match point, a recent pick, a list position. `PaletteModelTests` holds
+    /// the layering, since a behavioural test can only sample it.
+    static let recentBonus = 2
+    static let matchWeight = 1_000_000
+    static let recentWeight = 100_000
+    /// The last list position the order term can tell apart.
+    static let orderCeiling = 99_999
 
     /// The rows for `query`, best first, over `items` in `mode`.
     ///
@@ -106,13 +113,11 @@ public enum PaletteModel {
             guard let match = best(trimmed, for: item) else { continue }
             let boost = recents.contains(item.item.id) ? recentBonus : 0
             rows.append(PaletteRow(item: item.item, title: item.title, matched: match.ranges,
-                                   score: match.score * 1_000_000 + boost * 100_000 + (orderCeiling - min(order, orderCeiling))))
+                                   score: match.score * matchWeight + boost * recentWeight
+                                       + (orderCeiling - min(order, orderCeiling))))
         }
         return rows.sorted { $0.score > $1.score }
     }
-
-    /// The last list position the order term can tell apart.
-    private static let orderCeiling = 99_999
 
     /// The rows grouped by section, in the order the sections first appear.
     public static func sections(_ rows: [PaletteRow]) -> [(section: String, rows: [PaletteRow])] {

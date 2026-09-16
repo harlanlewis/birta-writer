@@ -219,6 +219,32 @@ describe("the file explorer gate", () => {
         expect(document.querySelector(".files-row--selected")).toBeNull();
     });
 
+    it("a reveal of a row that cannot be drawn should be given up, not kept for a later render", async () => {
+        // A hidden file with the dotfile switch off has no row to scroll to.
+        // Once nothing is in flight the reveal is over; showing dotfiles later
+        // must not scroll to it as if the pick had just happened.
+        const scrolled = vi.fn();
+        const proto = Element.prototype as { scrollIntoView?: unknown };
+        const had = proto.scrollIntoView;
+        proto.scrollIntoView = scrolled;
+        try {
+            await mounted(gate);
+            answer(gate, "", [file(".hidden.md", true, true), file("a.md")]);
+            gate.setCurrentProjectFile(".hidden.md");
+            expect(row(".hidden.md")!.hidden).toBe(true);
+            expect(scrolled).not.toHaveBeenCalled();
+            gate.setShowHidden(true);
+            expect(row(".hidden.md")!.hidden).toBe(false);
+            expect(scrolled).not.toHaveBeenCalled();
+            // A fresh pick of the now-visible row does scroll: the give-up was
+            // of that one reveal, not of revealing.
+            gate.setCurrentProjectFile(".hidden.md");
+            expect(scrolled).toHaveBeenCalledTimes(1);
+        } finally {
+            proto.scrollIntoView = had;
+        }
+    });
+
     it("a listing the host could not read should draw an error row that retries on activate", async () => {
         await mounted(gate);
         answer(gate, "", [dir("locked")]);

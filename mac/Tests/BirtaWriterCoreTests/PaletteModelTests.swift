@@ -60,6 +60,14 @@ final class PaletteModelTests: XCTestCase {
         XCTAssertEqual(titles(tie).first, "Alpine", "recency decides between equals")
     }
 
+    func testTheScoresLayersShouldEachOutrankEverythingBelow() {
+        // One match point outranks the whole recency layer, and the recency
+        // layer outranks every list position, whatever the constants become.
+        XCTAssertLessThan(PaletteModel.recentBonus * PaletteModel.recentWeight, PaletteModel.matchWeight)
+        XCTAssertLessThan(PaletteModel.orderCeiling, PaletteModel.recentWeight)
+        XCTAssertGreaterThan(PaletteModel.recentBonus, 0, "a recent pick has to count for something")
+    }
+
     func testEqualMatchesKeepTheOrderTheListWasGivenIn() {
         let rows = PaletteModel.rank([
             PaletteItem(id: "z", title: "Zeta thing", section: "S", kind: .command),

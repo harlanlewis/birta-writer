@@ -116,6 +116,22 @@ final class DirectoryListingTests: XCTestCase {
                        "a recent outside the root does not count, however recent")
     }
 
+    func testARecentTheCallerRefusesShouldGiveWayToTheNextCandidate() throws {
+        // `WindowSet.openDirectory` refuses a file open in another window
+        // through `accepts`; the rule then falls to the next recent, then to
+        // the newest at the top, then to nil, and never back to the refused one.
+        let open = root.appendingPathComponent("alpha/inner.md")
+        let next = root.appendingPathComponent("note 2.md")
+        let accepts = self.accepts
+        let refusing: (URL) -> Bool = { accepts($0) && $0.lastPathComponent != "inner.md" }
+        XCTAssertEqual(DirectoryListing.firstToOpen(in: root, recents: [open, next], accepts: refusing), next)
+        let atTop = DirectoryListing.firstToOpen(in: root, recents: [open], accepts: refusing)
+        XCTAssertNotNil(atTop)
+        XCTAssertNotEqual(atTop, open)
+        XCTAssertNil(DirectoryListing.firstToOpen(in: root, recents: [open], accepts: { _ in false }),
+                     "with every file refused the folder gets a new note instead")
+    }
+
     func testWithNoRecentInsideTheFirstFileShouldBeTheNewestOpenableAtTheTop() throws {
         let newest = root.appendingPathComponent("note 2.md")
         try FileManager.default.setAttributes([.modificationDate: Date()], ofItemAtPath: newest.path)
