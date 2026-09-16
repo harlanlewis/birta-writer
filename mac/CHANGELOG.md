@@ -12,6 +12,10 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ## [Unreleased]
 
+---
+
+## [2026.916.0] - 2026, September 16
+
 ### Added
 
 - Folders. Birta Writer for Mac opens a folder as a window with a file explorer beside the editor: Open (⌘O) accepts a folder, and so do Open With in the Finder, a drop on the Dock icon and `open -a`. The window opens on the folder's most recently used note, or its newest, or a new note when it has none. The explorer lists every file in the folder and below it, folders first, one level at a time as you open them, with files the editor does not open dimmed and opening in their own app; Show Hidden Files (⇧⌘.) lists dotfiles, and Show Files (⇧⌘E) hides and shows the explorer. Both rows are live only in a folder window. New Note and New Tab in a folder window make the note in the folder, as a tab, and a file under the folder opened from anywhere else joins that window as a tab and is selected in its explorer. Changes on disk reach the explorer as they happen. The explorer itself is the editor's, so its look and keyboard are the table of contents drawer's; its own entry is in the editor's changelog.
