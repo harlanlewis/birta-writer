@@ -7,7 +7,10 @@
  * the reveal of a deep file, and the keyboard through real key events.
  *
  * `index.html?root=0` is the single-file window: same profile, null root,
- * and no panel may exist.
+ * and no panel may exist. `index.html?toc=left` is the VS Code-shaped
+ * pairing, a left TOC with its reveal tab on the explorer's own edge, where
+ * the content clears both drawers through one margin and the tab has to
+ * clear the explorer.
  */
 const SETTLE = 350;
 const GAP = 100; // --toc-content-gap
@@ -395,4 +398,196 @@ export async function run({ page, check, baseUrl }) {
     await page.keyboard.press("Escape");
     check("Escape returns focus to the editor",
         await page.evaluate(() => !!document.activeElement?.closest(".ProseMirror")));
+
+    // ── A left TOC on the explorer's edge (?toc=left) ────────────────────
+    // Wider than the runner's default: both drawers dock only where the
+    // viewport holds files + toc + the TOC's 720px content column.
+    const WIDE = 1400;
+    await page.setViewportSize({ width: WIDE, height: 900 });
+    await page.goto(`${baseUrl}/index.html?toc=left`);
+    await page.waitForSelector(".milkdown .ProseMirror", { timeout: 10000 });
+    await page.waitForSelector(".files-panel", { timeout: 10000 });
+    await page.waitForSelector(rowSel("readme.md"), { timeout: 10000 });
+    await page.waitForTimeout(SETTLE);
+    const TAB_W = 20; // --toc-tab-width
+    const OPEN_PAD = 48; // #editor's left padding while a left TOC is docked open
+    const TAB_INSET = 7; // revealTab.ts TAB_EDGE_INSET
+    const layout = () => page.evaluate(() => {
+        const ed = document.querySelector("#editor");
+        const cs = getComputedStyle(ed);
+        const toc = document.querySelector(".toc-panel");
+        const tab = document.querySelector(".toc-toggle-tab");
+        const files = document.querySelector(".files-panel");
+        return {
+            filesOpen: document.body.classList.contains("files-open"),
+            filesWidth: Math.round(files.getBoundingClientRect().width),
+            filesLeft: Math.round(files.getBoundingClientRect().left),
+            tocOpen: document.body.classList.contains("toc-open"),
+            tocDocked: document.body.classList.contains("toc-docked"),
+            tocOverlay: document.body.classList.contains("toc-overlay"),
+            tocRight: document.body.classList.contains("toc-right"),
+            tocWidth: Math.round(toc.getBoundingClientRect().width),
+            // The drawer's own `left` (a closed drawer is translated off screen,
+            // so its box says nothing) and its realized edge while open.
+            tocLeft: Math.round(parseFloat(getComputedStyle(toc).left)),
+            tocRectLeft: Math.round(toc.getBoundingClientRect().left),
+            tabOnPage: !!tab && document.body.contains(tab),
+            tabShown: !!tab && getComputedStyle(tab).display !== "none",
+            tabLeft: tab ? Math.round(tab.getBoundingClientRect().left) : null,
+            marginLeft: Math.round(parseFloat(cs.marginLeft)),
+            marginRight: Math.round(parseFloat(cs.marginRight)),
+            paddingLeft: Math.round(parseFloat(cs.paddingLeft)),
+            width: Math.round(ed.getBoundingClientRect().width),
+            pane: ed.parentElement.clientWidth,
+        };
+    });
+    const breakout = () => page.evaluate(() => {
+        const wrapper = document.querySelector(".ProseMirror > .code-block-wrapper");
+        const before = Math.round(wrapper.getBoundingClientRect().left);
+        wrapper.classList.add("bw-full");
+        const left = Math.round(wrapper.getBoundingClientRect().left);
+        const target = getComputedStyle(document.querySelector("#editor")).getPropertyValue("--bw-target-left").trim();
+        wrapper.classList.remove("bw-full");
+        return { before, left, target };
+    });
+    const setFixed = async (on) => {
+        await page.evaluate((fixed) => {
+            document.body.classList.toggle("editor-width-auto", !fixed);
+            if (fixed) {
+                document.documentElement.style.setProperty("--editor-max-width", "400px");
+            } else {
+                document.documentElement.style.removeProperty("--editor-max-width");
+            }
+        }, on);
+        await page.waitForTimeout(SETTLE);
+    };
+
+    // Files docked open, TOC docked CLOSED on the same edge.
+    const closedLeft = await layout();
+    check("left profile: the explorer docks open and the TOC docks closed on the left with its tab on the page",
+        closedLeft.filesOpen && closedLeft.tocDocked && !closedLeft.tocOpen && !closedLeft.tocRight
+            && closedLeft.tabOnPage && closedLeft.tabShown,
+        JSON.stringify(closedLeft));
+    check("files open, TOC docked closed: the reveal tab sits past the explorer, at its inset from the explorer's edge",
+        closedLeft.tabLeft === closedLeft.filesWidth + TAB_INSET, JSON.stringify(closedLeft));
+    check("files open, TOC docked closed: the closed drawer's left is --files-reserve",
+        closedLeft.tocLeft === closedLeft.filesWidth, JSON.stringify(closedLeft));
+    const closedOffset = Math.max(0, closedLeft.filesWidth + TAB_W + GAP - LEFT_PAD);
+    check("full width, TOC docked closed left: #editor's margin-left is files + tab + gap - padding, one margin for both",
+        closedLeft.marginLeft === closedOffset && closedLeft.marginRight === 0
+            && Math.abs(closedLeft.width - (closedLeft.pane - closedOffset)) <= 1,
+        `expected ${closedOffset}, got ${JSON.stringify(closedLeft)}`);
+    await setFixed(true);
+    const closedFixed = await layout();
+    const closedCentred = Math.max(closedLeft.filesWidth + GAP - LEFT_PAD,
+        closedLeft.filesWidth + (closedFixed.pane - closedLeft.filesWidth - 400) / 2);
+    check("fixed width, TOC docked closed left: #editor centres beside the explorer (the closed tab is thinner than the padding)",
+        Math.abs(closedFixed.marginLeft - closedCentred) <= 1 && closedFixed.width === 400,
+        `expected ${closedCentred}, got ${JSON.stringify(closedFixed)}`);
+    const closedBw = await breakout();
+    check("fixed width, TOC docked closed left: a bw-full block breaks out to files + tab + gap",
+        closedBw.left === Math.max(LEFT_PAD, closedLeft.filesWidth + TAB_W + GAP) && closedBw.before > closedBw.left
+            && closedBw.target.includes(`${closedLeft.filesWidth}px`),
+        JSON.stringify(closedBw));
+    await setFixed(false);
+
+    // The tab docks the TOC open on the left: both drawers open on one edge.
+    await press(".toc-toggle-tab");
+    await page.waitForTimeout(SETTLE);
+    const openLeft = await layout();
+    check("the tab docks the TOC open on the left beside the explorer, which stays put",
+        openLeft.tocOpen && openLeft.tocDocked && openLeft.filesOpen && openLeft.filesLeft === 0, JSON.stringify(openLeft));
+    check("files open, TOC docked open: the TOC drawer starts where the explorer ends",
+        openLeft.tocRectLeft === openLeft.filesWidth && openLeft.tocLeft === openLeft.filesWidth, JSON.stringify(openLeft));
+    const openOffset = Math.max(0, openLeft.filesWidth + openLeft.tocWidth + GAP - OPEN_PAD);
+    check("full width, both docked open left: #editor's margin-left is files + toc + gap - the open padding, width gives it up",
+        openLeft.marginLeft === openOffset && openLeft.paddingLeft === OPEN_PAD && openLeft.marginRight === 0
+            && Math.abs(openLeft.width - (openLeft.pane - openOffset)) <= 1,
+        `expected ${openOffset}, got ${JSON.stringify(openLeft)}`);
+    await setFixed(true);
+    const openFixed = await layout();
+    const openCentred = Math.max(openOffset,
+        openLeft.filesWidth + openLeft.tocWidth + (openFixed.pane - openLeft.filesWidth - openLeft.tocWidth - 400) / 2);
+    check("fixed width, both docked open left: #editor centres in the space past both drawers",
+        Math.abs(openFixed.marginLeft - openCentred) <= 1 && openFixed.width === 400,
+        `expected ${openCentred}, got ${JSON.stringify(openFixed)}`);
+    const openBw = await breakout();
+    check("fixed width, both docked open left: a bw-full block breaks out to files + toc + gap",
+        openBw.left === Math.max(OPEN_PAD, openLeft.filesWidth + openLeft.tocWidth + GAP) && openBw.before > openBw.left
+            && openBw.target.includes(`${openLeft.filesWidth}px`),
+        JSON.stringify(openBw));
+
+    // Files closed: every number is the TOC-only value.
+    await press(".tb-files-btn");
+    await page.waitForTimeout(SETTLE);
+    const tocOnlyFixed = await layout();
+    const tocOnlyCentred = Math.max(tocOnlyFixed.tocWidth + GAP - OPEN_PAD,
+        tocOnlyFixed.tocWidth + (tocOnlyFixed.pane - tocOnlyFixed.tocWidth - 400) / 2);
+    check("files closed, fixed width: the TOC drawer is back at 0 and #editor centres beside it alone",
+        !tocOnlyFixed.filesOpen && tocOnlyFixed.tocOpen && tocOnlyFixed.tocRectLeft === 0 && tocOnlyFixed.tocLeft === 0
+            && Math.abs(tocOnlyFixed.marginLeft - tocOnlyCentred) <= 1,
+        `expected ${tocOnlyCentred}, got ${JSON.stringify(tocOnlyFixed)}`);
+    const tocOnlyBw = await breakout();
+    check("files closed, fixed width: the breakout is back to toc + gap",
+        tocOnlyBw.left === Math.max(OPEN_PAD, tocOnlyFixed.tocWidth + GAP) && !tocOnlyBw.target.includes(`${closedLeft.filesWidth}px`),
+        JSON.stringify(tocOnlyBw));
+    await setFixed(false);
+    const tocOnlyFull = await layout();
+    check("files closed, full width: #editor's margin-left is toc + gap - the open padding",
+        tocOnlyFull.marginLeft === tocOnlyFull.tocWidth + GAP - OPEN_PAD
+            && Math.abs(tocOnlyFull.width - (tocOnlyFull.pane - tocOnlyFull.marginLeft)) <= 1,
+        JSON.stringify(tocOnlyFull));
+    await press(".toc-hide-btn");
+    await page.waitForTimeout(SETTLE);
+    const bothClosed = await layout();
+    check("files closed, TOC closed: the tab is back at its own inset and the margin is tab + gap - padding",
+        !bothClosed.tocOpen && bothClosed.tabShown && bothClosed.tabLeft === TAB_INSET
+            && bothClosed.marginLeft === Math.max(0, TAB_W + GAP - LEFT_PAD),
+        JSON.stringify(bothClosed));
+
+    // The tab follows the explorer with no TOC commit: the explorer opening,
+    // and its sash being dragged, move the tab live.
+    await press(".tb-files-btn");
+    await page.waitForTimeout(SETTLE);
+    const reopened = await layout();
+    check("the explorer opening under a closed TOC moves the tab past it with no TOC commit",
+        reopened.filesOpen && reopened.tabLeft === reopened.filesWidth + TAB_INSET, JSON.stringify(reopened));
+    const leftSash = await page.evaluate(() => {
+        const h = document.querySelector(".files-panel .side-panel-resize-handle").getBoundingClientRect();
+        return { x: Math.round(h.left + h.width / 2), y: Math.round(h.top + 200) };
+    });
+    await page.mouse.move(leftSash.x, leftSash.y);
+    await page.mouse.down();
+    await page.mouse.move(leftSash.x + 40, leftSash.y, { steps: 4 });
+    const midDrag = await layout();
+    await page.mouse.up();
+    await page.waitForTimeout(100);
+    check("dragging the explorer's sash carries the tab and the margin with it, per move",
+        midDrag.filesWidth === reopened.filesWidth + 40 && midDrag.tabLeft === midDrag.filesWidth + TAB_INSET
+            && midDrag.marginLeft === Math.max(0, midDrag.filesWidth + TAB_W + GAP - LEFT_PAD),
+        JSON.stringify({ reopened, midDrag }));
+
+    // The TOC's docked/overlay threshold takes the explorer's reserve off the
+    // viewport: at a width that holds the TOC alone but not beside the
+    // explorer, the TOC floats. (The mirror is unreachable: a viewport with
+    // room for the TOC beside the explorer always has room for the explorer
+    // beside the TOC, since the TOC asks for the wider content column.)
+    await press(".toc-toggle-tab");
+    await page.waitForTimeout(SETTLE);
+    const before = await layout();
+    const tight = before.tocWidth + 720 + 60; // holds the TOC alone (plus slack), not files + TOC
+    await page.setViewportSize({ width: tight, height: 900 });
+    await page.waitForTimeout(SETTLE);
+    const squeezed = await layout();
+    check("a viewport with room for the TOC alone but not beside the docked explorer floats the TOC (neighborReserve)",
+        before.tocDocked && before.tocOpen && before.filesOpen && tight >= before.tocWidth + 720
+            && tight < before.filesWidth + before.tocWidth + 720
+            && squeezed.tocOverlay && !squeezed.tocOpen && squeezed.filesOpen,
+        JSON.stringify({ tight, before, squeezed }));
+    await page.setViewportSize({ width: WIDE, height: 900 });
+    await page.waitForTimeout(SETTLE);
+    const widened = await layout();
+    check("widening again docks the TOC back open beside the explorer",
+        widened.tocDocked && widened.tocOpen && widened.tocRectLeft === widened.filesWidth, JSON.stringify(widened));
+    await page.setViewportSize({ width: 1000, height: 900 });
 }
