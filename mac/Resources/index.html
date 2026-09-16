@@ -88,6 +88,15 @@
     min-height: var(--mac-titlebar-height, 34px);
     padding-top: 0;
     padding-bottom: 0;
+    /* The tab bar's row, when the window has tabs. macOS draws it as a second
+       row of the titlebar band, under the title row and over the page, so the
+       page leaves that row clear: a gap under its first row, sized by the
+       window (`BirtaSchemeHandler.tabBarHeight`, pushed on change). A margin
+       on the first row rather than padding on the bar, so the gap sits between
+       the two rows and the formatting row below it is not covered. Everything
+       that measures the bar (content padding, the drawer panels, the find bar)
+       follows, because a flex item's margin counts in the bar's height. */
+    margin-bottom: var(--mac-tabbar-height, 0px);
   }
 
   /* A fullscreen surface covers the whole window, the titlebar band included,

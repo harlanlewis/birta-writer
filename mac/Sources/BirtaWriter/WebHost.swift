@@ -59,6 +59,11 @@ final class BirtaSchemeHandler: NSObject, WKURLSchemeHandler {
     /// every macOS titlebar style, which is why the page carries a fallback
     /// and not a literal.
     var titlebarBandHeight: CGFloat = 0
+    /// How tall the tab bar's row is, in points, or 0 with no tab bar. Served
+    /// beside the band height for the same reason: the page spends it as a gap
+    /// under its first row, and a document served without it would draw its
+    /// content under the tabs until told (MAR-393).
+    var tabBarHeight: CGFloat = 0
     /// Whether the page may reach the network (Preferences opt-in).
     var networkEnabled = false
 
@@ -190,11 +195,16 @@ final class BirtaSchemeHandler: NSObject, WKURLSchemeHandler {
         let band = titlebarBandHeight > 0
             ? ":root { --mac-titlebar-height: \(titlebarBandHeight)px; }"
             : ""
+        // Zero is a real answer here, unlike the band's: no tab bar means no
+        // gap, and the page's own fallback already says so.
+        let tabs = tabBarHeight > 0
+            ? ":root { --mac-tabbar-height: \(tabBarHeight)px; }"
+            : ""
         return template
             .replacingOccurrences(of: "{{CSP}}", with: csp())
             .replacingOccurrences(of: "{{THEME_CLASS}}",
                                   with: "\(themeClass) toc-right")
-            .replacingOccurrences(of: "{{ROOT_STYLE}}", with: tocRootStyle + band)
+            .replacingOccurrences(of: "{{ROOT_STYLE}}", with: tocRootStyle + band + tabs)
     }
 }
 
@@ -234,6 +244,7 @@ final class WebHost: NSObject, WKScriptMessageHandler, WKNavigationDelegate, WKU
         // The document about to be served carries the band height in its own
         // stylesheet, so that is the baseline the next push measures against.
         reportedBandHeight = schemeHandler.titlebarBandHeight
+        reportedTabBarHeight = schemeHandler.tabBarHeight
         controller.removeAllUserScripts()
         let script = WKUserScript(source: boot.userScript(themeClass: themeClass),
                                   injectionTime: .atDocumentStart, forMainFrameOnly: true)
@@ -524,6 +535,20 @@ final class WebHost: NSObject, WKScriptMessageHandler, WKNavigationDelegate, WKU
         guard abs(height - reportedBandHeight) > 0.01 else { return }
         reportedBandHeight = height
         let js = "document.documentElement.style.setProperty('--mac-titlebar-height', '\(height)px')"
+        webView.evaluateJavaScript(js) { _, _ in }
+    }
+
+    /// The same delivery for the tab bar's row, with one difference: zero is
+    /// sent. A tab bar that has just gone (the last other tab closed) leaves a
+    /// gap the page must close, where a band of zero only ever means "not laid
+    /// out yet".
+    private var reportedTabBarHeight: CGFloat = 0
+
+    func setTabBarHeight(_ height: CGFloat) {
+        schemeHandler.tabBarHeight = height
+        guard abs(height - reportedTabBarHeight) > 0.01 else { return }
+        reportedTabBarHeight = height
+        let js = "document.documentElement.style.setProperty('--mac-tabbar-height', '\(height)px')"
         webView.evaluateJavaScript(js) { _, _ in }
     }
 

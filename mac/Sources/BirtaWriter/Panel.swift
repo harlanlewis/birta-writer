@@ -50,14 +50,12 @@ final class AppPanel: NSPanel {
         onNewTabRequest?()
     }
 
-    /// Which windows may share a tab bar with this one.
-    ///
-    /// Set explicitly rather than left to the heuristic AppKit derives from
-    /// the class, so it can differ by what a window is rooted at: windows on
-    /// files group together, and a directory window's tabs group with that
-    /// directory's (MAR-457), so Merge All Windows never folds a folder's
-    /// explorer into a stack of loose notes.
-    static let notesTabbingIdentifier = "\(AppFlavor.current.bundleID).notes"
+    /// Which windows may share a tab bar with this one. Set explicitly rather
+    /// than left to the heuristic AppKit derives from the class, so it can
+    /// differ by what a window is rooted at; `TabGroupPolicy.tabbingIdentifier`
+    /// is the rule.
+    static let notesTabbingIdentifier =
+        TabGroupPolicy.tabbingIdentifier(bundleID: AppFlavor.current.bundleID, root: nil)
 
     /// Whether this window is the one that remembers its size and position
     /// between launches.
@@ -136,6 +134,17 @@ final class AppPanel: NSPanel {
         // tab whatever that setting says (`addTabbedWindow`).
         tabbingMode = .automatic
         tabbingIdentifier = Self.notesTabbingIdentifier
+        // A window being put back takes its frame NOW rather than on first
+        // show, unlike a window the rule places, because the rule needs a
+        // screen and a restored frame is already a place on one. Taking it
+        // here is what lets a tab attached to this window before either is
+        // shown copy a real frame (`adoptGroupFrame`); attached to a window
+        // still at its placeholder, the tab keeps the placeholder, and the
+        // frame AppKit syncs across the group on first show is the wrong one.
+        if let restoredFrame, Self.isReachable(restoredFrame) {
+            setFrame(restoredFrame, display: false)
+            placed = true
+        }
         // The system's own show and hide, not a chosen one.
         animationBehavior = .default
         minSize = PanelSize.minimum
@@ -207,6 +216,15 @@ final class AppPanel: NSPanel {
         onHideRequest()
     }
 
+    /// Take the frame of the window whose tab group this one is joining, and
+    /// count as placed by it. Done before `addTabbedWindow`, so a tab attached
+    /// while both windows are hidden (a launch restoring a group) already sits
+    /// where the group does when the group first comes forward.
+    func adoptGroupFrame(of other: AppPanel) {
+        setFrame(other.frame, display: false)
+        placed = true
+    }
+
     /// Put this window one step down and right of `point`, at the size of the
     /// window it was spawned from, and answer where the NEXT one goes.
     ///
@@ -232,13 +250,10 @@ final class AppPanel: NSPanel {
     func placeIfUnplaced() {
         guard !placed else { return }
         placed = true
-        // A window being put back goes where it was, before any rule of this
-        // app's or AppKit's has a say. `restoredFrame` states why it outranks
-        // the autosave and when it is refused.
-        if let restored = restoredFrame, Self.isReachable(restored) {
-            setFrame(restored, display: false)
-            return
-        }
+        // A tab never reaches this: `adoptGroupFrame` placed it at the group's
+        // frame when it was attached, and a window AppKit tabs on its own (the
+        // system's "prefer tabs" setting) is placed here first and grouped as
+        // it is ordered front.
         // Guarded for the reason the autosave above is, and separately:
         // `setFrameUsingName` reads that defaults key whether or not this
         // window ever named itself, so without this a checking run would still
