@@ -119,9 +119,10 @@ jobs:
   # the commits that could have moved it.
   #
   # The run leaves out the corpus sweeps (`CORPUS_SWEEPS` in vitest.config.ts):
-  # they run bare on every push and, for the deepest two, in the job above,
-  # and under instrumentation they were the only tests that ever timed out
-  # here. The threshold is measured over the rest of the suite.
+  # they run bare on every push, and the three the job above names by
+  # substring (both round-trip corpus suites and the move sampler) run again
+  # there with the nightly seed. Under instrumentation they are the slow
+  # tail, and the threshold is measured over the rest of the suite.
   coverage:
     name: Coverage thresholds
     runs-on: ubuntu-latest

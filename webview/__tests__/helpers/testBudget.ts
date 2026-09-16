@@ -7,8 +7,7 @@
  * about one machine on one day. Coverage instrumentation multiplies every
  * parse and every call, and a shared CI runner shares its cores, so the same
  * test reads several times slower there than on a laptop with the machine
- * to itself. Three nightly coverage runs went red on exactly this in one
- * week (2026-09-13, 2026-09-16 twice) with nothing wrong in the tree, and a
+ * to itself, and a fixed budget goes red with nothing wrong in the tree. A
  * red nobody can act on teaches the next reader to re-run rather than read,
  * which is how a real intermittent gets buried the day it arrives.
  *

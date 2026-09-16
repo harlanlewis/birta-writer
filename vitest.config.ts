@@ -9,25 +9,28 @@ import path from "path";
 // the variable that helper reads, so the two halves cannot disagree about
 // which instrument is running. Decided here, from the command line, rather
 // than by each script exporting a variable: one place, and a `--coverage`
-// passed by hand is covered too.
-const coverageRun = process.argv.includes("--coverage");
+// passed by hand is covered too, in its flag and dotted (`--coverage.enabled`)
+// spellings. Not covered, on purpose: `coverage.enabled` written into a
+// config file, which nothing here does, and the watch-mode toggle.
+const coverageRun = process.argv.some((arg) => arg === "--coverage" || arg.startsWith("--coverage."));
 const DEFAULT_TIMEOUT_MS = 5_000;
 const COVERAGE_FACTOR = 4;
 
 // The corpus sweeps: suites that walk every fixture under samples/ and the
 // perf fixtures through a real editor. They are fidelity gates, and they run
-// bare on every push (`pnpm test`) and, for the two deepest, again with a
-// nightly seed in the fidelity job beside this one. Under instrumentation
-// they are the slow tail of the coverage run and the only tests that have
-// ever timed out in it. What the threshold measures, which lines the suite
-// reaches, the rest of the suite reaches without them; the threshold check
-// itself is what holds that, on every coverage run. So the coverage run
-// leaves them out: thin cloud, thick local. A file named here that does not
-// exist is a silent no-op, so `shared/__tests__/testBudgets.test.ts` holds
-// that each exists and is a budgeted suite.
+// bare on every push (`pnpm test`); the three the nightly fidelity job names
+// run again there with a seed. Under instrumentation they are the slow tail
+// of the coverage run, so the coverage run leaves them out: thin cloud, thick
+// local. Membership is a measurement, not a taste: a suite stays IN the
+// coverage run when a production file is reached by it and little else,
+// which a pair of coverage runs with and without the suite shows file by
+// file, and two corpus walks stay in on those grounds (each says so on its
+// `loadCorpusFixtures` import). `shared/__tests__/testBudgets.test.ts` holds
+// that each file named here exists (a missing one is a silent no-op), that
+// each is a budgeted suite, and that every budgeted corpus walk is either
+// listed here or annotated as kept.
 const CORPUS_SWEEPS = [
     "webview/__tests__/agentPending.test.ts",
-    "webview/__tests__/blockSegmenter.test.ts",
     "webview/__tests__/blockSourceRoundTrip.test.ts",
     "webview/__tests__/corpusMoveSampling.test.ts",
     "webview/__tests__/dropSlotLegality.test.ts",
@@ -35,9 +38,9 @@ const CORPUS_SWEEPS = [
     "webview/__tests__/headlessParser.test.ts",
     "webview/__tests__/perfFixtureConstructs.test.ts",
     "webview/__tests__/progressiveOpen.test.ts",
+    "webview/__tests__/protectionLifecycle.test.ts",
     "webview/__tests__/roundTripCorpus.test.ts",
     "webview/__tests__/roundTripCorpusMdx.test.ts",
-    "webview/__tests__/verifiedMerge.test.ts",
 ];
 
 export default defineConfig({

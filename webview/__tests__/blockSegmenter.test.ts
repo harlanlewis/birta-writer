@@ -15,7 +15,7 @@ import { budget } from "./helpers/testBudget";
 import { parserCtx, type Editor } from "@milkdown/core";
 import type { Node as ProseNode } from "../pm";
 import { findSafeCuts, segmentBlocks } from "../utils/blockSegmenter";
-import { loadCorpusFixtures, makeCorpusEditor, type CorpusFixture } from "./helpers/moveFuzz";
+import { loadCorpusFixtures, makeCorpusEditor, type CorpusFixture } from "./helpers/moveFuzz"; // corpus-sweep-kept: webview/utils/blockSegmenter.ts is reached by this suite and little else
 
 const fixtures: CorpusFixture[] = loadCorpusFixtures();
 
