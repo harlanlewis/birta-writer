@@ -73,6 +73,7 @@ import { setupPathLink } from "./components/pathLink";
 import { initPathComplete } from "./components/pathLink/pathComplete";
 import { initFindBar } from "./components/findBar";
 import { createLineNumbersGate } from "./utils/lineNumbersLoader";
+import { createFileExplorerGate } from "./utils/fileExplorerLoader";
 import { initHeadingIds } from "./headingIds";
 import { initToolbar } from "./components/toolbar";
 import { setupSelectionToolbar } from "./components/selectionToolbar";
@@ -653,8 +654,22 @@ const eventManager = createEventManager();
 // The TOC / review sidebar exists only for a host that declares it
 // (shared/hostProfile.ts). Every use below is null-safe, so on a host that
 // declares none the toc-bound commands and echoes are quiet no-ops.
+// The file explorer (MAR-460) is a second side panel, and it exists only in a
+// directory window on a host declaring `projectFiles`: creating the gate
+// loads nothing, and the first `projectRoot` naming a folder fetches the
+// panel's chunk (utils/fileExplorerLoader.ts). It is built before the TOC
+// because the two ask each other how much viewport the other's docked panel
+// takes, and this one's answer is only ever asked for on a message, which is
+// after everything below has run.
+const fileExplorer = createFileExplorerGate({
+    eventManager,
+    getEditorView: () => getEditorView(),
+    neighborReserve: () => toc?.dockedReserve() ?? 0,
+});
 mark("toc-start");
-const toc = hostHas("toc") ? initToc(eventManager, () => getEditorView()) : null;
+const toc = hostHas("toc")
+    ? initToc(eventManager, () => getEditorView(), { neighborReserve: () => fileExplorer.dockedReserve() })
+    : null;
 if (toc) { document.body.appendChild(toc.panel); }
 mark("toc-end");
 measure("initToc", "toc-start", "toc-end");
@@ -709,6 +724,11 @@ measure("initToolbar", "toolbar-start", "toolbar-end");
 // other surface, so no branch is needed around it.
 const barTocBtn = topbar?.querySelector<HTMLElement>(".tb-toc-btn");
 if (toc && barTocBtn) { toc.setFlyoutTrigger(barTocBtn); }
+// The file explorer's button is the same shape: the gate holds the trigger
+// until the panel exists, so it is registered here whether or not a folder
+// ever opens.
+const barFilesBtn = topbar?.querySelector<HTMLElement>(".tb-files-btn");
+if (barFilesBtn) { fileExplorer.setFlyoutTrigger(barFilesBtn); }
 
 // Floating selection palette (birta.floatingToolbar): a formatting bar above a
 // text selection, and move/duplicate/delete above a whole-block (multi-block)
@@ -752,6 +772,11 @@ setEditorCommandHost({
     // The deliberate keyboard gesture INTO the review sidebar (MAR-294);
     // Escape inside any of its regions is the gesture back.
     focusReviewSidebar: () => toc?.focusPanel(),
+    // The file explorer's three, through its gate: no-ops until a folder is
+    // open, and buffered while its chunk is on its way.
+    toggleFileExplorer: () => fileExplorer.toggle(),
+    focusFileExplorer: () => fileExplorer.focus(),
+    toggleHiddenFiles: () => fileExplorer.toggleHidden(),
     editFrontmatter: () => focusFrontmatterPanel(),
     editRawMarkdown: switchToSource,
     openShortcutsHelp: () => { void openShortcutsHelpLazy(); },
@@ -1041,6 +1066,11 @@ const handlers = createMessageHandlers({
         setNotesMarkers: (markers) => toc?.setNotesMarkers(markers),
         setReviewGroupByType: (grouped) => toc?.setReviewGroupByType(grouped),
         setLineNumbers: (enabled) => lineNumbers.setEnabled(enabled),
+        setProjectRoot: (root, showHidden) => fileExplorer.setProjectRoot(root, showHidden),
+        applyDirectoryListing: (listing) => fileExplorer.applyDirectoryListing(listing),
+        setCurrentProjectFile: (path) => fileExplorer.setCurrentProjectFile(path),
+        directoryChanged: (paths) => fileExplorer.directoryChanged(paths),
+        setFileExplorerShowHidden: (showHidden) => fileExplorer.setShowHidden(showHidden),
     },
     topbarTb,
 });

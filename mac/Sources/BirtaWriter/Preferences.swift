@@ -1085,7 +1085,7 @@ enum Prefs {
             // provides, and with `/ai` switched off, or with no command to
             // run, this host provides no agent. `BootConfigTests` holds both
             // arms.
-            hostCapabilities: ["spellAndGrammar", "imageUpload", "toc", "appPreferences", "agent"]
+            hostCapabilities: ["spellAndGrammar", "imageUpload", "toc", "appPreferences", "agent", "projectFiles"]
                 .filter { $0 != "agent" || agentAvailable },
             viewStateJSON: viewState,
             hostShortcuts: AppMenu.shortcuts

@@ -47,6 +47,8 @@ export interface ToolbarLayoutDeps {
     syncConflictItem: HTMLElement;
     /** The Logseq status badge, pinned just after the disk-drift badge. */
     logseqItem: HTMLElement;
+    /** The file explorer's button, pinned just before the TOC's; null on a host with no folders to open. */
+    filesItem: HTMLElement | null;
 }
 
 export interface ToolbarLayout {
@@ -70,7 +72,7 @@ export interface ToolbarLayout {
 }
 
 export function createToolbarLayout(deps: ToolbarLayoutDeps): ToolbarLayout {
-    const { topbar, items, dbgItem, syncConflictItem, logseqItem } = deps;
+    const { topbar, items, dbgItem, syncConflictItem, logseqItem, filesItem } = deps;
     let syncConflictVisible = false;
     let logseqVisible = false;
 
@@ -384,12 +386,25 @@ export function createToolbarLayout(deps: ToolbarLayoutDeps): ToolbarLayout {
     }
 
     /**
-     * The three items that are pinned rather than placed: the debug dropdown
-     * just before Settings, and the two status badges at the front of the right
-     * zone. None is user-placeable, so both render paths want them and neither
-     * consults the config for them.
+     * The items that are pinned rather than placed: the debug dropdown just
+     * before Settings, the two status badges at the front of the right zone,
+     * and the file explorer's button just before the TOC's. None is
+     * user-placeable, so both render paths want them and neither consults the
+     * config for them.
      */
     function renderPinned(): void {
+        // File explorer: beside the TOC button, the bar's other panel control,
+        // so the two controls that open a sidebar sit together at the trailing
+        // edge; at the end of the zone when the TOC item is elsewhere or absent.
+        if (filesItem) {
+            const tocEl = items.toc;
+            if (tocEl && tocEl.parentElement === rightZone) {
+                rightZone.insertBefore(filesItem, tocEl);
+            } else {
+                rightZone.appendChild(filesItem);
+            }
+        }
+
         // Debug dropdown: pinned just before Settings in the right zone.
         if (dbgItem) {
             const settingsEl = items.settings;

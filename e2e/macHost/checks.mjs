@@ -414,8 +414,11 @@ export async function run({ page, check, baseUrl }) {
     // a real page can answer is whether the two holders actually received it.
     check("mac: the top bar's left zone is empty, leaving the titlebar row to the window",
         mac.leftZone.length === 0, JSON.stringify(mac.leftZone));
+    // `files` is the file explorer's pinned button (MAR-460): the profile
+    // declares `projectFiles`, so the bar carries it beside the TOC's even in
+    // a single-file window, where the command it runs is inert.
     check("mac: the top bar keeps only the controls that read the document",
-        JSON.stringify(mac.rightZone) === JSON.stringify(["styleCheck", "find", "settings", "toc"]),
+        JSON.stringify(mac.rightZone) === JSON.stringify(["styleCheck", "find", "settings", "files", "toc"]),
         JSON.stringify(mac.rightZone));
     check("mac: every editing control is in the dock instead",
         ["format", "bold", "italic", "link", "listMenu", "quote", "codeBlock", "table", "image"]

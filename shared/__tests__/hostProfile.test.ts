@@ -109,13 +109,14 @@ describe("HOST_PROFILES", () => {
         // checker (`SpellService`); it saves a pasted image beside the document
         // and serves it back over its own scheme, so it owns an image store;
         // its window has a sidebar to dock the outline in; it has a Settings
-        // window of its own; and it runs a coding agent as a child process. It
-        // provides none of the others: there is no text editor to switch to, no
-        // VS Code settings or keybindings UI, no read-only owner, no editor
-        // font of its own, and no pane wide enough for a reading measure to be
-        // a choice.
+        // window of its own; it runs a coding agent as a child process; and
+        // it can open a window on a directory and list it for the page's file
+        // explorer. It provides none of the others: there is no text editor
+        // to switch to, no VS Code settings or keybindings UI, no read-only
+        // owner, no editor font of its own, and no pane wide enough for a
+        // reading measure to be a choice.
         expect(HOST_PROFILES.mac).toEqual(
-            ["spellAndGrammar", "imageUpload", "toc", "appPreferences", "agent"]);
+            ["spellAndGrammar", "imageUpload", "toc", "appPreferences", "agent", "projectFiles"]);
     });
 
     it("every capability named on a command should be in ALL_HOST_CAPABILITIES", () => {

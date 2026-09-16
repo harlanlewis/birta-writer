@@ -6,6 +6,7 @@
  * Usage:
  *   pnpm build && pnpm test:e2e        # all suites
  *   node e2e/run.mjs imageView        # one suite
+ *   node e2e/run.mjs toc macHost      # several, each named
  *
  * Requires the playwright devDependency plus a browser install:
  *   npx playwright install chromium
@@ -83,9 +84,12 @@ if (BROWSER !== "chromium" && BROWSER !== "webkit") {
 }
 const playwright = await loadPlaywright();
 const browserType = playwright[BROWSER];
-const only = process.argv[2];
+// Every name on the command line is a suite to run; none means the whole
+// sweep. A second name used to be ignored without a word, so `node e2e/run.mjs
+// toc macHost` ran `toc` alone and its green line read as two suites passing.
+const wanted = process.argv.slice(2);
 const dirs = (await readdir(e2eDir, { withFileTypes: true }))
-    .filter((d) => d.isDirectory() && (!only || d.name === only))
+    .filter((d) => d.isDirectory() && (wanted.length === 0 || wanted.includes(d.name)))
     .map((d) => d.name);
 // A directory is a pass/fail suite only if it has a checks.mjs. The perf
 // harness (e2e/perf/) is mostly a measurement runner (node e2e/perf.mjs), but it
@@ -101,13 +105,18 @@ for (const name of dirs) {
         // no checks.mjs — not a suite
     }
 }
-if (suites.length === 0) {
-    console.error(only ? `no suite named "${only}" under e2e/` : "no suites found under e2e/");
+// A name that matches no suite is refused rather than skipped: the sweep that
+// follows would otherwise report on the suites it did find and nothing else.
+const missing = wanted.filter((name) => !suites.includes(name));
+if (missing.length > 0 || suites.length === 0) {
+    console.error(missing.length > 0
+        ? `no suite named ${missing.map((n) => `"${n}"`).join(", ")} under e2e/`
+        : "no suites found under e2e/");
     process.exit(2);
 }
 
 // One harness at a time; see e2e/harnessLock.mjs for what running two costs.
-acquireHarnessLock(only ? `e2e ${only}` : "e2e sweep");
+acquireHarnessLock(wanted.length > 0 ? `e2e ${wanted.join(" ")}` : "e2e sweep");
 
 let failedTotal = 0;
 const skippedSuites = [];

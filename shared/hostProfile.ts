@@ -158,7 +158,24 @@ export type HostCapability =
      * has a Settings window has no keybindings editor behind it, and offering
      * one row of three is not the same capability.
      */
-    | "appPreferences";
+    | "appPreferences"
+    /**
+     * A directory the host has opened a window on, which the page can list
+     * and open files out of: the file explorer sidebar (MAR-460).
+     *
+     * A host fact and not an editor feature, by the usual test: the page
+     * cannot read a directory, so every listing and every open is the
+     * host's to answer (`listDirectory`, `openProjectFile` in
+     * shared/messages.ts). Declaring it says the host CAN answer, not that
+     * this window is rooted at a folder; that is the `projectRoot` message,
+     * sent after `init`, and a single-file window sends it with a null root.
+     *
+     * App-only, like `appPreferences`: VS Code has an explorer of its own
+     * beside every editor, and drawing a second one inside the page would be
+     * the same list twice. So VS Code never declares it, and the three
+     * commands it gates are inert there.
+     */
+    | "projectFiles";
 
 export const ALL_HOST_CAPABILITIES: readonly HostCapability[] = [
     "textEditor",
@@ -173,6 +190,7 @@ export const ALL_HOST_CAPABILITIES: readonly HostCapability[] = [
     "editorFont",
     "contentMeasure",
     "appPreferences",
+    "projectFiles",
 ];
 
 /**
@@ -192,7 +210,7 @@ export const ALL_HOST_CAPABILITIES: readonly HostCapability[] = [
  * feature". A member here MUST be declared by some other profile, or it
  * names nothing at all; `hostProfile.test.ts` checks both directions.
  */
-export const APP_ONLY_CAPABILITIES: readonly HostCapability[] = ["appPreferences"];
+export const APP_ONLY_CAPABILITIES: readonly HostCapability[] = ["appPreferences", "projectFiles"];
 
 export const HOST_PROFILES = {
     vscode: ALL_HOST_CAPABILITIES.filter(
@@ -202,7 +220,7 @@ export const HOST_PROFILES = {
     // and the e2e mac page restate this list as a literal, because neither
     // Swift nor an HTML bootstrap can import it. They are not free to drift:
     // shared/__tests__/hostProfile.test.ts parses both and fails.
-    mac: ["spellAndGrammar", "imageUpload", "toc", "appPreferences", "agent"] as readonly HostCapability[],
+    mac: ["spellAndGrammar", "imageUpload", "toc", "appPreferences", "agent", "projectFiles"] as readonly HostCapability[],
 } as const satisfies Record<string, readonly HostCapability[]>;
 
 /**

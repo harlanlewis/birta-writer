@@ -1015,6 +1015,29 @@ body.toolbar-hidden .toolbar-toggle-tab {
     border-left: 1px solid color-mix(in srgb, var(--vscode-editorHoverWidget-border) 55%, transparent);
 }
 
+/* The file explorer's button sits just before the TOC's (layout.ts pins it
+   there), so the divider moves to it and the two panel controls share the
+   group it opens. `:has` rather than a second rule on the TOC item: the TOC
+   keeps its own divider on every surface that has no explorer. */
+.tb-zone--right:has(> .tb-item[data-item-id="files"]) > .tb-item[data-item-id="toc"] {
+    padding-left: 0;
+    margin-left: 0;
+    border-left: 0;
+}
+
+.tb-zone--right > .tb-item[data-item-id="files"] {
+    padding-left: 5px;
+    margin-left: 3px;
+    border-left: 1px solid color-mix(in srgb, var(--vscode-editorHoverWidget-border) 55%, transparent);
+}
+
+/* Pressed while the explorer is out, keyed off the panel's own body classes
+   for the reason the TOC button's is (below). */
+body:is(.files-open, .files-overlay-open) .tb-files-btn {
+    background: var(--vscode-inputOption-activeBackground);
+    color: var(--vscode-inputOption-activeForeground);
+}
+
 /* Pressed WHILE the panel is out, keyed off the classes the panel itself sets
    to position (see components/toc). The button holds no copy of that state, so
    it cannot come to disagree with the panel it opens. */

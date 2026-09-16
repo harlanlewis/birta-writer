@@ -402,6 +402,37 @@ export function notifyTocVisibility(
     vscode.postMessage({ type: "tocVisibility", visibility });
 }
 
+// ── The file explorer (MAR-460): a host declaring `projectFiles` answers ──
+/** Ask for one folder's contents by root-relative path (`""` is the root). */
+export function notifyListDirectory(id: string, path: string): void {
+    vscode.postMessage({ type: "listDirectory", id, path });
+}
+
+/** A row was activated; the host opens the file (and then says which is current). */
+export function notifyOpenProjectFile(path: string): void {
+    vscode.postMessage({ type: "openProjectFile", path });
+}
+
+/** The settled panel width (mouseup or reset), for the host to persist. */
+export function notifyFileExplorerWidth(width: number): void {
+    vscode.postMessage({ type: "fileExplorerWidth", width });
+}
+
+/** An explicit show or hide of the panel, for the host to remember. */
+export function notifyFileExplorerVisibility(visible: boolean): void {
+    vscode.postMessage({ type: "fileExplorerVisibility", visible });
+}
+
+/** The page's side of the dotfile switch; the host owns the setting and echoes it. */
+export function notifySetFileExplorerShowHidden(value: boolean): void {
+    vscode.postMessage({ type: "setFileExplorerShowHidden", value });
+}
+
+/** What a host palette of its own may offer on this surface (webview/paletteCommands.ts). */
+export function notifyPaletteCommands(items: import("../shared/messages").PaletteCommand[]): void {
+    vscode.postMessage({ type: "paletteCommands", items });
+}
+
 /** Persist the review sidebar's By-type/In-order mode (birta.review.groupByType). */
 export function notifyReviewGroupByType(grouped: boolean): void {
     vscode.postMessage({ type: "reviewGroupByType", grouped });
