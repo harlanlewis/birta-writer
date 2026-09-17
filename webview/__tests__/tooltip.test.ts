@@ -308,4 +308,17 @@ describe("placement against the fixed chrome", () => {
         showTooltipAt(inDoc, "Off the top", "above");
         expect(parseFloat(tip()!.style.top)).toBeGreaterThanOrEqual(40 + 4);
     });
+
+    it("a bar ending in a strip the host paints over should send a bar button's tip under the strip", () => {
+        // The Mac app with tabs: a 40px title row, then a 28px tab bar the
+        // window draws over the page. The tip that would hang off the
+        // button at 38 would be drawn under the tabs, so it lands under them.
+        const { btn } = fixedChrome(68);
+        document.documentElement.style.setProperty("--host-strip-under-topbar", "28px");
+        try {
+            expect(place(btn, "Checks", "below").style.top).toBe(`${68 + 4}px`);
+        } finally {
+            document.documentElement.style.removeProperty("--host-strip-under-topbar");
+        }
+    });
 });

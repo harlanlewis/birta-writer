@@ -137,9 +137,20 @@ export const FILE_EXPLORER_CSS = `
     background: var(--vscode-list-hoverBackground);
 }
 
+/* The selected row is the open file, and it stays selected while the reader
+   types in the document. Lit in the accent only while the keyboard is in the
+   tree; the rest of the time it is the quiet grey a sidebar's selection turns
+   when focus leaves it, so a saturated block does not sit beside the text
+   being written. */
 .files-row--selected,
 .files-row--selected:hover {
-    color: var(--vscode-list-activeSelectionForeground, var(--vscode-foreground));
+    color: var(--vscode-list-inactiveSelectionForeground);
+    background: var(--vscode-list-inactiveSelectionBackground);
+}
+
+.files-tree:focus-within .files-row--selected,
+.files-tree:focus-within .files-row--selected:hover {
+    color: var(--vscode-list-activeSelectionForeground);
     background: var(--vscode-list-activeSelectionBackground);
 }
 

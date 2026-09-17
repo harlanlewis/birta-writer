@@ -31,6 +31,24 @@ public enum NoteMode: String, CaseIterable, Sendable {
     }
 }
 
+/// Where a file opened from outside lands when no open root holds it: the
+/// "Open files in" setting. A tab beside the window in front, or a window of
+/// its own. It decides nothing for a file under an open folder window (that
+/// window's), for Cmd+N (the system's tabbing preference), or with no window
+/// open at all.
+public enum FileOpenTarget: String, CaseIterable, Sendable {
+    case tab
+    case window
+
+    /// What the menu calls it: the two things the file could open in.
+    public var title: String {
+        switch self {
+        case .tab: return "A new tab"
+        case .window: return "A new window"
+        }
+    }
+}
+
 /// Where Birta Writer keeps its notes.
 ///
 /// ONE two-way choice, and each side of it has a default. The iCloud switch

@@ -125,8 +125,19 @@ public enum WebviewMessage: Equatable {
     /// somebody has opened rather than the tree.
     case listDirectory(id: String, path: String)
     /// A row was activated. An openable file goes through the app's routing
-    /// (a tab in this window); anything else opens in its default app.
-    case openProjectFile(path: String)
+    /// (`OpenRouting.explorerDestination`: this tab, or a new one when
+    /// `newTab` says the reader asked for it); anything else opens in its
+    /// default app.
+    case openProjectFile(path: String, newTab: Bool)
+    /// A row was right-clicked at a point in the page, for the host to put its
+    /// own menu at (`ExplorerMenu`). `kind` is the row's, `dir` or `file`.
+    case projectFileMenu(path: String, kind: String, x: Double, y: Double)
+    /// How tall the page's formatting row is right now, 0 while it is
+    /// collapsed: what `FormattingRowSpacer` holds open in the titlebar band
+    /// so the tab bar lands under the row rather than over it. Posted only by
+    /// a page under `formattingInSecondRow`, on every change of the row's
+    /// size.
+    case formattingRowHeight(Double)
     /// The three things the explorer remembers, as the outline panel's are
     /// remembered: its width and whether it is out, per app, and whether
     /// dotfiles are listed, which is the host's setting because the host's
@@ -134,6 +145,9 @@ public enum WebviewMessage: Equatable {
     case fileExplorerWidth(Int)
     case fileExplorerVisibility(Bool)
     case setFileExplorerShowHidden(Bool)
+    /// Every folder the tree has open, root-relative, on each change; the
+    /// window keeps it for the next page on this root and for a tab it spawns.
+    case fileExplorerExpanded([String])
     /// The reply to `requestPaletteCommands`: every editor command the page
     /// can run on this host right now, for the app's own palette (MAR-458).
     /// Posted again on its own whenever the publishing targets change, once
@@ -275,10 +289,19 @@ public enum WebviewMessage: Equatable {
             // root rather than a refusal.
             guard let id = str("id") else { return .other(type: type) }
             return .listDirectory(id: id, path: str("path") ?? "")
-        case "openProjectFile": return str("path").map { .openProjectFile(path: $0) } ?? .other(type: type)
+        case "openProjectFile":
+            return str("path").map { .openProjectFile(path: $0, newTab: bool("newTab") ?? false) } ?? .other(type: type)
+        case "projectFileMenu":
+            guard let path = str("path"), let kind = str("kind"),
+                  let x = dict["x"] as? NSNumber, let y = dict["y"] as? NSNumber else { return .other(type: type) }
+            return .projectFileMenu(path: path, kind: kind, x: x.doubleValue, y: y.doubleValue)
+        case "formattingRowHeight":
+            return (dict["height"] as? NSNumber).map { .formattingRowHeight($0.doubleValue) } ?? .other(type: type)
         case "fileExplorerWidth": return int("width").map { .fileExplorerWidth($0) } ?? .other(type: type)
         case "fileExplorerVisibility": return bool("visible").map { .fileExplorerVisibility($0) } ?? .other(type: type)
         case "setFileExplorerShowHidden": return bool("value").map { .setFileExplorerShowHidden($0) } ?? .other(type: type)
+        case "fileExplorerExpanded":
+            return (dict["paths"] as? [String]).map { .fileExplorerExpanded($0) } ?? .other(type: type)
         case "paletteCommands":
             // A row without an id or a title is not a command anybody can
             // run or read, so it is skipped rather than failing the list.
@@ -410,7 +433,10 @@ public enum HostMessage: Equatable {
     /// window is rooted at, or nil for a window on a loose file, which is what
     /// keeps the explorer off every single-file window. `showHidden` rides
     /// with it so the page filters dotfiles from its first listing.
-    case projectRoot(name: String?, path: String?, showHidden: Bool)
+    /// `expanded` is the folders the last page on this root had open
+    /// (`fileExplorerExpanded`), handed back so the tree survives the window
+    /// moving to another file.
+    case projectRoot(name: String?, path: String?, showHidden: Bool, expanded: [String] = [])
     /// Reply to `listDirectory`, carrying its `id`. `entries` nil with an
     /// `error` is a folder that could not be read, or a path that would leave
     /// the root; the page draws the error where the rows would be.
@@ -536,10 +562,10 @@ public enum HostMessage: Equatable {
                     "diagnostics": diagnostics.jsonObject]
         case let .getPerfMarks(id):
             return ["type": "__getPerfMarks", "id": id]
-        case let .projectRoot(name, path, showHidden):
+        case let .projectRoot(name, path, showHidden, expanded):
             var root: Any = NSNull()
             if let name, let path { root = ["name": name, "path": path] }
-            return ["type": "projectRoot", "root": root, "showHidden": showHidden]
+            return ["type": "projectRoot", "root": root, "showHidden": showHidden, "expanded": expanded]
         case let .directoryListing(id, path, entries, error):
             var out: [String: Any] = ["type": "directoryListing", "id": id, "path": path,
                                       "entries": entries.map { $0.map(\.jsonObject) } ?? NSNull()]

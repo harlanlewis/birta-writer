@@ -304,6 +304,13 @@ final class PaletteWindowTests: XCTestCase {
         XCTAssertTrue(picked.isEmpty)
     }
 
+    func testAChordShouldSplitIntoOneCapPerModifierAndOneForTheKey() {
+        XCTAssertEqual(PaletteCellView.keyCaps("⇧⌘K"), ["⇧", "⌘", "K"])
+        XCTAssertEqual(PaletteCellView.keyCaps("⌘/"), ["⌘", "/"])
+        XCTAssertEqual(PaletteCellView.keyCaps("⌃J"), ["⌃", "J"])
+        XCTAssertEqual(PaletteCellView.keyCaps("F5"), ["F5"], "a key of several characters stays one cap")
+    }
+
     func testTheMatchedLettersShouldBeDrawnHeavier() {
         let drawn = PaletteCellView.emphasised("Italic", at: [0..<4])
         var bold = 0

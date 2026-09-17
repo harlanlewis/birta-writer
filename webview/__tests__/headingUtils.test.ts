@@ -16,6 +16,9 @@ import type { EditorView } from "../pm";
 import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
 import {
     getTopbarBottom,
+    hostStripUnderTopbar,
+    clearHostStrip,
+    HOST_STRIP_UNDER_TOPBAR_VAR,
     scrollElementBelowTopbar,
     getAllHeadings,
     getVisibleHeadings,
@@ -58,6 +61,49 @@ describe("getTopbarBottom", () => {
 
     it("no topbar in the DOM should fall back to 40", () => {
         expect(getTopbarBottom()).toBe(40);
+    });
+});
+
+describe("the host's strip under the topbar", () => {
+    beforeEach(() => {
+        document.body.innerHTML = "";
+        document.body.className = "";
+        document.documentElement.style.removeProperty(HOST_STRIP_UNDER_TOPBAR_VAR);
+    });
+    afterEach(() => {
+        document.documentElement.style.removeProperty(HOST_STRIP_UNDER_TOPBAR_VAR);
+    });
+
+    it("a host that declares no strip should have none, and boxes should be left where they were", () => {
+        addTopbar({ height: 68, bottom: 68 });
+        expect(hostStripUnderTopbar()).toBeNull();
+        expect(clearHostStrip(38, 20, 4)).toBe(38);
+    });
+
+    it("a declared strip should be the bottom of the bar's box", () => {
+        addTopbar({ height: 68, bottom: 68 });
+        document.documentElement.style.setProperty(HOST_STRIP_UNDER_TOPBAR_VAR, "28px");
+        expect(hostStripUnderTopbar()).toEqual({ top: 40, bottom: 68 });
+    });
+
+    it("a box opening into the strip should be moved under it, and one clear of it left alone", () => {
+        addTopbar({ height: 68, bottom: 68 });
+        document.documentElement.style.setProperty(HOST_STRIP_UNDER_TOPBAR_VAR, "28px");
+        // Hangs off a first-row button and would end inside the tabs.
+        expect(clearHostStrip(38, 20, 4)).toBe(72);
+        // Starts inside the strip.
+        expect(clearHostStrip(50, 10, 6)).toBe(74);
+        // Ends exactly at the strip's top: not in it.
+        expect(clearHostStrip(20, 20, 4)).toBe(20);
+        // Already under the bar.
+        expect(clearHostStrip(80, 20, 4)).toBe(80);
+    });
+
+    it("a hidden toolbar should have no strip, whatever the host declared", () => {
+        addTopbar({ height: 68, bottom: 68 });
+        document.documentElement.style.setProperty(HOST_STRIP_UNDER_TOPBAR_VAR, "28px");
+        document.body.classList.add("toolbar-hidden");
+        expect(hostStripUnderTopbar()).toBeNull();
     });
 });
 

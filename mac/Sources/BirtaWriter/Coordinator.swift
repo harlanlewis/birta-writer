@@ -69,14 +69,43 @@ final class Coordinator {
     /// written down, for the reason the band is: it is the system's number.
     private var tabBarHeight: CGFloat {
         panel.titlebarAccessoryViewControllers
-            .filter { $0 !== titleBar }
+            .filter { $0 !== titleBar && $0 !== formattingSpacer }
             .reduce(0) { $0 + $1.view.frame.height }
     }
 
+    /// The row held open for the page's formatting controls, or zero while
+    /// none is (`FormattingRowSpacer`).
+    private var heldPageRowHeight: CGFloat {
+        formattingSpacer.isHidden ? 0 : formattingSpacer.height
+    }
+
     /// The row the title and the page's first toolbar row share: the band
-    /// less the tab bar. `TabGroupPolicy.bandSplit` is the arithmetic.
+    /// less the tab bar and the row held for the page. `TabGroupPolicy.bandSplit`
+    /// is the arithmetic.
     private var titleRowHeight: CGFloat {
-        CGFloat(TabGroupPolicy.bandSplit(band: titlebarBandHeight, tabBar: tabBarHeight).titleRow)
+        CGFloat(TabGroupPolicy.bandSplit(band: titlebarBandHeight, tabBar: tabBarHeight,
+                                         pageRow: heldPageRowHeight).titleRow)
+    }
+
+    /// The page's formatting row as it last reported it, 0 while collapsed.
+    private var formattingRowHeight: CGFloat = 0
+
+    /// Hold the band open for the formatting row exactly while there is a
+    /// tab bar to keep under it. Answers whether anything changed, so a
+    /// caller in a layout pass can stop rather than lay out twice.
+    @discardableResult
+    private func updateFormattingSpacer() -> Bool {
+        let wanted = tabBarHeight > 0 && formattingRowHeight > 0
+        let changed = formattingSpacer.isHidden == wanted
+            || (wanted && abs(formattingSpacer.height - formattingRowHeight) > 0.01)
+        if measure.enabled {
+            measure.trace("pagerow tabBar=\(tabBarHeight) row=\(formattingRowHeight) wanted=\(wanted)"
+                          + " hidden=\(formattingSpacer.isHidden) held=\(formattingSpacer.height) changed=\(changed)")
+        }
+        guard changed else { return false }
+        formattingSpacer.height = formattingRowHeight
+        formattingSpacer.isHidden = !wanted
+        return true
     }
 
     /// The tab bar came or went, or a tab joined or left: the band the page
@@ -85,6 +114,7 @@ final class Coordinator {
     /// full-size and does not move. `WindowSet` calls this on every window it
     /// knows is affected.
     func tabsChanged() {
+        updateFormattingSpacer()
         layoutTitlebarDrag()
         refreshTitle()
     }
@@ -97,12 +127,19 @@ final class Coordinator {
     private func sendProjectRoot() {
         host.send(.projectRoot(name: explorerRoot?.lastPathComponent,
                                path: explorerRoot?.standardizedFileURL.path,
-                               showHidden: Prefs.explorerShowsHidden))
+                               showHidden: Prefs.explorerShowsHidden,
+                               expanded: explorerExpanded))
         if explorerRoot != nil { sendCurrentProjectFile() }
         if measure.enabled {
             measure.trace("explorerRoot=\(explorerRoot?.path ?? "none") current=\(currentProjectPath ?? "none")")
         }
     }
+
+    /// The folders this window's explorer has open, root-relative, as the
+    /// page last reported them. Handed to every page loaded on this root (a
+    /// file opened in place reloads the page) and copied to a tab spawned
+    /// beside this one, so the tree reads the same across both.
+    var explorerExpanded: [String] = []
 
     /// This window's file as the page names it, or nil for a file outside the
     /// root (a note the explorer cannot show a row for).
@@ -143,14 +180,102 @@ final class Coordinator {
     }
 
     /// A row was activated. An openable file goes to the app's routing, which
-    /// lands it as a tab here; anything else (an image, a PDF) is a file the
-    /// editor does not open, handed to whatever does.
-    private func openProjectFile(relative path: String) {
+    /// lands it in this tab or a new one; anything else (an image, a PDF) is
+    /// a file the editor does not open, handed to whatever does.
+    private func openProjectFile(relative path: String, newTab: Bool) {
         guard let explorerRoot, let file = DirectoryListing.resolve(path, in: explorerRoot) else { return }
         if DocumentTypes.accepts(file) {
-            onOpenProjectFile?(file)
+            onOpenProjectFile?(file, newTab)
         } else {
             NSWorkspace.shared.open(file)
+        }
+    }
+
+    /// A row was right-clicked: the app's own menu for it, at the point the
+    /// page reported, in the page's coordinates (y down from the top).
+    ///
+    /// Native rather than drawn by the page, because the row's actions are
+    /// all the host's (a tab, the Finder, the pasteboard, the Trash), and a
+    /// menu that looks like the window's other menus is what a right-click on
+    /// a Mac promises. WebKit's own menu for the row was the text one, with
+    /// Look Up and Translate over a file name.
+    private func showProjectFileMenu(relative path: String, kind: String, x: Double, y: Double) {
+        guard let explorerRoot, let url = DirectoryListing.resolve(path, in: explorerRoot) else { return }
+        let entryKind: ExplorerMenu.EntryKind = kind == "dir" ? .folder
+            : DocumentTypes.accepts(url) ? .document : .other
+        let menu = NSMenu()
+        for item in ExplorerMenu.items(for: entryKind, name: url.lastPathComponent) {
+            guard let action = item.action else {
+                menu.addItem(.separator())
+                continue
+            }
+            let row = NSMenuItem(title: item.title, action: #selector(explorerMenuPicked(_:)), keyEquivalent: "")
+            row.target = self
+            row.representedObject = ExplorerMenuPick(url: url, action: action)
+            menu.addItem(row)
+        }
+        // The web view is not flipped: its y grows upward from the bottom,
+        // the page's downward from the top, and the page fills the view.
+        let point = NSPoint(x: x, y: host.webView.bounds.height - y)
+        menu.popUp(positioning: nil, at: point, in: host.webView)
+    }
+
+    /// One row of the explorer's menu, carried on the menu item.
+    private final class ExplorerMenuPick: NSObject {
+        let url: URL
+        let action: ExplorerMenu.Action
+        init(url: URL, action: ExplorerMenu.Action) {
+            self.url = url
+            self.action = action
+        }
+    }
+
+    @objc private func explorerMenuPicked(_ sender: NSMenuItem) {
+        guard let pick = sender.representedObject as? ExplorerMenuPick else { return }
+        switch pick.action {
+        case .openInNewTab:
+            onOpenProjectFile?(pick.url, true)
+        case .newNoteInside:
+            onNewNoteInFolder?(pick.url)
+        case .revealInFinder:
+            NSWorkspace.shared.activateFileViewerSelecting([pick.url])
+        case .copyPath:
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(pick.url.path, forType: .string)
+        case .moveToTrash:
+            // The file this tab is on is not a special case: the watcher
+            // sees it go and the panel offers to put it back, the same as a
+            // deletion from the Finder.
+            do {
+                try FileManager.default.trashItem(at: pick.url, resultingItemURL: nil)
+            } catch {
+                flashStatus("Could not move \(pick.url.lastPathComponent) to the Trash.")
+            }
+        }
+    }
+
+    /// Take `url` over in THIS tab, in place of the file it is on, once the
+    /// page has handed over what it holds: the explorer's plain click.
+    ///
+    /// The leaving file is written on the rule hiding the panel uses
+    /// (`AutosavePolicy`, `.panelHidden`): with autosave on the bytes go to
+    /// disk first, and with it off nothing is written behind the reader's
+    /// back. The caller has already routed a tab that holds unsaved text to a
+    /// new tab instead (`OpenRouting.explorerDestination`), and `orTab` is the
+    /// same answer for the narrow case where the flush itself brings the
+    /// first unsaved bytes: the replace is abandoned and the file opens
+    /// beside, so no gesture here can drop text that was only in the buffer.
+    func replaceFile(with url: URL, orTab: @escaping (URL) -> Void) {
+        flushThen(persisting: false) { [weak self] in
+            guard let self else { return }
+            self.write(.panelHidden)
+            if self.hasUnwrittenBytes, !Prefs.autosave {
+                orTab(url)
+                return
+            }
+            // A file in somebody's project is not the app's document, so the
+            // tab takes no slot; `WindowSet` never hands one to a rooted tab.
+            self.openInPlace(url, slot: nil)
         }
     }
 
@@ -170,6 +295,16 @@ final class Coordinator {
         menuState.record(.hiddenFilesShown, on: shown)
         guard explorerRoot != nil, state == .warm else { return }
         host.send(.fileExplorerConfig(showHidden: shown))
+    }
+
+    /// Run `body` with the system's automatic tabbing off for this window,
+    /// so a show inside it opens a window whatever "Prefer tabs" says. Only
+    /// the show is affected: the window is back to `.automatic` afterwards,
+    /// so it can still be merged, dragged into a bar or given a tab.
+    func withAutomaticTabbingSuspended(_ body: () -> Void) {
+        panel.tabbingMode = .disallowed
+        defer { panel.tabbingMode = .automatic }
+        body()
     }
 
     /// Make this the showing tab of its group.
@@ -200,6 +335,9 @@ final class Coordinator {
     /// of it.
     private let updateNotice = UpdateNotice()
     private let titleBar = TitleBarAccessory()
+    /// Added right after `titleBar` and before any tab bar can exist, which
+    /// is what puts it ABOVE the tab bar in the band; its header says why.
+    private let formattingSpacer = FormattingRowSpacer()
     private let host: WebHost
     private let writer: CoalescingWriter
     private let attachments = AttachmentStore()
@@ -260,10 +398,15 @@ final class Coordinator {
     /// (a note, beside this one) is the app's to decide (`WindowSet.newTab`).
     var onNewTabRequest: (() -> Void)?
 
-    /// A row of this window's file explorer was activated. Where the file
-    /// lands is the app's rule (`OpenRouting`, through `WindowSet.openDocument`),
-    /// so the window only asks.
-    var onOpenProjectFile: ((URL) -> Void)?
+    /// A row of this window's file explorer was activated, and whether the
+    /// reader asked for a new tab (Cmd+click, middle click, the row's menu).
+    /// Where the file lands is the app's rule (`OpenRouting.explorerDestination`,
+    /// through `WindowSet.openFromExplorer`), so the window only asks.
+    var onOpenProjectFile: ((URL, Bool) -> Void)?
+
+    /// The explorer's New Note in a folder: a note is the app's to make and
+    /// place (`WindowSet.newNote(in:beside:)`), so the window only asks.
+    var onNewNoteInFolder: ((URL) -> Void)?
 
     /// The hidden-files setting was flipped from this window's page. The
     /// setting is the app's and every rooted window's page has to hear it,
@@ -541,6 +684,16 @@ final class Coordinator {
     /// window lived as long as the app and is a leak per closed window now.
     private var observers: [NSObjectProtocol] = []
 
+    /// The band's height, watched through the one seam every change to it
+    /// passes: `contentLayoutRect` is the frame below the band, so it moves
+    /// when a tab bar arrives, when the row held for the page shows or
+    /// hides, and when the system swaps a titlebar style. The tab bar is the
+    /// case that needs this: AppKit inserts its accessory on a later turn
+    /// than `addTabbedWindow`, after `tabsChanged` has already run, and the
+    /// content view lays nothing out for it because the content view is
+    /// full-size and does not move.
+    private var bandObservation: NSKeyValueObservation?
+
     var isVisible: Bool { panel.isVisible }
 
     /// Put this window one step off `other` and answer where the next goes.
@@ -574,6 +727,8 @@ final class Coordinator {
         watcher.stop()
         observers.forEach(NotificationCenter.default.removeObserver)
         observers.removeAll()
+        bandObservation?.invalidate()
+        bandObservation = nil
         cancelPendingAutosave()
         // Cleared FIRST, which is what turns the next line from a request to
         // hide into a real close: `AppPanel.close` states that rule. A window
@@ -772,6 +927,11 @@ final class Coordinator {
             }
         }
         panel.addTitlebarAccessoryViewController(titleBar)
+        panel.addTitlebarAccessoryViewController(formattingSpacer)
+        bandObservation = panel.observe(\.contentLayoutRect, options: [.old, .new]) { [weak self] _, change in
+            guard change.oldValue?.height != change.newValue?.height else { return }
+            MainActor.assumeIsolated { self?.layoutTitlebarDrag() }
+        }
         titleBar.titleView.onReveal = { url in
             NSWorkspace.shared.activateFileViewerSelecting([url])
         }
@@ -1676,8 +1836,16 @@ final class Coordinator {
         case let .setTocWidth(w): Prefs.tocWidth = w
         case let .listDirectory(id, path):
             answerListing(id: id, path: path)
-        case let .openProjectFile(path):
-            openProjectFile(relative: path)
+        case let .openProjectFile(path, newTab):
+            openProjectFile(relative: path, newTab: newTab)
+        case let .projectFileMenu(path, kind, x, y):
+            showProjectFileMenu(relative: path, kind: kind, x: x, y: y)
+        case let .formattingRowHeight(height):
+            formattingRowHeight = CGFloat(height)
+            // The band's split moved, so the drag strip and the page's two
+            // heights are laid out again; a report that changes nothing
+            // (no tab bar) costs nothing.
+            if updateFormattingSpacer() { layoutTitlebarDrag() }
         case let .fileExplorerWidth(w): Prefs.explorerWidth = w
         case let .fileExplorerVisibility(visible):
             Prefs.explorerVisibility = visible ? "shown" : "hidden"
@@ -1686,6 +1854,8 @@ final class Coordinator {
             // The setting is the app's, so every rooted window's page hears
             // about it, this one included; `WindowSet` fans it out.
             onShowHiddenChanged?(value)
+        case let .fileExplorerExpanded(paths):
+            explorerExpanded = paths
         case let .paletteCommands(items):
             // What the page can run here right now, kept for the app's
             // palette (MAR-458); the page re-posts it when the publishing
@@ -3496,6 +3666,12 @@ final class Coordinator {
     /// a leading accessory after them, so nothing here repeats a number the
     /// system owns.
     func layoutTitlebarDrag() {
+        // A tab bar can come and go without `tabsChanged` (View > Show Tab
+        // Bar), and this runs on every layout of the content view, so the row
+        // held for the page is re-decided here first. A change moves the
+        // band's split, and the numbers read below are the band's after the
+        // system has laid the accessories out, not before.
+        if updateFormattingSpacer() { panel.contentView?.superview?.layoutSubtreeIfNeeded() }
         let titleView = titleBar.titleView
         // The title's ceiling and the strip's span are two answers to one
         // question, so they are taken from one place and in this order: the

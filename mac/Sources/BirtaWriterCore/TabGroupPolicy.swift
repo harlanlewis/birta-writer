@@ -52,11 +52,21 @@ public enum TabGroupPolicy {
     // MARK: the band
 
     /// The titlebar band, split into the title row the page centres its first
-    /// toolbar row on and the tab bar's row below it, which the page has to
-    /// leave clear. Zero tab bar means the whole band is the title row.
-    public static func bandSplit(band: Double, tabBar: Double) -> (titleRow: Double, tabBar: Double) {
-        let bar = min(max(tabBar, 0), max(band, 0))
-        return (max(band, 0) - bar, bar)
+    /// toolbar row on, the row the app holds open for the page's formatting
+    /// controls (`FormattingRowSpacer`, zero when none is held), and the tab
+    /// bar's row under both, which the page has to leave clear. Zero tab bar
+    /// and zero page row mean the whole band is the title row.
+    ///
+    /// The tab bar is taken off the band first and the page row second: the
+    /// tab bar is the system's and is drawn whatever the page says, so a
+    /// band too short for all three loses the page row before it loses the
+    /// tab bar, and never reports a title row below zero.
+    public static func bandSplit(band: Double, tabBar: Double, pageRow: Double = 0)
+        -> (titleRow: Double, pageRow: Double, tabBar: Double) {
+        let whole = max(band, 0)
+        let bar = min(max(tabBar, 0), whole)
+        let row = min(max(pageRow, 0), whole - bar)
+        return (whole - bar - row, row, bar)
     }
 
     // MARK: chords

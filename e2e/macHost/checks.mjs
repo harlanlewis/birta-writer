@@ -1625,4 +1625,82 @@ export async function run({ page, check, baseUrl }) {
     });
     check("mac: a click takes the message away", dismissed !== null && dismissed < 0.1,
         String(dismissed));
+
+    // ── A strip of the bar the host paints over ───────────────────────
+    //
+    // The window draws its tab bar over the bottom of the page's bar, and
+    // says how tall it is through `--host-strip-under-topbar` (the app's
+    // page derives it from the tab bar height the window pushes). Chrome
+    // that hangs off a control in the bar (a dropdown, a tooltip, the
+    // sidebar's flyout) would open into that strip and be drawn under the
+    // tabs, so each opens under the strip instead. The strip is declared
+    // here on the live page, and the bar padded by it exactly as the app's
+    // page pads its own, so what is measured is the bundle's rule.
+    // Declared the way the app's page declares it: a stylesheet rule deriving
+    // the bundle's variable from the window's, and the window's set on the
+    // root's inline style (`WebHost.setTabBarHeight`), so the chain the app
+    // relies on is what this measures.
+    const STRIP = 28;
+    await page.evaluate((strip) => {
+        const style = document.createElement("style");
+        style.id = "strip-chain";
+        style.textContent = `:root { --host-strip-under-topbar: var(--mac-tabbar-height, 0px); }
+            .editor-topbar { padding-bottom: var(--mac-tabbar-height, 0px); }`;
+        document.head.appendChild(style);
+        document.documentElement.style.setProperty("--mac-tabbar-height", `${strip}px`);
+    }, STRIP);
+    await page.waitForTimeout(200);
+    const barBottom = await page.evaluate(() => document.querySelector(".editor-topbar").getBoundingClientRect().bottom);
+    await page.locator(gearBtn).click();
+    await page.waitForTimeout(OPEN_WAIT);
+    const gearUnderStrip = await page.$eval(gearMenu, (menu, bottom) => {
+        const box = menu.getBoundingClientRect();
+        return { top: box.top, barBottom: bottom, shown: box.height > 0, clear: box.top >= bottom };
+    }, barBottom);
+    check("mac: a bar menu opens under the host's strip rather than into it",
+        gearUnderStrip.shown && gearUnderStrip.clear, JSON.stringify(gearUnderStrip));
+    await page.keyboard.press("Escape");
+    await page.mouse.move(20, 400);
+    await page.waitForTimeout(OPEN_WAIT);
+    // Asked for again: the page has been rebuilt since the handle above was taken.
+    const checksTriggerNow = await page.$('.tb-item[data-item-id="styleCheck"] .tb-fmt-trigger, .tb-checks-wrap .ui-btn');
+    if (checksTriggerNow) {
+        await checksTriggerNow.hover();
+        await page.waitForTimeout(OPEN_WAIT);
+        const tipUnderStrip = await page.evaluate(([bottom, strip]) => {
+            const tipEl = document.querySelector(".custom-tooltip");
+            const box = tipEl?.getBoundingClientRect();
+            return box ? {
+                top: box.top, bottom: box.bottom, stripTop: bottom - strip, barBottom: bottom,
+                shown: box.height > 0 && tipEl.style.display !== "none",
+            } : null;
+        }, [barBottom, STRIP]);
+        // Either side of the strip is fine (over the page's own rows above
+        // it, or under it); inside it is under the tabs.
+        check("mac: a bar button's tooltip is never drawn in the strip",
+            tipUnderStrip === null || !tipUnderStrip.shown
+                || tipUnderStrip.bottom <= tipUnderStrip.stripTop || tipUnderStrip.top >= barBottom,
+            JSON.stringify(tipUnderStrip));
+        await page.keyboard.press("Escape");
+        await page.mouse.move(20, 400);
+        await page.waitForTimeout(OPEN_WAIT);
+    }
+    const tocButtonForStrip = await page.$('.tb-item[data-item-id="toc"] .tb-toc-btn');
+    if (tocButtonForStrip) {
+        await tocButtonForStrip.hover();
+        await page.waitForTimeout(400);
+        const flyoutUnderStrip = await page.evaluate((bottom) => {
+            const panel = document.querySelector(".toc-panel");
+            const box = panel.getBoundingClientRect();
+            return { flyout: panel.classList.contains("toc-panel--flyout"), top: box.top, barBottom: bottom };
+        }, barBottom);
+        check("mac: the sidebar's flyout opens under the strip",
+            flyoutUnderStrip.flyout && flyoutUnderStrip.top >= barBottom, JSON.stringify(flyoutUnderStrip));
+        await page.mouse.move(20, 400);
+        await page.waitForTimeout(600);
+    }
+    await page.evaluate(() => {
+        document.documentElement.style.removeProperty("--mac-tabbar-height");
+        document.getElementById("strip-chain")?.remove();
+    });
 }

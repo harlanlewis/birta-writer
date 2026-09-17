@@ -67,7 +67,7 @@
 import { IconChevronLeft, IconChevronRight } from "@/ui/icons";
 import { t } from "@/i18n";
 import { MENU_CLIP_ATTR } from "@/ui/anchoredPlacement";
-import { getWebviewState, setWebviewState } from "@/messaging";
+import { getWebviewState, notifyFormattingRowHeight, setWebviewState } from "@/messaging";
 import { bindActivate } from "@/ui/dom";
 import { applyTooltip } from "@/ui/tooltip";
 import type { ToolbarItemId } from "./registry";
@@ -223,6 +223,22 @@ export function createFormattingDock({ items }: FormattingDockDeps): FormattingD
         ? new ResizeObserver(() => paintScrollers())
         : null;
     rowResize?.observe(row);
+    // The host is told how tall the row is, on every change of the row's box
+    // (shown, hidden, or the zoom moved), so a host whose own chrome shares
+    // the band can hold that much of it open (shared/messages.ts). Reported
+    // from the box rather than from `expanded`, because the number the host
+    // needs is the one the layout gave, and a hidden row's box is 0.
+    let reportedHeight = -1;
+    const reportHeight = (): void => {
+        const height = el.hidden ? 0 : el.getBoundingClientRect().height;
+        if (height === reportedHeight) { return; }
+        reportedHeight = height;
+        notifyFormattingRowHeight(height);
+    };
+    const heightResize = typeof ResizeObserver !== "undefined"
+        ? new ResizeObserver(reportHeight)
+        : null;
+    heightResize?.observe(el);
 
     let expanded = readExpanded();
 
@@ -268,6 +284,7 @@ export function createFormattingDock({ items }: FormattingDockDeps): FormattingD
         isExpanded: () => expanded,
         dispose(): void {
             rowResize?.disconnect();
+            heightResize?.disconnect();
             row.removeEventListener("scroll", paintScrollers);
             el.remove();
             toggle.remove();

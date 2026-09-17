@@ -18,7 +18,7 @@
  */
 import { hideTooltip } from "@/ui/tooltip";
 import { claimExclusiveChrome, releaseExclusiveChrome } from "@/ui/exclusiveChrome";
-import { getTopbarBottom } from "@/utils/headingUtils";
+import { clearHostStrip, getTopbarBottom } from "@/utils/headingUtils";
 
 /** Must match the exit transition in sidePanel.css (`.side-panel--flyout`). */
 export const FLYOUT_EXIT_MS = 150;
@@ -102,7 +102,11 @@ export function createFlyout(opts: FlyoutOptions): Flyout {
      *  chrome. */
     function position(): void {
         const r = anchor.getBoundingClientRect();
-        const flyoutTop = Math.round(r.bottom + FLYOUT_GAP);
+        // Under the trigger, unless the bar ends in a strip the host paints
+        // over (the Mac app's tab bar): a card opening into that strip is
+        // drawn under the tabs, so it opens under the strip instead. The
+        // hover band below is what keeps the pointer's crossing covered.
+        const flyoutTop = Math.round(clearHostStrip(r.bottom + FLYOUT_GAP, panel.offsetHeight || 1, FLYOUT_GAP));
         panel.style.top = `${flyoutTop}px`;
         panel.style.left = opts.isRight()
             ? `${Math.round(Math.max(8, r.right - FLYOUT_WIDTH))}px`

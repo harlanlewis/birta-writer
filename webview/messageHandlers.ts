@@ -172,7 +172,7 @@ export interface EditorActions {
      * which buffers what arrives before its chunk has landed. `projectRoot`
      * with a non-null root is what loads the chunk in the first place.
      */
-    setProjectRoot: (root: import("../shared/messages").ProjectRoot | null, showHidden: boolean) => void;
+    setProjectRoot: (root: import("../shared/messages").ProjectRoot | null, showHidden: boolean, expanded?: readonly string[]) => void;
     applyDirectoryListing: (listing: Extract<ToWebviewMessage, { type: "directoryListing" }>) => void;
     setCurrentProjectFile: (path: string | null) => void;
     directoryChanged: (paths: string[]) => void;
@@ -729,7 +729,7 @@ export function createMessageHandlers(
             setTocWidth(msg.width);
         },
         projectRoot(msg) {
-            actions.setProjectRoot(msg.root, msg.showHidden);
+            actions.setProjectRoot(msg.root, msg.showHidden, msg.expanded);
         },
         directoryListing(msg) {
             actions.applyDirectoryListing(msg);
