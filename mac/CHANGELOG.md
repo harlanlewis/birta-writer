@@ -30,6 +30,20 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ---
 
+## [2026.917.0] - 2026, September 17
+
+### Added
+
+- Line Numbers, in the View menu: the editor's optional column of source line numbers, off until asked for, for every window at once. It is the same gutter the extension's `birta.lineNumbers` turns on.
+- Go to Line… (⌃G), under Edit > Find, the editor's own prompt.
+
+### Changed
+
+- The formatting row sits below the tab bar rather than above it, as the top of the content area: with the file explorer or the outline open, the row starts where the panel ends and the panel starts level with the row, so the two draw one edge under the window's chrome. Whether the row is open is now one answer for every window and tab of Birta Writer for Mac; it used to be remembered per file, so a row open in one tab could be shut in the next.
+- The file explorer is drawn as a surface set into the window: on the sidebar shade, a step darker than the page in light mode and a step lighter in dark, with a small corner radius, standing in from the window's edges and running the window's full height whatever the folder holds.
+
+---
+
 ## [2026.916.1] - 2026, September 16
 
 ### Added
