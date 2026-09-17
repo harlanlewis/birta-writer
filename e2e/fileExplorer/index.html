@@ -28,6 +28,17 @@
   const PARAMS = new URLSearchParams(location.search);
   const WITH_ROOT = PARAMS.get("root") !== "0";
   const LEFT_TOC = PARAMS.get("toc") === "left";
+  // `?noresize=1`: the page keeps no `resize` listener, so a viewport change
+  // reaches the panels only through what watches their boxes. Counted, so
+  // the check can assert the flag took rather than assume it.
+  window.__resizeListeners = 0;
+  if (PARAMS.get("noresize") === "1") {
+    const add = window.addEventListener.bind(window);
+    window.addEventListener = function (type, ...rest) {
+      if (type === "resize") { window.__resizeListeners += 1; return; }
+      return add(type, ...rest);
+    };
+  }
   const ARRANGEMENTS = ["typographyInGearMenu", "formattingInSecondRow", "fixedToolbarLayout", "barMenusOnClick", "nativeFindBar", "nativeDatePicker", "fixedTocSide", "tocToggleInBar"]
     .filter((a) => !LEFT_TOC || (a !== "fixedTocSide" && a !== "tocToggleInBar"));
   window.__i18n = { translations: {}, isMac: true, toolbar: { placements: {}, order: [] }, tocAutoHideThreshold: 3, tocVisibility: "hidden", host: { capabilities: ["spellAndGrammar", "imageUpload", "toc", "appPreferences", "agent", "projectFiles"], arrangements: ARRANGEMENTS, shortcuts: [] } };

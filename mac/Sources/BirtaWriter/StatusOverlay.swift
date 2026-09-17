@@ -169,6 +169,14 @@ final class StatusOverlay: NSView {
         CATransaction.commit()
     }
 
+    /// The page's paper, which the scrim is painted in so it vanishes over
+    /// empty paper. The system's text background by default, which the host
+    /// palette matches (`StatusOverlayInkTests`); a colour theme in force
+    /// paints the page in its own paper and hands it here.
+    var paper: NSColor = NSColor.textBackgroundColor {
+        didSet { applyColours() }
+    }
+
     /// A CGColor is resolved once, so the scrim has to be repainted when the
     /// appearance changes; NSColor-backed text follows it by itself.
     override func viewDidChangeEffectiveAppearance() {
@@ -183,7 +191,7 @@ final class StatusOverlay: NSView {
 
     private func applyScrimColour() {
         effectiveAppearance.performAsCurrentDrawingAppearance {
-            let paper = NSColor.textBackgroundColor
+            let paper = self.paper
             let solid = paper.cgColor
             let none = paper.withAlphaComponent(0).cgColor
             CATransaction.begin()

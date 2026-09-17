@@ -87,6 +87,22 @@ body.toc-open:not(.toc-right) .line-number-layer {
 body.toc-docked:not(.toc-open):not(.toc-right) .line-number-layer {
     --ln-inset: calc(var(--toc-tab-width, 20px) + var(--ui-space-4));
 }
+
+/* The file explorer, docked open, is always on the start edge
+   (style.css, "The file explorer beside the content"): the numbers sit past
+   the room it takes, and past a left TOC's too when both are open there,
+   since the TOC starts where the explorer ends. */
+body.files-open .line-number-layer {
+    --ln-inset: calc(var(--files-reserve, 220px) + var(--ui-space-4));
+}
+
+body.files-open.toc-open:not(.toc-right) .line-number-layer {
+    --ln-inset: calc(var(--files-reserve, 220px) + var(--toc-width, 260px) + var(--ui-space-4));
+}
+
+body.files-open.toc-docked:not(.toc-open):not(.toc-right) .line-number-layer {
+    --ln-inset: calc(var(--files-reserve, 220px) + var(--toc-tab-width, 20px) + var(--ui-space-4));
+}
 `;
 
 /** Install the gutter's rules once. Safe to call on every enable. */

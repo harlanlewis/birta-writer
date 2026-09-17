@@ -161,11 +161,14 @@ final class StatusOverlayInkTests: XCTestCase {
             + "labelColor. Either restore it, or measure the new one here and move the floor with it.")
 
         // The scrim, which is only invisible over paper while it is painted in
-        // the colour the page paints its own.
+        // the colour the page paints its own. The DEFAULT is what is pinned:
+        // a colour theme in force hands the overlay the theme's paper
+        // (`Coordinator.applyTheme`), and under the appearance the paper is
+        // the system's, which the palette measured above matches.
         XCTAssertTrue(
-            swift.contains("NSColor.textBackgroundColor"),
-            "StatusOverlay's scrim no longer uses textBackgroundColor, so the colour this file checks "
-            + "against the page's paper is not the colour the scrim is drawn in.")
+            swift.contains("var paper: NSColor = NSColor.textBackgroundColor"),
+            "StatusOverlay's scrim no longer defaults to textBackgroundColor, so the colour this file "
+            + "checks against the page's paper is not the colour the scrim is drawn in.")
     }
 
     private func firstEditorBackground(in css: String) -> String? {

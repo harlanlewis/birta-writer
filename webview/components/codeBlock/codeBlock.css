@@ -260,70 +260,199 @@ body.code-block-word-wrap .milkdown .editor .code-block-wrapper.code-block-wrapp
 }
 
 /* ─── Prism syntax-highlighting token colors ─── */
-/* Use VSCode's built-in token color variables so dark/light themes adapt automatically */
+/* Each Prism class reads its own --host-token-<class> first and falls back to
+   the terminal palette entry the theme kind gives it. The host-token variables
+   are declared by nothing in the bundle: a host applying a VS Code colour
+   theme writes them from the theme's tokenColors (mac/Sources/BirtaWriterCore/
+   VSCodeTheme.swift, whose table names every class read here), and inside
+   VS Code or with no theme in force the fallback is the whole rule. A class
+   takes three: the colour, and the font style and weight a theme's fontStyle
+   sets. Where the old rule set no style or weight there is deliberately no
+   fallback: a var() with nothing behind it is invalid at computed-value time,
+   which for an inherited property means inherit, so a token inside a bold or
+   italic one keeps its parent's face exactly as it did. */
 /* :is() covers both in-editor code blocks and the fullscreen lightbox */
 
-:is(.milkdown .editor, .code-lightbox-pre) .token.comment,
-:is(.milkdown .editor, .code-lightbox-pre) .token.prolog,
-:is(.milkdown .editor, .code-lightbox-pre) .token.doctype,
+:is(.milkdown .editor, .code-lightbox-pre) .token.comment {
+    color: var(--host-token-comment, var(--vscode-terminal-ansiGreen));
+    font-style: var(--host-token-comment-style, italic);
+    font-weight: var(--host-token-comment-weight);
+}
+
+:is(.milkdown .editor, .code-lightbox-pre) .token.prolog {
+    color: var(--host-token-prolog, var(--vscode-terminal-ansiGreen));
+    font-style: var(--host-token-prolog-style, italic);
+    font-weight: var(--host-token-prolog-weight);
+}
+
+:is(.milkdown .editor, .code-lightbox-pre) .token.doctype {
+    color: var(--host-token-doctype, var(--vscode-terminal-ansiGreen));
+    font-style: var(--host-token-doctype-style, italic);
+    font-weight: var(--host-token-doctype-weight);
+}
+
 :is(.milkdown .editor, .code-lightbox-pre) .token.cdata {
-    color: var(--vscode-terminal-ansiGreen);
-    font-style: italic;
+    color: var(--host-token-cdata, var(--vscode-terminal-ansiGreen));
+    font-style: var(--host-token-cdata-style, italic);
+    font-weight: var(--host-token-cdata-weight);
 }
 
 :is(.milkdown .editor, .code-lightbox-pre) .token.punctuation {
-    color: var(--vscode-editor-foreground);
+    color: var(--host-token-punctuation, var(--vscode-editor-foreground));
     opacity: 0.7;
+    font-style: var(--host-token-punctuation-style);
+    font-weight: var(--host-token-punctuation-weight);
 }
 
-:is(.milkdown .editor, .code-lightbox-pre) .token.property,
-:is(.milkdown .editor, .code-lightbox-pre) .token.tag,
-:is(.milkdown .editor, .code-lightbox-pre) .token.constant,
-:is(.milkdown .editor, .code-lightbox-pre) .token.symbol,
+:is(.milkdown .editor, .code-lightbox-pre) .token.property {
+    color: var(--host-token-property, var(--vscode-terminal-ansiRed));
+    font-style: var(--host-token-property-style);
+    font-weight: var(--host-token-property-weight);
+}
+
+:is(.milkdown .editor, .code-lightbox-pre) .token.tag {
+    color: var(--host-token-tag, var(--vscode-terminal-ansiRed));
+    font-style: var(--host-token-tag-style);
+    font-weight: var(--host-token-tag-weight);
+}
+
+:is(.milkdown .editor, .code-lightbox-pre) .token.constant {
+    color: var(--host-token-constant, var(--vscode-terminal-ansiRed));
+    font-style: var(--host-token-constant-style);
+    font-weight: var(--host-token-constant-weight);
+}
+
+:is(.milkdown .editor, .code-lightbox-pre) .token.symbol {
+    color: var(--host-token-symbol, var(--vscode-terminal-ansiRed));
+    font-style: var(--host-token-symbol-style);
+    font-weight: var(--host-token-symbol-weight);
+}
+
 :is(.milkdown .editor, .code-lightbox-pre) .token.deleted {
-    color: var(--vscode-terminal-ansiRed);
+    color: var(--host-token-deleted, var(--vscode-terminal-ansiRed));
+    font-style: var(--host-token-deleted-style);
+    font-weight: var(--host-token-deleted-weight);
 }
 
-:is(.milkdown .editor, .code-lightbox-pre) .token.boolean,
+:is(.milkdown .editor, .code-lightbox-pre) .token.boolean {
+    color: var(--host-token-boolean, var(--vscode-terminal-ansiBlue));
+    font-style: var(--host-token-boolean-style);
+    font-weight: var(--host-token-boolean-weight);
+}
+
 :is(.milkdown .editor, .code-lightbox-pre) .token.number {
-    color: var(--vscode-terminal-ansiBlue);
+    color: var(--host-token-number, var(--vscode-terminal-ansiBlue));
+    font-style: var(--host-token-number-style);
+    font-weight: var(--host-token-number-weight);
 }
 
-:is(.milkdown .editor, .code-lightbox-pre) .token.selector,
-:is(.milkdown .editor, .code-lightbox-pre) .token.attr-name,
-:is(.milkdown .editor, .code-lightbox-pre) .token.string,
-:is(.milkdown .editor, .code-lightbox-pre) .token.char,
-:is(.milkdown .editor, .code-lightbox-pre) .token.builtin,
+:is(.milkdown .editor, .code-lightbox-pre) .token.selector {
+    color: var(--host-token-selector, var(--vscode-terminal-ansiYellow));
+    font-style: var(--host-token-selector-style);
+    font-weight: var(--host-token-selector-weight);
+}
+
+:is(.milkdown .editor, .code-lightbox-pre) .token.attr-name {
+    color: var(--host-token-attr-name, var(--vscode-terminal-ansiYellow));
+    font-style: var(--host-token-attr-name-style);
+    font-weight: var(--host-token-attr-name-weight);
+}
+
+:is(.milkdown .editor, .code-lightbox-pre) .token.string {
+    color: var(--host-token-string, var(--vscode-terminal-ansiYellow));
+    font-style: var(--host-token-string-style);
+    font-weight: var(--host-token-string-weight);
+}
+
+:is(.milkdown .editor, .code-lightbox-pre) .token.char {
+    color: var(--host-token-char, var(--vscode-terminal-ansiYellow));
+    font-style: var(--host-token-char-style);
+    font-weight: var(--host-token-char-weight);
+}
+
+:is(.milkdown .editor, .code-lightbox-pre) .token.builtin {
+    color: var(--host-token-builtin, var(--vscode-terminal-ansiYellow));
+    font-style: var(--host-token-builtin-style);
+    font-weight: var(--host-token-builtin-weight);
+}
+
 :is(.milkdown .editor, .code-lightbox-pre) .token.inserted {
-    color: var(--vscode-terminal-ansiYellow);
+    color: var(--host-token-inserted, var(--vscode-terminal-ansiYellow));
+    font-style: var(--host-token-inserted-style);
+    font-weight: var(--host-token-inserted-weight);
 }
 
-:is(.milkdown .editor, .code-lightbox-pre) .token.operator,
-:is(.milkdown .editor, .code-lightbox-pre) .token.entity,
-:is(.milkdown .editor, .code-lightbox-pre) .token.url,
+:is(.milkdown .editor, .code-lightbox-pre) .token.operator {
+    color: var(--host-token-operator, var(--vscode-editor-foreground));
+    font-style: var(--host-token-operator-style);
+    font-weight: var(--host-token-operator-weight);
+}
+
+:is(.milkdown .editor, .code-lightbox-pre) .token.entity {
+    color: var(--host-token-entity, var(--vscode-editor-foreground));
+    font-style: var(--host-token-entity-style);
+    font-weight: var(--host-token-entity-weight);
+}
+
+:is(.milkdown .editor, .code-lightbox-pre) .token.url {
+    color: var(--host-token-url, var(--vscode-editor-foreground));
+    font-style: var(--host-token-url-style);
+    font-weight: var(--host-token-url-weight);
+}
+
+:is(.milkdown .editor, .code-lightbox-pre) .token.atrule {
+    color: var(--host-token-atrule, var(--vscode-terminal-ansiCyan));
+    font-style: var(--host-token-atrule-style);
+    font-weight: var(--host-token-atrule-weight);
+}
+
+:is(.milkdown .editor, .code-lightbox-pre) .token.attr-value {
+    color: var(--host-token-attr-value, var(--vscode-terminal-ansiCyan));
+    font-style: var(--host-token-attr-value-style);
+    font-weight: var(--host-token-attr-value-weight);
+}
+
+:is(.milkdown .editor, .code-lightbox-pre) .token.keyword {
+    color: var(--host-token-keyword, var(--vscode-terminal-ansiCyan));
+    font-style: var(--host-token-keyword-style);
+    font-weight: var(--host-token-keyword-weight);
+}
+
+:is(.milkdown .editor, .code-lightbox-pre) .token.function {
+    color: var(--host-token-function, var(--vscode-terminal-ansiMagenta));
+    font-style: var(--host-token-function-style);
+    font-weight: var(--host-token-function-weight);
+}
+
+:is(.milkdown .editor, .code-lightbox-pre) .token.class-name {
+    color: var(--host-token-class-name, var(--vscode-terminal-ansiMagenta));
+    font-style: var(--host-token-class-name-style);
+    font-weight: var(--host-token-class-name-weight);
+}
+
+:is(.milkdown .editor, .code-lightbox-pre) .token.regex {
+    color: var(--host-token-regex, var(--vscode-terminal-ansiYellow));
+    font-style: var(--host-token-regex-style);
+    font-weight: var(--host-token-regex-weight);
+}
+
+:is(.milkdown .editor, .code-lightbox-pre) .token.important {
+    color: var(--host-token-important, var(--vscode-terminal-ansiYellow));
+    font-style: var(--host-token-important-style);
+    font-weight: var(--host-token-important-weight, bold);
+}
+
+:is(.milkdown .editor, .code-lightbox-pre) .token.variable {
+    color: var(--host-token-variable, var(--vscode-terminal-ansiYellow));
+    font-style: var(--host-token-variable-style);
+    font-weight: var(--host-token-variable-weight);
+}
+
 :is(.milkdown .editor, .code-lightbox-pre) .language-css .token.string,
 :is(.milkdown .editor, .code-lightbox-pre) .style .token.string {
-    color: var(--vscode-editor-foreground);
+    color: var(--host-token-string, var(--vscode-editor-foreground));
 }
 
-:is(.milkdown .editor, .code-lightbox-pre) .token.atrule,
-:is(.milkdown .editor, .code-lightbox-pre) .token.attr-value,
-:is(.milkdown .editor, .code-lightbox-pre) .token.keyword {
-    color: var(--vscode-terminal-ansiCyan);
-}
-
-:is(.milkdown .editor, .code-lightbox-pre) .token.function,
-:is(.milkdown .editor, .code-lightbox-pre) .token.class-name {
-    color: var(--vscode-terminal-ansiMagenta);
-}
-
-:is(.milkdown .editor, .code-lightbox-pre) .token.regex,
-:is(.milkdown .editor, .code-lightbox-pre) .token.important,
-:is(.milkdown .editor, .code-lightbox-pre) .token.variable {
-    color: var(--vscode-terminal-ansiYellow);
-}
-
-:is(.milkdown .editor, .code-lightbox-pre) .token.important,
 :is(.milkdown .editor, .code-lightbox-pre) .token.bold {
     font-weight: bold;
 }

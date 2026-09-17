@@ -173,6 +173,29 @@ export async function run({ page, check, baseUrl }) {
     });
     const filesOffset = Math.max(0, filesWidth + GAP - LEFT_PAD);
     check("full width: --files-reserve is the panel's width", px(full.reserve) === filesWidth, JSON.stringify(full));
+
+    // ── The line-number gutter clears the panel ──────────────────────────
+    // The gutter is a layer at the viewport's start edge, under the docked
+    // panel's z-index; with the explorer docked open it sits past the
+    // panel's far edge rather than beneath it (components/lineNumbers/styles.ts).
+    await page.evaluate(() => window.postMessage({ type: "setLineNumbers", enabled: true }, "*"));
+    // Attached, not visible: the layer is a zero-height box by design.
+    await page.waitForSelector(".line-number-layer", { state: "attached", timeout: 5000 });
+    await page.waitForTimeout(SETTLE);
+    const gutter = await page.evaluate(() => {
+        const layer = document.querySelector(".line-number-layer");
+        const panel = document.querySelector(".files-panel");
+        return {
+            layerLeft: Math.round(layer.getBoundingClientRect().left),
+            panelRight: Math.round(panel.getBoundingClientRect().right),
+            numbers: document.querySelectorAll(".line-number").length,
+        };
+    });
+    check("line numbers: the gutter starts past the docked explorer's far edge",
+        gutter.layerLeft >= gutter.panelRight && gutter.numbers > 0, JSON.stringify(gutter));
+    await page.evaluate(() => window.postMessage({ type: "setLineNumbers", enabled: false }, "*"));
+    await page.waitForTimeout(SETTLE);
+
     check("full width: #editor's margin-left is max(0, files + gap - padding)",
         full.marginLeft === filesOffset, `expected ${filesOffset}, got ${JSON.stringify(full)}`);
     // The right TOC is docked closed: its own offset (the tab's clearance,
@@ -697,4 +720,33 @@ export async function run({ page, check, baseUrl }) {
     check("widening again docks the TOC back open beside the explorer",
         widened.tocDocked && widened.tocOpen && widened.tocRectLeft === widened.filesWidth, JSON.stringify(widened));
     await page.setViewportSize({ width: 1000, height: 900 });
+
+    // ── The viewport grows without a resize event ─────────────────────────
+    // A page loaded into a tab settles its mode at the size its view was
+    // created at and is then given the window's, with no `resize` the shell
+    // hears (sidePanel/shell.ts watches the root element's box for this).
+    // Playwright's setViewportSize fires `resize` too, and it reaches the
+    // shell ahead of anything this check could register, so the page is
+    // loaded with `?noresize=1`, under which it keeps no `resize` listener
+    // at all: the observer is then the only thing that can dock the panel.
+    // Last, on its own page load, so nothing above runs under that flag.
+    await page.setViewportSize({ width: 700, height: 700 });
+    await page.goto(`${baseUrl}/index.html?noresize=1`);
+    await page.waitForSelector(".files-panel", { state: "attached", timeout: 10000 });
+    await page.waitForTimeout(SETTLE);
+    const narrow = await page.evaluate(() => document.body.classList.contains("files-docked"));
+    check("viewport: at a width too narrow to dock, the explorer is not docked", !narrow);
+    await page.setViewportSize({ width: 1280, height: 700 });
+    await page.waitForTimeout(SETTLE);
+    const grown = await page.evaluate(() => ({
+        docked: document.body.classList.contains("files-docked"),
+        open: document.body.classList.contains("files-open"),
+        top: Math.round(document.querySelector(".files-panel").getBoundingClientRect().top),
+        edge: Math.round(document.querySelector(".editor-topbar").getBoundingClientRect().bottom),
+        listeners: window.__resizeListeners,
+    }));
+    check("viewport: the flag took, refusing the resize listeners the page tried to keep",
+        grown.listeners > 0, JSON.stringify(grown));
+    check("viewport: grown with no resize event heard, the explorer docks and opens on the root's own box",
+        grown.docked && grown.open && grown.top === grown.edge + INSET, JSON.stringify(grown));
 }

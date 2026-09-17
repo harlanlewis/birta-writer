@@ -43,8 +43,8 @@ public enum FileOpenTarget: String, CaseIterable, Sendable {
     /// What the menu calls it: the two things the file could open in.
     public var title: String {
         switch self {
-        case .tab: return "A new tab"
-        case .window: return "A new window"
+        case .tab: return "New tab"
+        case .window: return "New window"
         }
     }
 }

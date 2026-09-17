@@ -5,7 +5,7 @@ import BirtaWriterCore
 /// The app: status item, main menu, and the Coordinator that ties the hotkey,
 /// the panel, the web host and the store together.
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding {
+final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding, ThemesMenuProviding {
     private var statusItem: NSStatusItem?
     private var statusMenu: NSMenu!
     /// The View menu, kept so `menuNeedsUpdate` can tell it from the other two
@@ -274,6 +274,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding {
             // Panes are built on first show, so naming one is what proves it
             // constructs. "1" opens the window on whichever pane is default.
             settingsWindow?.selectTabForTesting(tab)
+            // A picture of the pane, for a check on how it LOOKS rather than
+            // what it constructs: the window is AppKit throughout, so its
+            // views' own drawing is the picture (`PaletteWindow.snapshotPNG`
+            // is the same instrument). After a beat, so the pane has been
+            // laid out and the window fitted to it.
+            if let path = ProcessInfo.processInfo.environment["BIRTA_MAC_SETTINGS_SNAPSHOT"], !path.isEmpty {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
+                    let png = self?.settingsWindow?.snapshotPNG()
+                    let written = png.flatMap { try? $0.write(to: URL(fileURLWithPath: path)) } != nil
+                    Measure.trace("settings snapshot written=\(written) path=\(path)")
+                }
+            }
             // And then move the one control that changes a pane's height after
             // it is built, so a check on the window following its pane has a
             // second sizing to read. Deferred, or the two fits collapse into
@@ -637,6 +649,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding {
         windows.setShowHiddenFiles(!Prefs.explorerShowsHidden)
     }
 
+    /// A row of View > Theme, or the palette's: the payload is the theme's
+    /// id, or "" for the system's palette (`ThemesMenu`). It goes into the
+    /// slot of the mode in force.
+    @objc func menuSelectTheme(_ sender: Any?) {
+        let id = (sender as? NSMenuItem)?.representedObject as? String
+        windows.chooseTheme(id: id.flatMap { $0.isEmpty ? nil : $0 })
+    }
+
+    /// Auto, Light or Dark, at the top of that menu.
+    @objc func menuSetAppearanceMode(_ sender: Any?) {
+        guard let raw = (sender as? NSMenuItem)?.representedObject as? String,
+              let mode = AppearanceMode(rawValue: raw) else { return }
+        windows.setAppearanceMode(mode)
+    }
+
+    /// Add Theme…, at the bottom of that menu: the Appearance pane, at the
+    /// theme row, which is where a theme is added.
+    @objc func menuOpenThemeSettings() {
+        menuOpenSettings()
+        settingsWindow?.show(paneNamed: "appearance", revealing: .theme)
+    }
+
+    func makeThemesMenu() -> ThemesMenu { windows.themesMenu() }
+
     /// View > Line Numbers: the app's setting, flipped for every window at
     /// once; the page draws or removes its gutter without a reload.
     @objc func menuToggleLineNumbers() {
@@ -672,6 +708,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding {
         context.syntaxSets = Prefs.syntaxSets
         context.pageCommands = front?.paletteCommands ?? []
         context.recents = Prefs.recentDocuments
+        context.themes = windows.themeStore.list()
+        context.currentTheme = windows.appearance.themeId
+        context.appearanceMode = Prefs.appearance.mode
         let refresh: () -> Void = { [weak self] in self?.palette.refresh() }
         if let root {
             context.root = root
@@ -699,9 +738,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding {
                 front?.runEditorCommand(id, arg: arg)
             case let .link(link):
                 NSWorkspace.shared.open(link.url)
-            case .submenu, .recents:
+            case .submenu, .recents, .themes:
                 break
             }
+        case let .theme(id):
+            windows.chooseTheme(id: id)
+        case let .appearanceMode(mode):
+            windows.setAppearanceMode(mode)
         case let .pageCommand(id):
             front?.runEditorCommand(id, arg: nil)
         case let .window(coordinator):
@@ -1145,7 +1188,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding {
                 onChangeEverywhere: { [weak self] in self?.windows.preferencesChangedEverywhere() },
                 onReset: { [weak self] in self?.windows.settingsWereReset() },
                 onShowWelcome: { [weak self] in self?.showWelcome() },
-                onCheckForUpdates: { [weak self] in self?.menuCheckForUpdates() })
+                onCheckForUpdates: { [weak self] in self?.menuCheckForUpdates() },
+                themeStore: windows.themeStore,
+                onAppearanceChange: { [weak self] settings in self?.windows.setAppearance(settings) },
+                onThemesChanged: { [weak self] in self?.windows.themesChanged() },
+                onEditorCommand: { [weak self] id in self?.windows.runEditorCommandEverywhere(id) })
         }
         NSApp.activate(ignoringOtherApps: true)
         settingsWindow?.showWindow(nil)

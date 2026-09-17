@@ -227,7 +227,7 @@ export function createFileExplorer(host: FileExplorerHost): FileExplorerControll
     empty.textContent = t("This folder is empty");
 
     function rowKey(row: TreeRow): string {
-        return row.kind === "dir" || row.kind === "file" ? row.path : `${row.path} ${row.kind}`;
+        return row.kind === "dir" || row.kind === "file" ? row.path : `${row.path}\u0000${row.kind}`;
     }
 
     function buildRow(row: TreeRow): HTMLElement {

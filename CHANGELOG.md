@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- Go to Line, on `Ctrl+G` and in the command palette. It takes a document line number, frontmatter counted, which is the number a diff, a build error or a review comment quotes and the number the line-number gutter draws: the document scrolls to the line as you type, Enter puts the caret there (a line inside the frontmatter puts it on the body's first line) and Escape puts the scroll back. A `line:column` pair lands on the column. VS Code's own Go to Line never reached the rendered editor, because it binds to a text editor and a rendered document is not one.
+
 ---
 
 ## [2026.917.0] - 2026, September 17
