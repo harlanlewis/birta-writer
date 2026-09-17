@@ -173,7 +173,7 @@ final class AppMenuTests: XCTestCase {
             "Command Palette…",
             "-", "Zoom In", "Zoom Out", "Actual Size",
             "-", "Font", "Folding",
-            "-", "Show Table of Contents", "Show Files", "Show Hidden Files",
+            "-", "Show Table of Contents", "Show Files", "Show Hidden Files", "Line Numbers",
             "-", "Proofreading",
             // The bracket macOS's own Enter Full Screen lands under; see
             // `AppMenu.Menu.takesSystemRows`.
@@ -401,7 +401,7 @@ final class AppMenuTests: XCTestCase {
         // Everything on, which is not the state a built menu is in: an item
         // starts at `.off`, so a row left untouched fails here.
         AppMenu.applyState(MenuState(proofreadOptions: [:], noteHighlight: true, tocShown: false,
-                                     hiddenFilesShown: true),
+                                     hiddenFilesShown: true, lineNumbers: true),
                            to: view)
         let declared = AppMenu.rows.filter { $0.menu == .view && $0.state != nil }
         var checked = 0

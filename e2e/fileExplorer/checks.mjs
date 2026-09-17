@@ -15,6 +15,11 @@
 const SETTLE = 350;
 const GAP = 100; // --toc-content-gap
 const LEFT_PAD = 76; // --editor-content-left-padding
+// How far the panel stands in from the window's edges (FILES_INSET in
+// components/fileExplorer/index.ts). Out of the panel's OWN box: `--files-width`
+// and `--files-reserve` are the panel's far edge, and every margin below is
+// measured from that edge rather than from the panel's rect width.
+const INSET = 8;
 
 export async function run({ page, check, baseUrl }) {
     const posted = (type) => page.evaluate((t) => window.__posted.filter((m) => m.type === t), type);
@@ -63,11 +68,21 @@ export async function run({ page, check, baseUrl }) {
     await page.waitForTimeout(SETTLE);
 
     const geom = await page.evaluate(() => {
-        const panel = document.querySelector(".files-panel").getBoundingClientRect();
+        const el = document.querySelector(".files-panel");
+        const panel = el.getBoundingClientRect();
         const topbar = document.querySelector(".editor-topbar").getBoundingClientRect();
+        const cs = getComputedStyle(el);
         return {
             top: Math.round(panel.top), topbarBottom: Math.round(topbar.bottom),
-            left: Math.round(panel.left), width: Math.round(panel.width),
+            left: Math.round(panel.left), width: Math.round(panel.width), right: Math.round(panel.right),
+            bottom: Math.round(panel.bottom), viewportHeight: window.innerHeight,
+            inset: el.style.getPropertyValue("--side-panel-inset"),
+            reserve: getComputedStyle(document.body).getPropertyValue("--files-reserve").trim(),
+            radius: cs.borderRadius,
+            background: cs.backgroundColor,
+            sideBar: getComputedStyle(document.documentElement).getPropertyValue("--vscode-sideBar-background").trim(),
+            bodyBackground: getComputedStyle(document.body).backgroundColor,
+            borders: [cs.borderLeftWidth, cs.borderRightWidth, cs.borderTopWidth, cs.borderBottomWidth],
             open: document.body.classList.contains("files-open"),
             docked: document.body.classList.contains("files-docked"),
             heading: document.querySelector(".files-header__name")?.textContent,
@@ -76,16 +91,63 @@ export async function run({ page, check, baseUrl }) {
         };
     });
     check("the panel docks open at load", geom.open && geom.docked, JSON.stringify(geom));
-    check("the panel's top is the topbar's bottom and its left is 0",
-        geom.top === geom.topbarBottom && geom.left === 0, JSON.stringify(geom));
+    // The formatting row is collapsed on this page, so the content area's top
+    // is the bar's bottom; the panel stands in from it, and from the window's
+    // left and bottom edges, by its inset, and runs the window's full height
+    // between them whatever the tree holds.
+    check("the panel stands in from the window's edges by its inset, full height between them",
+        geom.inset === `${INSET}px` && geom.top === geom.topbarBottom + INSET && geom.left === INSET
+            && geom.bottom === geom.viewportHeight - INSET,
+        JSON.stringify(geom));
+    check("the inset comes out of the panel's own box: its far edge is the reserve the content reads",
+        geom.right === px(geom.reserve) && geom.width === px(geom.reserve) - INSET, JSON.stringify(geom));
     check("the header names the root and the landmarks are labelled",
         geom.heading === "Notes" && geom.role === "complementary" && geom.tree === "tree", JSON.stringify(geom));
-    check("no differentiated background at rest: the panel is the editor's own ground",
+    // Its own ground, a step off the page: the sidebar shade the palette
+    // derives from the widget ground (darker on light, lighter on dark), a
+    // small radius, and still no border.
+    check("the panel draws the sidebar ground with a small radius and no border",
+        geom.background !== geom.bodyBackground && geom.sideBar !== "" && geom.radius === "6px"
+            && geom.borders.every((b) => b === "0px"),
+        JSON.stringify(geom));
+    check("and that ground is the palette's sidebar shade, not a literal of its own",
         await page.evaluate(() => {
-            const p = getComputedStyle(document.querySelector(".files-panel"));
-            const b = getComputedStyle(document.body);
-            return p.backgroundColor === b.backgroundColor && p.borderLeftWidth === "0px" && p.borderRightWidth === "0px";
+            const probe = document.createElement("div");
+            probe.style.background = "var(--vscode-sideBar-background)";
+            document.body.appendChild(probe);
+            const same = getComputedStyle(probe).backgroundColor === getComputedStyle(document.querySelector(".files-panel")).backgroundColor;
+            probe.remove();
+            return same;
         }));
+
+    // The formatting row is the top of the CONTENT AREA, beside the panel:
+    // opened, it starts where the panel ends, and its controls' top edge is
+    // the panel's top edge, so the two draw one line under the window's chrome.
+    await press(".tb-dock-toggle");
+    await page.waitForTimeout(SETTLE);
+    const rowBeside = await page.evaluate(() => {
+        const panel = document.querySelector(".files-panel").getBoundingClientRect();
+        const dock = document.querySelector(".tb-dock").getBoundingClientRect();
+        const bar = document.querySelector(".editor-topbar").getBoundingClientRect();
+        const item = document.querySelector(".tb-dock-row .tb-item")?.getBoundingClientRect();
+        return {
+            expanded: document.querySelector(".tb-dock")?.dataset.expanded,
+            panelTop: Math.round(panel.top), panelRight: Math.round(panel.right),
+            dockLeft: Math.round(dock.left), dockTop: Math.round(dock.top), dockBottom: Math.round(dock.bottom),
+            itemTop: item ? Math.round(item.top) : null,
+            barBottom: Math.round(bar.bottom),
+        };
+    });
+    check("the formatting row opens on this page", rowBeside.expanded === "true", JSON.stringify(rowBeside));
+    check("the open row starts where the panel ends, and the panel starts level with the row, not under it",
+        rowBeside.dockLeft === rowBeside.panelRight && rowBeside.panelTop === rowBeside.dockTop + INSET
+            // The bar's own hairline sits under the row.
+            && rowBeside.barBottom - rowBeside.dockBottom <= 1,
+        JSON.stringify(rowBeside));
+    check("the row's controls sit on the panel's top edge",
+        rowBeside.itemTop !== null && Math.abs(rowBeside.itemTop - rowBeside.panelTop) <= 1, JSON.stringify(rowBeside));
+    await press(".tb-dock-toggle");
+    await page.waitForTimeout(SETTLE);
 
     const rootOrder = await page.$$eval(".files-row", (els) => els.map((el) => el.dataset.path));
     check("the root lists folders first, then files, in natural order",
@@ -93,7 +155,9 @@ export async function run({ page, check, baseUrl }) {
         JSON.stringify(rootOrder));
 
     // ── Full-width layout: the content clears the panel ──────────────────
-    const filesWidth = geom.width;
+    // The panel's far edge, which is `--files-width`: the inset comes out of
+    // the panel's box, so its rect width is that less the inset.
+    const filesWidth = geom.right;
     const full = await page.evaluate(() => {
         const ed = document.querySelector("#editor");
         const cs = getComputedStyle(ed);
@@ -165,6 +229,26 @@ export async function run({ page, check, baseUrl }) {
     }));
     check("fixed width, both panels at the runner's width: the TOC floats rather than docking into the content",
         !floated.docked && floated.overlayOpen && Math.abs(floated.marginLeft - centred) <= 1, JSON.stringify(floated));
+    // A FLOATED panel is not beside the formatting row: the row carries no
+    // margin for it and paints above it, so with the row open the panel has
+    // to start below the whole bar, not at the row's edge as a docked one does.
+    await press(".tb-dock-toggle");
+    await page.waitForTimeout(SETTLE);
+    const floatedUnderRow = await page.evaluate(() => {
+        const panel = document.querySelector(".toc-panel").getBoundingClientRect();
+        const bar = document.querySelector(".editor-topbar").getBoundingClientRect();
+        const dock = document.querySelector(".tb-dock");
+        return {
+            overlayOpen: document.body.classList.contains("toc-overlay-open"),
+            rowShown: !!dock && !dock.hidden && dock.getBoundingClientRect().height > 0,
+            panelTop: Math.round(panel.top), barBottom: Math.round(bar.bottom),
+        };
+    });
+    check("with the row open, the floated TOC starts below the whole bar rather than under the row",
+        floatedUnderRow.overlayOpen && floatedUnderRow.rowShown && floatedUnderRow.panelTop >= floatedUnderRow.barBottom,
+        JSON.stringify(floatedUnderRow));
+    await press(".tb-dock-toggle");
+    await page.waitForTimeout(SETTLE);
     await press(".tb-toc-btn"); // close the floating TOC
     await page.waitForTimeout(SETTLE);
 
@@ -316,12 +400,13 @@ export async function run({ page, check, baseUrl }) {
         return { opacity: parseFloat(after.opacity), width: after.width };
     });
     check("hovering the panel's edge lights the resize sash", edge.opacity === 1 && edge.width === "2px", JSON.stringify(edge));
-    const widthBefore = await page.evaluate(() => document.querySelector(".files-panel").getBoundingClientRect().width);
+    // The far edge again: the number the sash writes and the host is told.
+    const widthBefore = await page.evaluate(() => document.querySelector(".files-panel").getBoundingClientRect().right);
     await page.mouse.down();
     await page.mouse.move(sash.x + 30, sash.y, { steps: 3 });
     await page.mouse.move(sash.x + 60, sash.y, { steps: 3 });
     const widthMid = await page.evaluate(() => ({
-        panel: Math.round(document.querySelector(".files-panel").getBoundingClientRect().width),
+        panel: Math.round(document.querySelector(".files-panel").getBoundingClientRect().right),
         varPx: document.documentElement.style.getPropertyValue("--files-width"),
         posted: window.__posted.filter((m) => m.type === "fileExplorerWidth").length,
         editorMl: Math.round(parseFloat(getComputedStyle(document.querySelector("#editor")).marginLeft)),
@@ -329,7 +414,7 @@ export async function run({ page, check, baseUrl }) {
     await page.mouse.up();
     await page.waitForTimeout(100);
     const widthAfter = await page.evaluate(() => ({
-        panel: Math.round(document.querySelector(".files-panel").getBoundingClientRect().width),
+        panel: Math.round(document.querySelector(".files-panel").getBoundingClientRect().right),
         posted: window.__posted.filter((m) => m.type === "fileExplorerWidth"),
     }));
     check("dragging the sash widens the panel and writes --files-width per move, posting nothing yet",
@@ -441,7 +526,8 @@ export async function run({ page, check, baseUrl }) {
         const files = document.querySelector(".files-panel");
         return {
             filesOpen: document.body.classList.contains("files-open"),
-            filesWidth: Math.round(files.getBoundingClientRect().width),
+            // The far edge, which is the reserve (the inset is the panel's own).
+            filesWidth: Math.round(files.getBoundingClientRect().right),
             filesLeft: Math.round(files.getBoundingClientRect().left),
             tocOpen: document.body.classList.contains("toc-open"),
             tocDocked: document.body.classList.contains("toc-docked"),
@@ -517,7 +603,7 @@ export async function run({ page, check, baseUrl }) {
     await page.waitForTimeout(SETTLE);
     const openLeft = await layout();
     check("the tab docks the TOC open on the left beside the explorer, which stays put",
-        openLeft.tocOpen && openLeft.tocDocked && openLeft.filesOpen && openLeft.filesLeft === 0, JSON.stringify(openLeft));
+        openLeft.tocOpen && openLeft.tocDocked && openLeft.filesOpen && openLeft.filesLeft === INSET, JSON.stringify(openLeft));
     check("files open, TOC docked open: the TOC drawer starts where the explorer ends",
         openLeft.tocRectLeft === openLeft.filesWidth && openLeft.tocLeft === openLeft.filesWidth, JSON.stringify(openLeft));
     const openOffset = Math.max(0, openLeft.filesWidth + openLeft.tocWidth + GAP - OPEN_PAD);

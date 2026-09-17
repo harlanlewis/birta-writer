@@ -167,6 +167,12 @@ export interface EditorActions {
      */
     setLineNumbers: (enabled: boolean) => void;
     /**
+     * Applies the host's answer for the formatting row (`setFormattingRowExpanded`):
+     * another of the host's pages opened or shut it, and this one follows
+     * without posting the flip back.
+     */
+    setFormattingRowExpanded: (expanded: boolean) => void;
+    /**
      * The file explorer's five inbound messages (MAR-460), each straight
      * through to the lazily-loaded panel's gate (utils/fileExplorerLoader.ts),
      * which buffers what arrives before its chunk has landed. `projectRoot`
@@ -203,9 +209,9 @@ export interface MessageHandlerDeps {
  * for a file being opened. So the offset rides the live bag alone and the rule
  * needs no host to declare it.
  *
- * Everything else in the bag is document state that SHOULD outlive the view —
- * table widths, folds, list numbering, the formatting row — so this takes one
- * key rather than refusing the bag.
+ * Everything else in the bag is document state that SHOULD outlive the view
+ * (table widths, folds, list numbering), so this takes one key rather than
+ * refusing the bag.
  *
  * A host that wants a remount to keep its place puts the offset in the LIVE
  * bag, which is what the Mac app's `acquireVsCodeApi` shim seeds from
@@ -577,6 +583,9 @@ export function createMessageHandlers(
         },
         setLineNumbers(msg) {
             actions.setLineNumbers(msg.enabled);
+        },
+        setFormattingRowExpanded(msg) {
+            actions.setFormattingRowExpanded(msg.expanded);
         },
         setReadOnly(msg) {
             // Straight through to the mode's one owner, which announces to

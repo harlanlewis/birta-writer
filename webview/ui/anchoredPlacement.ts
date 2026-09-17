@@ -253,12 +253,19 @@ export function placeMenu(anchor: HTMLElement, menu: HTMLElement): void {
 
     // Two reasons a menu cannot hang off its wrap and takes viewport
     // coordinates instead: the wrap's box clips it, or the bar its wrap is in
-    // ends in a strip the host paints over (the Mac app's tab bar), which a
+    // holds a strip the host paints over (the Mac app's tab bar), which a
     // menu opening downward out of the bar would be drawn under. Both land
     // the menu at the safe edge, which for the second is below the strip.
-    const underHostStrip = hostStripUnderTopbar() !== null && isInTopbar(anchor);
-    if (anchor.closest(`[${MENU_CLIP_ATTR}]`) || underHostStrip) {
-        const pos = computeAnchoredPosition(rect, { width, height }, viewport);
+    //
+    // Below the STRIP, not below the bar. The strip ends where the content
+    // area begins, and under `formattingInSecondRow` the bar goes on past
+    // that edge with its formatting row; a menu off the first row lands over
+    // that row, as a menu off any bar lands over what is under it. Floored at
+    // the bar's bottom it would open a row away from its button.
+    const strip = isInTopbar(anchor) ? hostStripUnderTopbar() : null;
+    if (anchor.closest(`[${MENU_CLIP_ATTR}]`) || strip) {
+        const floor = strip ? { ...viewport, top: Math.max(0, strip.bottom) } : viewport;
+        const pos = computeAnchoredPosition(rect, { width, height }, floor);
         menu.style.position = "fixed";
         menu.style.left = `${pos.left}px`;
         menu.style.right = "auto";

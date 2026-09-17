@@ -161,6 +161,7 @@ final class WindowSet {
             self?.newNote(in: folder, beside: coordinator)
         }
         coordinator.onShowHiddenChanged = { [weak self] shown in self?.setShowHiddenFiles(shown) }
+        coordinator.onFormattingRowChanged = { [weak self] expanded in self?.setFormattingRowExpanded(expanded) }
         coordinator.onOpenDirectoryRequest = { [weak self] url in self?.openDirectory(at: url) }
         coordinator.makeRecentsMenu = { [weak self] in self?.recentsMenu() ?? RecentsMenu() }
         coordinator.onOpenRequest = { [weak self] url in
@@ -627,6 +628,21 @@ final class WindowSet {
     func setShowHiddenFiles(_ shown: Bool) {
         Prefs.explorerShowsHidden = shown
         windows.forEach { $0.applyShowHiddenFiles(shown) }
+    }
+
+    /// The formatting row was opened or shut in one window: the app's one
+    /// answer moves, and every window's page follows it, the one that asked
+    /// included (its row is already there, and the page treats a push that
+    /// changes nothing as nothing).
+    func setFormattingRowExpanded(_ expanded: Bool) {
+        Prefs.formattingRowExpanded = expanded
+        windows.forEach { $0.applyFormattingRowExpanded(expanded) }
+    }
+
+    /// View > Line Numbers: the app's one setting, and every window's page.
+    func setLineNumbers(_ enabled: Bool) {
+        Prefs.lineNumbers = enabled
+        windows.forEach { $0.applyLineNumbers(enabled) }
     }
 
     /// Open a file: the Finder's Open With, a drop on the Dock icon, `open -a`,

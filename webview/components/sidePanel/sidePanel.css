@@ -9,22 +9,34 @@
    transitions off for a commit) is written on the tab itself. */
 .side-panel {
     position: fixed;
+    /* `top` and `height` are written inline by shell.ts (`updatePosition`),
+       from the content area's top edge and the composer's inset; the values
+       here stand only until the first commit. */
     top: var(--editor-topbar-height, 40px);
-    left: 0;
+    /* The composer's inset from the window's edges (shell.ts binds
+       `--side-panel-inset` per instance, 0 for a drawer flush to the frame).
+       It comes out of the drawer's OWN box: the docked edge moves in by it
+       and the width gives it up, so the far edge, which is the number the
+       content's margin math and the formatting row read, stays where the
+       width variable says. */
+    left: var(--side-panel-inset, 0px);
     /* The composer's width variable, bound per instance by shell.ts as an
        inline custom property (an inline `width` would beat the flyout's fixed
        width below; a custom property does not). */
-    width: var(--side-panel-width, 260px);
+    width: calc(var(--side-panel-width, 260px) - var(--side-panel-inset, 0px));
     height: calc(100vh - var(--editor-topbar-height, 40px));
     /* Editor background (not the sidebar shade), and no borders: the docked
        drawer blends into the editor gutter with no differentiated chrome. The
        solid fill still covers document text in overlay mode. The only edge
-       treatment is the resize handle's accent line on hover (below). */
+       treatment is the resize handle's accent line on hover (below). A
+       composer that wants its own ground overrides this on its own class
+       (the file explorer does, in fileExplorer/styles.ts). */
     background: var(--vscode-editor-background);
     z-index: 99;
     display: flex;
     flex-direction: column;
-    transform: translateX(-100%);
+    /* Past its own inset too, so an inset drawer leaves no sliver at the edge. */
+    transform: translateX(calc(-100% - var(--side-panel-inset, 0px)));
     /* Hidden panel fades out; the open state restores opacity to 1. */
     opacity: 0;
     /* A closed drawer must be OUT of the keyboard's reach: transform/opacity
@@ -42,8 +54,8 @@
 /* Right-docked variant */
 .side-panel--right {
     left: auto;
-    right: 0;
-    transform: translateX(100%);
+    right: var(--side-panel-inset, 0px);
+    transform: translateX(calc(100% + var(--side-panel-inset, 0px)));
 }
 
 .side-panel--open {

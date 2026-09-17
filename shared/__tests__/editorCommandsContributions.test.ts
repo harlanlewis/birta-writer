@@ -336,6 +336,9 @@ describe("editor command keybinding contributions", () => {
         findNext: [{ key: "f3" }, { mac: "cmd+g" }],
         findPrevious: [{ key: "shift+f3" }, { mac: "cmd+shift+g" }],
         findSelection: [{ key: "ctrl+d", mac: "cmd+d" }],
+        // VS Code's own Go to Line chord on every platform, including the
+        // Mac, where Cmd+G is Find Next. No `mac` override on purpose.
+        gotoLine: [{ key: "ctrl+g" }],
         // VS Code parity: Cmd+F2 is `editor.action.changeAll`'s chord, which is
         // the behavior this command actually provides. Shift+Cmd+L is retained
         // as an additional chord (VS Code binds it to a multi-cursor command a

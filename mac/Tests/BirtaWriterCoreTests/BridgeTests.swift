@@ -294,8 +294,10 @@ final class BridgeTests: XCTestCase {
                        .projectFileMenu(path: "a", kind: "dir", x: 12, y: 40.5))
         XCTAssertEqual(WebviewMessage.parse(#"{"type":"projectFileMenu","path":"a","kind":"dir"}"#),
                        .other(type: "projectFileMenu"), "a menu with nowhere to open is not a request")
-        XCTAssertEqual(WebviewMessage.parse(#"{"type":"formattingRowHeight","height":36}"#),
-                       .formattingRowHeight(36))
+        XCTAssertEqual(WebviewMessage.parse(#"{"type":"formattingRowExpanded","expanded":true}"#),
+                       .formattingRowExpanded(true))
+        XCTAssertEqual(WebviewMessage.parse(#"{"type":"formattingRowExpanded"}"#),
+                       .other(type: "formattingRowExpanded"), "a flip with no direction is not a flip")
         XCTAssertEqual(WebviewMessage.parse(#"{"type":"fileExplorerWidth","width":300}"#), .fileExplorerWidth(300))
         XCTAssertEqual(WebviewMessage.parse(#"{"type":"fileExplorerVisibility","visible":false}"#),
                        .fileExplorerVisibility(false))
@@ -325,6 +327,11 @@ final class BridgeTests: XCTestCase {
         XCTAssertTrue(HostMessage.currentProjectFile(path: nil).jsonObject()["path"] is NSNull)
         XCTAssertEqual(HostMessage.directoryChanged(paths: ["", "a"]).jsonObject()["paths"] as? [String], ["", "a"])
         XCTAssertEqual(HostMessage.fileExplorerConfig(showHidden: true).jsonObject()["showHidden"] as? Bool, true)
+        XCTAssertEqual(HostMessage.setFormattingRowExpanded(false).jsonObject()["type"] as? String,
+                       "setFormattingRowExpanded")
+        XCTAssertEqual(HostMessage.setFormattingRowExpanded(false).jsonObject()["expanded"] as? Bool, false)
+        XCTAssertEqual(HostMessage.setLineNumbers(true).jsonObject()["type"] as? String, "setLineNumbers")
+        XCTAssertEqual(HostMessage.setLineNumbers(true).jsonObject()["enabled"] as? Bool, true)
     }
 
     func testTheExplorersMemoriesShouldReachThePageOnTheOutlinePanelsChannels() {
@@ -332,6 +339,12 @@ final class BridgeTests: XCTestCase {
         XCTAssertEqual(BootConfig(tocWidth: 320, fileExplorerWidth: 280).tocRootStyle,
                        ":root { --toc-width: 320px; }:root { --files-width: 280px; }")
         XCTAssertEqual(BootConfig(fileExplorerVisibility: "hidden").i18nObject()["fileExplorerVisible"] as? Bool, false)
+        XCTAssertEqual(BootConfig(formattingRowExpanded: true).i18nObject()["formattingRowExpanded"] as? Bool, true)
+        XCTAssertEqual(BootConfig(lineNumbers: true).i18nObject()["lineNumbers"] as? Bool, true)
+        XCTAssertEqual(BootConfig().i18nObject()["lineNumbers"] as? Bool, false,
+                       "the gutter ships off, and the page reads the key at boot to decide whether to fetch it")
+        XCTAssertEqual(BootConfig().i18nObject()["formattingRowExpanded"] as? Bool, false,
+                       "the row ships shut, and a first boot has to be told so rather than left to guess")
         XCTAssertEqual(BootConfig().i18nObject()["fileExplorerVisible"] as? Bool, true,
                        "the explorer ships out, unlike the outline panel")
     }

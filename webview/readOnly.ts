@@ -151,6 +151,8 @@ export const COMMAND_EFFECTS: Record<EditorCommandId, CommandEffect> = {
     askAgent: "reads",
     askAgentAdvanced: "reads",
     openFind: "reads",
+    // Moves the caret and the scroll, never the text.
+    gotoLine: "reads",
     // The block menu is NOT a writing surface the way the two panels above
     // are: it also folds, copies a block as Markdown, and copies a link to a
     // section, which is exactly the work a reader does. Its mutating rows go

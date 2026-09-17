@@ -60,6 +60,7 @@ Findings are quiet dotted underlines, with suggested fixes in a hover popup. "Ad
 - Table of contents: an auto-generated outline that is also a structural editor. Drag a TOC entry to move its whole section, and a drop that changes nesting relevels the headings. Click to jump.
 - Sticky headings keep your current section's heading pinned while you scroll.
 - Go to Heading (`Cmd+Shift+O`) jumps by heading.
+- Go to Line (`Ctrl+G`) jumps to a source line number, frontmatter counted, the number a diff or a review comment quotes: the document scrolls to the line as you type and the caret lands there on Enter.
 - A word count for the document, or for the selection, lives in the status bar.
 
 ## Links
@@ -121,6 +122,7 @@ macOS shown; Ctrl on Windows/Linux unless noted. Most are contributed commands a
 | `Cmd+D` · `Cmd+Shift+L` | Next occurrence · all occurrences |
 | `Cmd+Alt+[` / `Cmd+Alt+]` | Fold / unfold (`Ctrl+Shift+[` / `]` on Windows/Linux) |
 | `Cmd+Shift+O` | Go to heading |
+| `Ctrl+G` | Go to line |
 | `Cmd+K` | Insert / edit link |
 | `Cmd+Alt+1` to `Cmd+Alt+6` / `Cmd+Alt+0` | Heading level / paragraph |
 | `Cmd+Shift+M` | Toggle WYSIWYG ⇄ Raw Markdown |

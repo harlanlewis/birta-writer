@@ -133,6 +133,7 @@ export const COMMAND_BLOCK_REACH: Record<EditorCommandId, BlockReach> = {
     findNext: NONE,
     findPrevious: NONE,
     findSelection: NONE,
+    gotoLine: NONE,
     selectAllOccurrences: NONE,
 
     // ── Document chrome and panels ──────────────────────────────────────────

@@ -38,6 +38,7 @@ final class MenuStateTests: XCTestCase {
         XCTAssertTrue(fresh.isOn(.proofread("proofreading")))
         XCTAssertTrue(fresh.isOn(.noteHighlight))
         XCTAssertFalse(fresh.isOn(.tocShown))
+        XCTAssertFalse(fresh.isOn(.lineNumbers), "the gutter ships off, as the extension's setting does")
     }
 
     // MARK: - Recording what a window's page reports
@@ -57,7 +58,7 @@ final class MenuStateTests: XCTestCase {
     private static let everyToggle: [MenuToggle] =
         [.proofread("proofreading"), .proofread("spellCheck"),
          .proofread("grammarCheck"), .proofread("styleCheck"),
-         .noteHighlight, .tocShown, .explorerShown, .hiddenFilesShown]
+         .noteHighlight, .tocShown, .explorerShown, .hiddenFilesShown, .lineNumbers]
         + StyleCategory.allCases.map { MenuToggle.proofread($0.rawValue) }
 
     func testEveryToggleTheMenusDrawShouldAlsoBeOneTheyCanRecord() {
@@ -68,7 +69,7 @@ final class MenuStateTests: XCTestCase {
         // Against the registry, not against the literal: this fails when a new
         // category stops being swept, which a floor on the literal's own length
         // never could.
-        XCTAssertEqual(Self.everyToggle.count, StyleCategory.allCases.count + 8)
+        XCTAssertEqual(Self.everyToggle.count, StyleCategory.allCases.count + 9)
         XCTAssertGreaterThan(StyleCategory.allCases.count, 10)
         for toggle in Self.everyToggle {
             var state = MenuState()

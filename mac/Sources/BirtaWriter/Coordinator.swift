@@ -69,43 +69,18 @@ final class Coordinator {
     /// written down, for the reason the band is: it is the system's number.
     private var tabBarHeight: CGFloat {
         panel.titlebarAccessoryViewControllers
-            .filter { $0 !== titleBar && $0 !== formattingSpacer }
+            .filter { $0 !== titleBar }
             .reduce(0) { $0 + $1.view.frame.height }
     }
 
-    /// The row held open for the page's formatting controls, or zero while
-    /// none is (`FormattingRowSpacer`).
-    private var heldPageRowHeight: CGFloat {
-        formattingSpacer.isHidden ? 0 : formattingSpacer.height
-    }
-
     /// The row the title and the page's first toolbar row share: the band
-    /// less the tab bar and the row held for the page. `TabGroupPolicy.bandSplit`
-    /// is the arithmetic.
+    /// less the tab bar. `TabGroupPolicy.bandSplit` is the arithmetic. The
+    /// page's formatting row is no part of the band: it sits below the tab
+    /// bar, as the top of the content area, and the page lays it out itself
+    /// (mac/Resources/index.html spends `--mac-tabbar-height` between its two
+    /// rows).
     private var titleRowHeight: CGFloat {
-        CGFloat(TabGroupPolicy.bandSplit(band: titlebarBandHeight, tabBar: tabBarHeight,
-                                         pageRow: heldPageRowHeight).titleRow)
-    }
-
-    /// The page's formatting row as it last reported it, 0 while collapsed.
-    private var formattingRowHeight: CGFloat = 0
-
-    /// Hold the band open for the formatting row exactly while there is a
-    /// tab bar to keep under it. Answers whether anything changed, so a
-    /// caller in a layout pass can stop rather than lay out twice.
-    @discardableResult
-    private func updateFormattingSpacer() -> Bool {
-        let wanted = tabBarHeight > 0 && formattingRowHeight > 0
-        let changed = formattingSpacer.isHidden == wanted
-            || (wanted && abs(formattingSpacer.height - formattingRowHeight) > 0.01)
-        if measure.enabled {
-            measure.trace("pagerow tabBar=\(tabBarHeight) row=\(formattingRowHeight) wanted=\(wanted)"
-                          + " hidden=\(formattingSpacer.isHidden) held=\(formattingSpacer.height) changed=\(changed)")
-        }
-        guard changed else { return false }
-        formattingSpacer.height = formattingRowHeight
-        formattingSpacer.isHidden = !wanted
-        return true
+        CGFloat(TabGroupPolicy.bandSplit(band: titlebarBandHeight, tabBar: tabBarHeight).titleRow)
     }
 
     /// The tab bar came or went, or a tab joined or left: the band the page
@@ -114,7 +89,6 @@ final class Coordinator {
     /// full-size and does not move. `WindowSet` calls this on every window it
     /// knows is affected.
     func tabsChanged() {
-        updateFormattingSpacer()
         layoutTitlebarDrag()
         refreshTitle()
     }
@@ -297,6 +271,24 @@ final class Coordinator {
         host.send(.fileExplorerConfig(showHidden: shown))
     }
 
+    /// The formatting row's app-wide answer changed (from this page or
+    /// another's): the page follows, and does not post it back. A page not
+    /// yet warm is sent the stored answer the moment it is (`loadPage`).
+    func applyFormattingRowExpanded(_ expanded: Bool) {
+        guard state == .warm else { return }
+        host.send(.setFormattingRowExpanded(expanded))
+    }
+
+    /// The line-number setting moved (View > Line Numbers, in any window):
+    /// the menu mirror records it, and a warm page draws or removes its
+    /// gutter; a page not yet warm is sent the setting the moment it is
+    /// (`loadPage`).
+    func applyLineNumbers(_ enabled: Bool) {
+        menuState.record(.lineNumbers, on: enabled)
+        guard state == .warm else { return }
+        host.send(.setLineNumbers(enabled))
+    }
+
     /// Run `body` with the system's automatic tabbing off for this window,
     /// so a show inside it opens a window whatever "Prefer tabs" says. Only
     /// the show is affected: the window is back to `.automatic` afterwards,
@@ -335,9 +327,6 @@ final class Coordinator {
     /// of it.
     private let updateNotice = UpdateNotice()
     private let titleBar = TitleBarAccessory()
-    /// Added right after `titleBar` and before any tab bar can exist, which
-    /// is what puts it ABOVE the tab bar in the band; its header says why.
-    private let formattingSpacer = FormattingRowSpacer()
     private let host: WebHost
     private let writer: CoalescingWriter
     private let attachments = AttachmentStore()
@@ -412,6 +401,12 @@ final class Coordinator {
     /// setting is the app's and every rooted window's page has to hear it,
     /// so the app stores it and fans it out (`WindowSet.setShowHiddenFiles`).
     var onShowHiddenChanged: ((Bool) -> Void)?
+
+    /// The formatting row was opened or shut from this window's page. The
+    /// same shape as the hidden-files setting, for the same reason: one
+    /// answer for the app, stored and fanned out by `WindowSet.setFormattingRowExpanded`,
+    /// so every other tab and window follows at once.
+    var onFormattingRowChanged: ((Bool) -> Void)?
 
     /// Open a folder as a directory window, under BIRTA_MAC_MEASURE only.
     var onOpenDirectoryRequest: ((URL) -> Void)?
@@ -515,7 +510,8 @@ final class Coordinator {
                   noteHighlight: Prefs.noteHighlight,
                   tocShown: Prefs.tocVisibility == "shown",
                   explorerShown: Prefs.explorerVisibility == "shown",
-                  hiddenFilesShown: Prefs.explorerShowsHidden)
+                  hiddenFilesShown: Prefs.explorerShowsHidden,
+                  lineNumbers: Prefs.lineNumbers)
     }
 
     /// The editor commands the page says it can run in this window, as last
@@ -927,7 +923,6 @@ final class Coordinator {
             }
         }
         panel.addTitlebarAccessoryViewController(titleBar)
-        panel.addTitlebarAccessoryViewController(formattingSpacer)
         bandObservation = panel.observe(\.contentLayoutRect, options: [.old, .new]) { [weak self] _, change in
             guard change.oldValue?.height != change.newValue?.height else { return }
             MainActor.assumeIsolated { self?.layoutTitlebarDrag() }
@@ -1634,6 +1629,15 @@ final class Coordinator {
                                lineOffset: doc.lineOffset, syncVersion: guardState.version,
                                viewStateJSON: mountedViewStateJSON))
             state = .warm
+            // The two app-wide page settings, sent again now that the page
+            // can hear them. The boot script carried them as they stood when
+            // the page was served, and a flip landing between that and this
+            // moment (View > Line Numbers in another window while this one
+            // was loading) went to a page not yet warm; a push that changes
+            // nothing costs the page nothing, so both are sent rather than
+            // reasoned about.
+            host.send(.setFormattingRowExpanded(Prefs.formattingRowExpanded))
+            host.send(.setLineNumbers(Prefs.lineNumbers))
             // The explorer's two facts, on every load: which folder this
             // window is rooted at (nil keeps the explorer off a file window)
             // and which of its files this is. After `initDoc`, so the editor
@@ -1840,12 +1844,8 @@ final class Coordinator {
             openProjectFile(relative: path, newTab: newTab)
         case let .projectFileMenu(path, kind, x, y):
             showProjectFileMenu(relative: path, kind: kind, x: x, y: y)
-        case let .formattingRowHeight(height):
-            formattingRowHeight = CGFloat(height)
-            // The band's split moved, so the drag strip and the page's two
-            // heights are laid out again; a report that changes nothing
-            // (no tab bar) costs nothing.
-            if updateFormattingSpacer() { layoutTitlebarDrag() }
+        case let .formattingRowExpanded(expanded):
+            onFormattingRowChanged?(expanded)
         case let .fileExplorerWidth(w): Prefs.explorerWidth = w
         case let .fileExplorerVisibility(visible):
             Prefs.explorerVisibility = visible ? "shown" : "hidden"
@@ -3666,12 +3666,6 @@ final class Coordinator {
     /// a leading accessory after them, so nothing here repeats a number the
     /// system owns.
     func layoutTitlebarDrag() {
-        // A tab bar can come and go without `tabsChanged` (View > Show Tab
-        // Bar), and this runs on every layout of the content view, so the row
-        // held for the page is re-decided here first. A change moves the
-        // band's split, and the numbers read below are the band's after the
-        // system has laid the accessories out, not before.
-        if updateFormattingSpacer() { panel.contentView?.superview?.layoutSubtreeIfNeeded() }
         let titleView = titleBar.titleView
         // The title's ceiling and the strip's span are two answers to one
         // question, so they are taken from one place and in this order: the

@@ -91,22 +91,23 @@
   }
 
   /* The tab bar's row, when the window has tabs. macOS draws it as a row of
-     the titlebar band over the page, so the page leaves that row clear: a
-     gap under the WHOLE bar, both rows, sized by the window
-     (`BirtaSchemeHandler.tabBarHeight`, pushed on change). Under both rows
-     rather than between them because the window holds the band open for the
-     formatting row (`FormattingRowSpacer`), so the tab bar lands under it
-     rather than over it. Everything that measures the bar (content padding,
-     the drawer panels, the find bar) follows, because padding counts in the
-     bar's height. The stacked bar's own `padding: 0` is what this has to
-     outrank, hence the compound selector.
+     the titlebar band over the page, directly under the title row, so the
+     page leaves that row clear: a gap under the FIRST row, sized by the
+     window (`BirtaSchemeHandler.tabBarHeight`, pushed on change). Under the
+     first row and not the whole bar, because the formatting row is the top of
+     the content area rather than of the window: it sits below the tabs, level
+     with a docked side panel, and a bar that padded under both rows would put
+     the tabs under the editing controls instead of over them. Everything that
+     measures the bar (content padding, the find bar, the drawer panels
+     through `getContentAreaTop`) follows, because a flex item's margin counts
+     in the bar's height.
 
      And the bundle is told the same strip under its own name, so the chrome
-     that hangs off a control in the bar (a tooltip, a dropdown, the sidebar
-     flyout) opens under the tabs rather than into them
+     that hangs off a control in the first row (a tooltip, a dropdown, the
+     sidebar flyout) opens under the tabs rather than into them
      (`hostStripUnderTopbar`, webview/utils/headingUtils.ts). */
-  .editor-topbar.editor-topbar--stacked {
-    padding-bottom: var(--mac-tabbar-height, 0px);
+  .editor-topbar.editor-topbar--stacked .toolbar {
+    margin-bottom: var(--mac-tabbar-height, 0px);
   }
 
   :root {

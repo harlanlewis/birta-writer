@@ -71,6 +71,8 @@ enum Prefs {
         case explorerVisibility
         case explorerWidth
         case explorerShowsHidden
+        case formattingRowExpanded
+        case lineNumbers
         case paletteRecents
     }
 
@@ -599,6 +601,23 @@ enum Prefs {
         set { d.set(newValue, forKey: Key.explorerShowsHidden.rawValue) }
     }
 
+    /// Whether the page's formatting row is open, for every window and tab
+    /// (`WindowSet.setFormattingRowExpanded`). One value for the app and
+    /// never one per file, because the row is chrome of the app rather than
+    /// a fact about a document, and two tabs must never answer it
+    /// differently. Shut until the reader opens it.
+    static var formattingRowExpanded: Bool {
+        get { d.bool(forKey: Key.formattingRowExpanded.rawValue) }
+        set { d.set(newValue, forKey: Key.formattingRowExpanded.rawValue) }
+    }
+
+    /// The source line-number gutter (View > Line Numbers), for every window.
+    /// Off by default, as the extension's `birta.lineNumbers` is.
+    static var lineNumbers: Bool {
+        get { d.bool(forKey: Key.lineNumbers.rawValue) }
+        set { d.set(newValue, forKey: Key.lineNumbers.rawValue) }
+    }
+
     /// The palette rows picked lately, most recent first, by item id
     /// (`PaletteModel.recording` keeps the list and its cap). What puts a row
     /// somebody keeps reaching for at the top of its section.
@@ -1119,6 +1138,8 @@ enum Prefs {
             tocWidth: tocWidth,
             fileExplorerVisibility: explorerVisibility,
             fileExplorerWidth: explorerWidth,
+            formattingRowExpanded: formattingRowExpanded,
+            lineNumbers: lineNumbers,
             networkEnabled: networkEnabled,
             syntaxSets: SyntaxScope.stored(syntaxSets),
             // HOST_PROFILES.mac in shared/hostProfile.ts is the source;

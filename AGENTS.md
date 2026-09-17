@@ -183,7 +183,6 @@ mac/Sources/BirtaWriterCore/ProofreadFilter.swift  Which flagged spans are prose
 mac/Sources/BirtaWriterCore/RecentFiles.swift    What the recents list keeps, where the More boundary falls, when a row says more than a file name, and how the menu is grouped once there is more than one window
 mac/Sources/BirtaWriter/TitleBar.swift           Draws it as a leading titlebar accessory; why the label is sized from what its cell needs and centred on `bounds`, never on what it reports or was built at
 mac/Sources/BirtaWriter/TitlebarDrag.swift       Makes the band draggable where the page is not using it; why the CSS answer does not exist in WebKit
-mac/Sources/BirtaWriter/FormattingRowSpacer.swift  Holds a row of the band open for the page's formatting row, so the tab bar lands under it rather than over it; why it is added before any tab bar exists
 mac/Sources/BirtaWriterCore/TitlebarBand.swift   Where that strip starts and stops, how wide the title may be drawn so a strip is still left, and what a double click on a titlebar is the user's setting to decide
 mac/Sources/BirtaWriter/TitlePopover.swift       The Name/Tags/Where popover the title opens, and why it is built rather than inherited from NSDocument
 mac/Sources/BirtaWriter/MissingFileScreen.swift  What the panel says when the bound file has gone, why Put It Back and Save It Back are different promises, and the two lanes its card keeps clear so the titlebar can still name its own controls

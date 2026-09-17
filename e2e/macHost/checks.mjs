@@ -151,17 +151,21 @@ export async function run({ page, check, baseUrl }) {
                 const box = el.getBoundingClientRect();
                 return box.width > 0 && box.right > 0 && box.left < window.innerWidth;
             })(),
-            // The panel anchors itself to the bar's bottom edge, and on this
-            // surface that bar is TWO rows rather than the one every other host
-            // gives it. A panel that measured the single-row height would open
-            // with its first heading under the formatting controls, which is
-            // the arrangement-specific way this lands wrong.
+            // The panel anchors itself to the content area's top: the bar's
+            // bottom less the formatting row, which the panel stands BESIDE
+            // rather than under (`getContentAreaTop`). Here the row is
+            // collapsed, so that is the bar's bottom; a panel that measured
+            // the bar's single-row fallback would open with its first heading
+            // under the bar's controls, which is the arrangement-specific way
+            // this lands wrong.
             clearsBar: (() => {
                 const panel = document.querySelector(".toc-panel");
                 const bar = document.querySelector(".editor-topbar");
                 if (!panel || !bar) { return false; }
+                const dock = document.querySelector(".tb-dock");
+                const row = dock && !dock.hidden ? dock.getBoundingClientRect().height : 0;
                 return panel.getBoundingClientRect().top
-                    >= bar.getBoundingClientRect().bottom - 0.5;
+                    >= bar.getBoundingClientRect().bottom - row - 0.5;
             })(),
             lit: getComputedStyle(document.querySelector(".tb-toc-btn")).backgroundColor,
             // The numbers behind `clearsBar`, in the payload rather than left
@@ -195,8 +199,15 @@ export async function run({ page, check, baseUrl }) {
                     // the shown case waits for the geometry the checks below
                     // actually assert, which is what this poll claimed to do
                     // and did not.
+                    const dock = document.querySelector(".tb-dock");
+                    const row = dock && !dock.hidden ? dock.getBoundingClientRect().height : 0;
+                    // And the button's own transition, which the lit check
+                    // below reads: a background caught mid-fade reads as
+                    // unlit. `getAnimations` sees a running CSS transition.
+                    const btn = document.querySelector(".tb-toc-btn");
+                    const moving = (btn?.getAnimations().length ?? 0) > 0 || el.getAnimations().length > 0;
                     return !shown
-                        || box.top >= bar.getBoundingClientRect().bottom - 0.5;
+                        || (box.top >= bar.getBoundingClientRect().bottom - row - 0.5 && !moving);
                 }, wanted, { timeout: 4000 });
             } catch { /* reported by the check that reads the state next */ }
             return tocState();
@@ -207,7 +218,7 @@ export async function run({ page, check, baseUrl }) {
         const open = await settled(true);
         check("mac: pressing it brings the sidebar onto the screen",
             open.open && open.panelOnScreen, JSON.stringify({ shut, open }));
-        check("mac: and it starts below the whole bar, both rows of it",
+        check("mac: and it starts below the window's chrome, beside the formatting row rather than under it",
             open.clearsBar, JSON.stringify(open));
         check("mac: and the button says so, from the panel's own classes",
             open.lit !== shut.lit, JSON.stringify({ shut: shut.lit, open: open.lit }));
@@ -806,7 +817,8 @@ export async function run({ page, check, baseUrl }) {
             toggleShown: shown(document.querySelector(".tb-dock-toggle")),
             glyph: document.querySelector(".tb-dock-glyph")?.textContent,
             overflows: row ? row.scrollWidth > row.clientWidth + 1 : null,
-            saved: window.__state?.formattingRowExpanded,
+            // Every flip the page posted, in order: the host keeps the answer.
+            posted: window.__posted.filter((m) => m.type === "formattingRowExpanded").map((m) => m.expanded),
             barHeight: bar?.getBoundingClientRect().height ?? null,
         };
     });
@@ -866,8 +878,9 @@ export async function run({ page, check, baseUrl }) {
     check("mac: and the toggle carries no chevron beside the letter",
         (await page.evaluate(() => !document.querySelector(".tb-dock-chevron"))),
         "a chevron is present");
-    check("mac: and the choice was written to the view-state bag",
-        expanded.saved === true, JSON.stringify(expanded));
+    check("mac: and the choice was posted to the host, which keeps one answer for every window",
+        collapsed.posted.length === 0 && expanded.posted.length === 1 && expanded.posted[0] === true,
+        JSON.stringify({ collapsed: collapsed.posted, expanded: expanded.posted }));
 
     // The tip that hover just raised, which is still on screen: it names the
     // toggle, so it has to be UNDER the toggle.
@@ -1349,22 +1362,68 @@ export async function run({ page, check, baseUrl }) {
     // old assertion would fail on a row that is exactly right. The rule it was
     // guarding against is still guarded where a border is still drawn.
 
-    // Boot from a saved bag. The write was checked above, and a write nothing
-    // reads back is a preference that is not remembered: the shell seeds
-    // `getState` in its document-start script (Bridge.userScript), and the
-    // dock reads it while it is being built, which is before `init` arrives.
-    // Seeded here the same way, so the ORDER is the one the panel has.
-    await page.addInitScript(() => { window.__seedState = { formattingRowExpanded: true }; });
+    // Boot from the host's answer. The post was checked above, and a post
+    // nothing hands back is a preference that is not remembered: the shell
+    // puts its stored answer in the bootstrap (`BootConfig.i18nObject`,
+    // `formattingRowExpanded`), and the dock reads it while it is being
+    // built, which is before `init` arrives. Seeded here the same way, so the
+    // ORDER is the one the panel has.
+    await page.addInitScript(() => { window.__seedExpanded = true; });
     await mount("index.html");
     const booted = await page.evaluate(() => ({
         expanded: document.querySelector(".tb-dock")?.dataset.expanded,
         rowShown: !!document.querySelector(".tb-dock-row")?.getClientRects().length,
-        seeded: window.__state?.formattingRowExpanded,
+        seeded: window.__i18n?.formattingRowExpanded,
+        posted: window.__posted.filter((m) => m.type === "formattingRowExpanded").length,
     }));
-    check("mac: a saved expanded flag boots the dock open, without a click",
+    check("mac: the host's remembered flag boots the dock open, without a click",
         booted.expanded === "true" && booted.rowShown === true, JSON.stringify(booted));
-    check("mac: …and the seed really was in the bag, so that is not a default",
+    check("mac: …and the seed really was in the host's declaration, so that is not a default",
         booted.seeded === true, JSON.stringify(booted));
+    check("mac: and booting from it posts nothing back", booted.posted === 0, JSON.stringify(booted));
+
+    // The other direction: another window flipped the row, and the host
+    // pushes its new answer here. The row follows, and does NOT post the
+    // flip back, or two windows would echo it at each other.
+    await page.evaluate(() => { window.postMessage({ type: "setFormattingRowExpanded", expanded: false }, "*"); });
+    await page.waitForTimeout(200);
+    const pushed = await page.evaluate(() => ({
+        expanded: document.querySelector(".tb-dock")?.dataset.expanded,
+        rowShown: !!document.querySelector(".tb-dock-row")?.getClientRects().length,
+        posted: window.__posted.filter((m) => m.type === "formattingRowExpanded").length,
+    }));
+    check("mac: the host's push shuts the row here, following another window",
+        pushed.expanded === "false" && !pushed.rowShown, JSON.stringify(pushed));
+    check("mac: and the push is not echoed back as a flip of this page's own", pushed.posted === 0, JSON.stringify(pushed));
+    await page.evaluate(() => { window.postMessage({ type: "setFormattingRowExpanded", expanded: true }, "*"); });
+    await page.waitForTimeout(200);
+
+    // The row is the top of the CONTENT AREA, and the sidebar stands beside it
+    // rather than under it: docked open on the right, the panel's top is the
+    // bar's bottom less the row, and the row ends where the panel begins.
+    await page.locator('.tb-item[data-item-id="toc"] .tb-toc-btn').click();
+    await page.waitForTimeout(500);
+    const beside = await page.evaluate(() => {
+        const bar = document.querySelector(".editor-topbar").getBoundingClientRect();
+        const dock = document.querySelector(".tb-dock").getBoundingClientRect();
+        const panel = document.querySelector(".toc-panel").getBoundingClientRect();
+        return {
+            open: document.body.classList.contains("toc-open"),
+            rowShown: !!document.querySelector(".tb-dock-row")?.getClientRects().length,
+            barBottom: Math.round(bar.bottom), dockTop: Math.round(dock.top), dockBottom: Math.round(dock.bottom),
+            dockRight: Math.round(dock.right), panelTop: Math.round(panel.top), panelLeft: Math.round(panel.left),
+            // The row's own top edge, which is the bar's bottom less the row
+            // and the bar's hairline under it.
+            contentAreaTop: Math.round(dock.top),
+        };
+    });
+    check("mac: the sidebar docks open on the right with the row open", beside.open && beside.rowShown, JSON.stringify(beside));
+    check("mac: the docked sidebar starts level with the formatting row, beside it rather than under it",
+        beside.panelTop === beside.contentAreaTop && beside.panelTop === beside.dockTop, JSON.stringify(beside));
+    check("mac: and the row ends where the sidebar begins",
+        beside.dockRight === beside.panelLeft && beside.barBottom - beside.dockBottom <= 1, JSON.stringify(beside));
+    await page.locator('.tb-item[data-item-id="toc"] .tb-toc-btn').click();
+    await page.waitForTimeout(400);
 
     // The same message on the control page DOES switch, so the inert check
     // above discriminates.
@@ -1645,12 +1704,28 @@ export async function run({ page, check, baseUrl }) {
         const style = document.createElement("style");
         style.id = "strip-chain";
         style.textContent = `:root { --host-strip-under-topbar: var(--mac-tabbar-height, 0px); }
-            .editor-topbar { padding-bottom: var(--mac-tabbar-height, 0px); }`;
+            .editor-topbar.editor-topbar--stacked .toolbar { margin-bottom: var(--mac-tabbar-height, 0px); }`;
         document.head.appendChild(style);
         document.documentElement.style.setProperty("--mac-tabbar-height", `${strip}px`);
     }, STRIP);
     await page.waitForTimeout(200);
+    // The row collapsed, so the strip is the bottom of the bar: every arm
+    // below measures against that edge, and the row-open arm re-derives its
+    // own. Driven rather than assumed, because the sections above leave the
+    // row wherever their last probe put it.
+    await hlDrive(false);
     const barBottom = await page.evaluate(() => document.querySelector(".editor-topbar").getBoundingClientRect().bottom);
+    const gearOpen = () => page.evaluate(
+        () => document.querySelector('[data-item-id="settings"] .tb-fmt-btn')?.getAttribute("aria-expanded") === "true");
+    // Escape reaches the menu through the editor's key routing, which needs
+    // the editor to hold focus; after a pointer click the button holds it, so
+    // a press outside is the close that always lands.
+    const closeGear = async () => {
+        await page.keyboard.press("Escape");
+        if (await gearOpen()) { await page.mouse.click(20, 400); }
+        await page.mouse.move(20, 400);
+        await page.waitForTimeout(OPEN_WAIT);
+    };
     await page.locator(gearBtn).click();
     await page.waitForTimeout(OPEN_WAIT);
     const gearUnderStrip = await page.$eval(gearMenu, (menu, bottom) => {
@@ -1659,9 +1734,61 @@ export async function run({ page, check, baseUrl }) {
     }, barBottom);
     check("mac: a bar menu opens under the host's strip rather than into it",
         gearUnderStrip.shown && gearUnderStrip.clear, JSON.stringify(gearUnderStrip));
-    await page.keyboard.press("Escape");
-    await page.mouse.move(20, 400);
-    await page.waitForTimeout(OPEN_WAIT);
+    await closeGear();
+    // With the formatting row open the strip is BETWEEN the rows (the app's
+    // page spends the tab bar's height under the first row), so a menu off
+    // the first row clears the strip and lands over the row, as a menu off
+    // any bar lands over what is under it; it must not be pushed under the
+    // whole bar, which would open it a row away from its button.
+    // Driven to the state rather than toggled: whichever state an earlier
+    // section left the row in, a toggle from the wrong one measures the
+    // opposite of what this claims.
+    await hlDrive(true);
+    const stripBetween = await page.evaluate(() => {
+        const bar = document.querySelector(".editor-topbar").getBoundingClientRect();
+        const dock = document.querySelector(".tb-dock").getBoundingClientRect();
+        return { barBottom: bar.bottom, rowTop: dock.top, rowShown: dock.height > 0 };
+    });
+    if (!(await gearOpen())) {
+        await page.locator(gearBtn).click();
+        await page.waitForTimeout(OPEN_WAIT);
+    }
+    const gearOverRow = await page.$eval(gearMenu, (menu, strip) => {
+        const box = menu.getBoundingClientRect();
+        const btn = document.querySelector('[data-item-id="settings"] .tb-fmt-btn');
+        const b = btn.getBoundingClientRect();
+        const hit = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2);
+        return { top: box.top, ...strip, shown: box.height > 0,
+            clearsStrip: box.top >= strip.rowTop, overRow: box.top < strip.barBottom,
+            // What a click at the button's centre reaches, for a menu that did not open.
+            hit: hit ? `${hit.tagName}.${hit.className}` : null,
+            expanded: btn.getAttribute("aria-expanded") };
+    }, stripBetween);
+    check("mac: with the row open, a bar menu clears the strip between the rows and lands over the row",
+        stripBetween.rowShown && gearOverRow.shown && gearOverRow.clearsStrip && gearOverRow.overRow,
+        JSON.stringify(gearOverRow));
+    await closeGear();
+    // The sidebar's flyout is the OTHER kind of chrome: a body-level card
+    // whose z-index is below the bar's, so a card that opened over the row
+    // would be drawn under it. It floors at the bar's bottom, both rows.
+    const tocButtonWithRow = await page.$('.tb-item[data-item-id="toc"] .tb-toc-btn');
+    if (tocButtonWithRow) {
+        await tocButtonWithRow.hover();
+        await page.waitForTimeout(400);
+        const flyoutWithRow = await page.evaluate(() => {
+            const panel = document.querySelector(".toc-panel");
+            const box = panel.getBoundingClientRect();
+            const bar = document.querySelector(".editor-topbar").getBoundingClientRect();
+            return { flyout: panel.classList.contains("toc-panel--flyout"), top: box.top, barBottom: bar.bottom };
+        });
+        check("mac: with the row open, the sidebar's flyout opens below the whole bar, not over the row",
+            flyoutWithRow.flyout && flyoutWithRow.top >= flyoutWithRow.barBottom, JSON.stringify(flyoutWithRow));
+        await page.mouse.move(20, 400);
+        await page.waitForTimeout(600);
+    }
+    // Back to collapsed: the tooltip and flyout arms below measure against
+    // the bar's bottom as captured above, with no row in it.
+    await hlDrive(false);
     // Asked for again: the page has been rebuilt since the handle above was taken.
     const checksTriggerNow = await page.$('.tb-item[data-item-id="styleCheck"] .tb-fmt-trigger, .tb-checks-wrap .ui-btn');
     if (checksTriggerNow) {

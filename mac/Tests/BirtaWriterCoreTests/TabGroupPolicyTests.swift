@@ -54,18 +54,13 @@ final class TabGroupPolicyTests: XCTestCase {
         XCTAssertEqual(split.tabBar, 20)
     }
 
-    func testARowHeldOpenForThePageComesOffTheBandBetweenTitleAndTabs() {
-        let split = TabGroupPolicy.bandSplit(band: 104, tabBar: 36, pageRow: 36)
+    func testTheBandHoldsOnlyTheTitleRowAndTheTabBar() {
+        // The page's formatting row is the content area's, below the tabs,
+        // and never comes off the band: a split that took a third row would
+        // move the title row the page centres its first row on.
+        let split = TabGroupPolicy.bandSplit(band: 68, tabBar: 36)
         XCTAssertEqual(split.titleRow, 32)
-        XCTAssertEqual(split.pageRow, 36)
         XCTAssertEqual(split.tabBar, 36)
-    }
-
-    func testABandTooShortForAllThreeLosesThePageRowBeforeTheTabBar() {
-        let split = TabGroupPolicy.bandSplit(band: 50, tabBar: 36, pageRow: 36)
-        XCTAssertEqual(split.tabBar, 36, "the system draws its bar whatever the page says")
-        XCTAssertEqual(split.pageRow, 14)
-        XCTAssertEqual(split.titleRow, 0)
     }
 
     // MARK: chords

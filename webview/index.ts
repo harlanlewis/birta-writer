@@ -84,6 +84,7 @@ import { renderFrontmatterPanel, focusFrontmatterPanel } from "./components/fron
 import { runEditorCommand, setEditorCommandHost } from "./editorCommands";
 import { setBlockMenuContext } from "./components/blockMenu";
 import { openShortcutsHelpLazy } from "./components/shortcutsHelp/loader";
+import { openGotoLineLazy } from "./components/gotoLine/loader";
 import { setSlashMenuHost } from "./plugins";
 import { revealPosition } from "./plugins/headingFold";
 import { initContextMenu } from "./components/contextMenu";
@@ -129,6 +130,7 @@ function scrollToSourceLine(
     view: EditorView,
     lineMap: number[],
     targetLine: number,
+    { unfold = true }: { unfold?: boolean } = {},
 ): boolean {
     if (!lineMap.length) {
         return false;
@@ -150,9 +152,12 @@ function scrollToSourceLine(
         return false;
     }
     // Goto-symbol / scroll-to-line is an explicit entry intent: a target
-    // hidden inside a folded range unfolds it first (VS Code semantics) —
-    // a display:none block would otherwise measure at y=0.
-    if (blockIdx < view.state.doc.childCount) {
+    // hidden inside a folded range unfolds it first (VS Code semantics), as
+    // a display:none block would otherwise measure at y=0. A PREVIEW (the Go
+    // to Line prompt scrolling as a number is typed) is not an entry and
+    // must leave the folds as they are, so with `unfold` off a hidden target
+    // is reported as unreachable rather than measured wrongly.
+    if (unfold && blockIdx < view.state.doc.childCount) {
         let blockPos = 0;
         for (let i = 0; i < blockIdx; i++) {
             blockPos += view.state.doc.child(i).nodeSize;
@@ -160,7 +165,7 @@ function scrollToSourceLine(
         revealPosition(view, blockPos);
     }
     const el = children[blockIdx] as HTMLElement;
-    if (!el) {
+    if (!el || (!unfold && el.getClientRects().length === 0)) {
         return false;
     }
 
@@ -770,6 +775,43 @@ setEditorCommandHost({
     // Cmd+F2 (and Shift+Cmd+L): highlight every occurrence, focused on the
     // replace input.
     selectAllOccurrences: () => findBar.selectAllOccurrences(),
+    // Ctrl+G: the prompt takes DOCUMENT lines, frontmatter included, which is
+    // what the wire's `scrollToLine` counts and what the gutter draws. A
+    // commit is the same two steps that message takes: the caret, then the
+    // scroll, which unfolds a folded target and claims the remembered
+    // position so the panel's own restore cannot undo it. A preview is the
+    // scroll alone, with neither side effect: Escape puts the scroll back and
+    // nothing else has moved. The caret's line is read purely, never through
+    // `getSwitchTarget`, which banks open source panels on the way.
+    openGotoLine: () => {
+        void openGotoLineLazy({
+            lineCount: () => currentLineOffset + getMarkdownSource().split("\n").length,
+            currentLine: () => {
+                const view = getEditorView();
+                if (!view) { return null; }
+                const caret = sourceCaretAt(
+                    view.state.doc, currentLineMap, getMarkdownSource().split("\n"), view.state.selection.head);
+                return caret ? caret.line + currentLineOffset : null;
+            },
+            reveal: (target, caret) => {
+                const view = getEditorView();
+                if (!view) { return; }
+                // A line inside the frontmatter has no position in the
+                // rendered document, so it means the body's first line: the
+                // scroll goes to the top and the caret lands there.
+                const line = Math.max(target.line, currentLineOffset + 1);
+                if (!caret) {
+                    scrollToSourceLine(view, currentLineMap, toBodyLine(line), { unfold: false });
+                    return;
+                }
+                placeCaretAtLine(line, target.column);
+                if (scrollToSourceLine(view, currentLineMap, toBodyLine(line))) {
+                    rememberScrollNow();
+                }
+            },
+            focusEditor: () => getEditorView()?.focus(),
+        });
+    },
     toggleToc: () => toc?.toggle(),
     // Side-switch: the same call the panel's own flip button makes, rather than
     // a second copy of the gesture beside it (optimistic apply + persist the
@@ -1072,6 +1114,7 @@ const handlers = createMessageHandlers({
         setNotesMarkers: (markers) => toc?.setNotesMarkers(markers),
         setReviewGroupByType: (grouped) => toc?.setReviewGroupByType(grouped),
         setLineNumbers: (enabled) => lineNumbers.setEnabled(enabled),
+        setFormattingRowExpanded: (expanded) => topbarTb?.setFormattingRowExpanded(expanded),
         setProjectRoot: (root, showHidden, expanded) => fileExplorer.setProjectRoot(root, showHidden, expanded),
         applyDirectoryListing: (listing) => fileExplorer.applyDirectoryListing(listing),
         setCurrentProjectFile: (path) => fileExplorer.setCurrentProjectFile(path),
