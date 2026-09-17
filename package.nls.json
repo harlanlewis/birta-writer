@@ -170,6 +170,7 @@
   "command.editor.insertCallout.title": "Insert Callout",
   "command.editor.toggleCallout.title": "Toggle Callout",
   "command.editor.openFind.title": "Find",
+  "command.editor.gotoLine.title": "Go to Line",
   "command.editor.openFindReplace.title": "Replace",
   "command.editor.findNext.title": "Find Next",
   "command.editor.findPrevious.title": "Find Previous",

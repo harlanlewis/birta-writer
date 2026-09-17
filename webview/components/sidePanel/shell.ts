@@ -42,7 +42,7 @@ import "./sidePanel.css";
 import { bindActivate } from "@/ui/dom";
 import { applyTooltip } from "@/ui/tooltip";
 import { onOutsideClick } from "@/ui/outsideClick";
-import { getTopbarBottom } from "@/utils/headingUtils";
+import { getContentAreaTop, getTopbarBottom } from "@/utils/headingUtils";
 import type { EventManager } from "@/eventManager";
 import { createRevealTab, sideIcon } from "./revealTab";
 import { wireResizeHandle } from "./resize";
@@ -80,6 +80,16 @@ export interface SidePanelShellOptions {
     prefix: string;
     /** Further classes on the panel element, beside `side-panel` and `${prefix}-panel`. */
     panelClasses?: readonly string[];
+    /**
+     * How far the drawer stands in from the window's edges, in CSS pixels:
+     * the top, the bottom and the docked edge, so it reads as a surface set
+     * into the window rather than a column flush against its frame. The
+     * inset comes out of the drawer's OWN box, never out of the room it
+     * takes (`dockedReserve` is the width as ever), so the content beside it
+     * and the formatting row above that content keep the width as their one
+     * number. Default 0: a drawer flush to the frame, which is the outline's.
+     */
+    inset?: number;
     eventManager: EventManager;
     /** The docked edge at mount; `setSide` moves it. */
     initialRight: boolean;
@@ -187,6 +197,8 @@ export function createSidePanelShell(opts: SidePanelShellOptions): SidePanelShel
     // The docked width follows the composer's :root variable; bound here as a
     // panel-scoped custom property so sidePanel.css names no composer.
     panel.style.setProperty("--side-panel-width", `var(${opts.width.cssVar}, ${opts.width.default}px)`);
+    const inset = Math.max(0, opts.inset ?? 0);
+    panel.style.setProperty("--side-panel-inset", `${inset}px`);
 
     /** Every panel state is written in both vocabularies (see the header). */
     function setPanelState(name: string, on: boolean): void {
@@ -315,6 +327,7 @@ export function createSidePanelShell(opts: SidePanelShellOptions): SidePanelShel
         setPanelState("open", isOpen);
         setPanelState("docked", mode === "docked");
         setPanelState("overlay", mode === "overlay");
+        updatePosition();
         updateBodyClasses();
         updateTab();
         syncOutsideClickHandler();
@@ -380,11 +393,29 @@ export function createSidePanelShell(opts: SidePanelShellOptions): SidePanelShel
         sync();
     }
 
+    /**
+     * The drawer runs from its top edge to the window's bottom edge, less its
+     * inset at each end, and which edge that is depends on the mode.
+     *
+     * DOCKED, the drawer stands beside the content: its top is the content
+     * area's, which on the surface with a formatting row is the row's own top
+     * edge rather than the bar's bottom (utils/headingUtils.ts,
+     * `getContentAreaTop`), because the row starts where the drawer ends and
+     * the two draw one edge. The tab lands on the same edge.
+     *
+     * OVERLAY, the drawer floats over the document, the row carries no margin
+     * for it, and its z-index is below the bar's: a top at the row's edge
+     * would put its first rows UNDER the row. So it floors at the bar's
+     * bottom, as the flyout card does, for the same reason.
+     *
+     * Re-read on every commit (`sync`), because the answer moves with the
+     * mode and not only with the window.
+     */
     function updatePosition(): void {
-        const topbarBottom = getTopbarBottom();
-        panel.style.top = `${topbarBottom}px`;
-        panel.style.height = `calc(100vh - ${topbarBottom}px)`;
-        tab.setTop(topbarBottom);
+        const edge = mode === "docked" ? getContentAreaTop() : getTopbarBottom();
+        panel.style.top = `${edge + inset}px`;
+        panel.style.height = `calc(100vh - ${edge + inset * 2}px)`;
+        tab.setTop(edge);
     }
 
     function setSide(nextRight: boolean): void {
@@ -463,6 +494,14 @@ export function createSidePanelShell(opts: SidePanelShellOptions): SidePanelShel
         updatePosition();
         checkResponsiveMode();
     });
+    // The edge the drawer hangs from moves without the window moving: the bar
+    // grows a row, a host's strip under it comes or goes. The inline `top`
+    // written above cannot follow a variable, so the bar's box is watched.
+    const topbar = document.querySelector(".editor-topbar");
+    const topbarResize = topbar && typeof ResizeObserver !== "undefined"
+        ? new ResizeObserver(() => updatePosition())
+        : null;
+    topbarResize?.observe(topbar as Element);
 
     return {
         panel,
@@ -503,6 +542,7 @@ export function createSidePanelShell(opts: SidePanelShellOptions): SidePanelShel
             outsideOff?.();
             outsideOff = null;
             offResize();
+            topbarResize?.disconnect();
             flyout.dispose();
         },
     };

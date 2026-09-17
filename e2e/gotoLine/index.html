@@ -1,0 +1,69 @@
+<!doctype html>
+<!-- e2e harness: the Go to Line prompt over a document tall enough that a
+     line can be off screen, with frontmatter so DOCUMENT lines (what the
+     prompt takes, what a diff quotes) differ from body lines. The line
+     numbers are known exactly, and the gutter is on so the prompt's number
+     can be held against the number the gutter paints beside the same text.
+     Mirrors the provider template with acquireVsCodeApi stubbed. -->
+<meta charset="utf-8">
+<style>
+  :root {
+    --vscode-editor-background: #1e1e1e; --vscode-editor-foreground: #d4d4d4;
+    --vscode-foreground: #cccccc; --vscode-descriptionForeground: #999999;
+    --vscode-errorForeground: #f48771;
+    --vscode-editorLineNumber-foreground: #858585;
+    --vscode-editor-font-family: monospace; --vscode-font-family: -apple-system, sans-serif; --vscode-font-size: 13px;
+    --vscode-editorWidget-background: #252526; --vscode-editorWidget-foreground: #cccccc;
+    --vscode-editorWidget-border: #454545;
+    --vscode-editorHoverWidget-background: #252526; --vscode-editorHoverWidget-foreground: #cccccc;
+    --vscode-editorHoverWidget-border: #454545; --vscode-focusBorder: #007fd4;
+    --vscode-input-background: #3c3c3c; --vscode-input-foreground: #cccccc;
+    --vscode-input-border: #3c3c3c; --vscode-input-placeholderForeground: #a6a6a6;
+    --vscode-toolbar-hoverBackground: rgba(90,93,94,0.31); --vscode-list-hoverBackground: #2a2d2e;
+    --vscode-editor-selectionBackground: #264f78; --vscode-textCodeBlock-background: #262626;
+    --vscode-button-background: #0e639c; --vscode-button-foreground: #ffffff; --vscode-button-hoverBackground: #1177bb;
+    --vscode-button-secondaryBackground: #3a3d41; --vscode-panel-border: #454545;
+  }
+  body { background: var(--vscode-editor-background); color: var(--vscode-editor-foreground); }
+  .editor-topbar { height: 40px; box-sizing: border-box; }
+</style>
+<script>
+  window.__i18n = {
+    translations: {}, isMac: true, toolbar: { placements: {}, order: [] },
+    tocAutoHideThreshold: 999, lineNumbers: true,
+  };
+  window.__posted = [];
+
+  // Three frontmatter lines (the fences and one key), then the body. `at`
+  // maps a name to its DOCUMENT line, frontmatter counted, which is the
+  // number the prompt takes.
+  const FRONTMATTER = "---\ntitle: Zoo\n---";
+  const FRONT_LINES = 3;
+  const LINES = [];
+  const at = {};
+  const push = (name, ...lines) => { if (name) { at[name] = FRONT_LINES + LINES.length + 1; } LINES.push(...lines); };
+  push("title", "# Go to line", "");
+  push("intro", "An opening paragraph.", "");
+  for (let i = 1; i <= 60; i++) {
+    push(`head${i}`, `## Section ${i}`, "");
+    push(`para${i}`, `Paragraph of section ${i}, with the word marker${i} in it.`, "");
+  }
+  push("last", "Final paragraph.", "");
+
+  window.__at = at;
+  window.__documentLines = FRONT_LINES + LINES.length;
+  const BODY = LINES.join("\n");
+  window.acquireVsCodeApi = () => ({
+    postMessage: (msg) => {
+      window.__posted.push(msg);
+      if (msg.type === "ready") {
+        window.postMessage({ type: "init", content: BODY, frontmatter: FRONTMATTER, lineOffset: FRONT_LINES, syncVersion: 1 }, "*");
+      }
+    },
+    getState: () => undefined, setState: () => {},
+  });
+</script>
+<link rel="stylesheet" href="dist/webview.css">
+<div class="editor-topbar"></div>
+<div id="editor"></div>
+<script type="module" src="dist/webview.js"></script>

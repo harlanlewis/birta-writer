@@ -423,9 +423,9 @@ export function notifyProjectFileMenu(path: string, kind: "dir" | "file", x: num
     vscode.postMessage({ type: "projectFileMenu", path, kind, x, y });
 }
 
-/** The formatting row's height now (0 collapsed), for a host that shares the bar's band. */
-export function notifyFormattingRowHeight(height: number): void {
-    vscode.postMessage({ type: "formattingRowHeight", height });
+/** The formatting row was opened or shut here, for the host to remember and push to its other pages. */
+export function notifyFormattingRowExpanded(expanded: boolean): void {
+    vscode.postMessage({ type: "formattingRowExpanded", expanded });
 }
 
 /** The settled panel width (mouseup or reset), for the host to persist. */

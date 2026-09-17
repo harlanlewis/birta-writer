@@ -80,25 +80,14 @@ export BIRTA_MAC_SCRATCHPAD="$SCRATCH_DIR/Scratch pad.md"
 # toolbar layout, view state or panel frame.
 export BIRTA_MAC_DEFAULTS_SUITE="com.birtalabs.birta-writer.measure.$$"
 # The formatting row ships closed, and what this script has to look at is an
-# open one. Seeded through the view-state bag the app really restores from,
-# rather than through a debug message: the restore path is itself part of what
-# is being checked, and a message that forced the row open would leave it
-# unexercised.
-# A DICTIONARY keyed by the document's path, because view state belongs to a
-# file rather than to the app: one value for everything meant a second window
-# mounting at whatever position the first was left at. The key is the path as
-# the app spells it, which is the path handed in through BIRTA_MAC_SCRATCHPAD
-# (`standardizedFileURL` does not rewrite /var to /private/var, so the two
-# agree without either resolving anything).
-# The inner key has to match `STATE_KEY` in webview/components/toolbar/dock.ts.
-# A name that has drifted seeds nothing; the `expanded` assertion below is what
+# open one. Seeded through the app's own setting (`Prefs.formattingRowExpanded`,
+# one answer for every window and tab, which is why it is not in the per-file
+# view-state bag), rather than through a debug message: the boot path that
+# hands the page the setting is itself part of what is being checked, and a
+# message that forced the row open would leave it unexercised. A key that has
+# drifted from the app's seeds nothing; the `expanded` assertion below is what
 # turns that into a red rather than a quietly wrong measurement.
-# The value is wrapped in plist quotes with its own quotes escaped, and that
-# is load-bearing in the way `-string` used to be: `-dict` parses each VALUE
-# as plist syntax and has no per-value type flag, so bare braces are read as a
-# nested dictionary, fail to parse, and write nothing at all.
-defaults write "$BIRTA_MAC_DEFAULTS_SUITE" viewState \
-    -dict "$BIRTA_MAC_SCRATCHPAD" '"{\"formattingRowExpanded\":true}"'
+defaults write "$BIRTA_MAC_DEFAULTS_SUITE" formattingRowExpanded -bool YES
 LOG="$(mktemp -t mac-measure)"
 KEEP=0
 if [ "${1:-}" = "--keep" ]; then KEEP=1; fi
@@ -2008,10 +1997,10 @@ PY
     defaults write "$1" hasSeenWelcome -bool YES
     # A remembered position for this exact path, which is the whole premise:
     # with none, opening at the top is what an app with no rule at all does.
-    # The formatting row rides along in the same bag, so the same seed also
-    # says the strip took the offset and left the rest of the bag alone.
+    # A second key rides along in the same bag, so the same seed also says
+    # the strip took the offset and left the rest of the bag alone.
     defaults write "$1" viewState \
-        -dict "$dir/Scroll.md" '"{\"scrollY\":900,\"formattingRowExpanded\":true}"'
+        -dict "$dir/Scroll.md" '"{\"scrollY\":900,\"folds\":[\"intro\"]}"'
     BIRTA_MAC_MEASURE=1 BIRTA_MAC_SCRATCHPAD="$dir/Scroll.md" \
         BIRTA_MAC_DEFAULTS_SUITE="$1" "$APP" 2>"$log" &
     pid=$!

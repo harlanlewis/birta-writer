@@ -28,6 +28,19 @@
 const STYLE_ID = "file-explorer-styles";
 
 export const FILE_EXPLORER_CSS = `
+/* The panel's own ground: the sidebar shade, a step off the page in either
+   theme (darker on light, lighter on dark; the host palette derives it from
+   the widget ground so a theme keeps the two apart), with the small radius of
+   a surface set into the window rather than the one a floating card takes.
+   The inset from the window's edges is the shell's (index.ts, FILES_INSET),
+   and it is what makes the ground and the radius visible at all: flush to the
+   frame, a rounded corner has nothing to be rounded against. Docked and
+   overlay alike, and not the flyout, which is a card of the shell's own. */
+.files-panel:not(.files-panel--flyout) {
+    background: var(--vscode-sideBar-background);
+    border-radius: var(--ui-radius-l);
+}
+
 .files-header {
     flex: 0 0 auto;
     display: flex;
@@ -35,7 +48,6 @@ export const FILE_EXPLORER_CSS = `
     gap: var(--ui-space-2);
     padding: var(--ui-space-3) var(--ui-space-4) var(--ui-space-1) var(--ui-space-5);
     min-height: 22px;
-    background: var(--vscode-editor-background);
 }
 
 .files-header__name {

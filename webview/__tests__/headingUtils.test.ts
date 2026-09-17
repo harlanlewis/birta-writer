@@ -16,6 +16,7 @@ import type { EditorView } from "../pm";
 import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
 import {
     getTopbarBottom,
+    getContentAreaTop,
     hostStripUnderTopbar,
     clearHostStrip,
     HOST_STRIP_UNDER_TOPBAR_VAR,
@@ -33,6 +34,17 @@ function addTopbar(rect: { height: number; bottom: number }): HTMLElement {
         ({ x: 0, y: 0, top: 0, left: 0, right: 0, width: 0, ...rect }) as DOMRect;
     document.body.appendChild(topbar);
     return topbar;
+}
+
+/** The formatting row as the bar's last child, with its top edge where `top` says. */
+function addFormattingRow(topbar: HTMLElement, rect: { top: number; height: number }, hidden = false): HTMLElement {
+    const row = document.createElement("div");
+    row.className = "tb-dock";
+    row.hidden = hidden;
+    row.getBoundingClientRect = () =>
+        ({ x: 0, y: rect.top, left: 0, right: 0, width: 0, bottom: rect.top + rect.height, ...rect }) as DOMRect;
+    topbar.appendChild(row);
+    return row;
 }
 
 describe("getTopbarBottom", () => {
@@ -64,6 +76,40 @@ describe("getTopbarBottom", () => {
     });
 });
 
+describe("getContentAreaTop", () => {
+    beforeEach(() => {
+        document.body.innerHTML = "";
+        document.body.className = "";
+    });
+
+    it("with no formatting row it should be the bar's bottom, which is every host but one", () => {
+        addTopbar({ height: 40, bottom: 40 });
+        expect(getContentAreaTop()).toBe(40);
+    });
+
+    it("a formatting row's own top edge should be the answer, so a panel beside the row starts level with it", () => {
+        // The bar is 77 tall: a 40px first row, a 36px row, and the bar's
+        // 1px hairline UNDER the row. The row's edge is 40, not 77 - 36.
+        const topbar = addTopbar({ height: 77, bottom: 77 });
+        addFormattingRow(topbar, { top: 40, height: 36 });
+        expect(getContentAreaTop()).toBe(40);
+        expect(getTopbarBottom()).toBe(77);
+    });
+
+    it("a collapsed row is hidden and changes nothing", () => {
+        const topbar = addTopbar({ height: 41, bottom: 41 });
+        addFormattingRow(topbar, { top: 0, height: 0 }, true);
+        expect(getContentAreaTop()).toBe(41);
+    });
+
+    it("a hidden toolbar should put the content area at the top, whatever the row says", () => {
+        const topbar = addTopbar({ height: 77, bottom: 77 });
+        addFormattingRow(topbar, { top: 40, height: 36 });
+        document.body.classList.add("toolbar-hidden");
+        expect(getContentAreaTop()).toBe(0);
+    });
+});
+
 describe("the host's strip under the topbar", () => {
     beforeEach(() => {
         document.body.innerHTML = "";
@@ -72,6 +118,18 @@ describe("the host's strip under the topbar", () => {
     });
     afterEach(() => {
         document.documentElement.style.removeProperty(HOST_STRIP_UNDER_TOPBAR_VAR);
+    });
+
+    it("with a formatting row under the strip, the strip should end where the row begins", () => {
+        // First row 40, strip 28, row 36, hairline 1: the bar is 105 tall and
+        // the strip is the 28px above the row, not the 28px above the bar's
+        // bottom.
+        const topbar = addTopbar({ height: 105, bottom: 105 });
+        document.documentElement.style.setProperty(HOST_STRIP_UNDER_TOPBAR_VAR, "28px");
+        addFormattingRow(topbar, { top: 68, height: 36 });
+        expect(hostStripUnderTopbar()).toEqual({ top: 40, bottom: 68 });
+        // A menu off the first row clears the strip and lands over the row.
+        expect(clearHostStrip(38, 20, 4)).toBe(72);
     });
 
     it("a host that declares no strip should have none, and boxes should be left where they were", () => {

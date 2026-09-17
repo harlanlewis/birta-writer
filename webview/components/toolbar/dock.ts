@@ -25,6 +25,22 @@
  * five taught about it separately, and the one that got missed would be a
  * popup painting over the row.
  *
+ * Inside the bar, and still the top of the CONTENT AREA rather than of the
+ * window. The bar's first row is the window's (on the Mac it is the titlebar
+ * band, and the tab bar a host draws lands under that row, not under this
+ * one); this row is where the document's area starts. So a docked side panel
+ * starts level with it and the row starts where the panel ends (dock.css);
+ * `getContentAreaTop()` (utils/headingUtils.ts) reads this element's top
+ * edge and hands every panel that edge.
+ *
+ * Whether the row is open is the HOST'S fact, not this page's: it is read
+ * from the bootstrap (`window.__i18n.formattingRowExpanded`) and every flip
+ * is posted back (`formattingRowExpanded`), so a host with several windows or
+ * tabs keeps one answer and pushes it to the rest (`setFormattingRowExpanded`,
+ * which lands in `setExpanded` below without a second post). A per-page store
+ * would give each tab an answer of its own, and a row open in one tab and
+ * shut in the next reads as the app forgetting.
+ *
  * Two states, and the toggle is the whole of the chrome:
  *
  *     collapsed   [T] in the top bar, no second row
@@ -67,14 +83,11 @@
 import { IconChevronLeft, IconChevronRight } from "@/ui/icons";
 import { t } from "@/i18n";
 import { MENU_CLIP_ATTR } from "@/ui/anchoredPlacement";
-import { getWebviewState, notifyFormattingRowHeight, setWebviewState } from "@/messaging";
+import { notifyFormattingRowExpanded } from "@/messaging";
 import { bindActivate } from "@/ui/dom";
 import { applyTooltip } from "@/ui/tooltip";
 import type { ToolbarItemId } from "./registry";
 import "./dock.css";
-
-/** The view-state key the expanded flag rides on. */
-const STATE_KEY = "formattingRowExpanded";
 
 export interface FormattingDock {
     /** The row element. The caller places it; this module never appends it. */
@@ -90,6 +103,12 @@ export interface FormattingDock {
     render: (ids: readonly ToolbarItemId[]) => void;
     /** Whether the row is showing. */
     isExpanded: () => boolean;
+    /**
+     * Show or hide the row as the HOST says, without posting the flip back:
+     * this is the host's answer arriving, and echoing it would send the host
+     * its own message.
+     */
+    setExpanded: (expanded: boolean) => void;
     /** Tear down the listeners and remove the element (tests). */
     dispose: () => void;
 }
@@ -100,18 +119,14 @@ export interface FormattingDockDeps {
 }
 
 /**
- * Whether the row was left open. Defaults to CLOSED: the dock replaces a
- * setting that used to decide whether the editing controls existed at all, and
- * the answer a first run should give is the quiet one. A saved `true` is
- * honoured, so the choice survives a relaunch without being a preference
- * anybody has to go and find.
+ * Whether the row was left open, as the host remembers it. Defaults to
+ * CLOSED: the dock replaces a setting that used to decide whether the editing
+ * controls existed at all, and the answer a first run should give is the
+ * quiet one. A remembered `true` is honoured, so the choice survives a
+ * relaunch without being a preference anybody has to go and find.
  */
 function readExpanded(): boolean {
-    return getWebviewState()?.[STATE_KEY] === true;
-}
-
-function writeExpanded(expanded: boolean): void {
-    setWebviewState({ ...(getWebviewState() ?? {}), [STATE_KEY]: expanded });
+    return window.__i18n?.formattingRowExpanded === true;
 }
 
 export function createFormattingDock({ items }: FormattingDockDeps): FormattingDock {
@@ -125,7 +140,7 @@ export function createFormattingDock({ items }: FormattingDockDeps): FormattingD
     const toggle = document.createElement("button");
     toggle.className = "ui-btn tb-btn tb-dock-toggle";
     const toggleTip = applyTooltip(toggle, "", { placement: "below" });
-    bindActivate(toggle, () => setExpanded(!expanded));
+    bindActivate(toggle, () => setExpanded(!expanded, { notify: true }));
     const glyph = document.createElement("span");
     glyph.className = "tb-dock-glyph";
     glyph.textContent = "T";
@@ -223,22 +238,6 @@ export function createFormattingDock({ items }: FormattingDockDeps): FormattingD
         ? new ResizeObserver(() => paintScrollers())
         : null;
     rowResize?.observe(row);
-    // The host is told how tall the row is, on every change of the row's box
-    // (shown, hidden, or the zoom moved), so a host whose own chrome shares
-    // the band can hold that much of it open (shared/messages.ts). Reported
-    // from the box rather than from `expanded`, because the number the host
-    // needs is the one the layout gave, and a hidden row's box is 0.
-    let reportedHeight = -1;
-    const reportHeight = (): void => {
-        const height = el.hidden ? 0 : el.getBoundingClientRect().height;
-        if (height === reportedHeight) { return; }
-        reportedHeight = height;
-        notifyFormattingRowHeight(height);
-    };
-    const heightResize = typeof ResizeObserver !== "undefined"
-        ? new ResizeObserver(reportHeight)
-        : null;
-    heightResize?.observe(el);
 
     let expanded = readExpanded();
 
@@ -261,11 +260,12 @@ export function createFormattingDock({ items }: FormattingDockDeps): FormattingD
         toggleTip.setText(label);
     }
 
-    function setExpanded(next: boolean): void {
+    /** Flip the row, and tell the host when the flip is this page's own. */
+    function setExpanded(next: boolean, { notify }: { notify: boolean }): void {
         if (next === expanded) { return; }
         expanded = next;
         paint();
-        writeExpanded(next);
+        if (notify) { notifyFormattingRowExpanded(next); }
     }
 
     paint();
@@ -282,9 +282,9 @@ export function createFormattingDock({ items }: FormattingDockDeps): FormattingD
             paintScrollers();
         },
         isExpanded: () => expanded,
+        setExpanded: (next) => setExpanded(next, { notify: false }),
         dispose(): void {
             rowResize?.disconnect();
-            heightResize?.disconnect();
             row.removeEventListener("scroll", paintScrollers);
             el.remove();
             toggle.remove();

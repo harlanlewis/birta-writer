@@ -390,6 +390,10 @@ enum AppMenu {
               action: .command("findSelection"), menu: .edit, submenu: "Find", group: 1),
         .init(title: "Change All Occurrences", key: "l", modifiers: [.command, .shift],
               action: .command("selectAllOccurrences"), menu: .edit, submenu: "Find", group: 1),
+        // Control rather than Command, because Cmd+G is Find Next above and
+        // Ctrl+G is the chord VS Code binds to its own Go to Line on a Mac.
+        .init(title: "Go to Line…", key: "g", modifiers: [.control],
+              action: .command("gotoLine"), menu: .edit, submenu: "Find", group: 2),
         .init(title: "Edit Block as Markdown", key: "/", modifiers: [.command],
               action: .command("editBlockSource"), menu: .edit, group: 1),
         .init(title: "Delete Block", key: "k", modifiers: [.command, .shift],
@@ -603,6 +607,13 @@ enum AppMenu {
         .init(title: "Show Hidden Files", key: ".", modifiers: [.command, .shift],
               action: .app(#selector(AppDelegate.menuToggleHiddenFiles)), menu: .view, group: 3,
               state: .checkmark(.hiddenFilesShown)),
+        // The source line-number gutter, the extension's `birta.lineNumbers`
+        // as a row. An `.app` row for the reason Show Hidden Files is one: the
+        // setting is the app's and every window's page follows it
+        // (`WindowSet.setLineNumbers`). Keyless, as the setting is in VS Code.
+        .init(title: "Line Numbers",
+              action: .app(#selector(AppDelegate.menuToggleLineNumbers)), menu: .view, group: 3,
+              state: .checkmark(.lineNumbers)),
 
         .init(title: "Proofreading", action: .submenu, menu: .view, group: 4,
               // Not gated on itself: the disclosure that holds the gate has to

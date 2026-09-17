@@ -4,7 +4,7 @@ import Foundation
 /// survives a view coming back.
 ///
 /// The app remembers a bag per file (`Prefs.viewStateJSON`) holding table
-/// widths, folds, list numbering, the formatting row, and the scroll offset.
+/// widths, folds, list numbering, and the scroll offset.
 /// Every one of those is a fact about the DOCUMENT and is right to restore
 /// whenever the document is on screen again. The offset is not: where you were
 /// reading is a fact about a READING, and a file opened again later opens at

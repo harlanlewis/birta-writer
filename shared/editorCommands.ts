@@ -212,6 +212,14 @@ export const EDITOR_COMMANDS = [
     // silently break any user's keybindings.json entry with no migration path,
     // and the ID is not user-facing. The title is what users see.
     { id: "selectAllOccurrences", title: "Change All Occurrences", palette: true, sections: [] },
+    // Go to Line, which VS Code's own `workbench.action.gotoLine` cannot reach
+    // here: it binds to the active TEXT editor, and a rendered document has
+    // none (the reason `birta.gotoSymbol` exists too). The prompt is the
+    // page's (webview/components/gotoLine), so the Mac app's menu row and the
+    // extension's Ctrl+G ask the same question. Deliberately ONE command that
+    // prompts rather than a command per line, which the fold-level commands
+    // could be and this cannot.
+    { id: "gotoLine", title: "Go to Line", palette: true, sections: [] },
     { id: "toggleToc", title: "Toggle Table of Contents", palette: true, sections: [], hostCapability: "toc" },
     { id: "editFrontmatter", title: "Edit Frontmatter", palette: true, sections: [] },
     { id: "tableInsertRowAbove", title: "Insert Row Above", palette: false, sections: ["table"] },

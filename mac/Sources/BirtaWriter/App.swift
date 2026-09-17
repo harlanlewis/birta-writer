@@ -637,6 +637,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding {
         windows.setShowHiddenFiles(!Prefs.explorerShowsHidden)
     }
 
+    /// View > Line Numbers: the app's setting, flipped for every window at
+    /// once; the page draws or removes its gutter without a reload.
+    @objc func menuToggleLineNumbers() {
+        windows.setLineNumbers(!Prefs.lineNumbers)
+    }
+
     /// Cmd+Shift+P: the palette over everything, above the window in front.
     @objc func menuOpenPalette() {
         openPalette(mode: .all)
@@ -1206,7 +1212,8 @@ extension AppDelegate: NSMenuDelegate, NSMenuItemValidation {
                                       noteHighlight: Prefs.noteHighlight,
                                       tocShown: Prefs.tocVisibility == "shown",
                                       explorerShown: Prefs.explorerVisibility == "shown",
-                                      hiddenFilesShown: Prefs.explorerShowsHidden)
+                                      hiddenFilesShown: Prefs.explorerShowsHidden,
+                                      lineNumbers: Prefs.lineNumbers)
     }
 
     /// Enablement for the main menu and the status menu, which keep their items

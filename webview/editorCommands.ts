@@ -112,6 +112,8 @@ export interface EditorCommandHost {
     findPrevious(): void;
     findSelection(): void;
     selectAllOccurrences(): void;
+    /** The Go to Line prompt (components/gotoLine), loaded on first use. */
+    openGotoLine(): void;
     toggleToc(): void;
     editFrontmatter(): void;
     editRawMarkdown(): void;
@@ -914,6 +916,7 @@ export const editorCommands: Record<EditorCommandId, EditorCommandFn> = {
     findPrevious: () => host.findPrevious?.(),
     findSelection: () => host.findSelection?.(),
     selectAllOccurrences: () => host.selectAllOccurrences?.(),
+    gotoLine: () => host.openGotoLine?.(),
     toggleToc: () => host.toggleToc?.(),
     editFrontmatter: () => host.editFrontmatter?.(),
     tableInsertRowAbove: (getEditor, args) => tableCmd(getEditor, addRowBefore, args),

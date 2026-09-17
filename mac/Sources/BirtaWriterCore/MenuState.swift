@@ -31,6 +31,9 @@ public enum MenuToggle: Equatable {
     case explorerShown
     /// Whether the explorer lists dotfiles and the files the Finder hides.
     case hiddenFilesShown
+    /// Whether the page draws its source line numbers (the extension's
+    /// `birta.lineNumbers`). The app's setting, for every window at once.
+    case lineNumbers
 }
 
 /// What the app knows about the state its menu rows draw, at the moment a menu
@@ -47,17 +50,20 @@ public struct MenuState: Equatable {
     public var tocShown: Bool
     public var explorerShown: Bool
     public var hiddenFilesShown: Bool
+    public var lineNumbers: Bool
 
     public init(proofreadOptions: [String: Bool] = [:],
                 noteHighlight: Bool = true,
                 tocShown: Bool = false,
                 explorerShown: Bool = true,
-                hiddenFilesShown: Bool = false) {
+                hiddenFilesShown: Bool = false,
+                lineNumbers: Bool = false) {
         self.proofreadOptions = proofreadOptions
         self.noteHighlight = noteHighlight
         self.tocShown = tocShown
         self.explorerShown = explorerShown
         self.hiddenFilesShown = hiddenFilesShown
+        self.lineNumbers = lineNumbers
     }
 
     public func isOn(_ toggle: MenuToggle) -> Bool {
@@ -71,6 +77,7 @@ public struct MenuState: Equatable {
         case .tocShown: return tocShown
         case .explorerShown: return explorerShown
         case .hiddenFilesShown: return hiddenFilesShown
+        case .lineNumbers: return lineNumbers
         }
     }
 
@@ -90,6 +97,7 @@ public struct MenuState: Equatable {
         case .tocShown: tocShown = on
         case .explorerShown: explorerShown = on
         case .hiddenFilesShown: hiddenFilesShown = on
+        case .lineNumbers: lineNumbers = on
         }
     }
 }

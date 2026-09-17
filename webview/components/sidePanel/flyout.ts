@@ -102,11 +102,18 @@ export function createFlyout(opts: FlyoutOptions): Flyout {
      *  chrome. */
     function position(): void {
         const r = anchor.getBoundingClientRect();
-        // Under the trigger, unless the bar ends in a strip the host paints
-        // over (the Mac app's tab bar): a card opening into that strip is
-        // drawn under the tabs, so it opens under the strip instead. The
-        // hover band below is what keeps the pointer's crossing covered.
-        const flyoutTop = Math.round(clearHostStrip(r.bottom + FLYOUT_GAP, panel.offsetHeight || 1, FLYOUT_GAP));
+        // Under the trigger, and never inside the bar. The card is a
+        // body-level surface with a z-index below the bar's, so any part of
+        // it drawn in the bar's box is drawn UNDER the bar; a menu off the
+        // same button may open over the bar's second row because it shares
+        // the bar's stacking context, and this cannot. So the floor is the
+        // bar's bottom, and past that the strip a host paints over (the Mac
+        // app's tab bar) for the same reason. The hover band below is what
+        // keeps the pointer's crossing covered.
+        const flyoutTop = Math.round(Math.max(
+            getTopbarBottom() + FLYOUT_GAP,
+            clearHostStrip(r.bottom + FLYOUT_GAP, panel.offsetHeight || 1, FLYOUT_GAP),
+        ));
         panel.style.top = `${flyoutTop}px`;
         panel.style.left = opts.isRight()
             ? `${Math.round(Math.max(8, r.right - FLYOUT_WIDTH))}px`
@@ -117,8 +124,11 @@ export function createFlyout(opts: FlyoutOptions): Flyout {
         // padding its footer with empty space when the body is short.
         panel.style.height = "";
         // The invisible hover band above the panel spans the whole gap up to the
-        // content-area top (the toolbar's bottom), so the flyout stays open while
-        // the pointer is anywhere in that column: no hyper-precise mousing down.
+        // bar's bottom, so the flyout stays open while the pointer is anywhere
+        // in that column: no hyper-precise mousing down. The band cannot reach
+        // into the bar, so with a formatting row open the pointer crosses that
+        // row on the hide delay alone; widening the band would not help, the
+        // bar paints over it.
         const bandHeight = Math.max(FLYOUT_GAP, flyoutTop - getTopbarBottom());
         panel.style.setProperty(FLYOUT_BAND_VAR, `${bandHeight}px`);
     }

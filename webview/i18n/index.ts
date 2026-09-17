@@ -82,6 +82,13 @@ declare global {
             tocVisibility?: import("../../shared/messages").TocVisibility;
             /** The file explorer's remembered show/hide choice (MAR-460); absent means open when it can dock. */
             fileExplorerVisible?: boolean;
+            /**
+             * Whether the formatting row is open, on a host arranging
+             * `formattingInSecondRow`; absent means shut. The host's one
+             * answer for all its pages (`formattingRowExpanded` is how a page
+             * changes it), never a per-page store.
+             */
+            formattingRowExpanded?: boolean;
             /** Frontmatter panel expanded on open (birta.frontmatterExpanded). */
             frontmatterExpanded?: boolean;
             /** Add-metadata button on frontmatter-less documents (birta.frontmatterAddButton). */

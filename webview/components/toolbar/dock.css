@@ -7,14 +7,18 @@
    makes every existing rule about the bar cover it. The bar's height is
    measured from the element, so a second row moves the content down, the find
    bar's offset, the heading scroll margins and `safeAreaTop()` with it. None
-   of those needed teaching, and a popup can no longer paint over this row
-   because the geometry that already keeps popups out of the bar's band now
-   describes a band with two rows in it.
+   of those needed teaching: chrome that floats over the DOCUMENT is floored
+   at the bar's bottom, below both rows.
 
-   That is also why there is no z-index here and no stacking order to argue
-   about. The old strip sat at the bottom edge, where nothing reserved space
-   for it, so it needed a z-index chosen against every popup that could open
-   into that corner. A row inside the bar inherits the bar's own precedence.
+   What may paint over this row is a menu opening out of the bar's first row.
+   That is by design (`placeMenu` in ui/anchoredPlacement.ts floors such a
+   menu at the host's strip, not at the bar's bottom, so it opens beside its
+   button rather than a row away), and it works because the menu and this row
+   share the bar's stacking context: the menu carries a z-index and this row
+   carries none, so the menu wins. Chrome OUTSIDE the bar (the sidebar's
+   flyout card) cannot rely on that and floors itself at the bar's bottom.
+   There is therefore no z-index here and no stacking order to argue about: a
+   row inside the bar inherits the bar's own precedence over the document.
 
    Deliberately NOT the `--ui-card-*` recipe. That is for surfaces that float
    above the document and go away again, and it says so with a radius, a shadow
@@ -33,13 +37,44 @@
        2px one. Where the hairline goes and when it is drawn at all is
        `.editor-topbar`'s, at the end of this file.
 
-       The leading edge is the WINDOW'S, not the first row's. The bar's leading
-       inset clears the traffic lights, which sit in the titlebar band above
-       this row and have nothing to do with it; a row indented to miss them
-       starts three quarters of an inch in, lined up against nothing, with the
-       window's own left edge empty. The host page therefore puts that inset on
-       `.toolbar` rather than on the bar (mac/Resources/index.html). */
+       The leading edge is the CONTENT AREA'S, not the first row's. The bar's
+       leading inset clears the traffic lights, which sit in the titlebar band
+       above this row and have nothing to do with it; a row indented to miss
+       them starts three quarters of an inch in, lined up against nothing, with
+       the window's own left edge empty. The host page therefore puts that
+       inset on `.toolbar` rather than on the bar (mac/Resources/index.html).
+       What the row DOES clear is a docked side panel, below. */
     position: relative;
+}
+
+/* Beside a docked panel, not over it. The row is the top of the area the
+   document is in, and a panel docked open on an edge is not part of that
+   area: the panel starts level with the row (`getContentAreaTop()` in
+   utils/headingUtils.ts is what places it there) and the row starts where the
+   panel ends, so the two together draw one edge under the window's chrome.
+
+   Keyed on the same body classes and the same variables the content's own
+   margin math reads (style.css, `--files-reserve` and `--toc-width`), so the
+   row and the column it heads cannot disagree about where a panel ends. An
+   OVERLAY panel floats over the content and imposes no margin on it, and so
+   imposes none here: the classes below are written only while a panel is
+   docked open. */
+body.files-open .tb-dock {
+    margin-left: var(--files-reserve, 0px);
+    /* The explorer stands in from the window's edges by `--ui-space-4`
+       (FILES_INSET in components/fileExplorer/index.ts, the same number), so
+       the row's controls start that far down too and their top edge is the
+       card's top edge: one line across the window rather than two four pixels
+       apart. e2e/fileExplorer measures the two against each other. */
+    padding-top: var(--ui-space-4);
+}
+
+body.toc-open:not(.toc-right) .tb-dock {
+    margin-left: calc(var(--files-reserve, 0px) + var(--toc-width, 260px));
+}
+
+body.toc-open.toc-right .tb-dock {
+    margin-right: var(--toc-width, 260px);
 }
 
 /* The bar becomes a column when it has a second row to hold. Scoped to this
@@ -56,9 +91,9 @@
         padding: 5px 8px;
     }
 
-    .tb-dock {
-        width: 100%;
-    }
+    /* The row takes the bar's width less its margins: a stretched flex item
+       rather than `width: 100%`, which would ignore the margin a docked panel
+       puts on it and run under the panel. */
 }
 
 /* The T. A serif face against the sans chrome around it, which is what makes

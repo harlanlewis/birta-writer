@@ -451,12 +451,12 @@ export type ToExtensionMessage =
     // `:root`, the way `tocWidth` comes back as `--toc-width`.
     | { type: "fileExplorerWidth"; width: number }
     // ── The formatting row, under `formattingInSecondRow` ──
-    // How tall the row is now, 0 while collapsed, on every change. A host
-    // whose own chrome shares the band the bar sits in (the Mac app's tab
-    // bar, drawn by the window under the title row) holds that much of the
-    // band open so its chrome lands under the row rather than over it. Never
-    // posted on a surface without the row.
-    | { type: "formattingRowHeight"; height: number }
+    // The reader opened or shut the row on THIS page. The fact is the host's
+    // (one answer for every window and tab), so the host stores it, seeds it
+    // back as `__i18n.formattingRowExpanded`, and pushes it to its other
+    // pages as `setFormattingRowExpanded`. Never posted on a surface without
+    // the row, and never posted in answer to that push.
+    | { type: "formattingRowExpanded"; expanded: boolean }
     // An explicit show or hide of the panel, for the host to remember and
     // seed back as `__i18n.fileExplorerVisible` on the next page load.
     | { type: "fileExplorerVisibility"; visible: boolean }
@@ -906,6 +906,10 @@ export type ToWebviewMessage =
     // Enabling loads the gutter's module on demand; disabling removes it from
     // the DOM entirely, so a webview that never enables it never pays for it.
     | { type: "setLineNumbers"; enabled: boolean }
+    // The formatting row was opened or shut on ANOTHER of the host's pages
+    // (`formattingRowExpanded` going the other way): show or hide it here to
+    // match, without posting the flip back. Only a host with the row sends it.
+    | { type: "setFormattingRowExpanded"; expanded: boolean }
     // Live read-only update, after `birta.readOnly` changes (MAR-53). The
     // setting is the DEFAULT, so this re-seeds the mode wholesale: a user who
     // changes the global preference means it, and the session override they

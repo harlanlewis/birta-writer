@@ -63,6 +63,11 @@ export interface ToolbarLayout {
     /** Show or hide the whole bar, writing the setting through. */
     setToolbarVisible: (visible: boolean) => void;
     isVisible: () => boolean;
+    /**
+     * Open or shut the formatting row as the HOST says (`setFormattingRowExpanded`),
+     * on the surface that has one; a no-op elsewhere. Not posted back.
+     */
+    setFormattingRowExpanded: (expanded: boolean) => void;
     /** Show or hide the debug dropdown. */
     setDebugMode: (enabled: boolean) => void;
     /** Show or hide the disk-drift badge. */
@@ -436,6 +441,7 @@ export function createToolbarLayout(deps: ToolbarLayoutDeps): ToolbarLayout {
         startCustomize,
         setToolbarVisible,
         isVisible: () => toolbarVisible,
+        setFormattingRowExpanded: (expanded) => dock?.setExpanded(expanded),
         setDebugMode(enabled: boolean): void {
             debugVisible = enabled;
             if (dbgItem) {

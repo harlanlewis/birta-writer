@@ -56,6 +56,7 @@ Install the extension from the [VS Code Marketplace](https://marketplace.visuals
 | `Esc`, then `Shift+↑/↓` | Select blocks; `Alt+↑/↓` moves them          |
 | `Cmd+F`, `Cmd+Alt+F`    | Find, Find & Replace                         |
 | `Cmd+Shift+O`           | Go to heading                                |
+| `Ctrl+G`                | Go to line                                   |
 | `Cmd+Shift+M`           | Toggle Birta Writer ⇄ native editor Markdown |
 | _… and many more_       |                                              |
 

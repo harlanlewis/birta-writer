@@ -114,18 +114,57 @@ export function getTopbarBottom(): number {
 }
 
 /**
+ * The formatting row's element, under `formattingInSecondRow`
+ * (`webview/components/toolbar/dock.ts`): the bar's LAST child, so its top
+ * edge is where the bar's first row and any strip the host draws under it
+ * end. Here so the selector has one home, as `.editor-topbar`'s does.
+ */
+const FORMATTING_ROW_SELECTOR = ".editor-topbar .tb-dock";
+
+/**
+ * Where the WINDOW'S chrome ends and the content area begins, in viewport
+ * coordinates: the bar's first row, plus any strip the host draws under it,
+ * and not the formatting row.
+ *
+ * Distinct from `getTopbarBottom` on exactly one surface. Under
+ * `formattingInSecondRow` the bar holds a second row of editing controls, and
+ * that row belongs to the CONTENT AREA rather than to the window: a docked
+ * side panel starts level with it, beside it, and the row starts where the
+ * panel ends, so the two together read as the top of the area the document is
+ * in. Everything that keeps chrome off the TEXT (the content padding, the find
+ * bar, a popup's floor) goes on measuring the whole bar, because the text is
+ * below both rows. Everything that stands BESIDE the content goes from here.
+ * With no second row the two are the same number, which is every other host.
+ *
+ * The row's own edge is read rather than derived from the bar's bottom, and
+ * the difference is a hairline: the row sits inside the bar's padding box
+ * with the bar's bottom border under it, so "the bar's bottom less the row's
+ * height" would put a panel one pixel below the row it is meant to be level
+ * with.
+ */
+export function getContentAreaTop(): number {
+    if (document.body.classList.contains("toolbar-hidden")) { return 0; }
+    const row = document.querySelector<HTMLElement>(FORMATTING_ROW_SELECTOR);
+    if (row && !row.hidden) {
+        const top = row.getBoundingClientRect().top;
+        if (top > 0) { return top; }
+    }
+    return getTopbarBottom();
+}
+
+/**
  * The root property a host sets to the height of chrome IT draws over the
- * bottom of the bar's box: a strip the page laid out around but cannot paint
- * on. The Mac app's tab bar is the one such strip (AppKit draws it under the
- * title row, over the page), and its host page declares it from the number
- * the window pushes (mac/Resources/index.html). Absent means no strip, which
- * is every other surface.
+ * bar's box: a strip the page laid out around but cannot paint on. The Mac
+ * app's tab bar is the one such strip (AppKit draws it under the title row,
+ * over the page), and its host page declares it from the number the window
+ * pushes (mac/Resources/index.html). Absent means no strip, which is every
+ * other surface.
  */
 export const HOST_STRIP_UNDER_TOPBAR_VAR = "--host-strip-under-topbar";
 
 /**
- * The band at the bottom of the bar that the HOST paints over, as
- * `{ top, bottom }` in viewport coordinates, or null when there is none.
+ * The band of the bar that the HOST paints over, as `{ top, bottom }` in
+ * viewport coordinates, or null when there is none.
  *
  * Chrome anchored INSIDE the bar (a tooltip, a dropdown, the sidebar flyout)
  * normally hangs off its anchor, which is the rule `getTopbarBottom` alone
@@ -134,13 +173,19 @@ export const HOST_STRIP_UNDER_TOPBAR_VAR = "--host-strip-under-topbar";
  * anything that would open into it opens under it instead. The read is a
  * computed style so the host can declare the variable through any
  * chain it likes.
+ *
+ * The strip sits at the bottom of the bar's FIRST row, which is the bar's
+ * bottom on every surface but the one with a formatting row under it
+ * (`getContentAreaTop`): there the row is below the strip, and a menu opening
+ * out of the first row clears the strip and lands over the row, as a menu
+ * opening out of any bar lands over what is under it.
  */
 export function hostStripUnderTopbar(): { top: number; bottom: number } | null {
     if (document.body.classList.contains("toolbar-hidden")) { return null; }
     const raw = getComputedStyle(document.documentElement).getPropertyValue(HOST_STRIP_UNDER_TOPBAR_VAR);
     const strip = parseFloat(raw);
     if (!(strip > 0)) { return null; }
-    const bottom = getTopbarBottom();
+    const bottom = getContentAreaTop();
     return { top: bottom - strip, bottom };
 }
 
