@@ -12,6 +12,10 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ## [Unreleased]
 
+---
+
+## [2026.917.0] - 2026, September 17
+
 ### Added
 
 - Line Numbers, in the View menu: the editor's optional column of source line numbers, off until asked for, for every window at once. It is the same gutter the extension's `birta.lineNumbers` turns on.
