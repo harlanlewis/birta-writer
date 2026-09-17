@@ -88,15 +88,29 @@
     min-height: var(--mac-titlebar-height, 34px);
     padding-top: 0;
     padding-bottom: 0;
-    /* The tab bar's row, when the window has tabs. macOS draws it as a second
-       row of the titlebar band, under the title row and over the page, so the
-       page leaves that row clear: a gap under its first row, sized by the
-       window (`BirtaSchemeHandler.tabBarHeight`, pushed on change). A margin
-       on the first row rather than padding on the bar, so the gap sits between
-       the two rows and the formatting row below it is not covered. Everything
-       that measures the bar (content padding, the drawer panels, the find bar)
-       follows, because a flex item's margin counts in the bar's height. */
-    margin-bottom: var(--mac-tabbar-height, 0px);
+  }
+
+  /* The tab bar's row, when the window has tabs. macOS draws it as a row of
+     the titlebar band over the page, so the page leaves that row clear: a
+     gap under the WHOLE bar, both rows, sized by the window
+     (`BirtaSchemeHandler.tabBarHeight`, pushed on change). Under both rows
+     rather than between them because the window holds the band open for the
+     formatting row (`FormattingRowSpacer`), so the tab bar lands under it
+     rather than over it. Everything that measures the bar (content padding,
+     the drawer panels, the find bar) follows, because padding counts in the
+     bar's height. The stacked bar's own `padding: 0` is what this has to
+     outrank, hence the compound selector.
+
+     And the bundle is told the same strip under its own name, so the chrome
+     that hangs off a control in the bar (a tooltip, a dropdown, the sidebar
+     flyout) opens under the tabs rather than into them
+     (`hostStripUnderTopbar`, webview/utils/headingUtils.ts). */
+  .editor-topbar.editor-topbar--stacked {
+    padding-bottom: var(--mac-tabbar-height, 0px);
+  }
+
+  :root {
+    --host-strip-under-topbar: var(--mac-tabbar-height, 0px);
   }
 
   /* A fullscreen surface covers the whole window, the titlebar band included,

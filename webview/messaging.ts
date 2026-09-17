@@ -409,8 +409,23 @@ export function notifyListDirectory(id: string, path: string): void {
 }
 
 /** A row was activated; the host opens the file (and then says which is current). */
-export function notifyOpenProjectFile(path: string): void {
-    vscode.postMessage({ type: "openProjectFile", path });
+export function notifyOpenProjectFile(path: string, newTab: boolean): void {
+    vscode.postMessage({ type: "openProjectFile", path, newTab });
+}
+
+/** The folders the tree has open, for the host to hand the next page on this root. */
+export function notifyFileExplorerExpanded(paths: string[]): void {
+    vscode.postMessage({ type: "fileExplorerExpanded", paths });
+}
+
+/** A row was right-clicked; the host puts its own menu at the point. */
+export function notifyProjectFileMenu(path: string, kind: "dir" | "file", x: number, y: number): void {
+    vscode.postMessage({ type: "projectFileMenu", path, kind, x, y });
+}
+
+/** The formatting row's height now (0 collapsed), for a host that shares the bar's band. */
+export function notifyFormattingRowHeight(height: number): void {
+    vscode.postMessage({ type: "formattingRowHeight", height });
 }
 
 /** The settled panel width (mouseup or reset), for the host to persist. */

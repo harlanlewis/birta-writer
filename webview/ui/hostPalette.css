@@ -110,6 +110,10 @@
     /* Lists, toolbars */
     --vscode-list-activeSelectionBackground: var(--vscode-focusBorder);
     --vscode-list-activeSelectionForeground: #ffffff;
+    /* A list's selection while the keyboard is elsewhere: the grey a Finder
+       sidebar's selection turns when the window's focus moves to its content. */
+    --vscode-list-inactiveSelectionBackground: rgba(0, 0, 0, 0.09);
+    --vscode-list-inactiveSelectionForeground: var(--vscode-editor-foreground);
     --vscode-list-hoverBackground: rgba(0, 0, 0, 0.05);
     --vscode-list-hoverForeground: var(--vscode-editor-foreground);
     --vscode-list-dropBackground: rgba(0, 122, 255, 0.15);
@@ -194,6 +198,8 @@
 
     /* Lists, toolbars */
     --vscode-list-activeSelectionForeground: #ffffff;
+    --vscode-list-inactiveSelectionBackground: rgba(255, 255, 255, 0.11);
+    --vscode-list-inactiveSelectionForeground: var(--vscode-editor-foreground);
     --vscode-list-hoverBackground: rgba(255, 255, 255, 0.07);
     --vscode-list-dropBackground: rgba(10, 132, 255, 0.25);
     --vscode-toolbar-hoverBackground: rgba(255, 255, 255, 0.08);

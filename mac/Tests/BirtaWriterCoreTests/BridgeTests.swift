@@ -287,17 +287,28 @@ final class BridgeTests: XCTestCase {
         XCTAssertEqual(WebviewMessage.parse(#"{"type":"listDirectory","path":"x"}"#),
                        .other(type: "listDirectory"), "no id means no way to answer")
         XCTAssertEqual(WebviewMessage.parse(#"{"type":"openProjectFile","path":"a/b.md"}"#),
-                       .openProjectFile(path: "a/b.md"))
+                       .openProjectFile(path: "a/b.md", newTab: false))
+        XCTAssertEqual(WebviewMessage.parse(#"{"type":"openProjectFile","path":"a/b.md","newTab":true}"#),
+                       .openProjectFile(path: "a/b.md", newTab: true))
+        XCTAssertEqual(WebviewMessage.parse(#"{"type":"projectFileMenu","path":"a","kind":"dir","x":12,"y":40.5}"#),
+                       .projectFileMenu(path: "a", kind: "dir", x: 12, y: 40.5))
+        XCTAssertEqual(WebviewMessage.parse(#"{"type":"projectFileMenu","path":"a","kind":"dir"}"#),
+                       .other(type: "projectFileMenu"), "a menu with nowhere to open is not a request")
+        XCTAssertEqual(WebviewMessage.parse(#"{"type":"formattingRowHeight","height":36}"#),
+                       .formattingRowHeight(36))
         XCTAssertEqual(WebviewMessage.parse(#"{"type":"fileExplorerWidth","width":300}"#), .fileExplorerWidth(300))
         XCTAssertEqual(WebviewMessage.parse(#"{"type":"fileExplorerVisibility","visible":false}"#),
                        .fileExplorerVisibility(false))
         XCTAssertEqual(WebviewMessage.parse(#"{"type":"setFileExplorerShowHidden","value":true}"#),
                        .setFileExplorerShowHidden(true))
 
-        let rooted = HostMessage.projectRoot(name: "notes", path: "/n", showHidden: false).jsonObject()
+        let rooted = HostMessage.projectRoot(name: "notes", path: "/n", showHidden: false, expanded: ["a", "a/b"]).jsonObject()
         XCTAssertEqual(rooted["type"] as? String, "projectRoot")
         XCTAssertEqual((rooted["root"] as? [String: Any])?["name"] as? String, "notes")
         XCTAssertEqual(rooted["showHidden"] as? Bool, false)
+        XCTAssertEqual(rooted["expanded"] as? [String], ["a", "a/b"])
+        XCTAssertEqual(WebviewMessage.parse(#"{"type":"fileExplorerExpanded","paths":["a","a/b"]}"#),
+                       .fileExplorerExpanded(["a", "a/b"]))
         let loose = HostMessage.projectRoot(name: nil, path: nil, showHidden: false).jsonObject()
         XCTAssertTrue(loose["root"] is NSNull, "a single-file window is told it has no root")
 

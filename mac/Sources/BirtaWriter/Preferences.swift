@@ -48,6 +48,7 @@ enum Prefs {
         case showInDock
         case showInMenuBar
         case openToBlankNote
+        case openFilesIn
         case currentNotePath
         case storeInICloud
         case hasSeenWelcome
@@ -857,6 +858,7 @@ enum Prefs {
         report("agent command", agentEnabled && agentCommand != AgentPreset.fallback.template)
         report("note home", noteHome != .iCloud, noteHome.rawValue)
         report("open to a blank note", openToBlankNote, "on")
+        report("open files in", openFilesIn != .tab, openFilesIn.rawValue)
         report("new note name", newNoteNameTemplate != NoteNameTemplate.default)
         report("font", fontPreset != defaultFontPreset, fontPreset)
         report("font size", fontSize != defaultFontSize, String(fontSize))
@@ -967,6 +969,15 @@ enum Prefs {
     static var noteMode: NoteMode {
         get { d.bool(forKey: Key.openToBlankNote.rawValue) ? .newEachSession : .sameNote }
         set { d.set(newValue == .newEachSession, forKey: Key.openToBlankNote.rawValue) }
+    }
+
+    /// Where a file opened from outside lands when no open folder window
+    /// holds it (`OpenRouting.destination`). A tab by default: a file
+    /// arriving beside the one in front is what a browser does, and a
+    /// second window is the choice to make on purpose.
+    static var openFilesIn: FileOpenTarget {
+        get { d.string(forKey: Key.openFilesIn.rawValue).flatMap(FileOpenTarget.init(rawValue:)) ?? .tab }
+        set { d.set(newValue.rawValue, forKey: Key.openFilesIn.rawValue) }
     }
 
     /// Which of the three homes notes are in right now.

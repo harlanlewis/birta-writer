@@ -152,7 +152,14 @@ final class WindowSet {
             guard let coordinator else { return }
             self?.newTab(in: coordinator)
         }
-        coordinator.onOpenProjectFile = { [weak self] url in self?.openDocument(at: url) }
+        coordinator.onOpenProjectFile = { [weak self, weak coordinator] url, newTab in
+            guard let coordinator else { return }
+            self?.openFromExplorer(url, from: coordinator, inNewTab: newTab)
+        }
+        coordinator.onNewNoteInFolder = { [weak self, weak coordinator] folder in
+            guard let coordinator else { return }
+            self?.newNote(in: folder, beside: coordinator)
+        }
         coordinator.onShowHiddenChanged = { [weak self] shown in self?.setShowHiddenFiles(shown) }
         coordinator.onOpenDirectoryRequest = { [weak self] url in self?.openDirectory(at: url) }
         coordinator.makeRecentsMenu = { [weak self] in self?.recentsMenu() ?? RecentsMenu() }
@@ -453,7 +460,51 @@ final class WindowSet {
         }
     }
 
+    /// The explorer's New Note in a folder: a note made in `folder`, as a tab
+    /// beside `spawn`. `newTab(in:)` with the folder chosen rather than the
+    /// root, and the same reasoning about the slot.
+    func newNote(in folder: URL, beside spawn: Coordinator) {
+        do {
+            let target = try Coordinator.makeNoteFile(in: folder)
+            open(makeWindow(on: target, slot: nil, inGroupOf: spawn, explorerRoot: spawn.explorerRoot))
+        } catch {
+            NSLog("Birta Writer: could not make a new note: \(error)")
+            spawn.flashStatus("Could not make a new note in \(folder.lastPathComponent).")
+        }
+    }
+
     // MARK: directory windows (MAR-457)
+
+    /// A row of `here`'s explorer, or Go to File picked over a rooted window:
+    /// the file lands where `OpenRouting.explorerDestination` says. A plain
+    /// pick moves this tab to the file; a pick asking for a new tab, or a
+    /// tab holding text that is not on disk, opens it beside; a file open as
+    /// another tab of this window fronts that tab. Never another window.
+    func openFromExplorer(_ url: URL, from here: Coordinator, inNewTab: Bool) {
+        let target = url.standardizedFileURL
+        guard let hereIndex = windows.firstIndex(where: { $0 === here }) else { return }
+        let routed = OpenRouting.explorerDestination(
+            for: target.path,
+            windows: routingWindows(),
+            here: hereIndex,
+            inNewTab: inNewTab,
+            hereHoldsUnsavedText: here.hasUnwrittenBytes && !Prefs.autosave,
+            sameFile: Self.sameFile)
+        let tabHere: (URL) -> Void = { [weak self, weak here] file in
+            guard let self, let here else { return }
+            self.open(self.makeWindow(on: file, slot: nil, inGroupOf: here, explorerRoot: here.explorerRoot))
+        }
+        switch routed {
+        case let .existing(index):
+            let open = windows[index]
+            open.selectTab()
+            open.show()
+        case .tabHere:
+            tabHere(target)
+        case .replaceHere:
+            here.replaceFile(with: target, orTab: tabHere)
+        }
+    }
 
     /// One watcher per open root, shared by every window rooted there, keyed
     /// by the root's standardized path. A change under a root reaches every
@@ -627,12 +678,9 @@ final class WindowSet {
         // as they stand; each arm below is the app carrying out one answer.
         let routed = OpenRouting.destination(
             for: target.path,
-            windows: windows.map {
-                OpenRouting.Window(file: $0.boundFile.path,
-                                   root: $0.explorerRoot?.standardizedFileURL.path,
-                                   isVacant: $0.isVacant)
-            },
-            sameFile: { FileIdentity.sameFile(URL(fileURLWithPath: $0), URL(fileURLWithPath: $1)) },
+            windows: routingWindows(),
+            looseFilesOpenInTab: Prefs.openFilesIn == .tab,
+            sameFile: Self.sameFile,
             isInside: { DirectoryListing.isInside(URL(fileURLWithPath: $0), root: URL(fileURLWithPath: $1, isDirectory: true)) })
         switch routed {
         case let .existing(index):
@@ -654,10 +702,34 @@ final class WindowSet {
             // a rename back to one setting.
             releaseSlot(.document, except: here)
             here.openInPlace(target, slot: .document)
+        case let .tabBeside(index):
+            // A loose file as a tab of the window in front, on the "Open
+            // files in" setting. The tab is a loose window like any other
+            // (no root, so no explorer of its own), and it takes the
+            // document slot exactly as a window of its own would.
+            Prefs.documentURL = target
+            open(makeWindow(on: target, slot: .document, inGroupOf: windows[index]))
         case .newWindow:
             Prefs.documentURL = target
-            open(makeWindow(on: target, slot: .document))
+            // The setting asked for a window, so the system's Prefer tabs
+            // preference is not given the chance to make it a tab; with no
+            // window open the answer is a window either way.
+            open(makeWindow(on: target, slot: .document), asSeparateWindow: Prefs.openFilesIn == .window)
         }
+    }
+
+    /// The open windows as `OpenRouting` reads them, in the set's order.
+    private func routingWindows() -> [OpenRouting.Window] {
+        windows.map {
+            OpenRouting.Window(file: $0.boundFile.path,
+                               root: $0.explorerRoot?.standardizedFileURL.path,
+                               isVacant: $0.isVacant,
+                               group: $0.tabGroupIdentity.map { "\($0)" })
+        }
+    }
+
+    private static func sameFile(_ a: String, _ b: String) -> Bool {
+        FileIdentity.sameFile(URL(fileURLWithPath: a), URL(fileURLWithPath: b))
     }
 
     /// Cmd+O. Ask for a file, then open it the way the Finder's Open With does.
@@ -781,9 +853,16 @@ final class WindowSet {
     /// same moment: launch builds it, then builds the menus and the status
     /// item, then starts it, and shows it only if this launch was asked to
     /// open something. Every window made later is wanted now.
-    private func open(_ coordinator: Coordinator) {
+    /// - Parameter asSeparateWindow: keep the system from folding this
+    ///   window into a tab as it is shown, for the one gesture whose setting
+    ///   said a window (`OpenRouting.Destination.newWindow`).
+    private func open(_ coordinator: Coordinator, asSeparateWindow: Bool = false) {
         coordinator.start()
-        coordinator.show()
+        if asSeparateWindow {
+            coordinator.withAutomaticTabbingSuspended { coordinator.show() }
+        } else {
+            coordinator.show()
+        }
     }
 
     /// Leave the document this window was pointed at and go back to the notes.
@@ -852,6 +931,12 @@ final class WindowSet {
         // (`AppPanel.restoredFrame`).
         let made = Coordinator(boundTo: url, slot: slot, remembersFrame: windows.isEmpty, frame: frame,
                                explorerRoot: explorerRoot)
+        // A tab beside a window on the same root starts with that window's
+        // tree open the same way, rather than with only the path to its file.
+        if let group, let explorerRoot, let groupRoot = group.explorerRoot,
+           FileIdentity.sameFile(groupRoot, explorerRoot) {
+            made.explorerExpanded = group.explorerExpanded
+        }
         adopt(made)
         releaseSlot(slot, except: made)
         if let explorerRoot { watch(explorerRoot) }

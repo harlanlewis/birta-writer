@@ -702,7 +702,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding {
             coordinator.selectTab()
             coordinator.show()
         case let .file(url):
-            windows.openDocument(at: url)
+            // Go to File over a rooted window is the explorer's gesture with
+            // a keyboard: a file under the root moves this tab to it. A file
+            // from elsewhere (a recent) takes the route a Finder open does.
+            if let here = front, let root = here.explorerRoot,
+               DirectoryListing.isInside(url, root: root) {
+                windows.openFromExplorer(url, from: here, inNewTab: false)
+            } else {
+                windows.openDocument(at: url)
+            }
         case let .setting(pane, row):
             menuOpenSettings()
             settingsWindow?.show(paneNamed: pane, revealing: row)
@@ -715,8 +723,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding {
         openPalette(mode: mode == "files" ? .files : .all)
         palette.setQuery(query)
         let top = palette.rows.prefix(3).map { "\($0.title)|\($0.item.detail ?? "-")" }
-        let line = "mode=\(mode) query=\(query) rows=\(palette.rows.count) open=\(palette.isOpen)"
+        var line = "mode=\(mode) query=\(query) rows=\(palette.rows.count) open=\(palette.isOpen)"
             + " top=\(top.joined(separator: ";"))"
+        // A picture of it too, beside the scratchpad, since nothing in the
+        // window server can be asked for one without a Screen Recording
+        // grant and the palette is drawn by AppKit alone.
+        if let scratch = ProcessInfo.processInfo.environment["BIRTA_MAC_SCRATCHPAD"],
+           let png = palette.snapshotPNG() {
+            let url = URL(fileURLWithPath: scratch).deletingLastPathComponent()
+                .appendingPathComponent("palette-\(mode)-\(query.isEmpty ? "empty" : query).png")
+            if (try? png.write(to: url)) != nil { line += " snapshot=\(url.path)" }
+        }
         palette.close()
         return line
     }

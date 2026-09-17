@@ -183,6 +183,7 @@ mac/Sources/BirtaWriterCore/ProofreadFilter.swift  Which flagged spans are prose
 mac/Sources/BirtaWriterCore/RecentFiles.swift    What the recents list keeps, where the More boundary falls, when a row says more than a file name, and how the menu is grouped once there is more than one window
 mac/Sources/BirtaWriter/TitleBar.swift           Draws it as a leading titlebar accessory; why the label is sized from what its cell needs and centred on `bounds`, never on what it reports or was built at
 mac/Sources/BirtaWriter/TitlebarDrag.swift       Makes the band draggable where the page is not using it; why the CSS answer does not exist in WebKit
+mac/Sources/BirtaWriter/FormattingRowSpacer.swift  Holds a row of the band open for the page's formatting row, so the tab bar lands under it rather than over it; why it is added before any tab bar exists
 mac/Sources/BirtaWriterCore/TitlebarBand.swift   Where that strip starts and stops, how wide the title may be drawn so a strip is still left, and what a double click on a titlebar is the user's setting to decide
 mac/Sources/BirtaWriter/TitlePopover.swift       The Name/Tags/Where popover the title opens, and why it is built rather than inherited from NSDocument
 mac/Sources/BirtaWriter/MissingFileScreen.swift  What the panel says when the bound file has gone, why Put It Back and Save It Back are different promises, and the two lanes its card keeps clear so the titlebar can still name its own controls
@@ -206,7 +207,8 @@ mac/Sources/BirtaWriterCore/AgentReference.swift What Copy Reference puts on the
 mac/Sources/BirtaWriterCore/OpenSet.swift        What a launch opens: the recorded windows and tabs, pruned, with the file the launch was asked for and the blank-note setting applied; why the three file settings no longer decide it
 mac/Sources/BirtaWriterCore/TabGroupPolicy.swift Which windows share a tab bar, what Close does as the count changes, which chord picks which tab, and how the titlebar band splits once the bar has taken a row
 mac/Sources/BirtaWriterCore/DirectoryListing.swift  A folder's entries as the explorer lists them, and the root-relative path rule that keeps a page from naming a file outside its root
-mac/Sources/BirtaWriterCore/OpenRouting.swift    Which window a file opened from outside lands in: its own tab, a tab of the window rooted over it, a vacant window, or a new one
+mac/Sources/BirtaWriterCore/ExplorerMenu.swift   What a right-clicked explorer row offers, per kind of entry; why Rename is not among them
+mac/Sources/BirtaWriterCore/OpenRouting.swift    Which window a file opened from outside lands in: its own tab, a tab of the window rooted over it, a vacant window, or (per the Open files in setting) a tab beside the front window or a new one; and where a row of the explorer sends its file (this window, always: a tab of it, or in place, unless a new tab was asked for or this one holds unsaved text)
 mac/Sources/BirtaWriter/DirectoryWatcher.swift   FSEvents on a directory window's root, one per root shared by its tabs; what the page is told and when
 mac/Sources/BirtaWriterCore/FuzzyMatch.swift     The palette's subsequence scorer: word starts and runs outrank buried letters, and the matched ranges come back for drawing; no dependency, on purpose
 mac/Sources/BirtaWriterCore/PaletteModel.swift   What the palette lists and in what order, with no window: modes, sections, nested rows, recents

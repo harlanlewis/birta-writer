@@ -29,7 +29,7 @@ export type FileExplorerDeps = Pick<FileExplorerHost, "eventManager" | "getEdito
 
 export interface FileExplorerGate {
     /** The window's root, or null for a single-file window. Loads the chunk on the first folder. */
-    setProjectRoot(root: ProjectRoot | null, showHidden: boolean): void;
+    setProjectRoot(root: ProjectRoot | null, showHidden: boolean, expanded?: readonly string[]): void;
     applyDirectoryListing(msg: DirectoryListingMessage): void;
     setCurrentProjectFile(path: string | null): void;
     directoryChanged(paths: string[]): void;
@@ -53,6 +53,7 @@ export function createFileExplorerGate(deps: FileExplorerDeps): FileExplorerGate
     let pending: Promise<unknown> | null = null;
     let root: ProjectRoot | null = null;
     let showHidden = false;
+    let expanded: readonly string[] | undefined;
     let flyoutTrigger: HTMLElement | null = null;
     /** What arrived before the panel existed, in order. */
     const queue: Array<(c: FileExplorerController) => void> = [];
@@ -77,6 +78,7 @@ export function createFileExplorerGate(deps: FileExplorerDeps): FileExplorerGate
                     ...deps,
                     root,
                     showHidden,
+                    expanded,
                     visible: window.__i18n?.fileExplorerVisible,
                 });
                 if (flyoutTrigger) { controller.setFlyoutTrigger(flyoutTrigger); }
@@ -88,7 +90,7 @@ export function createFileExplorerGate(deps: FileExplorerDeps): FileExplorerGate
     };
 
     return {
-        setProjectRoot(next, nextShowHidden) {
+        setProjectRoot(next, nextShowHidden, nextExpanded) {
             if (!next) {
                 root = null;
                 queue.length = 0;
@@ -102,7 +104,8 @@ export function createFileExplorerGate(deps: FileExplorerDeps): FileExplorerGate
             if (!hostHas("projectFiles")) { return; }
             root = next;
             showHidden = nextShowHidden;
-            if (controller) { controller.setRoot(next, nextShowHidden); } else { load(); }
+            expanded = nextExpanded;
+            if (controller) { controller.setRoot(next, nextShowHidden, nextExpanded); } else { load(); }
         },
         applyDirectoryListing: (msg) => withController((c) => c.applyListing(msg)),
         setCurrentProjectFile: (path) => withController((c) => c.setCurrentFile(path)),

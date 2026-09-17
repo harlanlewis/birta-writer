@@ -12,6 +12,20 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ## [Unreleased]
 
+### Added
+
+- Open files in, a setting beside New windows open with. It decides where a file opened from the Finder, Open (⌘O) or Open Recent lands when no open folder window holds it: a new tab beside the window in front, which is the default, or a new window, which is opened as a window whatever the system's Prefer tabs setting says. A file under an open folder window still goes to that window, and New Note (⌘N) still follows the system's tab setting.
+
+### Changed
+
+- Clicking a file in the explorer of a Birta Writer for Mac folder window opens it in the tab you are in, in place of the file that was there, the way a sidebar in a notes app does; it used to open a new tab on every click. The window you clicked in is the window that shows the file: one already open as another tab of that window comes to the front, and one open in some other window is opened here too rather than jumping you across to it, so the same file can be open in two windows and the later save wins. To open a file beside the one you are in, ⌘-click it, middle-click it, or press ⌘↩ on its row; a tab holding text that is not saved yet (autosave off) is never replaced, and the file opens beside it. Go to File (⌘P) over a folder window moves the tab the same way. The folders you have opened in the explorer stay open across the move, and a tab opened beside starts with the same folders open.
+- Right-clicking a row of the explorer opens a menu of its own in place of the browser's text menu: Open in New Tab, Reveal in Finder, Copy Path and Move to Trash for a file, and New Note in that folder, Reveal in Finder and Copy Path for a folder.
+- The command palette is drawn smaller and closer to a picker: a chrome-sized field with the other mode's chord at its trailing end (⌘P for files, ⇧⌘P for commands), a command's chord as key caps in a column at the right, a quiet wash for the selected row rather than a filled block, and section headings that no longer float over the first row of their section.
+
+### Fixed
+
+- With two or more tabs, the tab bar no longer draws over the editor's chrome. The formatting row (the T button's row) now sits between the title row and the tab bar rather than under it, and the menus, tooltips and the sidebar's preview that open out of the title row open below the tab bar instead of behind it.
+
 ---
 
 ## [2026.916.0] - 2026, September 16

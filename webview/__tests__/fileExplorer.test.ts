@@ -111,6 +111,31 @@ describe("the file explorer gate", () => {
         expect(document.body.classList.contains("files-open")).toBe(true);
     });
 
+    it("a root arriving with folders to open should list each of them at once and draw them open", async () => {
+        gate.setProjectRoot(ROOT, false, ["docs", "docs/guide"]);
+        await vi.waitFor(() => { expect(panel()).not.toBeNull(); });
+        // The root and both folders, each asked for on its own rather than
+        // after its parent's listing lands.
+        expect(listRequests().map((m) => m.path)).toEqual(["", "docs", "docs/guide"]);
+        answer(gate, "", [dir("docs")]);
+        answer(gate, "docs", [dir("guide"), file("a.md")]);
+        answer(gate, "docs/guide", [file("deep.md")]);
+        expect(row("docs")!.getAttribute("aria-expanded")).toBe("true");
+        expect(row("docs/guide")!.getAttribute("aria-expanded")).toBe("true");
+        expect(row("docs/guide/deep.md")).not.toBeNull();
+        // Seeding is not a report: the host already holds this set.
+        expect(posted().filter((m) => m.type === "fileExplorerExpanded")).toEqual([]);
+        // A toggle is: the whole open set goes out, shallowest first.
+        row("docs/guide")!.click();
+        row("docs")!.click();
+        row("docs")!.click();
+        expect(posted().filter((m) => m.type === "fileExplorerExpanded")).toEqual([
+            { type: "fileExplorerExpanded", paths: ["docs"] },
+            { type: "fileExplorerExpanded", paths: [] },
+            { type: "fileExplorerExpanded", paths: ["docs"] },
+        ]);
+    });
+
     it("messages arriving before the chunk lands should replay into the panel in order", async () => {
         gate.setProjectRoot(ROOT, false);
         // Before the import resolves: the host names the current file at once.
@@ -176,10 +201,46 @@ describe("the file explorer gate", () => {
         row("notes.txt")!.click();
         const opens = posted().filter((m) => m.type === "openProjectFile");
         expect(opens).toEqual([
-            { type: "openProjectFile", path: "a.md" },
-            { type: "openProjectFile", path: "notes.txt" },
+            { type: "openProjectFile", path: "a.md", newTab: false },
+            { type: "openProjectFile", path: "notes.txt", newTab: false },
         ]);
         expect(document.querySelector(".files-row--selected")).toBeNull();
+    });
+
+    it("Cmd+click, a middle click and Cmd+Return should ask for the file in a new tab", async () => {
+        await mounted(gate);
+        answer(gate, "", [file("a.md")]);
+        row("a.md")!.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, metaKey: true }));
+        row("a.md")!.dispatchEvent(new MouseEvent("auxclick", { bubbles: true, cancelable: true, button: 1 }));
+        row("a.md")!.focus();
+        row("a.md")!.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", metaKey: true, bubbles: true }));
+        // The other button of an auxclick (the right one) opens nothing.
+        row("a.md")!.dispatchEvent(new MouseEvent("auxclick", { bubbles: true, cancelable: true, button: 2 }));
+        expect(posted().filter((m) => m.type === "openProjectFile")).toEqual([
+            { type: "openProjectFile", path: "a.md", newTab: true },
+            { type: "openProjectFile", path: "a.md", newTab: true },
+            { type: "openProjectFile", path: "a.md", newTab: true },
+        ]);
+    });
+
+    it("a right-click on a file or folder row should hand the host the point and refuse the browser's menu", async () => {
+        await mounted(gate);
+        answer(gate, "", [dir("docs"), file("a.md")]);
+        const onFile = new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 40, clientY: 120 });
+        row("a.md")!.dispatchEvent(onFile);
+        const onDir = new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 41, clientY: 90 });
+        row("docs")!.dispatchEvent(onDir);
+        expect(onFile.defaultPrevented && onDir.defaultPrevented).toBe(true);
+        expect(posted().filter((m) => m.type === "projectFileMenu")).toEqual([
+            { type: "projectFileMenu", path: "a.md", kind: "file", x: 40, y: 120 },
+            { type: "projectFileMenu", path: "docs", kind: "dir", x: 41, y: 90 },
+        ]);
+        // A stand-in row (a folder's Loading) has no file to act on.
+        row("docs")!.click();
+        const onLoading = new MouseEvent("contextmenu", { bubbles: true, cancelable: true });
+        document.querySelector(".files-row--loading")!.dispatchEvent(onLoading);
+        expect(onLoading.defaultPrevented).toBe(false);
+        expect(posted().filter((m) => m.type === "projectFileMenu")).toHaveLength(2);
     });
 
     it("clicking a folder should expand it and ask for exactly one listing", async () => {
@@ -386,7 +447,7 @@ describe("the file explorer gate", () => {
         row("docs")!.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
         row("docs/inner.md")!.focus();
         row("docs/inner.md")!.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
-        expect(posted().filter((m) => m.type === "openProjectFile")).toEqual([{ type: "openProjectFile", path: "docs/inner.md" }]);
+        expect(posted().filter((m) => m.type === "openProjectFile")).toEqual([{ type: "openProjectFile", path: "docs/inner.md", newTab: false }]);
         // Escape hands focus back to the editor.
         row("docs/inner.md")!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
         expect(document.activeElement).toBe(document.querySelector(".editor-stand-in"));

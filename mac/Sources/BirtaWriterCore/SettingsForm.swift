@@ -18,6 +18,7 @@ public enum SettingsRow: String, CaseIterable, Sendable {
     case richLinks = "Rich link previews and embeds"
     case opens = "New windows open with"
     case newNoteName = "File name"
+    case opensFilesIn = "Open files in"
     case agentEnabled = "Enable /ai commands"
     case agentCommand = "Terminal command"
     // The floor, drawn as a row so the list reads as complete: a switch that
@@ -161,7 +162,9 @@ public enum SettingsForm {
     public static let general = SettingsPane(groups: [
         SettingsGroup(rows: [.summon]),
         SettingsGroup(rows: [.storeInICloud, .location, .autosave]),
-        SettingsGroup(rows: [.opens, .newNoteName]),
+        // The file-name row sits directly under the mode it depends on, so
+        // the open-target row comes after it rather than between them.
+        SettingsGroup(rows: [.opens, .newNoteName, .opensFilesIn]),
         SettingsGroup(rows: [.showInDock, .showInMenuBar]),
         SettingsGroup(rows: [.startAtLogin]),
         SettingsGroup(rows: [.richLinks]),

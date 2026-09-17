@@ -65,6 +65,9 @@ describe("no hardcoded keybindings (modifier-chord scan)", () => {
             "local undo/redo inside overlay inputs — VS Code intercepts Cmd+Z before native inputs see it",
         "webview/components/findBar/index.ts":
             "bar-local input keys (Mod+Enter = replace all inside the replace input)",
+        "webview/components/fileExplorer/index.ts":
+            "the pointer's open-beside modifier (Mod+click, and Mod+Return as its keyboard form on a focused " +
+            "row): the platform's own convention for a sidebar and a browser, not a command anybody rebinds",
         "webview/components/htmlView/index.ts":
             "panel-local input keys (Mod+Enter = commit, Mod+/ = commit and hand off to the block " +
             "source panel, inside the HTML source textarea) — findBar's idiom",

@@ -438,15 +438,31 @@ export type ToExtensionMessage =
     // or hands a non-document to its default application. The page selects
     // nothing on its own: selection follows what is open, never what was
     // clicked, so a Finder open and a click land on the same row by the same
-    // route.
-    | { type: "openProjectFile"; path: string }
+    // route. `newTab` is the reader asking for a tab beside this one
+    // (Cmd+click, middle click, Cmd+Return); a plain activation moves this
+    // window to the file, and where it lands either way is the host's rule.
+    | { type: "openProjectFile"; path: string; newTab: boolean }
+    // A row was right-clicked at a viewport point. The host draws its own
+    // menu there (a native one, with the actions only it can perform: a new
+    // tab, the file manager, the pasteboard, the trash); the page draws none.
+    | { type: "projectFileMenu"; path: string; kind: "dir" | "file"; x: number; y: number }
     // The dragged panel width, on mouseup or the double-click reset, never per
     // move; the host persists it and injects it back as `--files-width` on
     // `:root`, the way `tocWidth` comes back as `--toc-width`.
     | { type: "fileExplorerWidth"; width: number }
+    // ── The formatting row, under `formattingInSecondRow` ──
+    // How tall the row is now, 0 while collapsed, on every change. A host
+    // whose own chrome shares the band the bar sits in (the Mac app's tab
+    // bar, drawn by the window under the title row) holds that much of the
+    // band open so its chrome lands under the row rather than over it. Never
+    // posted on a surface without the row.
+    | { type: "formattingRowHeight"; height: number }
     // An explicit show or hide of the panel, for the host to remember and
     // seed back as `__i18n.fileExplorerVisible` on the next page load.
     | { type: "fileExplorerVisibility"; visible: boolean }
+    // Every folder the tree has open, root-relative, on each change; the host
+    // hands it back as `projectRoot.expanded` to the next page on this root.
+    | { type: "fileExplorerExpanded"; paths: string[] }
     // The page's half of the dotfile switch (the `toggleHiddenFiles` command);
     // the host owns the setting and echoes it back as `fileExplorerConfig`.
     | { type: "setFileExplorerShowHidden"; value: boolean }
@@ -860,7 +876,12 @@ export type ToWebviewMessage =
     // single-file window, where the explorer builds nothing; a non-null root
     // is what first loads the panel's chunk. `showHidden` seeds the dotfile
     // switch so the first render draws the right rows.
-    | { type: "projectRoot"; root: ProjectRoot | null; showHidden: boolean }
+    // `expanded` is the folders to open on arrival, root-relative: what the
+    // page last reported through `fileExplorerExpanded`, handed back so a
+    // page rebuilt on the same root (this window moved to another file, or a
+    // tab spawned beside it) shows the tree as the reader left it rather
+    // than only the path to the open file.
+    | { type: "projectRoot"; root: ProjectRoot | null; showHidden: boolean; expanded?: string[] }
     // The answer to one `listDirectory`, by its `id`. `entries: null` with an
     // `error` is a folder the host could not read (the page draws the message
     // as a row and offers a retry); `entries` in any order, the page sorts.

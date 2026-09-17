@@ -1,4 +1,4 @@
-import { getTopbarBottom, isInTopbar } from "../utils/headingUtils";
+import { clearHostStrip, getTopbarBottom, isInTopbar } from "../utils/headingUtils";
 
 let tooltipEl: HTMLElement | null = null;
 
@@ -114,6 +114,11 @@ function position(
     if (y < safeTop + 4) {
         y = safeTop + 4;
     }
+    // A strip of the bar the host paints over (the Mac app's tab bar) is the
+    // one part of the bar a bar anchor's tip may not hang into: the chip
+    // would be drawn under the tabs. It goes below the strip instead, which
+    // is the nearest place it can be read.
+    y = clearHostStrip(y, tipRect.height, 4);
     if (y + tipRect.height > window.innerHeight - 4) {
         y = Math.max(safeTop + 4, window.innerHeight - tipRect.height - 4);
     }

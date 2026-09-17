@@ -35,6 +35,9 @@ final class PaletteWindowController: NSObject, NSTextFieldDelegate, NSTableViewD
     private let panel: PalettePanel
     private let field = NSTextField()
     private let crumb = NSTextField(labelWithString: "")
+    /// The other mode and its chord, at the field's trailing end: the one
+    /// thing a reader can do here that typing does not reveal.
+    private let modeHint = NSTextField(labelWithString: "")
     private let table = NSTableView()
     private let scroll = NSScrollView()
     private let footer = NSTextField(labelWithString: "")
@@ -46,12 +49,12 @@ final class PaletteWindowController: NSObject, NSTextFieldDelegate, NSTableViewD
     private(set) var displayed: [Displayed] = []
     private(set) var selectedIndex: Int?
 
-    static let width: CGFloat = 620
-    private static let fieldHeight: CGFloat = 52
-    private static let rowHeight: CGFloat = 30
-    private static let headerHeight: CGFloat = 24
-    private static let footerHeight: CGFloat = 26
-    private static let listCeiling: CGFloat = 12 * rowHeight
+    static let width: CGFloat = 640
+    private static let fieldHeight: CGFloat = 46
+    private static let rowHeight: CGFloat = 32
+    private static let headerHeight: CGFloat = 28
+    private static let footerHeight: CGFloat = 28
+    private static let listCeiling: CGFloat = 11 * rowHeight
 
     /// - Parameters:
     ///   - catalog: asked on every open and whenever `refresh` is called, so
@@ -170,7 +173,11 @@ final class PaletteWindowController: NSObject, NSTextFieldDelegate, NSTableViewD
         crumb.stringValue = levels.compactMap(\.title).map { "\($0) ›" }.joined(separator: " ")
         crumb.isHidden = crumb.stringValue.isEmpty
         field.placeholderString = mode == .files ? "Go to file…" : "Type a command or search…"
-        footer.stringValue = footerText()
+        // The chords are the panel's own (`PalettePanel.performKeyEquivalent`),
+        // so printing them here is printing a binding this window holds.
+        modeHint.attributedStringValue = Self.hint(mode == .files ? "Commands" : "Files",
+                                                   chord: mode == .files ? "⇧⌘P" : "⌘P")
+        footer.attributedStringValue = Self.hint(footerText())
         table.reloadData()
         selectedIndex = displayed.firstIndex { if case .row = $0 { return true } else { return false } }
         syncSelection()
@@ -181,7 +188,39 @@ final class PaletteWindowController: NSObject, NSTextFieldDelegate, NSTableViewD
         var hints = ["↑↓ move", "↩ open", "esc close"]
         if levels.count > 1 { hints.append("⌫ back") }
         if mode == .files, catalog.filesTruncated { hints.append("showing the first files found") }
-        return hints.joined(separator: "   ")
+        return hints.joined(separator: "      ")
+    }
+
+    /// Small tertiary text, with an optional chord after it in a slightly
+    /// heavier weight so the symbols read as keys rather than as punctuation.
+    private static func hint(_ text: String, chord: String? = nil) -> NSAttributedString {
+        let out = NSMutableAttributedString(string: text, attributes: [
+            .font: NSFont.systemFont(ofSize: 11), .foregroundColor: NSColor.tertiaryLabelColor,
+        ])
+        if let chord {
+            out.append(NSAttributedString(string: "  " + chord, attributes: [
+                .font: NSFont.systemFont(ofSize: 11, weight: .medium), .foregroundColor: NSColor.tertiaryLabelColor,
+            ]))
+        }
+        return out
+    }
+
+    /// The panel's content as a PNG, for `mac/scripts/measure.sh` and the
+    /// like: the palette is AppKit through and through, so the views' own
+    /// drawing is the picture, with no window server involved.
+    func snapshotPNG() -> Data? {
+        guard let content = panel.contentView else { return nil }
+        let bounds = content.bounds
+        let pdf = content.dataWithPDF(inside: bounds)
+        guard let image = NSImage(data: pdf) else { return nil }
+        let rendered = NSImage(size: bounds.size)
+        rendered.lockFocus()
+        NSColor.windowBackgroundColor.setFill()
+        bounds.fill()
+        image.draw(in: bounds)
+        rendered.unlockFocus()
+        guard let tiff = rendered.tiffRepresentation, let rep = NSBitmapImageRep(data: tiff) else { return nil }
+        return rep.representation(using: .png, properties: [:])
     }
 
     /// Move the selection by `delta` rows, skipping headings, stopping at the
@@ -259,21 +298,24 @@ final class PaletteWindowController: NSObject, NSTextFieldDelegate, NSTableViewD
         content.blendingMode = .behindWindow
         content.state = .active
         content.wantsLayer = true
-        content.layer?.cornerRadius = 12
+        content.layer?.cornerRadius = 10
         content.layer?.cornerCurve = .continuous
         content.layer?.masksToBounds = true
         content.translatesAutoresizingMaskIntoConstraints = false
         panel.contentView = content
 
-        crumb.font = .systemFont(ofSize: 15, weight: .medium)
+        crumb.font = .systemFont(ofSize: 13, weight: .medium)
         crumb.textColor = .secondaryLabelColor
         crumb.isHidden = true
         crumb.setContentHuggingPriority(.required, for: .horizontal)
 
+        // Chrome-sized rather than display-sized: the field is a place to
+        // type three letters, and a large face there reads as a title over
+        // the list rather than as the filter beside it.
         field.isBordered = false
         field.drawsBackground = false
         field.focusRingType = .none
-        field.font = .systemFont(ofSize: 20, weight: .regular)
+        field.font = .systemFont(ofSize: 15, weight: .regular)
         field.textColor = .labelColor
         field.delegate = self
         field.cell?.isScrollable = true
@@ -281,11 +323,15 @@ final class PaletteWindowController: NSObject, NSTextFieldDelegate, NSTableViewD
         field.lineBreakMode = .byTruncatingTail
         field.setAccessibilityLabel("Command palette")
 
-        let fieldRow = NSStackView(views: [crumb, field])
+        modeHint.alignment = .right
+        modeHint.setContentHuggingPriority(.required, for: .horizontal)
+        modeHint.setContentCompressionResistancePriority(.required, for: .horizontal)
+
+        let fieldRow = NSStackView(views: [crumb, field, modeHint])
         fieldRow.orientation = .horizontal
         fieldRow.spacing = 8
-        fieldRow.alignment = .firstBaseline
-        fieldRow.edgeInsets = NSEdgeInsets(top: 0, left: 18, bottom: 0, right: 18)
+        fieldRow.alignment = .centerY
+        fieldRow.edgeInsets = NSEdgeInsets(top: 0, left: 16, bottom: 0, right: 16)
         fieldRow.translatesAutoresizingMaskIntoConstraints = false
 
         let rule = NSBox()
@@ -305,6 +351,10 @@ final class PaletteWindowController: NSObject, NSTextFieldDelegate, NSTableViewD
         table.allowsMultipleSelection = false
         table.refusesFirstResponder = true
         table.style = .plain
+        // No floating headings: a group row pinned at the top paints over
+        // the selection of the first row under it. The list is short and the
+        // headings are ranks, not anchors, so nothing needs to float.
+        table.floatsGroupRows = false
         table.rowHeight = Self.rowHeight
         table.target = self
         table.action = #selector(rowClicked)
@@ -317,13 +367,18 @@ final class PaletteWindowController: NSObject, NSTextFieldDelegate, NSTableViewD
         scroll.borderType = .noBorder
         scroll.translatesAutoresizingMaskIntoConstraints = false
 
-        footer.font = .systemFont(ofSize: 11)
-        footer.textColor = .tertiaryLabelColor
         footer.translatesAutoresizingMaskIntoConstraints = false
+
+        // A rule over the footer, so a list that scrolls is cut by a line
+        // rather than by the hints' baseline.
+        let footerRule = NSBox()
+        footerRule.boxType = .separator
+        footerRule.translatesAutoresizingMaskIntoConstraints = false
 
         content.addSubview(fieldRow)
         content.addSubview(rule)
         content.addSubview(scroll)
+        content.addSubview(footerRule)
         content.addSubview(footer)
         NSLayoutConstraint.activate([
             fieldRow.topAnchor.constraint(equalTo: content.topAnchor),
@@ -336,10 +391,14 @@ final class PaletteWindowController: NSObject, NSTextFieldDelegate, NSTableViewD
             scroll.topAnchor.constraint(equalTo: rule.bottomAnchor, constant: 6),
             scroll.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 8),
             scroll.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -8),
-            footer.topAnchor.constraint(equalTo: scroll.bottomAnchor, constant: 4),
-            footer.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 18),
-            footer.trailingAnchor.constraint(lessThanOrEqualTo: content.trailingAnchor, constant: -18),
-            footer.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: -6),
+            footerRule.topAnchor.constraint(equalTo: scroll.bottomAnchor, constant: 6),
+            footerRule.leadingAnchor.constraint(equalTo: content.leadingAnchor),
+            footerRule.trailingAnchor.constraint(equalTo: content.trailingAnchor),
+            footer.topAnchor.constraint(equalTo: footerRule.bottomAnchor),
+            footer.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 16),
+            footer.trailingAnchor.constraint(lessThanOrEqualTo: content.trailingAnchor, constant: -16),
+            footer.heightAnchor.constraint(equalToConstant: Self.footerHeight),
+            footer.bottomAnchor.constraint(equalTo: content.bottomAnchor),
         ])
     }
 
@@ -352,7 +411,9 @@ final class PaletteWindowController: NSObject, NSTextFieldDelegate, NSTableViewD
             case .row, .empty: return sum + Self.rowHeight
             }
         }
-        let height = Self.fieldHeight + 1 + 6 + min(list, Self.listCeiling) + 4 + Self.footerHeight
+        // The field, its rule, the list with its inset, the footer's rule and
+        // the footer: the same terms the constraints in `build` sum to.
+        let height = Self.fieldHeight + 1 + 6 + min(list, Self.listCeiling) + 6 + 1 + Self.footerHeight
         var frame = panel.frame
         let top = frame.maxY
         frame.size.height = height
@@ -501,66 +562,84 @@ final class PalettePanel: NSPanel {
     }
 }
 
-/// A row whose selection is a rounded accent block, as a menu draws it.
+/// A row whose selection is a quiet rounded wash, as a picker draws it: the
+/// ink keeps its colours, so a chord's key caps and a folder's grey read the
+/// same on the selected row as on every other.
 final class PaletteRowView: NSTableRowView {
     override func drawSelection(in dirtyRect: NSRect) {
         guard selectionHighlightStyle != .none else { return }
-        let rect = bounds.insetBy(dx: 4, dy: 1)
-        NSColor.controlAccentColor.setFill()
-        NSBezierPath(roundedRect: rect, xRadius: 7, yRadius: 7).fill()
+        let rect = bounds.insetBy(dx: 6, dy: 1)
+        NSColor.labelColor.withAlphaComponent(0.09).setFill()
+        NSBezierPath(roundedRect: rect, xRadius: 6, yRadius: 6).fill()
     }
 
+    /// Never emphasized: the wash above is the whole selection, and the cell
+    /// keeps its own ink rather than inverting to white.
     override var isEmphasized: Bool {
-        get { true }
+        get { false }
         set {}
     }
 }
 
-/// A section heading: small, secondary, spaced.
+/// A section heading: small, tertiary, sitting at the bottom of its row so
+/// the space it holds is above it, between sections.
 final class PaletteHeaderView: NSTableCellView {
     let label = NSTextField(labelWithString: "")
 
     init() {
         super.init(frame: .zero)
-        label.font = .systemFont(ofSize: 11, weight: .semibold)
-        label.textColor = .secondaryLabelColor
+        label.font = .systemFont(ofSize: 11, weight: .medium)
+        label.textColor = .tertiaryLabelColor
         label.translatesAutoresizingMaskIntoConstraints = false
         addSubview(label)
         NSLayoutConstraint.activate([
-            label.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 14),
-            label.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -14),
-            label.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -4),
+            label.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 18),
+            label.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -18),
+            label.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -5),
         ])
     }
 
     required init?(coder: NSCoder) { fatalError("not used") }
 }
 
-/// One item: the title with its matched letters emphasised, the detail (a
-/// chord, a folder) at the right, and a chevron on a row that opens rows.
+/// One item: the title with its matched letters emphasised, then at the
+/// trailing edge either the chord as key caps (a command) or the detail as
+/// text (a file's folder, a window's root), and a chevron on a row that
+/// opens rows. The trailing cluster is right-aligned across every row, so
+/// the chords form a column the eye can run down.
 final class PaletteCellView: NSTableCellView {
     private let title = NSTextField(labelWithString: "")
     private let detail = NSTextField(labelWithString: "")
+    private let keys = NSStackView(views: [])
     private let chevron = NSTextField(labelWithString: "›")
 
     init() {
         super.init(frame: .zero)
-        title.font = .systemFont(ofSize: 14)
+        title.font = .systemFont(ofSize: 13)
         title.lineBreakMode = .byTruncatingTail
         title.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        // The title is what takes the row's spare width, so the trailing
+        // cluster stays a cluster. Both priorities have to say so: a stack's
+        // own hugging is `setHuggingPriority`, not the view one, and at its
+        // default it ties the label's, which lets the spare width go to the
+        // caps instead.
+        title.setContentHuggingPriority(NSLayoutConstraint.Priority(rawValue: 1), for: .horizontal)
         detail.font = .systemFont(ofSize: 12)
         detail.textColor = .secondaryLabelColor
         detail.alignment = .right
         detail.lineBreakMode = .byTruncatingMiddle
         detail.setContentHuggingPriority(.required, for: .horizontal)
-        chevron.font = .systemFont(ofSize: 15, weight: .medium)
-        chevron.textColor = .secondaryLabelColor
+        keys.orientation = .horizontal
+        keys.spacing = 3
+        keys.setHuggingPriority(.required, for: .horizontal)
+        chevron.font = .systemFont(ofSize: 14, weight: .medium)
+        chevron.textColor = .tertiaryLabelColor
         chevron.setContentHuggingPriority(.required, for: .horizontal)
-        let stack = NSStackView(views: [title, detail, chevron])
+        let stack = NSStackView(views: [title, detail, keys, chevron])
         stack.orientation = .horizontal
         stack.spacing = 10
         stack.alignment = .centerY
-        stack.edgeInsets = NSEdgeInsets(top: 0, left: 14, bottom: 0, right: 14)
+        stack.edgeInsets = NSEdgeInsets(top: 0, left: 18, bottom: 0, right: 16)
         stack.translatesAutoresizingMaskIntoConstraints = false
         addSubview(stack)
         NSLayoutConstraint.activate([
@@ -575,34 +654,86 @@ final class PaletteCellView: NSTableCellView {
 
     func show(_ row: PaletteRow) {
         title.attributedStringValue = Self.emphasised(row.title, at: row.matched)
-        detail.stringValue = row.item.detail ?? ""
-        detail.isHidden = row.item.detail == nil
+        let asKeys = row.item.kind == .command && row.item.detail != nil
+        detail.stringValue = asKeys ? "" : (row.item.detail ?? "")
+        detail.isHidden = asKeys || row.item.detail == nil
+        keys.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        if asKeys, let chord = row.item.detail {
+            for cap in Self.keyCaps(chord) { keys.addArrangedSubview(KeyCapView(cap)) }
+        }
+        keys.isHidden = !asKeys
         chevron.isHidden = row.item.kind != .group
         // Non-Markdown files are dimmed in the explorer; the palette lists
         // only what the index admitted, so nothing here is dimmed.
     }
 
-    override var backgroundStyle: NSView.BackgroundStyle {
-        didSet {
-            let selected = backgroundStyle == .emphasized
-            title.textColor = selected ? .alternateSelectedControlTextColor : .labelColor
-            detail.textColor = selected ? NSColor.alternateSelectedControlTextColor.withAlphaComponent(0.8) : .secondaryLabelColor
-            chevron.textColor = detail.textColor
+    /// A chord in menu-bar symbols, split into the caps a keyboard has: each
+    /// modifier glyph on its own and the key after them (`⇧⌘K` is three).
+    static func keyCaps(_ chord: String) -> [String] {
+        var caps: [String] = []
+        var key = ""
+        for ch in chord {
+            if "⌃⌥⇧⌘".contains(ch), key.isEmpty { caps.append(String(ch)) } else { key.append(ch) }
         }
+        if !key.isEmpty { caps.append(key) }
+        return caps
     }
 
     /// The title with the matched letters in a heavier weight, which reads
     /// as the letters the query hit without a second colour.
     static func emphasised(_ text: String, at ranges: [Range<Int>]) -> NSAttributedString {
-        let result = NSMutableAttributedString(string: text, attributes: [.font: NSFont.systemFont(ofSize: 14)])
+        let result = NSMutableAttributedString(string: text, attributes: [.font: NSFont.systemFont(ofSize: 13)])
         let characters = Array(text)
         for range in ranges {
             guard range.lowerBound >= 0, range.upperBound <= characters.count else { continue }
             let start = String(characters[0..<range.lowerBound]).utf16.count
             let length = String(characters[range]).utf16.count
-            result.addAttribute(.font, value: NSFont.systemFont(ofSize: 14, weight: .bold),
+            result.addAttribute(.font, value: NSFont.systemFont(ofSize: 13, weight: .bold),
                                 range: NSRange(location: start, length: length))
         }
         return result
+    }
+}
+
+/// One key of a chord, drawn as a small cap: a rounded fill with the glyph
+/// centred in it, sized to the glyph with a floor so a single letter is as
+/// wide as a modifier symbol.
+final class KeyCapView: NSView {
+    private let label = NSTextField(labelWithString: "")
+
+    init(_ text: String) {
+        super.init(frame: .zero)
+        label.stringValue = text
+        label.font = .systemFont(ofSize: 11, weight: .medium)
+        label.textColor = .secondaryLabelColor
+        label.alignment = .center
+        label.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(label)
+        translatesAutoresizingMaskIntoConstraints = false
+        setContentHuggingPriority(.required, for: .horizontal)
+        setContentCompressionResistancePriority(.required, for: .horizontal)
+        NSLayoutConstraint.activate([
+            label.centerXAnchor.constraint(equalTo: centerXAnchor),
+            label.centerYAnchor.constraint(equalTo: centerYAnchor),
+            widthAnchor.constraint(greaterThanOrEqualToConstant: 20),
+            widthAnchor.constraint(equalTo: label.widthAnchor, constant: 10).with(priority: .defaultHigh),
+            heightAnchor.constraint(equalToConstant: 20),
+        ])
+    }
+
+    required init?(coder: NSCoder) { fatalError("not used") }
+
+    /// Drawn rather than a layer background, so the cap is there on every
+    /// path that draws the view, the PDF snapshot included.
+    override func draw(_ dirtyRect: NSRect) {
+        NSColor.labelColor.withAlphaComponent(0.08).setFill()
+        NSBezierPath(roundedRect: bounds, xRadius: 4, yRadius: 4).fill()
+    }
+}
+
+private extension NSLayoutConstraint {
+    func with(priority: NSLayoutConstraint.Priority) -> NSLayoutConstraint {
+        self.priority = priority
+        return self
     }
 }

@@ -50,6 +50,8 @@ export interface TreeModel {
     /** The rows to draw, top to bottom, over the root and every expanded folder. */
     visibleRows(showHidden: boolean): TreeRow[];
     isExpanded(path: string): boolean;
+    /** Every folder open below the root, shallowest first, as the host is told them. */
+    expandedPaths(): string[];
     /** Open a folder. Returns the paths that now need a listing (itself, when it has none). */
     expand(path: string): string[];
     collapse(path: string): void;
@@ -166,6 +168,7 @@ export function createTreeModel(): TreeModel {
         sortEntries,
         visibleRows,
         isExpanded,
+        expandedPaths: () => [...expanded].sort((a, b) => a.split("/").length - b.split("/").length || collator.compare(a, b)),
         expand,
         collapse,
         toggle(path) {

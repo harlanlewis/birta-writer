@@ -114,6 +114,47 @@ export function getTopbarBottom(): number {
 }
 
 /**
+ * The root property a host sets to the height of chrome IT draws over the
+ * bottom of the bar's box: a strip the page laid out around but cannot paint
+ * on. The Mac app's tab bar is the one such strip (AppKit draws it under the
+ * title row, over the page), and its host page declares it from the number
+ * the window pushes (mac/Resources/index.html). Absent means no strip, which
+ * is every other surface.
+ */
+export const HOST_STRIP_UNDER_TOPBAR_VAR = "--host-strip-under-topbar";
+
+/**
+ * The band at the bottom of the bar that the HOST paints over, as
+ * `{ top, bottom }` in viewport coordinates, or null when there is none.
+ *
+ * Chrome anchored INSIDE the bar (a tooltip, a dropdown, the sidebar flyout)
+ * normally hangs off its anchor, which is the rule `getTopbarBottom` alone
+ * cannot express: for that chrome the bar is not something to clear, the
+ * anchor lives in it. But a strip the host owns is opaque to the page, so
+ * anything that would open into it opens under it instead. The read is a
+ * computed style so the host can declare the variable through any
+ * chain it likes.
+ */
+export function hostStripUnderTopbar(): { top: number; bottom: number } | null {
+    if (document.body.classList.contains("toolbar-hidden")) { return null; }
+    const raw = getComputedStyle(document.documentElement).getPropertyValue(HOST_STRIP_UNDER_TOPBAR_VAR);
+    const strip = parseFloat(raw);
+    if (!(strip > 0)) { return null; }
+    const bottom = getTopbarBottom();
+    return { top: bottom - strip, bottom };
+}
+
+/**
+ * Push a box opening downward out of the host's strip: `top` unchanged when
+ * the box misses the strip, else the strip's bottom edge plus `gap`.
+ */
+export function clearHostStrip(top: number, height: number, gap: number): number {
+    const strip = hostStripUnderTopbar();
+    if (!strip) { return top; }
+    return top < strip.bottom && top + height > strip.top ? strip.bottom + gap : top;
+}
+
+/**
  * Whether `el` is INSIDE the bar `getTopbarBottom` measures.
  *
  * The pair travels together: chrome placed against the bar's bottom edge has

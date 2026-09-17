@@ -167,6 +167,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     /// reason a stored path no longer has to be thrown away to keep this
     /// switch honest.
     private let opensPopup = NSPopUpButton()
+    private let openFilesPopup = NSPopUpButton()
     private let iCloudSwitch = NSSwitch()
     private let iCloudCaption = Caption("")
     private let networkCaption = Caption("")
@@ -596,6 +597,12 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         opensPopup.target = self
         opensPopup.action = #selector(chooseNoteMode)
 
+        openFilesPopup.removeAllItems()
+        openFilesPopup.addItems(withTitles: FileOpenTarget.allCases.map(\.title))
+        openFilesPopup.controlSize = .small
+        openFilesPopup.target = self
+        openFilesPopup.action = #selector(chooseOpenFilesIn)
+
         // Item 0 is the button's own title under `pullsDown`, never an answer,
         // which is why the presets start at 1.
         agentPresetPopup.pullsDown = true
@@ -807,6 +814,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     /// so the row would be a setting that decides nothing.
     private func showNoteMode() {
         opensPopup.selectItem(withTitle: Prefs.noteMode.title)
+        openFilesPopup.selectItem(withTitle: Prefs.openFilesIn.title)
         guard let notesGroup else { return }
         SettingsWindowController.setRowHidden(
             notesGroup,
@@ -973,6 +981,13 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
             return (Self.trailingControls([updateButton, updateSwitch]), [], updateCaption)
         case .richLinks: return (networkSwitch, [], networkCaption)
         case .opens: return (opensPopup, [], nil)
+        case .opensFilesIn:
+            // Scoped in the caption, because the label alone reads as every
+            // open: a file under an open folder window goes to that window
+            // whatever this says, and Cmd+N follows the system's tab setting.
+            // One line, because the General pane has a height ceiling
+            // (`Metrics.maxPaneHeight`) and every row it holds is on it.
+            return (openFilesPopup, [], Caption("For files opened from outside that no folder window holds."))
         case .newNoteName:
             // The worked example goes FIRST, under the field and aligned with
             // it, because it is the field's own answer rather than a note
@@ -1429,6 +1444,11 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         Prefs.noteMode = NoteMode.allCases.first { $0.title == opensPopup.titleOfSelectedItem }
             ?? Prefs.noteMode
         showNoteMode()
+    }
+
+    @objc private func chooseOpenFilesIn() {
+        Prefs.openFilesIn = FileOpenTarget.allCases.first { $0.title == openFilesPopup.titleOfSelectedItem }
+            ?? Prefs.openFilesIn
     }
 
     /// Where notes live: the folder the app derives inside iCloud Drive, or

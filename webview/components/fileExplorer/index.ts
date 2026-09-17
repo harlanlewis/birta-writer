@@ -35,10 +35,12 @@ import { ensureFileExplorerStyles } from "./styles";
 import { createTreeModel, type TreeRow } from "./treeModel";
 import { t } from "@/i18n";
 import {
+    notifyFileExplorerExpanded,
     notifyFileExplorerVisibility,
     notifyFileExplorerWidth,
     notifyListDirectory,
     notifyOpenProjectFile,
+    notifyProjectFileMenu,
     notifySetFileExplorerShowHidden,
 } from "@/messaging";
 import type { EventManager } from "@/eventManager";
@@ -71,12 +73,14 @@ export interface FileExplorerHost {
     showHidden: boolean;
     /** The remembered show/hide choice, when the host has one. */
     visible?: boolean;
+    /** Folders to open on arrival: what the last page on this root had open. */
+    expanded?: readonly string[];
 }
 
 export interface FileExplorerController {
     readonly panel: HTMLElement;
     /** A different root for the same window; forgets every listing. */
-    setRoot: (root: ProjectRoot, showHidden: boolean) => void;
+    setRoot: (root: ProjectRoot, showHidden: boolean, expanded?: readonly string[]) => void;
     applyListing: (msg: DirectoryListingMessage) => void;
     setCurrentFile: (path: string | null) => void;
     directoryChanged: (paths: string[]) => void;
@@ -235,10 +239,30 @@ export function createFileExplorer(host: FileExplorerHost): FileExplorerControll
             if (el.classList.contains("files-row--dir")) { toggleFolder(el.dataset["path"] ?? ""); }
         });
         el.addEventListener("mousedown", (e) => { e.preventDefault(); e.stopPropagation(); });
+        // A plain click moves this window to the file; the modifiers every
+        // sidebar and browser use for "beside, not instead" ask for a tab:
+        // Cmd+click and the middle button (which fires `auxclick`, never
+        // `click`).
         el.addEventListener("click", (e) => {
             e.preventDefault();
             e.stopPropagation();
-            activate(el);
+            activate(el, { newTab: e.metaKey || e.ctrlKey });
+        });
+        el.addEventListener("auxclick", (e) => {
+            if (e.button !== 1) { return; }
+            e.preventDefault();
+            e.stopPropagation();
+            activate(el, { newTab: true });
+        });
+        // The row's menu is the host's (a native one, with actions only the
+        // host can perform), so the page reports the point and draws
+        // nothing; the browser's own text menu over a file name is refused.
+        el.addEventListener("contextmenu", (e) => {
+            const kind = el.dataset["kind"];
+            if (kind !== "dir" && kind !== "file") { return; }
+            e.preventDefault();
+            e.stopPropagation();
+            notifyProjectFileMenu(el.dataset["path"] ?? "", kind, e.clientX, e.clientY);
         });
         return el;
     }
@@ -317,15 +341,32 @@ export function createFileExplorer(host: FileExplorerHost): FileExplorerControll
     function toggleFolder(path: string): void {
         requestAll(model.toggle(path));
         render();
+        // The host keeps the open set for the next page on this root, so the
+        // tree survives the window moving to another file. Reported on the
+        // reader's toggles alone: a reveal opens ancestors the reader did
+        // not ask for, and a page seeded with those would open them again
+        // after the file they led to was long closed.
+        notifyFileExplorerExpanded(model.expandedPaths());
     }
 
-    function activate(el: HTMLElement): void {
+    /**
+     * Open the folders a previous page on this root had open. Each is asked
+     * for on its own, the way a reveal asks for every ancestor at once:
+     * the host resolves paths independently, so nothing waits on a parent's
+     * listing to ask for a child's.
+     */
+    function seedExpanded(paths: readonly string[] | undefined): void {
+        if (!paths?.length) { return; }
+        requestAll(paths.flatMap((path) => model.expand(path)));
+    }
+
+    function activate(el: HTMLElement, opts: { newTab: boolean } = { newTab: false }): void {
         const path = el.dataset["path"] ?? "";
         switch (el.dataset["kind"]) {
             case "dir": toggleFolder(path); break;
             // The host opens it and then says which file is current; the row
             // is selected by that answer, never here.
-            case "file": notifyOpenProjectFile(path); break;
+            case "file": notifyOpenProjectFile(path, opts.newTab); break;
             case "error": requestListing(path); render(); break;
             default: break;
         }
@@ -333,6 +374,19 @@ export function createFileExplorer(host: FileExplorerHost): FileExplorerControll
 
     // ── Keyboard: one roving Tab stop, arrows along the tree ─────────────
     const rowItems = (): HTMLElement[] => [...tree.querySelectorAll<HTMLElement>(".files-row:not([hidden])")];
+    // Cmd+Return is the keyboard's Cmd+click. Bound before the roving
+    // handler, which would otherwise turn the Return into a plain click with
+    // the modifier dropped; listeners on one element run in the order they
+    // were added, and the immediate stop is what keeps the second from
+    // running at all.
+    tree.addEventListener("keydown", (e) => {
+        if (e.key !== "Enter" || !(e.metaKey || e.ctrlKey)) { return; }
+        const active = document.activeElement;
+        if (!(active instanceof HTMLElement) || !rowItems().includes(active)) { return; }
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        activate(active, { newTab: true });
+    });
     const roving = wireRoving({
         container: tree,
         items: rowItems,
@@ -405,11 +459,12 @@ export function createFileExplorer(host: FileExplorerHost): FileExplorerControll
         initialLoad = false;
     });
     requestListing("");
+    seedExpanded(host.expanded);
     document.body.appendChild(panel);
 
     return {
         panel,
-        setRoot(root, nextShowHidden) {
+        setRoot(root, nextShowHidden, expanded) {
             for (const { timer } of inflight.values()) { clearTimeout(timer); }
             inflight.clear();
             inflightByPath.clear();
@@ -421,6 +476,7 @@ export function createFileExplorer(host: FileExplorerHost): FileExplorerControll
             rootName.textContent = root.name;
             tree.setAttribute("aria-label", root.name);
             requestListing("");
+            seedExpanded(expanded);
             render();
         },
         applyListing,

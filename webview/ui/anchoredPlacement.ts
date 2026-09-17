@@ -32,7 +32,7 @@
  * `safeAreaTop()`, not 0, because the topbar and sticky heading are fixed and
  * opaque and nearly every popup paints beneath them. See `Viewport.top`.
  */
-import { safeAreaTop } from "../utils/headingUtils";
+import { hostStripUnderTopbar, isInTopbar, safeAreaTop } from "../utils/headingUtils";
 
 export interface Rect { left: number; right: number; top: number; bottom: number; }
 export interface Size { width: number; height: number; }
@@ -251,7 +251,13 @@ export function placeMenu(anchor: HTMLElement, menu: HTMLElement): void {
     const rect = { left: r.left, right: r.right, top: r.top, bottom: r.bottom };
     const { alignRight, flipUp } = computeMenuPlacement(rect, { width, height }, viewport);
 
-    if (anchor.closest(`[${MENU_CLIP_ATTR}]`)) {
+    // Two reasons a menu cannot hang off its wrap and takes viewport
+    // coordinates instead: the wrap's box clips it, or the bar its wrap is in
+    // ends in a strip the host paints over (the Mac app's tab bar), which a
+    // menu opening downward out of the bar would be drawn under. Both land
+    // the menu at the safe edge, which for the second is below the strip.
+    const underHostStrip = hostStripUnderTopbar() !== null && isInTopbar(anchor);
+    if (anchor.closest(`[${MENU_CLIP_ATTR}]`) || underHostStrip) {
         const pos = computeAnchoredPosition(rect, { width, height }, viewport);
         menu.style.position = "fixed";
         menu.style.left = `${pos.left}px`;
@@ -262,6 +268,10 @@ export function placeMenu(anchor: HTMLElement, menu: HTMLElement): void {
         return;
     }
 
+    // The strip can be gone by the next open (the last other tab closed), so
+    // a menu once sent to viewport coordinates is put back on its wrap.
+    menu.style.position = "";
+    menu.style.maxHeight = "";
     menu.style.left = alignRight ? "auto" : "0";
     menu.style.right = alignRight ? "0" : "auto";
     menu.style.top = flipUp ? "auto" : `calc(100% + ${MENU_GAP}px)`;
