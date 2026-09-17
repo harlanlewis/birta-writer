@@ -12,6 +12,10 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ## [Unreleased]
 
+---
+
+## [2026.916.1] - 2026, September 16
+
 ### Added
 
 - Open files in, a setting beside New windows open with. It decides where a file opened from the Finder, Open (⌘O) or Open Recent lands when no open folder window holds it: a new tab beside the window in front, which is the default, or a new window, which is opened as a window whatever the system's Prefer tabs setting says. A file under an open folder window still goes to that window, and New Note (⌘N) still follows the system's tab setting.
