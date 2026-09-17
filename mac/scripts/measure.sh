@@ -2638,6 +2638,16 @@ case "$FILES" in
     *"top=b.md|sub"*) echo "command palette      ok: bold ranks Bold ⌘B first; Go to File finds sub/b.md under the root" ;;
     *) echo "command palette      FAILED: Go to File did not list the root's file with its folder: $FILES" >&2; exit 1 ;;
 esac
+# And the same file from the palette over EVERYTHING (⇧⌘P): a file name typed
+# there has to find the file among the commands, or a reader who never learns
+# ⌘P cannot open a file from the keyboard at all. First, not merely present:
+# the commands a file name can partly match are many, and a file three rows
+# down under three of them is a file the reader will not see.
+ALL="$(palette_probe b.md all)"
+case "$ALL" in
+    *"top=b.md|sub"*) echo "command palette      ok: the palette over everything ranks sub/b.md first for its name" ;;
+    *) echo "command palette      FAILED: a file name typed into the palette over everything did not put the file first: $ALL" >&2; exit 1 ;;
+esac
 
 # The windows come back after a quit, the same ones with the same one in
 # front, tabs grouped as they were (MAR-421, MAR-393).
