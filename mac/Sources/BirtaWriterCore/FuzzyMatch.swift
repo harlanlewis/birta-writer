@@ -23,7 +23,9 @@ import Foundation
 /// the next occurrence at all. That is not the optimal alignment and does
 /// not need to be; it is the alignment a person's eye makes, and it is what
 /// keeps this a few dozen lines with no dependency, which the ticket asked
-/// for. The ranges are handed back so a row can draw the letters it matched.
+/// for. Where it refuses a candidate the plain first-occurrence alignment
+/// stands in (`match` says why). The ranges are handed back so a row can
+/// draw the letters it matched.
 public enum FuzzyMatch {
     public struct Match: Equatable, Sendable {
         public let score: Int
@@ -43,19 +45,37 @@ public enum FuzzyMatch {
 
     /// The match, or nil when the query is not a subsequence of the
     /// candidate. An empty query matches everything with no letters marked.
+    ///
+    /// The greedy alignment above, and when it refuses, the plain one that
+    /// takes each letter's first occurrence. The greedy walk can refuse a
+    /// candidate that is a match, and even one that STARTS with the query:
+    /// `theme` against `Theme › Harlan Slate` jumps from the T to Harlan's
+    /// word-start H, then finds no m after it, and returns nil, while the
+    /// plain walk reads the first word. The plain walk is a fallback rather
+    /// than a rival scored beside it, so every ranking between candidates
+    /// the greedy walk does align is exactly what it was; what changes is
+    /// that a subsequence is never refused.
     public static func match(_ query: String, in candidate: String) -> Match? {
         let needle = Array(query.lowercased())
         guard !needle.isEmpty else { return Match(score: 0, ranges: []) }
         let hay = Array(candidate)
         let folded = Array(candidate.lowercased())
         guard folded.count == hay.count else { return fallbackMatch(needle, folded: folded) }
+        return align(needle, folded: folded, hay: hay, preferringWordStarts: true)
+            ?? align(needle, folded: folded, hay: hay, preferringWordStarts: false)
+    }
 
+    private static func align(_ needle: [Character], folded: [Character], hay: [Character],
+                              preferringWordStarts: Bool) -> Match? {
         var score = 0
         var ranges: [Range<Int>] = []
         var position = 0
         var previous = -1
         for letter in needle {
-            guard let at = nextIndex(of: letter, in: folded, from: position, original: hay) else { return nil }
+            let found = preferringWordStarts
+                ? nextIndex(of: letter, in: folded, from: position, original: hay)
+                : folded[position...].firstIndex(of: letter)
+            guard let at = found else { return nil }
             let boundary = isWordStart(at, in: hay)
             let adjacent = previous >= 0 && at == previous + 1
             score += boundary ? 3 : (adjacent ? 2 : 1)

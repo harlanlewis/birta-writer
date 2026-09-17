@@ -57,6 +57,7 @@ final class SettingsFormTests: XCTestCase {
         XCTAssertEqual(SettingsForm.allRows,
                        SettingsForm.rows(of: SettingsForm.general)
                            + SettingsForm.rows(of: SettingsForm.markdown)
+                           + SettingsForm.rows(of: SettingsForm.appearance)
                            + SettingsForm.rows(of: SettingsForm.aiAgent)
                            + SettingsForm.rows(of: SettingsForm.advanced(showsWelcomeScreen: true)))
         XCTAssertEqual(SettingsForm.allRows.count, SettingsRow.allCases.count)

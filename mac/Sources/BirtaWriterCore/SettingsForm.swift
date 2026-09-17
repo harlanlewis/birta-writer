@@ -43,6 +43,16 @@ public enum SettingsRow: String, CaseIterable, Sendable {
     case syntaxCalc = "Calculation blocks"
     case resetSettings = "Reset all settings"
     case welcomeScreen = "Welcome screen"
+    // The Appearance pane (`Appearance.swift`): the mode, the theme in each
+    // mode's slot, the colour mod, and the typography the toolbar's menu
+    // also carries.
+    case appearanceMode = "Appearance"
+    case theme = "Theme"
+    case accent = "Accent"
+    case tint = "Tint"
+    case transparentSidebar = "Transparent sidebar"
+    case font = "Font"
+    case fontSize = "Size"
 }
 
 /// The rows the FIRST RUN asks about, as their own type.
@@ -89,20 +99,34 @@ public struct SettingsGroup: Sendable {
     }
 }
 
+/// A link drawn at the end of a pane's intro.
+public struct SettingsLink: Sendable {
+    public let title: String
+    public let url: URL
+
+    public init(title: String, url: URL) {
+        self.title = title
+        self.url = url
+    }
+}
+
 /// One Settings pane: what it says before the first card, and the cards.
 ///
 /// The intro sits under the pane's own tab title, which is the heading it
 /// belongs to. It is for a pane holding a capability somebody has to opt into
 /// and would otherwise have to guess at; a pane of ordinary settings has none,
 /// because a paragraph over a list of switches is a preamble nobody reads on
-/// the way to a control they can already see.
+/// the way to a control they can already see. A link, where the intro names
+/// something a reader would look up, is drawn at the end of its last line.
 public struct SettingsPane: Sendable {
     /// Paragraphs above the first card. Empty for most panes.
     public let intro: [String]
+    public let link: SettingsLink?
     public let groups: [SettingsGroup]
 
-    public init(intro: [String] = [], groups: [SettingsGroup]) {
+    public init(intro: [String] = [], link: SettingsLink? = nil, groups: [SettingsGroup]) {
         self.intro = intro
+        self.link = link
         self.groups = groups
     }
 }
@@ -250,6 +274,32 @@ public enum SettingsForm {
         ])
     }
 
+    /// How the page looks (`Appearance.swift`): the mode, the theme drawn in
+    /// each mode, the colour mod over it, and the typography.
+    ///
+    /// Its own pane for the reason Markdown is one: General is what the app
+    /// IS, and this is what it looks like. The intro is one sentence, and it
+    /// is the one thing the rows cannot say: that a VS Code theme can be
+    /// used here at all is not guessable from a card, and the link is where
+    /// such themes are found. Copy stops there; every control below is a
+    /// picture or a swatch rather than a sentence.
+    ///
+    /// The mode leads, as it does in System Settings; the theme card is one
+    /// row holding both modes' slots, because a slot is not a question on
+    /// its own but half of one; the colour mod and the sidebar are the
+    /// system's own theme made yours; and the typography is the toolbar's
+    /// menu on a pane, for every window at once.
+    public static let appearance = SettingsPane(
+        intro: ["Birta Writer is compatible with"],
+        link: SettingsLink(title: "VS Code themes.",
+                           url: URL(string: "https://code.visualstudio.com/docs/configure/themes#_color-themes")!),
+        groups: [
+            SettingsGroup(rows: [.appearanceMode]),
+            SettingsGroup(rows: [.theme]),
+            SettingsGroup(rows: [.accent, .tint, .transparentSidebar]),
+            SettingsGroup(rows: [.font, .fontSize]),
+        ])
+
     /// Every pane, in toolbar order. `SettingsFormTests` sums these to check
     /// that a case added to `SettingsRow` was actually placed on a screen, and
     /// summing a LIST rather than naming each array is what stops a new pane
@@ -261,7 +311,7 @@ public enum SettingsForm {
     /// is coverage: a row some build hides is still a row that has to be
     /// placed somewhere, and a `panes` that hid it would report it unplaced.
     public static var panes: [SettingsPane] {
-        [general, markdown, aiAgent, advanced(showsWelcomeScreen: true)]
+        [general, markdown, appearance, aiAgent, advanced(showsWelcomeScreen: true)]
     }
 
     /// The rows of a Settings pane, top to bottom, with the cards flattened

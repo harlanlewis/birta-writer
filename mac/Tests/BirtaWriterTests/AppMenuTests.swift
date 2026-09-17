@@ -172,7 +172,7 @@ final class AppMenuTests: XCTestCase {
         XCTAssertEqual(titles(of: view), [
             "Command Palette…",
             "-", "Zoom In", "Zoom Out", "Actual Size",
-            "-", "Font", "Folding",
+            "-", "Font", "Theme", "Folding",
             "-", "Show Table of Contents", "Show Files", "Show Hidden Files", "Line Numbers",
             "-", "Proofreading",
             // The bracket macOS's own Enter Full Screen lands under; see

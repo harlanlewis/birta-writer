@@ -63,7 +63,7 @@ final class PaletteWindowTests: XCTestCase {
         let menuTitles = Set(AppMenu.rows.filter {
             switch $0.action {
             case .app, .command, .link: return true
-            case .submenu, .recents: return false
+            case .submenu, .recents, .themes: return false
             }
         }.map { row -> String in
             if case let .title(toggle, whenOn)? = row.state, state.isOn(toggle) { return whenOn }
@@ -127,7 +127,7 @@ final class PaletteWindowTests: XCTestCase {
     func testSettingsShouldBeOneGroupPerPaneNamedAsTheWindowNamesThem() {
         let catalog = realCatalog()
         let groups = catalog.items.filter { $0.section == PaletteSources.settingsSection }
-        XCTAssertEqual(groups.map(\.title), ["General", "Markdown", "AI Agent", "Advanced"])
+        XCTAssertEqual(groups.map(\.title), ["General", "Markdown", "Appearance", "AI Agent", "Advanced"])
         XCTAssertEqual(groups.map(\.title), SettingsWindowController.paneTitles,
                        "the groups say what the window's toolbar says, in its order")
         XCTAssertEqual(PaletteSources.settingsPanes.count, SettingsWindowController.paneNames.count,

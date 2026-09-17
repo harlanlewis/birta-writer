@@ -14,8 +14,14 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ### Added
 
-- Line Numbers, in the View menu: the editor's optional column of source line numbers, off until asked for, for every window at once. It is the same gutter the extension's `birta.lineNumbers` turns on.
+- An Appearance pane in Settings, and VS Code color themes. Birta Writer for Mac follows the macOS light and dark appearance as before; the pane's first row holds it to Light or Dark, or leaves it on Auto. Each of light and dark has a slot: the system's own palette, or any VS Code color theme, so daytime can be one theme and night another, or a theme by day and macOS dark by night. Themes are added from a theme's `.json` file, a theme extension's folder, a `.vsix`, every theme installed in or shipped with VS Code, Cursor and their siblings in one step, or by browsing the Open VSX registry from the pane. A theme colours the whole page and its code blocks, its own token colours included, and every window and tab follows a change at once, chrome included. The theme in force is also picked under View > Theme and in the command palette, where the modes and every theme are rows and the ones in force say so. Beside the themes, the pane carries an accent, a paper tint and a transparent sidebar, which recolour the system's palette or a theme on the fly, and the font and size the toolbar's menu already sets, for every window at once.
+- Line Numbers, in the View menu: the editor's optional column of source line numbers, off until asked for, for every window at once, standing past the file explorer when that is open. It is the same gutter the extension's `birta.lineNumbers` turns on.
 - Go to Line… (⌃G), under Edit > Find, the editor's own prompt.
+
+### Fixed
+
+- A file opened as a tab of a folder window could settle its explorer wrongly: closed, or under the formatting row rather than level with it, because the page decided while its view was still the size it was created at and was never told the window's. A docked panel now follows the viewport's own box.
+- The command palette could fail to find a row by the word it starts with: typing `sho` did not list Show Hidden Files, because the match jumped from the S to the H of Hidden and found no o after it. A row that contains the typed letters in order is now always listed.
 
 ### Changed
 

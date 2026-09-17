@@ -16,6 +16,19 @@ final class FuzzyMatchTests: XCTestCase {
         XCTAssertNil(FuzzyMatch.match("lati", in: "Italic"), "order matters")
     }
 
+    /// The greedy walk alone refused these: it jumped from the T to a
+    /// later word-start H and then found no m, on a title that starts with
+    /// the query. The plain alignment stands in when it refuses.
+    func testATitleThatStartsWithTheQueryIsNeverRefused() {
+        let slate = FuzzyMatch.match("theme", in: "Theme › Harlan Slate")
+        XCTAssertEqual(slate?.ranges, [0..<5], "the first word, as a run")
+        XCTAssertNotNil(FuzzyMatch.match("theme", in: "Theme › System Theme"))
+        XCTAssertNotNil(FuzzyMatch.match("theme", in: "Theme › Harlan Terminal (Amber)"))
+        XCTAssertEqual(FuzzyMatch.match("sho", in: "Show Hidden Files")?.ranges, [0..<3],
+                       "the shipped case: the H of Hidden took the h, and no o follows it")
+        XCTAssertNil(FuzzyMatch.match("themez", in: "Theme › Harlan Slate"), "still a subsequence test: no z")
+    }
+
     func testAnEmptyQueryMatchesEverythingAndMarksNothing() {
         let match = FuzzyMatch.match("", in: "Anything")
         XCTAssertEqual(match, FuzzyMatch.Match(score: 0, ranges: []))

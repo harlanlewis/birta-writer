@@ -249,7 +249,7 @@ Reorganizing a long document is the one edit that's genuinely painful in raw Mar
 
 ## It stays out of the way
 
-- It matches your VS Code theme, with no per-editor color settings, recoloring live when you switch themes or the OS flips light and dark. The document looks like the rest of your editor, always, with nothing to configure.
+- It matches your VS Code theme, with no per-editor color settings, recoloring live when you switch themes or the OS flips light and dark. The document looks like the rest of your editor, always, with nothing to configure. Birta Writer for Mac follows the macOS appearance the same way, and can wear any VS Code color theme you add to it, one for light and one for dark, code-block colors included, with an accent and a paper tint of your own over either.
 - It starts fast. Heavy dependencies (math, diagrams, syntax grammars) load only when a document needs them, so opening a file paints quickly and switching in and out of the editor never feels like a penalty.
 - Saving is just VS Code saving. The editor is backed by a native text document, so `files.autoSave`, the dirty-dot in the tab, and hot-exit all work exactly as they do everywhere else, down to the dot clearing when you undo back to the content the file already holds. There is no bespoke save model to learn or distrust.
 - Your images never leave your machine. Pasted and dropped images are stored locally in your workspace, deduplicated by content hash. No surprise uploads, and the document is self-contained.

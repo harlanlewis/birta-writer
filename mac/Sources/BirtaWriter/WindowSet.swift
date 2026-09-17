@@ -645,6 +645,94 @@ final class WindowSet {
         windows.forEach { $0.applyLineNumbers(enabled) }
     }
 
+    // MARK: appearance
+
+    /// The themes the app has been given, and what the page looks like
+    /// right now (`Appearance.swift`).
+    ///
+    /// One store and one answer for the process, because a theme is what the
+    /// app looks like rather than what a window shows: View > Theme, the
+    /// Appearance pane and the palette all read `Prefs.appearance` and all
+    /// move every window. Resolved against the store and the system's
+    /// appearance rather than trusted, so a slot naming a theme whose file
+    /// has gone reads as the system's, and the slot in force is the one for
+    /// the mode macOS is in.
+    let themeStore = ThemeStore.installed
+    private(set) lazy var appearance: ResolvedAppearance = resolveAppearance()
+    private var appearanceObservation: NSKeyValueObservation?
+
+    /// Whether macOS is dark right now: the application's own effective
+    /// appearance, which follows the system while nothing forces the
+    /// app's. A window's cannot answer this, because a window wearing a
+    /// dark theme is held dark whatever the system does.
+    static var systemIsDark: Bool {
+        NSApp.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+    }
+
+    private func resolveAppearance() -> ResolvedAppearance {
+        let store = themeStore
+        return Appearance.resolve(Prefs.appearance, systemIsDark: Self.systemIsDark) { store.theme(id: $0) }
+    }
+
+    /// Store `settings` and put the answer on every window.
+    func setAppearance(_ settings: AppearanceSettings) {
+        Prefs.appearance = settings
+        appearanceChanged()
+    }
+
+    /// Something under the answer moved (the system flipped, the store
+    /// changed, the settings were reset): resolve again and re-apply.
+    func appearanceChanged() {
+        appearance = resolveAppearance()
+        let mode = Prefs.appearance.mode
+        windows.forEach { $0.applyAppearance(appearance, mode: mode) }
+    }
+
+    /// A theme picked from the menu bar or the palette goes into the slot
+    /// of the mode in force, which is the one the reader is looking at.
+    func chooseTheme(id: String?) {
+        setAppearance(Prefs.appearance.setting(id, for: appearance.kind))
+    }
+
+    func setAppearanceMode(_ mode: AppearanceMode) {
+        var settings = Prefs.appearance
+        settings.mode = mode
+        setAppearance(settings)
+    }
+
+    /// The store's contents changed under the settings (a theme added over
+    /// the one in force, or removed).
+    func themesChanged() { appearanceChanged() }
+
+    /// Follow the system: a slot for each of light and dark means the
+    /// answer changes at dusk with nothing touched, and a window held to a
+    /// theme's kind never hears the system flip, so the application is
+    /// what is watched.
+    func observeSystemAppearance() {
+        // Applied in the same turn rather than hopped through a task: the
+        // window's own appearance callback runs synchronously with the flip
+        // and would draw one frame with the old mod (a dark-tinted paper on a
+        // page now light) before a hop caught up.
+        appearanceObservation = NSApp.observe(\.effectiveAppearance, options: [.new]) { [weak self] _, _ in
+            MainActor.assumeIsolated { self?.appearanceChanged() }
+        }
+    }
+
+    /// An editor command in every window: the Appearance pane's typography
+    /// rows are the toolbar's own commands, which apply live in the page and
+    /// post the setting back, so the pane runs them everywhere rather than
+    /// reloading every page.
+    func runEditorCommandEverywhere(_ id: String) {
+        windows.forEach { $0.runEditorCommand(id) }
+    }
+
+    /// View > Theme, filled from this store and this answer.
+    func themesMenu() -> ThemesMenu {
+        ThemesMenu(source: { [weak self] in self?.themeStore.list() ?? [] },
+                   current: { [weak self] in self?.appearance.themeId },
+                   mode: { Prefs.appearance.mode })
+    }
+
     /// Open a file: the Finder's Open With, a drop on the Dock icon, `open -a`,
     /// Cmd+O, or a row of Open Recent. In a new window, unless the window in
     /// front is standing on a file that has gone.
@@ -946,7 +1034,7 @@ final class WindowSet {
         // restores from; the set's own frame outranks it once there is one
         // (`AppPanel.restoredFrame`).
         let made = Coordinator(boundTo: url, slot: slot, remembersFrame: windows.isEmpty, frame: frame,
-                               explorerRoot: explorerRoot)
+                               explorerRoot: explorerRoot, appearance: appearance, appearanceMode: Prefs.appearance.mode)
         // A tab beside a window on the same root starts with that window's
         // tree open the same way, rather than with only the path to its file.
         if let group, let explorerRoot, let groupRoot = group.explorerRoot,
@@ -987,6 +1075,10 @@ final class WindowSet {
     /// that window comes forward instead: two windows over one note is the
     /// thing every other path here refuses.
     func settingsWereReset() {
+        // Before the reload, so the page served next carries no theme, and
+        // for every window rather than the front one, since the theme was
+        // on all of them.
+        appearanceChanged()
         guard let front = key else { return }
         if front.bindingSlot == nil {
             let scratchpad = Prefs.scratchpadURL!
@@ -1195,6 +1287,7 @@ final class WindowSet {
         }
         installEscapeMonitor()
         installTabChordMonitor()
+        observeSystemAppearance()
         observeSpaceChanges()
         if Measure.isEnabled { installDebugSignals() }
     }

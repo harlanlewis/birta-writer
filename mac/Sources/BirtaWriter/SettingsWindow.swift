@@ -1,5 +1,6 @@
 import AppKit
 import BirtaWriterCore
+import UniformTypeIdentifiers
 
 /// The app's Settings window.
 ///
@@ -47,8 +48,10 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         /// of this and the screen, so a display that cannot show this much
         /// scrolls anyway. What this number decides is the point at which
         /// scrolling is preferable to a taller window, on a screen with room
-        /// for either.
-        static let maxPaneHeight: CGFloat = 740
+        /// for either. Appearance is the tallest: its two strips of theme
+        /// cards are pictures rather than rows and take the height pictures
+        /// take, and this has to fit it with every card drawn.
+        static let maxPaneHeight: CGFloat = 900
         static var captionWidth: CGFloat { content - rowInset * 2 }
     }
 
@@ -78,12 +81,13 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     ///
     /// Which rows are on which pane is `SettingsForm`'s and not this enum's.
     private enum Tab: String, CaseIterable {
-        case general, markdown, aiAgent, advanced
+        case general, markdown, appearance, aiAgent, advanced
 
         var title: String {
             switch self {
             case .general: return "General"
             case .markdown: return "Markdown"
+            case .appearance: return "Appearance"
             case .aiAgent: return "AI Agent"
             case .advanced: return "Advanced"
             }
@@ -96,6 +100,8 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
             // glyph is the one the system uses for text formatting rather than
             // a document or a pencil: neither of those is about the marks.
             case .markdown: return "textformat"
+            // The glyph System Settings uses for the same pane.
+            case .appearance: return "circle.lefthalf.filled"
             // Not a robot and not a brain: the pane is about handing a request
             // to something that answers, which is what this glyph is for
             // everywhere else on the system.
@@ -184,6 +190,37 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     private let updateButton = NSButton(title: "Check Now", target: nil, action: nil)
     private let resetButton = NSButton(title: "Reset to defaults", target: nil, action: nil)
     private let welcomeButton = NSButton(title: "Show Welcome", target: nil, action: nil)
+    /// The Appearance pane's controls (`AppearanceControls.swift`). View >
+    /// Theme and the palette move the same setting, so the pane is re-read
+    /// whenever it could be stale (`refreshAppearance`) rather than trusted
+    /// to be what was last chosen here.
+    private let modePicker = AppearanceModePicker()
+    private let lightStrip = ThemeStrip(kind: .light)
+    private let darkStrip = ThemeStrip(kind: .dark)
+    private let addThemeButton = NSPopUpButton()
+    private let accentRow = SwatchRow(colors: AppearanceOverlay.accents, noneTitle: "Default")
+    private let tintRow = SwatchRow(colors: AppearanceOverlay.tints, noneTitle: "None")
+    private let sidebarSwitch = NSSwitch()
+    private let fontControl = NSSegmentedControl(labels: SettingsWindowController.fontChoices.map(\.title), trackingMode: .selectOne,
+                                                 target: nil, action: nil)
+    private let fontSizeStepper = FontSizeStepper()
+    /// The library as last read.
+    private var themeRows: [ThemeSummary] = []
+    /// The registry browser while its sheet is up. Held here because nothing
+    /// in the sheet holds it: every back-reference AppKit keeps to a target,
+    /// a delegate or a data source is weak, so a controller nobody owns is
+    /// gone before its sheet is on screen, and the sheet stays up with
+    /// buttons that reach nothing (`UpdatePrompt` says the same of an offer).
+    private var themeBrowser: ThemeBrowserController?
+    static let addThemeFromFileTitle = "Choose File or Folder…"
+    static let addThemeFromVSCodeTitle = "Add Themes Installed in VS Code"
+    static let browseThemesTitle = "Browse Open VSX…"
+    /// The presets the page offers this host (`typography.ts` withholds the
+    /// editor font where the host declares no `editorFont`), each with the
+    /// editor command that picks it.
+    static let fontChoices: [(preset: String, title: String, command: String)] = [
+        ("sans", "Sans", "fontSans"), ("serif", "Serif", "fontSerif"), ("mono", "Mono", "fontMono"),
+    ]
     /// One switch per publishing target, keyed by the target itself.
     ///
     /// A dictionary built from `SyntaxSet.allCases` rather than four named
@@ -257,6 +294,18 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     /// Ask for an update check now. The Updater is the app delegate's, so it
     /// outlives this window.
     private let onCheckForUpdates: () -> Void
+    /// The themes the app holds, for the Appearance pane to list and add to.
+    private let themeStore: ThemeStore
+    /// Store the settings and put them on every window, live. The app's
+    /// rather than the front window's, because a theme is what the app
+    /// looks like (`WindowSet.setAppearance`).
+    private let onAppearanceChange: (AppearanceSettings) -> Void
+    /// The library changed under the settings: the app re-reads which theme
+    /// is in force, since the one it had may have been replaced or removed.
+    private let onThemesChanged: () -> Void
+    /// Run an editor command in every window: the typography rows are the
+    /// toolbar's own commands, which apply live and post the setting back.
+    private let onEditorCommand: (String) -> Void
 
     /// Every setting has just gone back to its default, and the window in
     /// front should land on the default note. A third closure rather than a
@@ -274,8 +323,16 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
          onChangeEverywhere: @escaping () -> Void,
          onReset: @escaping () -> Void = {},
          onShowWelcome: @escaping () -> Void,
-         onCheckForUpdates: @escaping () -> Void) {
+         onCheckForUpdates: @escaping () -> Void,
+         themeStore: ThemeStore = .installed,
+         onAppearanceChange: @escaping (AppearanceSettings) -> Void = { _ in },
+         onThemesChanged: @escaping () -> Void = {},
+         onEditorCommand: @escaping (String) -> Void = { _ in }) {
         self.flavour = flavour
+        self.themeStore = themeStore
+        self.onAppearanceChange = onAppearanceChange
+        self.onThemesChanged = onThemesChanged
+        self.onEditorCommand = onEditorCommand
         self.onHotkeyChange = onHotkeyChange
         self.refusedSummonCombo = refusedSummonCombo
         self.onChange = onChange
@@ -478,6 +535,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         switch tab {
         case .general: return SettingsForm.rows(of: SettingsForm.general)
         case .markdown: return SettingsForm.rows(of: SettingsForm.markdown)
+        case .appearance: return SettingsForm.rows(of: SettingsForm.appearance)
         case .aiAgent: return SettingsForm.rows(of: SettingsForm.aiAgent)
         case .advanced: return SettingsForm.rows(of: advancedPane)
         }
@@ -587,6 +645,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     /// Wire every control once, whichever pane ends up holding it.
     private func wireControls() {
         hotkeyRecorder.onCombo = { [weak self] combo in self?.hotkeyChosen(combo) }
+        wireAppearanceControls()
 
         // Titles come from the types, so a case added to `NoteMode` or
         // `AgentPreset` appears here without this file being edited. The
@@ -726,6 +785,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         showNoteMode()
         showNoteNamePreview()
         showFiles()
+        refreshAppearance()
     }
 
     /// The rows whose availability is a fact about the build or the system
@@ -931,7 +991,12 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         // No heading is drawn above them: the toolbar already carries one, and
         // a second copy of the tab's title at the top of its own pane is the
         // window saying where you are twice.
-        sections.append(contentsOf: pane.intro.map(Self.intro))
+        if let link = pane.link, let last = pane.intro.last {
+            sections.append(contentsOf: pane.intro.dropLast().map(Self.intro))
+            sections.append(Self.introWithLink(last, link))
+        } else {
+            sections.append(contentsOf: pane.intro.map(Self.intro))
+        }
         for group in pane.groups {
             let box = Self.group(group.rows.map { row in
                 let parts = wiring(for: row)
@@ -982,12 +1047,10 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         case .richLinks: return (networkSwitch, [], networkCaption)
         case .opens: return (opensPopup, [], nil)
         case .opensFilesIn:
-            // Scoped in the caption, because the label alone reads as every
-            // open: a file under an open folder window goes to that window
-            // whatever this says, and Cmd+N follows the system's tab setting.
-            // One line, because the General pane has a height ceiling
-            // (`Metrics.maxPaneHeight`) and every row it holds is on it.
-            return (openFilesPopup, [], Caption("For files opened from outside that no folder window holds."))
+            // No caption: the scoping (a file under an open folder window goes
+            // to that window whatever this says) is `OpenRouting`'s to keep,
+            // and a sentence about it under the row was read as noise.
+            return (openFilesPopup, [], nil)
         case .newNoteName:
             // The worked example goes FIRST, under the field and aligned with
             // it, because it is the field's own answer rather than a note
@@ -1037,6 +1100,17 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
                 below.append(Self.link(documentation.title, to: documentation.url))
             }
             return (control, below, nil)
+        case .appearanceMode: return (modePicker, [], nil)
+        case .theme:
+            // Both slots under one row: a strip per mode, each labelled by
+            // the mode it draws in, and the way to add a theme where a row's
+            // control goes.
+            return (addThemeButton, [Self.inset(themeStrips())], nil)
+        case .accent: return (accentRow, [], nil)
+        case .tint: return (tintRow, [], nil)
+        case .transparentSidebar: return (sidebarSwitch, [], nil)
+        case .font: return (fontControl, [], nil)
+        case .fontSize: return (fontSizeStepper, [], nil)
         case .resetSettings:
             return (resetButton, [],
                     Caption("Revert \(flavour.displayName) to default settings. Will not "
@@ -1057,6 +1131,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         switch tab {
         case .general: sections = render(SettingsForm.general)
         case .markdown: sections = render(SettingsForm.markdown)
+        case .appearance: sections = render(SettingsForm.appearance)
         case .aiAgent: sections = render(SettingsForm.aiAgent)
         case .advanced: sections = render(advancedPane)
         }
@@ -1080,6 +1155,10 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         // `syncControlsFromPrefs` alone they would reach an empty map and the
         // rows would be drawn with no sentence and no dimming at all.
         showRowAvailability()
+        // The library is read from disk here rather than at wiring, so a
+        // theme added from the menu bar's Add Theme… is on the list the pane
+        // it opens draws.
+        refreshAppearance()
         return Self.pane(sections)
     }
 
@@ -1149,6 +1228,22 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         // with no maximum resolves that from the text. A heading gets away
         // with it by being short. `SettingsWindowSizeTests` holds the height.
         return label
+    }
+
+    /// An intro sentence that ends in a link: the sentence in the intro's
+    /// own ink and size, the link where its last word would be.
+    static func introWithLink(_ text: String, _ link: SettingsLink) -> NSView {
+        let label = intro(text)
+        label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        let button = LinkButton(title: link.title, url: link.url)
+        button.font = label.font
+        button.setContentCompressionResistancePriority(.required, for: .horizontal)
+        button.setContentHuggingPriority(.required, for: .horizontal)
+        let stack = NSStackView(views: [label, button])
+        stack.orientation = .horizontal
+        stack.alignment = .firstBaseline
+        stack.spacing = 0
+        return stack
     }
 
     /// A caption that is FIXED rather than live: reference text a row needs
@@ -1581,6 +1676,9 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     /// is re-read on the way in rather than only when it is first built.
     func windowDidBecomeKey(_ notification: Notification) {
         showLoginItem(LoginItem.state)
+        // And the appearance: View > Theme and the palette move the same
+        // setting this pane shows, and the window is not told.
+        refreshAppearance()
         // Same reason: iCloud Drive is switched on in System Settings, and the app
         // is never told. A row that said "iCloud Drive is off" until the next
         // launch would be lying about a thing the user has just changed.
@@ -1979,4 +2077,310 @@ final class LinkButton: NSButton {
     required init?(coder: NSCoder) { fatalError("not used") }
 
     @objc private func open() { NSWorkspace.shared.open(url) }
+}
+
+// MARK: - The Appearance pane
+
+extension SettingsWindowController {
+    fileprivate func wireAppearanceControls() {
+        modePicker.onChange = { [weak self] mode in
+            guard let self else { return }
+            var settings = Prefs.appearance
+            settings.mode = mode
+            self.apply(settings)
+        }
+        for strip in [lightStrip, darkStrip] {
+            strip.onSelect = { [weak self] id in
+                guard let self else { return }
+                self.apply(Prefs.appearance.setting(id, for: strip.kind))
+            }
+            strip.onRemove = { [weak self] id in self?.removeTheme(id) }
+        }
+        accentRow.onSelect = { [weak self] hex in
+            guard let self else { return }
+            var settings = Prefs.appearance
+            settings.accent = hex
+            self.apply(settings)
+        }
+        tintRow.onSelect = { [weak self] hex in
+            guard let self else { return }
+            var settings = Prefs.appearance
+            settings.tint = hex
+            self.apply(settings)
+        }
+        sidebarSwitch.target = self
+        sidebarSwitch.action = #selector(toggleTransparentSidebar)
+
+        // Item 0 is the button's own title under `pullsDown`, as the agent
+        // preset pull-down does it; the ways in start at 1.
+        addThemeButton.pullsDown = true
+        addThemeButton.controlSize = .small
+        addThemeButton.removeAllItems()
+        addThemeButton.addItems(withTitles: [ThemesMenu.addTitle, Self.addThemeFromFileTitle,
+                                             Self.addThemeFromVSCodeTitle, Self.browseThemesTitle])
+        addThemeButton.target = self
+        addThemeButton.action = #selector(addTheme(_:))
+
+        fontControl.controlSize = .small
+        fontControl.target = self
+        fontControl.action = #selector(chooseFont)
+        fontSizeStepper.onStep = { [weak self] delta in self?.stepFontSize(delta) }
+        fontSizeStepper.onReset = { [weak self] in self?.resetFontSize() }
+    }
+
+    /// The two strips, each under the mode it draws in.
+    private func themeStrips() -> NSView {
+        func labelled(_ title: String, _ symbol: String, _ strip: ThemeStrip) -> NSView {
+            let label = NSTextField(labelWithString: title)
+            label.font = .systemFont(ofSize: NSFont.smallSystemFontSize, weight: .medium)
+            label.textColor = .secondaryLabelColor
+            let icon = NSImageView(image: NSImage(systemSymbolName: symbol, accessibilityDescription: title)
+                ?? NSImage())
+            icon.contentTintColor = .secondaryLabelColor
+            icon.symbolConfiguration = .init(pointSize: NSFont.smallSystemFontSize, weight: .medium)
+            let heading = NSStackView(views: [icon, label])
+            heading.orientation = .horizontal
+            heading.spacing = 4
+            let column = NSStackView(views: [heading, strip])
+            column.orientation = .vertical
+            column.alignment = .leading
+            column.spacing = 2
+            strip.widthAnchor.constraint(equalTo: column.widthAnchor).isActive = true
+            return column
+        }
+        let stack = NSStackView(views: [labelled("Light", "sun.max", lightStrip),
+                                        labelled("Dark", "moon", darkStrip)])
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 8
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        for view in stack.arrangedSubviews { view.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true }
+        return stack
+    }
+
+    /// Store, apply everywhere, and redraw the pictures, which show the
+    /// mod as well as the pick.
+    private func apply(_ settings: AppearanceSettings) {
+        onAppearanceChange(settings)
+        refreshAppearance()
+    }
+
+    /// Re-read the library and the settings, and draw everything.
+    ///
+    /// From disk and from the defaults every time, because both change
+    /// outside this window: View > Theme and the palette move the settings,
+    /// and Add Theme… from the menu bar lands here with the list already
+    /// longer. A pane that trusted what it last drew would show the theme
+    /// that was chosen here, not the one in force.
+    fileprivate func refreshAppearance() {
+        themeRows = themeStore.list()
+        let settings = Prefs.appearance
+        modePicker.show(settings)
+        lightStrip.show(themes: themeRows, selected: settings.lightTheme, settings: settings)
+        darkStrip.show(themes: themeRows, selected: settings.darkTheme, settings: settings)
+        accentRow.select(settings.accent)
+        tintRow.select(settings.tint)
+        sidebarSwitch.state = settings.transparentSidebar ? .on : .off
+        fontControl.selectedSegment = Self.fontChoices.firstIndex { $0.preset == Prefs.fontPreset } ?? 1
+        fontSizeStepper.show(percent: Prefs.fontSize)
+    }
+
+    // MARK: read back
+
+    var themeChoicesForTesting: [String] { lightStrip.titlesForTesting }
+    var darkThemeChoicesForTesting: [String] { darkStrip.titlesForTesting }
+    var appearanceModesForTesting: [String] { modePicker.titlesForTesting }
+    var accentChoicesForTesting: [String] { accentRow.titlesForTesting }
+    var themeLibraryForTesting: [ThemeSummary] { themeRows }
+    var fontSizeForTesting: String { fontSizeStepper.percentForTesting }
+    func chooseThemeForTesting(_ id: String?, for kind: VSCodeTheme.Kind) {
+        apply(Prefs.appearance.setting(id, for: kind))
+    }
+    func chooseModeForTesting(_ mode: AppearanceMode) {
+        var settings = Prefs.appearance
+        settings.mode = mode
+        apply(settings)
+    }
+    func chooseAccentForTesting(_ hex: String?) {
+        var settings = Prefs.appearance
+        settings.accent = hex
+        apply(settings)
+    }
+    func removeThemeForTesting(_ id: String) { removeTheme(id) }
+    func stepFontSizeForTesting(_ delta: Int) { stepFontSize(delta) }
+
+    // MARK: actions
+
+    @objc private func toggleTransparentSidebar() {
+        var settings = Prefs.appearance
+        settings.transparentSidebar = sidebarSwitch.state == .on
+        apply(settings)
+    }
+
+    @objc private func chooseFont() {
+        let index = fontControl.selectedSegment
+        guard index >= 0, index < Self.fontChoices.count else { return }
+        let choice = Self.fontChoices[index]
+        // Written here as well as posted back by each page, so a window
+        // opened before the round trip lands boots with the new answer.
+        Prefs.fontPreset = choice.preset
+        onEditorCommand(choice.command)
+    }
+
+    private func stepFontSize(_ delta: Int) {
+        let next = min(FontSizeStepper.maximum, max(FontSizeStepper.minimum, Prefs.fontSize + delta))
+        guard next != Prefs.fontSize else { return }
+        Prefs.fontSize = next
+        onEditorCommand(delta > 0 ? "increaseFontSize" : "decreaseFontSize")
+        fontSizeStepper.show(percent: next)
+    }
+
+    private func resetFontSize() {
+        Prefs.fontSize = Prefs.defaultFontSize
+        onEditorCommand("resetFontSize")
+        fontSizeStepper.show(percent: Prefs.fontSize)
+    }
+
+    @objc private func addTheme(_ sender: NSPopUpButton) {
+        switch sender.indexOfSelectedItem {
+        case 1: chooseThemeFiles()
+        case 2: importInstalledThemes()
+        case 3: browseThemes()
+        default: break
+        }
+    }
+
+    private func chooseThemeFiles() {
+        guard let window else { return }
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = true
+        panel.message = "Choose a VS Code color theme: a theme .json file, a theme extension's folder, or a .vsix."
+        panel.allowedContentTypes = [UTType.json, UTType.zip, UTType.folder]
+            + [UTType(filenameExtension: "vsix")].compactMap { $0 }
+        // Where VS Code keeps its extensions, when it has any: the folder a
+        // theme somebody already uses is in.
+        if let extensions = ThemeStore.installedExtensionRoots(
+            home: FileManager.default.homeDirectoryForCurrentUser).first {
+            panel.directoryURL = extensions
+        }
+        panel.beginSheetModal(for: window) { [weak self] response in
+            guard response == .OK, let self else { return }
+            var added: [ThemeSummary] = []
+            var failures: [String] = []
+            for url in panel.urls {
+                do { added += try self.themeStore.importThemes(from: url) }
+                catch { failures.append("\(url.lastPathComponent): \(error.localizedDescription)") }
+            }
+            self.themesChanged(added: added, failures: failures)
+        }
+    }
+
+    /// Every theme every extension installed in VS Code (or Cursor, or a
+    /// sibling), and every theme those editors ship with, added at once.
+    /// One by one rather than as a batch, so one theme file the app cannot
+    /// read does not stop the rest.
+    private func importInstalledThemes() {
+        let roots = ThemeStore.installedExtensionRoots(home: FileManager.default.homeDirectoryForCurrentUser)
+        let found = ThemeStore.themesInExtensions(roots: roots)
+        guard !found.isEmpty else {
+            guard let window else { return }
+            let alert = NSAlert()
+            alert.messageText = "No VS Code themes found"
+            alert.informativeText = roots.isEmpty
+                ? "VS Code does not seem to be installed for this user, so there are no themes to read."
+                : "Nothing installed contributes a color theme."
+            alert.beginSheetModal(for: window)
+            return
+        }
+        var added: [ThemeSummary] = []
+        var failures: [String] = []
+        for source in found {
+            do { added += try themeStore.importThemes([source]) }
+            catch { failures.append("\(source.label ?? source.url.lastPathComponent): \(error.localizedDescription)") }
+        }
+        themesChanged(added: added, failures: failures)
+    }
+
+    /// The registry browser, as a sheet; what it adds comes back here when
+    /// the sheet closes, which is also when the controller is let go.
+    private func browseThemes() {
+        guard let window else { return }
+        let browser = ThemeBrowserController(store: themeStore) { [weak self] added, failures in
+            self?.themeBrowser = nil
+            self?.themesChanged(added: added, failures: failures)
+        }
+        themeBrowser = browser
+        browser.present(over: window)
+    }
+
+    /// Open the browser and say whether its controls still reach it, which
+    /// is the whole of what holding it is for.
+    func browseThemesForTesting() -> Bool {
+        browseThemes()
+        return themeBrowser?.isWiredForTesting ?? false
+    }
+
+    func dismissThemeBrowserForTesting() { themeBrowser?.dismissForTesting() }
+
+    /// The library changed: tell the app, since the theme in force may have
+    /// been replaced or removed; put a single new theme in the slot of the
+    /// mode in force, as a pick from the menu does, because one theme added
+    /// is a theme somebody wants to see now, where a batch is a library
+    /// being filled and picking from it for them would be a guess; and say
+    /// what could not be added.
+    private func themesChanged(added: [ThemeSummary], failures: [String]) {
+        onThemesChanged()
+        if added.count == 1, let theme = added.first {
+            let settings = Prefs.appearance
+            apply(settings.setting(theme.id, for: settings.effectiveKind(systemIsDark: WindowSet.systemIsDark)))
+        } else {
+            refreshAppearance()
+        }
+        guard !failures.isEmpty, let window else { return }
+        let alert = NSAlert()
+        alert.messageText = added.isEmpty ? "The theme could not be added" : "Some themes could not be added"
+        alert.informativeText = failures.joined(separator: "\n")
+        alert.beginSheetModal(for: window)
+    }
+
+    /// Remove a theme from the library. No confirmation: the file here is
+    /// the app's copy, and the extension or file it came from is untouched,
+    /// so adding it again is the undo. A slot naming it reads as the
+    /// system's once it is gone (`Appearance.resolve`), and the settings
+    /// are cleaned of it so the pane does not remember a card that is not
+    /// there.
+    private func removeTheme(_ id: String) {
+        do {
+            try themeStore.remove(id: id)
+        } catch {
+            NSLog("Birta Writer: could not remove theme: \(error)")
+        }
+        var settings = Prefs.appearance
+        if settings.lightTheme == id { settings.lightTheme = nil }
+        if settings.darkTheme == id { settings.darkTheme = nil }
+        onAppearanceChange(settings)
+        themesChanged(added: [], failures: [])
+    }
+}
+
+extension SettingsWindowController {
+    /// The window's content as a PNG, for `BIRTA_MAC_SETTINGS_SNAPSHOT`: the
+    /// same instrument as `PaletteWindow.snapshotPNG`, for the same reason.
+    func snapshotPNG() -> Data? {
+        guard let content = window?.contentView else { return nil }
+        content.layoutSubtreeIfNeeded()
+        let bounds = content.bounds
+        let pdf = content.dataWithPDF(inside: bounds)
+        guard let image = NSImage(data: pdf) else { return nil }
+        let rendered = NSImage(size: bounds.size)
+        rendered.lockFocus()
+        NSColor.windowBackgroundColor.setFill()
+        bounds.fill()
+        image.draw(in: bounds)
+        rendered.unlockFocus()
+        guard let tiff = rendered.tiffRepresentation, let rep = NSBitmapImageRep(data: tiff) else { return nil }
+        return rep.representation(using: .png, properties: [:])
+    }
 }

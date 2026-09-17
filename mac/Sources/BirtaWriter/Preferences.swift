@@ -74,6 +74,12 @@ enum Prefs {
         case formattingRowExpanded
         case lineNumbers
         case paletteRecents
+        case appearanceMode
+        case lightTheme
+        case darkTheme
+        case accentColor
+        case tintColor
+        case sidebarTransparent
     }
 
     /// The keys a reset must NOT clear, each for a reason of its own.
@@ -616,6 +622,37 @@ enum Prefs {
     static var lineNumbers: Bool {
         get { d.bool(forKey: Key.lineNumbers.rawValue) }
         set { d.set(newValue, forKey: Key.lineNumbers.rawValue) }
+    }
+
+    /// How the page looks (`Appearance.swift`): the mode, the theme in each
+    /// mode's slot, and the colour mod. One answer for every window, because
+    /// a theme is what the app looks like and two windows in two themes is a
+    /// question nobody asked. Six keys rather than one blob, so a reset
+    /// walks them like any other and `defaults read` shows each by name; an
+    /// absent key is the default in every case, which is the system's
+    /// appearance untouched.
+    static var appearance: AppearanceSettings {
+        get {
+            AppearanceSettings(
+                mode: d.string(forKey: Key.appearanceMode.rawValue).flatMap(AppearanceMode.init(rawValue:)) ?? .auto,
+                lightTheme: d.string(forKey: Key.lightTheme.rawValue),
+                darkTheme: d.string(forKey: Key.darkTheme.rawValue),
+                accent: d.string(forKey: Key.accentColor.rawValue),
+                tint: d.string(forKey: Key.tintColor.rawValue),
+                transparentSidebar: d.bool(forKey: Key.sidebarTransparent.rawValue))
+        }
+        set {
+            func put(_ value: String?, _ key: Key) {
+                if let value { d.set(value, forKey: key.rawValue) } else { d.removeObject(forKey: key.rawValue) }
+            }
+            put(newValue.mode == .auto ? nil : newValue.mode.rawValue, .appearanceMode)
+            put(newValue.lightTheme, .lightTheme)
+            put(newValue.darkTheme, .darkTheme)
+            put(newValue.accent, .accentColor)
+            put(newValue.tint, .tintColor)
+            if newValue.transparentSidebar { d.set(true, forKey: Key.sidebarTransparent.rawValue) }
+            else { d.removeObject(forKey: Key.sidebarTransparent.rawValue) }
+        }
     }
 
     /// The palette rows picked lately, most recent first, by item id

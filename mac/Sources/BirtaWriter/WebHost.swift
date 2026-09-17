@@ -27,6 +27,10 @@ final class BirtaSchemeHandler: NSObject, WKURLSchemeHandler {
     }
     /// The theme class for the initial paint; the host updates it before every reload.
     var themeClass = "vscode-light"
+    /// The colour theme's stylesheet for the initial paint, or "" under the
+    /// macOS appearance; served into the template's `host-theme` element so
+    /// the first frame is already the theme's (`VSCodeTheme.stylesheet`).
+    var themeCSS = ""
     /// The outline panel's width, as a rule.
     ///
     /// It rides the served HTML rather than the boot script, for the reason
@@ -204,6 +208,7 @@ final class BirtaSchemeHandler: NSObject, WKURLSchemeHandler {
             .replacingOccurrences(of: "{{CSP}}", with: csp())
             .replacingOccurrences(of: "{{THEME_CLASS}}",
                                   with: "\(themeClass) toc-right")
+            .replacingOccurrences(of: "{{THEME_STYLE}}", with: themeCSS)
             .replacingOccurrences(of: "{{ROOT_STYLE}}", with: tocRootStyle + band + tabs)
     }
 }
@@ -235,11 +240,12 @@ final class WebHost: NSObject, WKScriptMessageHandler, WKNavigationDelegate, WKU
     }
 
     /// (Re)load the page with a fresh boot script.
-    func load(themeClass: String) {
+    func load(themeClass: String, themeCSS: String = "") {
         // One read of the boot config, because two would let the body tag and
         // the boot script describe different panels.
         let boot = bootConfig()
         schemeHandler.themeClass = themeClass
+        schemeHandler.themeCSS = themeCSS
         schemeHandler.tocRootStyle = boot.tocRootStyle
         // The document about to be served carries the band height in its own
         // stylesheet, so that is the baseline the next push measures against.
@@ -259,9 +265,15 @@ final class WebHost: NSObject, WKScriptMessageHandler, WKNavigationDelegate, WKU
                                     arguments: ["m": json], in: nil, in: .page) { _ in }
     }
 
-    func setThemeClass(_ cls: String) {
+    /// Host → page: which palette the page wears and, over it, which colour
+    /// theme. The class is the page's own switch (`nativeThemeBridge.ts`
+    /// watches it); the stylesheet text replaces what the template served,
+    /// so a theme picked while the page is up lands without a reload.
+    func setTheme(class cls: String, css: String) {
         schemeHandler.themeClass = cls
+        schemeHandler.themeCSS = css
         let js = "document.body.classList.remove('vscode-light','vscode-dark'); document.body.classList.add(\(jsString(cls)));"
+            + " var t = document.getElementById('host-theme'); if (t) t.textContent = \(jsString(css));"
         webView.evaluateJavaScript(js) { _, _ in }
     }
 

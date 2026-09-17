@@ -132,6 +132,11 @@ enum AppMenu {
         /// through `row(for:)` for its label exactly as the other two buttons
         /// find theirs.
         case recents
+        /// A row that opens a submenu whose contents are the themes the app
+        /// has been given, which change as they are added: `ThemesMenu`
+        /// fills itself as `RecentsMenu` does. No selector, because unlike
+        /// Open Recent no control outside the menu bar raises this list.
+        case themes
 
         var selector: Selector? {
             switch self {
@@ -139,7 +144,7 @@ enum AppMenu {
             case .command: return #selector(AppDelegate.menuRunEditorCommand(_:))
             case .link: return #selector(AppDelegate.menuOpenLink(_:))
             case .recents: return #selector(AppDelegate.menuOpenRecent(_:))
-            case .submenu: return nil
+            case .submenu, .themes: return nil
             }
         }
 
@@ -149,7 +154,7 @@ enum AppMenu {
             switch self {
             case .command: return command
             case let .link(link): return link.url
-            case .app, .submenu, .recents: return nil
+            case .app, .submenu, .recents, .themes: return nil
             }
         }
 
@@ -172,7 +177,7 @@ enum AppMenu {
         /// not whether the item is a disclosure.
         var opensSubmenu: Bool {
             switch self {
-            case .submenu, .recents: return true
+            case .submenu, .recents, .themes: return true
             case .app, .command, .link: return false
             }
         }
@@ -299,6 +304,9 @@ enum AppMenu {
     /// menu without matching on a title a translation could change.
     static let recentsMenuIdentifier = NSUserInterfaceItemIdentifier("com.birtalabs.birta-writer.openRecent")
 
+    /// What the Theme submenu answers to, for the same reason.
+    static let themesMenuIdentifier = NSUserInterfaceItemIdentifier("com.birtalabs.birta-writer.themes")
+
     /// What the rule bracketing the system's appended rows answers to.
     ///
     /// The separator carries the reason it exists rather than the menu having
@@ -330,7 +338,7 @@ enum AppMenu {
             switch row.action {
             case let .app(bound): return bound == selector
             case .recents: return row.action.selector == selector
-            case .command, .link, .submenu: return false
+            case .command, .link, .submenu, .themes: return false
             }
         }
     }
@@ -576,6 +584,12 @@ enum AppMenu {
               action: .command("fontSerif"), menu: .view, submenu: "Font", group: 0),
         .init(title: "Monospace",
               action: .command("fontMono"), menu: .view, submenu: "Font", group: 0),
+
+        // Beside Font, because both are how the page looks rather than what
+        // it shows. A menu that fills itself (`ThemesMenu`): the rows are the
+        // themes the reader has added, and the palette lists the same rows
+        // under this title.
+        .init(title: "Theme", action: .themes, menu: .view, group: 2),
 
         .init(title: "Folding", action: .submenu, menu: .view, group: 2),
         .init(title: "Fold", key: "[", modifiers: [.command, .option],
@@ -837,9 +851,10 @@ enum AppMenu {
                            syntaxSets: Set<SyntaxSet> = SyntaxScope.all,
                            to nsMenu: NSMenu) {
         for item in nsMenu.items {
-            // Not into the recents menu: its rows are files rather than table
-            // rows, and it fills itself.
-            if let sub = item.submenu, sub.identifier != recentsMenuIdentifier {
+            // Not into the recents or the themes menu: their rows are files
+            // and themes rather than table rows, and each fills itself.
+            if let sub = item.submenu, sub.identifier != recentsMenuIdentifier,
+               sub.identifier != themesMenuIdentifier {
                 applyState(state, syntaxSets: syntaxSets, to: sub)
             }
             guard let identifier = item.identifier,
@@ -934,6 +949,14 @@ enum AppMenu {
                 // case as the target and have no window set to offer.
                 item.submenu = (target as? RecentsMenuProviding)?.makeRecentsMenu()
                     ?? RecentsMenu()
+            } else if case .themes = row.action {
+                // The same shape for the same reason: the list changes as
+                // themes are added, and a target with no windows to ask gets
+                // the menu with the appearance row alone.
+                item.action = nil
+                item.target = nil
+                item.submenu = (target as? ThemesMenuProviding)?.makeThemesMenu()
+                    ?? ThemesMenu()
             } else if case .submenu = row.action {
                 let sub = NSMenu(title: row.title)
                 fill(sub, with: Self.rows.filter { $0.menu == menu && $0.submenu == row.title },

@@ -494,6 +494,18 @@ export function createSidePanelShell(opts: SidePanelShellOptions): SidePanelShel
         updatePosition();
         checkResponsiveMode();
     });
+    // The viewport can change size without a `resize` event this page hears:
+    // a page loaded into a tab of an existing window settles its mode while
+    // its view is still at the size it was created at, and is then given the
+    // window's, with the event having fired before the shell existed or not
+    // at all. Left to the event alone the drawer stays in overlay mode at a
+    // width that docks, closed, or docked at the bar's bottom rather than the
+    // row's top. So the root element's box is watched too, which follows the
+    // viewport whatever delivered the change.
+    const viewportResize = typeof ResizeObserver !== "undefined"
+        ? new ResizeObserver(() => { updatePosition(); checkResponsiveMode(); })
+        : null;
+    viewportResize?.observe(document.documentElement);
     // The edge the drawer hangs from moves without the window moving: the bar
     // grows a row, a host's strip under it comes or goes. The inline `top`
     // written above cannot follow a variable, so the bar's box is watched.
@@ -543,6 +555,7 @@ export function createSidePanelShell(opts: SidePanelShellOptions): SidePanelShel
             outsideOff = null;
             offResize();
             topbarResize?.disconnect();
+            viewportResize?.disconnect();
             flyout.dispose();
         },
     };

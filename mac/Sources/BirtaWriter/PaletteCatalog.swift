@@ -28,6 +28,11 @@ enum PaletteAction {
     case file(URL)
     /// Open Settings on this pane with the row in view.
     case setting(pane: String, row: SettingsRow)
+    /// Put this theme in the slot of the mode in force, on every window, or
+    /// the system's palette for nil.
+    case theme(String?)
+    /// Hold the app to a mode, or hand it back to the system.
+    case appearanceMode(AppearanceMode)
 }
 
 struct PaletteCatalog {
@@ -83,6 +88,11 @@ enum PaletteSources {
         var notesFolder: URL?
         var notesIndex: FileIndex?
         var recents: [URL] = []
+        /// The themes the app holds, the one in force and the mode, for
+        /// View > Theme's rows (`WindowSet.themeStore`, `appearance`).
+        var themes: [ThemeSummary] = []
+        var currentTheme: String?
+        var appearanceMode: AppearanceMode = .auto
     }
 
     /// Menu rows the palette does not list: the two that open the palette.
@@ -101,6 +111,7 @@ enum PaletteSources {
         let forms: [(String, SettingsPane)] = [
             ("General", SettingsForm.general),
             ("Markdown", SettingsForm.markdown),
+            ("Appearance", SettingsForm.appearance),
             ("AI Agent", SettingsForm.aiAgent),
             ("Advanced", SettingsForm.advanced(showsWelcomeScreen: true)),
         ]
@@ -110,6 +121,8 @@ enum PaletteSources {
     static let filesSection = "Files"
     static let windowsSection = "Windows"
     static let settingsSection = "Settings"
+    /// What the theme in force says after its name.
+    static let currentThemeDetail = "Current"
 
     static func catalog(_ context: Context) -> PaletteCatalog {
         var catalog = PaletteCatalog()
@@ -159,6 +172,36 @@ enum PaletteSources {
             // finds them once; a second copy under Open Recent would list
             // every recent file twice.
             return nil
+        case .themes:
+            // The rows View > Theme draws, as a group under its title: the
+            // three modes, then the system's palette and each theme, then
+            // the way to add one. The mode and the theme in force each say
+            // so rather than being left out, because a palette row that
+            // names the current state is how somebody finds out what it is.
+            let modes = AppearanceMode.allCases.map { mode -> PaletteItem in
+                let item = PaletteItem(id: "appearance:" + mode.rawValue, title: mode.title,
+                                       detail: mode == context.appearanceMode ? currentThemeDetail : nil,
+                                       section: section, kind: .command)
+                catalog.register(.appearanceMode(mode), for: item.id)
+                return item
+            }
+            let system = PaletteItem(id: "theme:", title: ThemesMenu.systemTitle,
+                                     detail: context.currentTheme == nil ? currentThemeDetail : nil,
+                                     section: section, kind: .command)
+            catalog.register(.theme(nil), for: system.id)
+            let themes = context.themes.map { theme -> PaletteItem in
+                let item = PaletteItem(id: "theme:" + theme.id, title: theme.name,
+                                       detail: theme.id == context.currentTheme ? currentThemeDetail : nil,
+                                       section: section, kind: .command)
+                catalog.register(.theme(theme.id), for: item.id)
+                return item
+            }
+            // A separator a slug cannot contain (`ThemeStore.slug` is letters,
+            // digits and dashes), so a theme named Add cannot take this id.
+            let add = PaletteItem(id: "theme/add", title: ThemesMenu.addTitle, section: section, kind: .command)
+            catalog.register(.setting(pane: "appearance", row: .theme), for: add.id)
+            return PaletteItem(id: menuId(row), title: row.title, section: section, kind: .group,
+                               children: modes + [system] + themes + [add])
         case let .app(selector) where selfSelectors.contains(selector):
             return nil
         case .app, .command, .link:

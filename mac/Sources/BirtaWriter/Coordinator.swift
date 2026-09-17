@@ -321,6 +321,20 @@ final class Coordinator {
     /// How many tabs share this window's bar; one for a window in no group.
     var tabCount: Int { panel.tabGroup?.windows.count ?? 1 }
     private let statusOverlay = StatusOverlay()
+
+    /// What this window's page looks like, as `WindowSet` resolved it
+    /// (`Appearance.swift`): the mode in force, the theme in that mode's
+    /// slot, and the colour mod. `WindowSet` holds the one answer every
+    /// window shares; the page is served it on the next load and told live
+    /// meanwhile (`applyTheme`).
+    private(set) var appearance = ResolvedAppearance(kind: .light, theme: nil, themeId: nil, overlay: [])
+    private var appearanceMode: AppearanceMode = .auto
+
+    func applyAppearance(_ resolved: ResolvedAppearance, mode: AppearanceMode) {
+        appearance = resolved
+        appearanceMode = mode
+        applyTheme()
+    }
     /// The one message in the panel that does not go on its own: what the app
     /// did to itself while nobody was watching. `UpdateNotice` holds the
     /// argument for why it is a card beside the status line rather than a mode
@@ -808,8 +822,15 @@ final class Coordinator {
     ///   nil for a window on a loose file. Required for the reason the file
     ///   is: a default would make every window a file window with none of
     ///   the call sites saying so.
-    init(boundTo url: URL, slot: ActiveBinding.Slot?, remembersFrame: Bool, frame: NSRect?, explorerRoot: URL?) {
+    init(boundTo url: URL, slot: ActiveBinding.Slot?, remembersFrame: Bool, frame: NSRect?, explorerRoot: URL?,
+         appearance: ResolvedAppearance = ResolvedAppearance(kind: .light, theme: nil, themeId: nil, overlay: []),
+         appearanceMode: AppearanceMode = .auto) {
         boundURL = url
+        // Before the page is served, not after: the first page carries the
+        // theme in its own stylesheet, and a window handed its appearance
+        // after the prewarm would serve a bare page and then rewrite it.
+        self.appearance = appearance
+        self.appearanceMode = appearanceMode
         bindingSlot = slot
         self.explorerRoot = explorerRoot
         panel = AppPanel(remembersFrame: remembersFrame, restoredFrame: frame,
@@ -1189,6 +1210,31 @@ final class Coordinator {
                 measure.trace("palette \(onPaletteRequest?(query, mode) ?? "unavailable")")
                 return
             }
+            // A picture of the PAGE as WebKit has it, beside the scratchpad,
+            // with the theme in force in the trace. `__birtaSnapshot` above
+            // draws the view tree through AppKit and cannot see into the web
+            // view, which comes back as a blank of the paper colour; this is
+            // for how the page LOOKS (a colour theme applied, a palette
+            // flipped). `takeSnapshot` is the web view's own and needs no
+            // Screen Recording grant, and it draws only once the window is
+            // on screen, so a probe shows the panel first.
+            if obj["type"] as? String == "__birtaPageSnapshot" {
+                let url = Prefs.scratchpadURL.deletingLastPathComponent()
+                    .appendingPathComponent(obj["name"] as? String ?? "page.png")
+                let themeName = appearance.theme?.name ?? "appearance"
+                host.webView.takeSnapshot(with: nil) { [weak self] image, error in
+                    guard let self else { return }
+                    guard let image, let tiff = image.tiffRepresentation,
+                          let rep = NSBitmapImageRep(data: tiff),
+                          let png = rep.representation(using: .png, properties: [:]) else {
+                        self.measure.trace("snapshot failed: \(error.map { "\($0)" } ?? "no image")")
+                        return
+                    }
+                    let written = (try? png.write(to: url)) != nil
+                    self.measure.trace("snapshot theme=\(themeName) class=\(self.currentThemeClass()) written=\(written) path=\(url.path)")
+                }
+                return
+            }
             // An explicit save, exactly as Cmd+S makes one.
             //
             // Here because the other ways to provoke a write from a script are
@@ -1216,6 +1262,17 @@ final class Coordinator {
             if obj["type"] as? String == "__birtaNewWindow" {
                 measure.mark("debug-new-window")
                 onNewWindowRequest?()
+                return
+            }
+            // One expression, run in the page, its value in the trace: for
+            // reading a geometry or a class list the page has and no probe
+            // above names. The measure channel is the only way in, so this
+            // exists only where every other probe here does.
+            if obj["type"] as? String == "__birtaEval", let js = obj["js"] as? String {
+                host.webView.evaluateJavaScript(js) { [weak self] value, error in
+                    let text = value.map { "\($0)" } ?? "nil"
+                    self?.measure.trace("eval result=\(text.replacingOccurrences(of: "\n", with: " ")) error=\(error.map { "\($0)" } ?? "none")")
+                }
                 return
             }
             // A directory window, as Cmd+O on a folder or `open -a` makes one;
@@ -1467,7 +1524,7 @@ final class Coordinator {
             : ViewStateOnOpen.forOpen(remembered)
         lastMountedURL = boundURL
         host.schemeHandler.networkEnabled = Prefs.networkEnabled
-        host.load(themeClass: currentThemeClass())
+        host.load(themeClass: currentThemeClass(), themeCSS: appearance.stylesheet())
     }
 
     private func contentProcessDied() {
@@ -4288,18 +4345,33 @@ final class Coordinator {
 
     // MARK: theme
 
+    /// The palette the page wears: the theme's kind when one is in force,
+    /// the held mode's when the mode is not the system's, otherwise
+    /// whichever the window's appearance says.
     private func currentThemeClass() -> String {
+        if appearance.theme != nil || appearanceMode != .auto { return appearance.bodyClass }
         let match = contentView.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua])
         return match == .darkAqua ? "vscode-dark" : "vscode-light"
     }
 
     private func applyTheme(initial: Bool = false) {
+        // The window's own appearance follows the theme, so the titlebar,
+        // the sheets and every other piece of AppKit around the page are of
+        // the theme's kind rather than the system's; nil hands the choice
+        // back. Setting it to what it already is changes nothing, which is
+        // what keeps the appearance callback this runs from out of a loop.
+        panel.appearance = appearance.windowKind(mode: appearanceMode)
+            .flatMap { NSAppearance(named: $0 == VSCodeTheme.Kind.dark ? .darkAqua : .aqua) }
         let cls = currentThemeClass()
-        let bg = NSColor.textBackgroundColor
+        // The paper: the theme's own, so the band and the scrim are painted
+        // in the colour the page is, or the system's, which the host palette
+        // matches exactly (`StatusOverlayInkTests`).
+        let bg = appearance.paper.flatMap { NSColor(themeHex: $0) } ?? NSColor.textBackgroundColor
         panel.backgroundColor = bg
         host.webView.underPageBackgroundColor = bg
+        statusOverlay.paper = bg
         if !initial {
-            host.setThemeClass(cls)
+            host.setTheme(class: cls, css: appearance.stylesheet())
             // The page's palette has just flipped, and half this band's chrome
             // is taken from it (`refreshTitlebarControlsWidth` reads the hover
             // wash). Nothing else re-asks: a theme change swaps a class on the

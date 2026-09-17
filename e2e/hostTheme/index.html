@@ -1,0 +1,52 @@
+<!doctype html>
+<!-- e2e harness page for a host colour theme: the page as the Mac app serves
+     it with a VS Code theme in force (mac/Resources/index.html). The palette
+     is the real dist/hostPalette.css, and the override is a `host-theme`
+     style element placed after it carrying the exact text
+     `VSCodeTheme.stylesheet()` writes (its shape is pinned by
+     mac/Tests/BirtaWriterCoreTests/VSCodeThemeTests.swift): a workbench
+     colour, a code-block token with a colour and a face, and one with only
+     a colour. What checks.mjs asks is whether that text wins in a browser,
+     which is a question of specificity and order that no jsdom test can
+     see, and whether the token variables reach a highlighted block. -->
+<meta charset="utf-8">
+<link rel="stylesheet" href="dist/hostPalette.css">
+<link rel="stylesheet" href="dist/webview.css">
+<style id="host-theme">:root:has(body.vscode-light), :root:has(body.vscode-dark) {
+  --host-token-comment: #123456;
+  --host-token-comment-style: normal;
+  --host-token-comment-weight: bold;
+  --host-token-keyword: #abcdef;
+  --host-token-keyword-style: italic;
+  --host-token-keyword-weight: normal;
+  --host-token-string: #fedcba;
+  --vscode-editor-background: #182529;
+  --vscode-editor-foreground: #e7e5e0;
+  --vscode-focusBorder: #a78bfa80;
+}
+</style>
+<style>
+  body { background: var(--vscode-editor-background); color: var(--vscode-editor-foreground); margin: 0; }
+  .editor-topbar { min-height: 40px; box-sizing: border-box; }
+</style>
+<script>
+  document.addEventListener("DOMContentLoaded", () => document.body.classList.add("editor-width-auto", "vscode-dark"));
+  window.__i18n = { translations: {}, isMac: true, toolbar: { placements: {}, order: [] }, host: { capabilities: [], arrangements: [], shortcuts: [] } };
+  window.__state = undefined;
+  window.__posted = [];
+  const CONTENT = "# One\n\nSome text.\n\n```js\n// a comment\nconst x = \"str\";\nconst n = 42;\n```\n";
+  window.acquireVsCodeApi = () => ({
+    postMessage: (msg) => {
+      window.__posted.push(msg);
+      if (msg.type === "ready") {
+        window.postMessage({ type: "init", content: CONTENT, frontmatter: "", syncVersion: 1 }, "*");
+      }
+    },
+    getState: () => window.__state,
+    setState: (s) => { window.__state = s; },
+  });
+</script>
+<body class="toc-right">
+<div class="editor-topbar"></div>
+<div id="editor"></div>
+<script type="module" src="dist/webview.js"></script>
