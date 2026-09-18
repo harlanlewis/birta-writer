@@ -61,11 +61,18 @@
    docked open. */
 body.files-open .tb-dock {
     margin-left: var(--files-reserve, 0px);
-    /* The explorer stands in from the window's edges by `--ui-space-4`
-       (FILES_INSET in components/fileExplorer/index.ts, the same number), so
-       the row's controls start that far down too and their top edge is the
-       card's top edge: one line across the window rather than two four pixels
-       apart. e2e/fileExplorer measures the two against each other. */
+}
+
+/* A drawer docked open stands in from the window's edges by `--ui-space-4`
+   (`SIDE_PANEL_INSET` in components/sidePanel/shell.ts, the same number), so
+   the row's controls start that far down too and their top edge is the
+   drawer's card's top edge: one line across the window rather than two four
+   pixels apart. EITHER drawer is enough and both together are the same
+   padding, since the two stand in by the same amount; the one on the far
+   side still draws the line the controls have to meet. e2e/fileExplorer and
+   e2e/macHost each measure the two against each other. */
+body.files-open .tb-dock,
+body.toc-open .tb-dock {
     padding-top: var(--ui-space-4);
 }
 

@@ -23,6 +23,11 @@ export async function run({ page, check, baseUrl }) {
     // in the list below, as one of the editor's own items that must survive.
     const GATED_ITEMS = ["viewSource", "readOnly"];
     const OPEN_WAIT = 220;
+    // How far a drawer stands in from the edge it is docked against
+    // (SIDE_PANEL_INSET in components/sidePanel/shell.ts): both drawers are
+    // drawn as surfaces set into the window rather than columns flush to its
+    // frame, and this is the strip of page each leaves around itself.
+    const INSET = 8;
 
     async function mount(file) {
         await page.goto(`${baseUrl}/${file}`);
@@ -265,10 +270,36 @@ export async function run({ page, check, baseUrl }) {
                 gapLeft: Math.round(box.left),
             };
         });
+        // Its inset off the trailing edge, and a whole content column off the
+        // leading one: the gap it leaves is the strip of page every drawer
+        // set into the window leaves, not a drawer on the wrong side.
         check("mac: the sidebar docks on the trailing edge",
-            side.declared && side.gapRight <= 1 && side.gapLeft > 1, JSON.stringify(side));
+            side.declared && side.gapRight === INSET && side.gapLeft > INSET, JSON.stringify(side));
         check("mac: and it carries no control offering to move it",
             !(await page.$(".toc-flip-btn")), "the flip button is still on the panel");
+        // The card's strip comes off the SASH side, which for a right-docked
+        // drawer is its leading edge. This is the mirrored rule (`toc.css`,
+        // `.toc-panel--right … .toc-card`), and this surface and VS Code's
+        // default are the two that take it, so it is checked where it is used.
+        const card = await page.evaluate(() => {
+            const panel = document.querySelector(".toc-panel").getBoundingClientRect();
+            const el = document.querySelector(".toc-card");
+            if (!el) { return null; }
+            const rect = el.getBoundingClientRect();
+            return {
+                lead: Math.round(rect.left - panel.left),
+                trail: Math.round(panel.right - rect.right),
+                radius: getComputedStyle(el).borderTopLeftRadius,
+                // The token the rule spends, resolved by the browser: the
+                // strip's WIDTH is pinned to it rather than to a number here,
+                // so a literal or a different token in that rule fails.
+                token: Math.round(parseFloat(
+                    getComputedStyle(document.documentElement).getPropertyValue("--ui-space-3"))),
+            };
+        });
+        check("mac: the card gives its strip back on the sash side, which is the leading edge here",
+            card && card.lead === card.token && card.trail === 0 && card.radius !== "0px",
+            JSON.stringify(card));
 
         // ── tocToggleInBar ────────────────────────────────────────────
         // One control, not two a few pixels apart. Both of the panel's own are
@@ -1419,11 +1450,30 @@ export async function run({ page, check, baseUrl }) {
             // The row's own top edge, which is the bar's bottom less the row
             // and the bar's hairline under it.
             contentAreaTop: Math.round(dock.top),
+            // And the row's first control, which is what the drawer's top
+            // edge actually lines up with.
+            itemTop: (() => {
+                const item = document.querySelector(".tb-dock-row .tb-item");
+                return item ? Math.round(item.getBoundingClientRect().top) : null;
+            })(),
         };
     });
     check("mac: the sidebar docks open on the right with the row open", beside.open && beside.rowShown, JSON.stringify(beside));
-    check("mac: the docked sidebar starts level with the formatting row, beside it rather than under it",
-        beside.panelTop === beside.contentAreaTop && beside.panelTop === beside.dockTop, JSON.stringify(beside));
+    // The drawer is set into the window, so its top is the content area's own
+    // top plus its inset; the row's BOX starts higher and its CONTROLS start
+    // level with the drawer, which is where the one line under the window's
+    // chrome is actually drawn. The file explorer's suite holds the same pair
+    // for the same reason.
+    check("mac: the docked sidebar starts an inset below the formatting row's box, beside it rather than under it",
+        beside.panelTop === beside.contentAreaTop + INSET && beside.panelTop === beside.dockTop + INSET,
+        JSON.stringify(beside));
+    // And the row's controls start where the drawer's card does, which is the
+    // one line under the window's chrome: a drawer docked open gives the row
+    // its own top padding for exactly this (`dock.css`), so the two meet
+    // rather than sitting a few pixels apart. `e2e/fileExplorer` holds the
+    // same pair for the explorer.
+    check("mac: and the row's controls sit on the sidebar's top edge, so the two draw one line",
+        beside.itemTop !== null && Math.abs(beside.itemTop - beside.panelTop) <= 1, JSON.stringify(beside));
     check("mac: and the row ends where the sidebar begins",
         beside.dockRight === beside.panelLeft && beside.barBottom - beside.dockBottom <= 1, JSON.stringify(beside));
     await page.locator('.tb-item[data-item-id="toc"] .tb-toc-btn').click();

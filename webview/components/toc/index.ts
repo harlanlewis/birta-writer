@@ -1,6 +1,6 @@
 // The shell's stylesheet lands before this one: where the two tie on
 // specificity, the composer's rule is the one that should win.
-import { createSidePanelShell } from "../sidePanel/shell";
+import { createSidePanelShell, SIDE_PANEL_INSET } from "../sidePanel/shell";
 import './toc.css';
 import { bindActivate } from "@/ui/dom";
 import type { EditorView, Node as PmNode } from "@/pm";
@@ -177,6 +177,12 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         prefix: "toc",
         eventManager,
         initialRight: document.body.classList.contains("toc-right"),
+        // Set into the window the way the file list is, and by the same
+        // number (`SIDE_PANEL_INSET`): the two can be docked at once, and a
+        // drawer standing in while its neighbour is flush reads as one of
+        // them being misplaced. Out of the panel's own box, so the width the
+        // content's margin reads is unchanged.
+        inset: SIDE_PANEL_INSET,
         width: {
             // Injected by the extension as --toc-width on :root (the persisted
             // value or the default); the dragged width is reported back on
@@ -436,11 +442,15 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
     const notesView = initNotesList(getEditorView);
     const linksView = initLinksList(getEditorView);
 
-    panel.appendChild(tabStrip);
-    panel.appendChild(list);
-    panel.appendChild(proofreadView.element);
-    panel.appendChild(notesView.element);
-    panel.appendChild(linksView.element);
+    // The card is the surface; the panel is its box, and keeps a strip of
+    // page along its sash edge so the resize line stands off the card's
+    // rounded corner rather than lying on it. The file explorer is the same
+    // arrangement (`.files-card`), and the flyout is neither: it is a card of
+    // the shell's own, which is why `.toc-card` only dresses a docked drawer.
+    const card = document.createElement("div");
+    card.className = "toc-card";
+    card.append(tabStrip, list, proofreadView.element, notesView.element, linksView.element);
+    panel.appendChild(card);
 
     function makeTabButton(tab: ReviewTab, label: string): HTMLButtonElement {
         const btn = document.createElement("button");

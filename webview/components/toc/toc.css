@@ -13,20 +13,46 @@
     padding: 10px 0;
 }
 
-/* ─── The drawer's ground ────────────────────────────────────────────────
-   The page's own paper unless a host says otherwise, so a docked outline
-   reads as part of the page rather than as a surface set into the window,
-   which is the opposite of the file explorer's card. --toc-panel-ground is
-   this drawer's ground and nothing else's (the Mac app's table of contents
-   sidebar switch is what declares it); it is aliased to --toc-surface here so
-   everything in the drawer that paints the ground moves with it, and so the
-   flyout, a floating card of the shell's own, keeps the paper whatever is
-   declared. The alias is set on the panel and read by its descendants, so the
-   default belongs on the two lines that set it and nowhere else. */
+/* ─── The drawer's card ──────────────────────────────────────────────────
+   The card is the surface and the panel is its box, which is the file
+   explorer's arrangement (`.files-card`) and is here for the same reasons:
+   the card takes the radius of a surface set into the window, and it gives
+   a strip of its own width back to the panel on the sash side so the resize
+   line stands off its rounded corner rather than lying along it. The panel's
+   far edge, the number the content's margin reads, is unchanged. Which side
+   the strip comes off follows the docked edge, since this drawer can sit on
+   either.
+
+   The GROUND is the page's own paper unless a host says otherwise, so the
+   outline reads as part of the page while the file list reads as a surface
+   on it; the two are one switch each in the Mac app's Appearance pane.
+   --toc-panel-ground is this drawer's ground and nothing else's, aliased to
+   --toc-surface so everything in the card that paints the ground moves with
+   it. The alias is set on the panel and read by its descendants, so the
+   default belongs on the two lines that set it and nowhere else. The flyout
+   is a card of the shell's own: it takes neither the ground nor the
+   geometry, which is what every `:not(.toc-panel--flyout)` here is for. */
 .toc-panel { --toc-surface: var(--vscode-editor-background); }
 .toc-panel:not(.toc-panel--flyout) {
     --toc-surface: var(--toc-panel-ground, var(--vscode-editor-background));
+}
+
+.toc-card {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.toc-panel:not(.toc-panel--flyout) .toc-card {
     background: var(--toc-surface);
+    border-radius: var(--ui-radius-l);
+    margin-right: var(--ui-space-3);
+}
+
+.toc-panel--right:not(.toc-panel--flyout) .toc-card {
+    margin-right: 0;
+    margin-left: var(--ui-space-3);
 }
 
 /* ─── Review tab strip (Contents / Proofreading / Notes) ─────────────────── */
@@ -40,6 +66,12 @@
     align-items: center;
     padding: 4px 6px;
     background: var(--toc-surface);
+    /* It is the top of whichever rounded surface holds it, the docked card
+       or the shell's flyout, and an opaque square rectangle at the top of a
+       rounded box squares the two corners it covers. Its own fill is what
+       keeps a stuck group header from showing through it, so the fill stays
+       and the corners come with it. */
+    border-radius: var(--ui-radius-l) var(--ui-radius-l) 0 0;
 }
 /* The tabs WRAP onto a second row when the panel is too narrow for one —
    nothing is ever clipped or scrolled out of reach; the flip/hide controls
