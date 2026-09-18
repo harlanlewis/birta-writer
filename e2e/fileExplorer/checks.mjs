@@ -409,9 +409,16 @@ export async function run({ page, check, baseUrl }) {
         hiddenAfter.hidden === false && hiddenAfter.drawn && hiddenAfter.listings === listingsBefore + 1, JSON.stringify(hiddenAfter));
     const other = await page.evaluate(() => {
         const row = document.querySelector('.files-row[data-path="notes.txt"]');
-        return { dimmed: row.classList.contains("files-row--other"), opacity: parseFloat(getComputedStyle(row).opacity) };
+        return {
+            dimmed: row.classList.contains("files-row--other"),
+            // The NAME is what is dimmed; the row itself stays at full
+            // strength, or the chip drawn inside it would dim with it.
+            opacity: parseFloat(getComputedStyle(row.querySelector(".files-row__name")).opacity),
+            rowOpacity: parseFloat(getComputedStyle(row).opacity),
+        };
     });
-    check("a non-document is dimmed", other.dimmed && other.opacity < 1, JSON.stringify(other));
+    check("a non-document's name is dimmed, and its row is not", other.dimmed && other.opacity < 1 && other.rowOpacity === 1,
+        JSON.stringify(other));
     // Hovered, the row says what the file is: its extension, in a chip over
     // the name's trailing end. An openable row shows none.
     await page.hover(rowSel("notes.txt"));
@@ -423,11 +430,15 @@ export async function run({ page, check, baseUrl }) {
         return {
             ext: row.dataset.ext, content: after.content, drawn: after.content !== "none" && parseFloat(after.width) > 0,
             rightAligned: parseFloat(after.right) >= 0 && after.position === "absolute",
+            // Full strength: the chip is read over dimmed words, so it must
+            // not be dimmed with them.
+            chipOpacity: parseFloat(after.opacity) * parseFloat(getComputedStyle(row).opacity),
             docExt: doc.dataset.ext ?? null,
         };
     });
-    check("hovering a non-document shows its extension in a chip over the name's end",
-        chip.ext === "TXT" && chip.content === '"TXT"' && chip.drawn && chip.rightAligned && chip.docExt === null,
+    check("hovering a non-document shows its extension in a chip over the name's end, at full strength",
+        chip.ext === "TXT" && chip.content === '"TXT"' && chip.drawn && chip.rightAligned && chip.chipOpacity === 1
+            && chip.docExt === null,
         JSON.stringify(chip));
     await page.mouse.move(600, 500);
     await page.click(rowSel("notes.txt"));

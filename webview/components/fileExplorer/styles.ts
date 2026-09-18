@@ -145,19 +145,27 @@ export const FILE_EXPLORER_CSS = `
 }
 
 /* A file the host hands to another application: still a row, still a
-   click, drawn quieter so the promise reads before it is made. */
+   click, drawn quieter so the promise reads before it is made. The dimming
+   is on the name and the caret, not the row: a row's opacity is a group,
+   and the chip below is inside it, where it would be drawn at the same
+   strength as the words it exists to be read over. */
 .files-row--other {
-    opacity: 0.55;
     position: relative;
 }
 
-/* And, while hovered, what it is: the extension, in a chip over the name's
-   trailing end. Over rather than beside, because a long name has already
-   taken the row and the ellipsis hides the one part that said what the file
-   was; a chip laid on the name's end is what the name could not show. Only
-   for a row the host hands elsewhere, whose click is the promise the chip
-   lets a reader judge; an openable file's row says nothing new. */
-.files-row--other[data-ext]:hover::after {
+.files-row--other .files-row__name,
+.files-row--other .files-caret {
+    opacity: 0.55;
+}
+
+/* And, under the pointer or the keyboard, what it is: the extension, in a
+   chip over the name's trailing end. Over rather than beside, because a
+   long name has already taken the row and the ellipsis hides the one part
+   that said what the file was; a chip laid on the name's end is what the
+   name could not show. Only for a row the host hands elsewhere, whose click
+   is the promise the chip lets a reader judge; an openable file's row says
+   nothing new. */
+.files-row--other[data-ext]:is(:hover, :focus-visible)::after {
     content: attr(data-ext);
     position: absolute;
     right: var(--ui-space-2);

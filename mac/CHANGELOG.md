@@ -18,7 +18,6 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ### Fixed
 
-- The command palette's footer hints sat against the rule above them; they now sit in the middle of their band.
 - The line-number gutter stood under a docked file explorer. It now stands past the explorer's far edge.
 - With a tab bar showing, the tooltip for a button in the titlebar or the toolbar was drawn under the tabs, a row away from the button it named. It now sits against the button, over the tab bar, as it does in a window with no tabs.
 - With the formatting row open beside a docked file explorer, the top of the explorer was covered: the folder's name and the first rows were hidden behind the toolbar's background and could not be clicked. The explorer now starts level with the row and all of it shows.
@@ -28,7 +27,7 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ### Changed
 
-- The file explorer's resize line stands off the surface's rounded edge rather than lying along it, and the folder's name at its top is drawn quieter than the rows under it. Resting the pointer on a file Birta Writer for Mac hands to another application shows the file's extension in a chip over the end of its name, so a long name that hides its extension still says what it is.
+- Resting the pointer on a file in the explorer that Birta Writer for Mac hands to another application shows the file's extension in a chip over the end of its name, so a long name that hides its extension still says what it is. The chip shows for the focused row too, under the keyboard.
 - The titlebar's Open button is now a menu, and the Open Recent button beside it is gone: Open… comes first, then the recent files, then Clear Recents when there are any. Nothing else about the list has changed, and File > Open Recent still holds it too. ⌘O opens the file panel directly, as before, and the button's tooltip names it without the key, since the key skips the menu.
 
 ---
