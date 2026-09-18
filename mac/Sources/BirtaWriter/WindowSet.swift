@@ -721,8 +721,15 @@ final class WindowSet {
     /// rows are the toolbar's own commands, which apply live in the page and
     /// post the setting back, so the pane runs them everywhere rather than
     /// reloading every page.
+    ///
+    /// In place, never summoned. The caller is the Settings window, and a
+    /// summon puts the panel in front of the window whose button was just
+    /// pressed, which leaves the reader looking at the change with the
+    /// control that made it behind it. A window that is cold takes the
+    /// setting from `Prefs` when it next mounts, which is what makes
+    /// dropping the command there complete rather than lossy.
     func runEditorCommandEverywhere(_ id: String) {
-        windows.forEach { $0.runEditorCommand(id) }
+        windows.forEach { $0.runEditorCommandInPlace(id) }
     }
 
     /// View > Theme, filled from this store and this answer.

@@ -51,15 +51,31 @@ public enum AppearanceOverlay {
         }
     }
 
+    /// The custom properties the page reads for each drawer's ground. Not
+    /// `--vscode-*` names, because neither is a colour role a VS Code theme
+    /// has an opinion about: they are this page's own two surfaces, and the
+    /// value put in each is a palette colour named through one.
+    /// `webview/components/fileExplorer/styles.ts` and
+    /// `webview/components/toc/toc.css` are the readers, each with its own
+    /// default beside it, and `AppearanceOverlayTests` holds these two
+    /// spellings to those files, the way it holds the palette seeds.
+    public static let filesGround = "--files-panel-ground"
+    public static let tocGround = "--toc-panel-ground"
+
     /// How much of the tint goes into a surface, per kind.
     public static func tintAmount(_ kind: VSCodeTheme.Kind) -> Double { kind == .dark ? 0.16 : 0.09 }
 
-    /// The declarations for `accent`, `tint` and `transparentSidebar` over
+    /// The declarations for `accent`, `tint` and the two drawer grounds over
     /// `base` (a theme, or nil for the palette) of `kind`, in a fixed
     /// order. Empty when nothing is set.
+    ///
+    /// Neither drawer's answer is defaulted, for the reason `transparentSidebar`
+    /// never was: a call site that forgets one would silently get an answer
+    /// nobody chose, and nothing would fail.
     public static func declarations(kind: VSCodeTheme.Kind, base: VSCodeTheme?,
                                     accent: String?, tint: String?,
-                                    transparentSidebar: Bool) -> [(name: String, value: String)] {
+                                    transparentSidebar: Bool,
+                                    transparentToc: Bool) -> [(name: String, value: String)] {
         var out: [(String, String)] = []
         func put(_ id: String, _ value: String) { out.append((VSCodeTheme.cssVariable(for: id), value)) }
         let palette = systemPalette(kind)
@@ -97,10 +113,16 @@ public enum AppearanceOverlay {
             put("editor.selectionBackground", paperRGB.mixed(with: accentRGB, kind == .dark ? 0.45 : 0.3).hex)
         }
 
-        if transparentSidebar {
-            out.append((VSCodeTheme.cssVariable(for: "sideBar.background"),
-                        "var(\(VSCodeTheme.cssVariable(for: "editor.background")))"))
-        }
+        // The two drawers' grounds, each its own property so neither switch
+        // can answer the other's question. A palette variable cannot do it:
+        // redefining `sideBar.background` to make the file list transparent
+        // takes the shade away from an outline asking for it, and repaints
+        // everything else drawn on that shade (the hidden toolbar's tab is
+        // one). The page names each ground where it paints it and supplies
+        // the default there, so a host that declares neither is the page as
+        // written.
+        if transparentSidebar { out.append((filesGround, "var(\(VSCodeTheme.cssVariable(for: "editor.background")))")) }
+        if !transparentToc { out.append((tocGround, "var(\(VSCodeTheme.cssVariable(for: "sideBar.background")))")) }
         return out.map { (name: $0.0, value: $0.1) }
     }
 

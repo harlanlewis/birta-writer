@@ -13,11 +13,21 @@
     padding: 10px 0;
 }
 
-/* Invisible hover band spanning the flyout's full width, from the panel up to
-   the content-area top (the toolbar's bottom) — height set inline by
-   positionFlyout. Hovering anywhere in this column keeps the panel :hover (its
-   mouseenter cancels the retract), so the flyout doesn't snap shut the instant
-   the pointer drifts off the small tab. The reveal tab is lifted ABOVE this band
+/* ─── The drawer's ground ────────────────────────────────────────────────
+   The page's own paper unless a host says otherwise, so a docked outline
+   reads as part of the page rather than as a surface set into the window,
+   which is the opposite of the file explorer's card. --toc-panel-ground is
+   this drawer's ground and nothing else's (the Mac app's table of contents
+   sidebar switch is what declares it); it is aliased to --toc-surface here so
+   everything in the drawer that paints the ground moves with it, and so the
+   flyout, a floating card of the shell's own, keeps the paper whatever is
+   declared. The alias is set on the panel and read by its descendants, so the
+   default belongs on the two lines that set it and nowhere else. */
+.toc-panel { --toc-surface: var(--vscode-editor-background); }
+.toc-panel:not(.toc-panel--flyout) {
+    --toc-surface: var(--toc-panel-ground, var(--vscode-editor-background));
+    background: var(--toc-surface);
+}
 
 /* ─── Review tab strip (Contents / Proofreading / Notes) ─────────────────── */
 /* A fixed header row above the scrolling body, so it stays pinned while the
@@ -29,7 +39,7 @@
     display: flex;
     align-items: center;
     padding: 4px 6px;
-    background: var(--vscode-editor-background);
+    background: var(--toc-surface);
 }
 /* The tabs WRAP onto a second row when the panel is too narrow for one —
    nothing is ever clipped or scrolled out of reach; the flip/hide controls
@@ -278,9 +288,9 @@
        painted in the panel background — rows scrolling beneath a stuck header
        are fully covered (a margin gap showed them through). */
     border: none;
-    border-top: 12px solid var(--vscode-editor-background);
+    border-top: 12px solid var(--toc-surface);
     border-radius: var(--ui-radius-s);
-    background: var(--vscode-editor-background);
+    background: var(--toc-surface);
     background-clip: padding-box;
     color: var(--vscode-foreground);
     cursor: pointer;

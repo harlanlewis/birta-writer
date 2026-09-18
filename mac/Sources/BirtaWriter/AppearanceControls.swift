@@ -35,7 +35,7 @@ struct MiniWindowPalette: Equatable {
         var preview = ThemePreview.system(kind)
         let overlay = Dictionary(uniqueKeysWithValues: AppearanceOverlay.declarations(
             kind: kind, base: nil, accent: settings.accent, tint: settings.tint,
-            transparentSidebar: settings.transparentSidebar
+            transparentSidebar: settings.transparentSidebar, transparentToc: settings.transparentToc
         ).map { ($0.name, $0.value) })
         let paper = overlay[VSCodeTheme.cssVariable(for: "editor.background")] ?? preview.paper
         let sidebar = settings.transparentSidebar ? paper
@@ -49,6 +49,11 @@ struct MiniWindowPalette: Equatable {
     /// A theme's card with the mod over it, the way the page draws the
     /// theme: the accent in place of the theme's, the tint into its paper
     /// and its sidebar, and the sidebar as the paper when transparent.
+    ///
+    /// The one strip the card draws stands for the FILE LIST, which is the
+    /// drawer whose ground the card can show while it is closed. The
+    /// outline's own switch leaves the picture alone: a second strip would
+    /// be a window shape no window has.
     static func themed(_ preview: ThemePreview, kind: VSCodeTheme.Kind, settings: AppearanceSettings) -> MiniWindowPalette {
         var paper = preview.paper
         var sidebar = preview.sidebar
@@ -104,6 +109,10 @@ struct MiniWindowPalette: Equatable {
 /// while a mode is held: both system cards first, then the themes, and a
 /// pick says which kind it holds as well as which theme. A theme card's
 /// hover button, and its context menu, remove it from the store.
+///
+/// Either way the cards of the kind the strip is PICKING FOR lead, system
+/// card included, so a dark slot opens on the dark themes; the rest follow
+/// in the store's own order, which is by name (`ThemeStore.ordered`).
 @MainActor
 final class ThemeStrip: NSView {
     let kind: VSCodeTheme.Kind?
@@ -122,6 +131,13 @@ final class ThemeStrip: NSView {
     init(kind: VSCodeTheme.Kind?) {
         self.kind = kind
         super.init(frame: .zero)
+        // A named group of radio buttons, which is what the cards are. The
+        // role is declared as well as the name: a plain NSView is not an
+        // accessibility element, so a label alone can be pruned from the
+        // tree and never announced, and the name is then carried by nothing.
+        // `SettingsWindowController` is what names each one.
+        setAccessibilityElement(true)
+        setAccessibilityRole(.group)
         stack.orientation = .horizontal
         stack.spacing = 12
         stack.alignment = .top
@@ -178,11 +194,16 @@ final class ThemeStrip: NSView {
         self.settings = settings
         selectedId = selected
         for card in cards { card.removeFromSuperview() }
-        let system = systemKinds.map { kind in
+        // The kind this strip is a picker FOR: its own, or, held, the kind
+        // being held. Its cards lead, system card included, so the strip
+        // opens on what is being chosen between (`ThemeStore.ordered`).
+        let preferred = kind ?? selectedSystem
+        let leading = systemKinds.filter { $0 == preferred } + systemKinds.filter { $0 != preferred }
+        let system = leading.map { kind in
             ThemeCard(id: nil, kind: kind, title: ThemeCard.systemTitle(kind),
                       palette: MiniWindowPalette.system(kind, settings: settings))
         }
-        let rest = themes.map { theme in
+        let rest = ThemeStore.ordered(themes, preferring: preferred).map { theme in
             ThemeCard(id: theme.id, kind: theme.kind, title: theme.name,
                       palette: MiniWindowPalette.themed(theme.preview, kind: theme.kind, settings: settings))
         }

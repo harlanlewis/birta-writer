@@ -51,7 +51,13 @@ export const FILE_EXPLORER_CSS = `
    frame, a rounded corner has nothing to be rounded against. Docked and
    overlay alike, and not the flyout, which is a card of the shell's own. */
 .files-panel:not(.files-panel--flyout) .files-card {
-    background: var(--vscode-sideBar-background);
+    /* The shade unless a host says otherwise. --files-panel-ground is this
+       card's ground and nothing else's, so a host that wants the file list
+       to read as page (the Mac app's Transparent file list sidebar) declares
+       it without touching the palette's own sideBar shade. That shade has
+       another reader of its own, the hidden toolbar's tab, and is what the
+       outline's ground is set TO when a host asks for one. */
+    background: var(--files-panel-ground, var(--vscode-sideBar-background));
     border-radius: var(--ui-radius-l);
     margin-right: var(--ui-space-3);
 }

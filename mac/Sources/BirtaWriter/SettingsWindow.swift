@@ -53,6 +53,9 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         /// take, and this has to fit it with every card drawn.
         static let maxPaneHeight: CGFloat = 900
         static var captionWidth: CGFloat { content - rowInset * 2 }
+        /// Above the theme strips, on top of whatever `row` leaves between a
+        /// row's line and what is drawn under it. Spent by `themeCards`.
+        static let themeStripAir: CGFloat = 8
     }
 
     /// The panes, in toolbar order.
@@ -208,6 +211,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     private let accentRow = SwatchRow(colors: AppearanceOverlay.accents, noneTitle: "Default")
     private let tintRow = SwatchRow(colors: AppearanceOverlay.tints, noneTitle: "None")
     private let sidebarSwitch = NSSwitch()
+    private let tocSidebarSwitch = NSSwitch()
     private let fontControl = NSSegmentedControl(labels: SettingsWindowController.fontChoices.map(\.title), trackingMode: .selectOne,
                                                  target: nil, action: nil)
     private let fontSizeStepper = FontSizeStepper()
@@ -1118,6 +1122,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         case .accent: return (accentRow, [], nil)
         case .tint: return (tintRow, [], nil)
         case .transparentSidebar: return (sidebarSwitch, [], nil)
+        case .transparentToc: return (tocSidebarSwitch, [], nil)
         case .font: return (fontControl, [], nil)
         case .fontSize: return (fontSizeStepper, [], nil)
         case .resetSettings:
@@ -2131,6 +2136,8 @@ extension SettingsWindowController {
         }
         sidebarSwitch.target = self
         sidebarSwitch.action = #selector(toggleTransparentSidebar)
+        tocSidebarSwitch.target = self
+        tocSidebarSwitch.action = #selector(toggleTransparentToc)
 
         // Item 0 is the button's own title under `pullsDown`, as the agent
         // preset pull-down does it; the ways in start at 1.
@@ -2149,8 +2156,16 @@ extension SettingsWindowController {
         fontSizeStepper.onReset = { [weak self] in self?.resetFontSize() }
     }
 
-    /// A strip under a heading: an icon and a word, then the cards.
+    /// What the held strip is called. It has no drawn counterpart to read it
+    /// off, which the two slot strips do: `labelled` takes ONE word and
+    /// spends it on the heading and on the name, so those two cannot drift.
+    static let themeStripName = "Theme"
+
+    /// A strip under a heading: an icon and a word, then the cards. The word
+    /// is the strip's accessibility name too, so what a screen reader is told
+    /// and what is drawn cannot drift apart.
     private static func labelled(_ title: String, _ symbol: String, _ strip: ThemeStrip) -> NSView {
+        strip.setAccessibilityLabel(title)
         let label = NSTextField(labelWithString: title)
         label.font = .systemFont(ofSize: NSFont.smallSystemFontSize, weight: .medium)
         label.textColor = .secondaryLabelColor
@@ -2177,10 +2192,17 @@ extension SettingsWindowController {
     /// it twice. Both are built and one is hidden rather than the card
     /// being rebuilt on each flip, so the pane keeps its scroll and the
     /// strips keep theirs.
+    ///
+    /// A heading names a strip only where there are two to tell apart. The
+    /// held shape draws one strip directly under the sentence it answers, so
+    /// a heading over it would name what nothing else could be. What the
+    /// heading was still doing for a screen reader the strip does itself,
+    /// which is why every strip is named whether or not one is drawn.
     private func themeCards() -> NSView {
+        heldStrip.setAccessibilityLabel(Self.themeStripName)
         for (stack, views) in [(slotStrips, [Self.labelled("Light Theme", "sun.max", lightStrip),
                                               Self.labelled("Dark Theme", "moon", darkStrip)]),
-                               (heldStrips, [Self.labelled("Theme", "paintpalette", heldStrip)])] {
+                               (heldStrips, [heldStrip])] {
             stack.setViews(views, in: .top)
             stack.orientation = .vertical
             stack.alignment = .leading
@@ -2191,6 +2213,12 @@ extension SettingsWindowController {
         both.orientation = .vertical
         both.alignment = .leading
         both.spacing = 0
+        // Air under the pane's sentence. What `row` leaves between a row's
+        // line and what is drawn below it is a field's gap, and too tight
+        // under a sentence these cards are the answer to. On the stack rather
+        // than on either shape, so the held shape keeps the air after
+        // dropping its heading.
+        both.edgeInsets = NSEdgeInsets(top: Metrics.themeStripAir, left: 0, bottom: 0, right: 0)
         both.translatesAutoresizingMaskIntoConstraints = false
         for view in both.arrangedSubviews { view.widthAnchor.constraint(equalTo: both.widthAnchor).isActive = true }
         return both
@@ -2225,6 +2253,7 @@ extension SettingsWindowController {
         accentRow.select(settings.accent)
         tintRow.select(settings.tint)
         sidebarSwitch.state = settings.transparentSidebar ? .on : .off
+        tocSidebarSwitch.state = settings.transparentToc ? .on : .off
         fontControl.selectedSegment = Self.fontChoices.firstIndex { $0.preset == Prefs.fontPreset } ?? 1
         fontSizeStepper.show(percent: Prefs.fontSize)
         // The card is a strip taller in one shape than the other, so the
@@ -2242,6 +2271,26 @@ extension SettingsWindowController {
     var followsSystemForTesting: Bool { followSwitch.state == .on }
     /// Which of the card's two shapes is showing: "slots" or "held".
     var themeCardShapeForTesting: String { slotStrips.isHidden ? (heldStrips.isHidden ? "none" : "held") : "slots" }
+    /// What a screen reader is told each strip of the shape now showing is
+    /// called, and whether it is an element to be told about at all. The
+    /// held shape draws no heading, so this is the whole of its name.
+    var themeStripNamesForTesting: [(name: String?, isElement: Bool)] {
+        guard themeCardShapeForTesting != "none" else { return [] }
+        let strips: [ThemeStrip] = slotStrips.isHidden ? [heldStrip] : [lightStrip, darkStrip]
+        return strips.map { ($0.accessibilityLabel(), $0.isAccessibilityElement()) }
+    }
+    /// The headings DRAWN over the strips in the shape now showing, so the
+    /// shape that draws none can be seen to draw none. It descends no
+    /// further than a strip, whose own labels are the cards' names.
+    var themeStripHeadingsForTesting: [String] {
+        func headings(in view: NSView) -> [String] {
+            if view is ThemeStrip { return [] }
+            if let field = view as? NSTextField { return [field.stringValue] }
+            return view.subviews.flatMap(headings)
+        }
+        guard themeCardShapeForTesting != "none" else { return [] }
+        return headings(in: slotStrips.isHidden ? heldStrips : slotStrips)
+    }
     func setFollowSystemForTesting(_ on: Bool) {
         followSwitch.state = on ? .on : .off
         toggleFollowSystem()
@@ -2275,6 +2324,12 @@ extension SettingsWindowController {
     @objc private func toggleTransparentSidebar() {
         var settings = Prefs.appearance
         settings.transparentSidebar = sidebarSwitch.state == .on
+        apply(settings)
+    }
+
+    @objc private func toggleTransparentToc() {
+        var settings = Prefs.appearance
+        settings.transparentToc = tocSidebarSwitch.state == .on
         apply(settings)
     }
 

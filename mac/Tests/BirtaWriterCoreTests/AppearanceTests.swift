@@ -20,6 +20,22 @@ final class AppearanceTests: XCTestCase {
         XCTAssertFalse(held.isSystemDefault)
     }
 
+    /// The two drawers default opposite ways, and both defaults are what the
+    /// page draws with nothing declared, so neither counts as a
+    /// customization.
+    func testTheDrawersShouldDefaultOppositeWaysAndNeitherDefaultShouldCount() {
+        let untouched = AppearanceSettings()
+        XCTAssertFalse(untouched.transparentSidebar, "the file list is a surface set into the window")
+        XCTAssertTrue(untouched.transparentToc, "the outline reads as part of the page")
+        XCTAssertTrue(untouched.isSystemDefault)
+        var opaqueToc = untouched
+        opaqueToc.transparentToc = false
+        XCTAssertFalse(opaqueToc.isSystemDefault, "turning the outline's shade on is a customization")
+        var clearFiles = untouched
+        clearFiles.transparentSidebar = true
+        XCTAssertFalse(clearFiles.isSystemDefault)
+    }
+
     // MARK: the switch
 
     func testSwitchingOffShouldHoldTheSystemsCurrentKindWhenNoneWasHeldBefore() {

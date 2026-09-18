@@ -4284,6 +4284,18 @@ final class Coordinator {
         host.send(.editorCommand(command, arg: arg))
     }
 
+    /// The same command, in a page that is already mounted, with the windows
+    /// left in the order the reader put them in.
+    ///
+    /// For a command issued from ANOTHER of the app's windows rather than
+    /// from this one's menu: the Settings window's typography rows are the
+    /// one caller (`WindowSet.runEditorCommandEverywhere`), and there the
+    /// summon above is what takes the window holding the button off screen.
+    func runEditorCommandInPlace(_ command: String, arg: String? = nil) {
+        guard state == .warm else { return }
+        host.send(.editorCommand(command, arg: arg))
+    }
+
     /// Put `content` in the editor and the file, keeping the mounted editor
     /// (an `externalUpdate` is a cursor-preserving diff, and it re-baselines
     /// without echoing an `update`, so the write here is the only one).
