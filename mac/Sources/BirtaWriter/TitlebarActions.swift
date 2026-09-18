@@ -423,8 +423,14 @@ final class TitlebarActionButton: NSButton {
             // Label AND chord from the row. The button is an element in its own
             // right, unlike the chevron beside it, because it DOES something
             // rather than pointing at something the title already does.
+            //
+            // No chord on a button that opens a menu (`namedBy`): the chord
+            // is the row's, and the row is one item of what the button
+            // opens, so printing it would promise the key does what the
+            // click does, and the key skips the menu.
             setAccessibilityLabel(row.title)
-            label = row.symbols.isEmpty ? row.title : "\(row.title)  \(row.symbols)"
+            let opensMenu = action.namedBy != nil
+            label = row.symbols.isEmpty || opensMenu ? row.title : "\(row.title)  \(row.symbols)"
         }
     }
 

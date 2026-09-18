@@ -71,7 +71,9 @@ export async function run({ page, check, baseUrl }) {
         const el = document.querySelector(".files-panel");
         const panel = el.getBoundingClientRect();
         const topbar = document.querySelector(".editor-topbar").getBoundingClientRect();
-        const cs = getComputedStyle(el);
+        // The ground and the radius are the CARD's: the panel is its box and
+        // keeps a strip of page beside it for the sash.
+        const cs = getComputedStyle(el.querySelector(".files-card"));
         return {
             top: Math.round(panel.top), topbarBottom: Math.round(topbar.bottom),
             left: Math.round(panel.left), width: Math.round(panel.width), right: Math.round(panel.right),
@@ -103,6 +105,17 @@ export async function run({ page, check, baseUrl }) {
         geom.right === px(geom.reserve) && geom.width === px(geom.reserve) - INSET, JSON.stringify(geom));
     check("the header names the root and the landmarks are labelled",
         geom.heading === "Notes" && geom.role === "complementary" && geom.tree === "tree", JSON.stringify(geom));
+    check("the root's name is drawn quieter than the rows under it",
+        await page.evaluate(() => {
+            const name = getComputedStyle(document.querySelector(".files-header__name"));
+            const row = getComputedStyle(document.querySelector(".files-row__name"));
+            const probe = document.createElement("div");
+            probe.style.color = "var(--vscode-descriptionForeground)";
+            document.body.appendChild(probe);
+            const quiet = getComputedStyle(probe).color;
+            probe.remove();
+            return name.color === quiet && name.color !== row.color;
+        }));
     // Its own ground, a step off the page: the sidebar shade the palette
     // derives from the widget ground (darker on light, lighter on dark), a
     // small radius, and still no border.
@@ -115,7 +128,7 @@ export async function run({ page, check, baseUrl }) {
             const probe = document.createElement("div");
             probe.style.background = "var(--vscode-sideBar-background)";
             document.body.appendChild(probe);
-            const same = getComputedStyle(probe).backgroundColor === getComputedStyle(document.querySelector(".files-panel")).backgroundColor;
+            const same = getComputedStyle(probe).backgroundColor === getComputedStyle(document.querySelector(".files-card")).backgroundColor;
             probe.remove();
             return same;
         }));
@@ -399,6 +412,24 @@ export async function run({ page, check, baseUrl }) {
         return { dimmed: row.classList.contains("files-row--other"), opacity: parseFloat(getComputedStyle(row).opacity) };
     });
     check("a non-document is dimmed", other.dimmed && other.opacity < 1, JSON.stringify(other));
+    // Hovered, the row says what the file is: its extension, in a chip over
+    // the name's trailing end. An openable row shows none.
+    await page.hover(rowSel("notes.txt"));
+    await page.waitForTimeout(100);
+    const chip = await page.evaluate(() => {
+        const row = document.querySelector('.files-row[data-path="notes.txt"]');
+        const after = getComputedStyle(row, "::after");
+        const doc = document.querySelector('.files-row[data-path="readme.md"]');
+        return {
+            ext: row.dataset.ext, content: after.content, drawn: after.content !== "none" && parseFloat(after.width) > 0,
+            rightAligned: parseFloat(after.right) >= 0 && after.position === "absolute",
+            docExt: doc.dataset.ext ?? null,
+        };
+    });
+    check("hovering a non-document shows its extension in a chip over the name's end",
+        chip.ext === "TXT" && chip.content === '"TXT"' && chip.drawn && chip.rightAligned && chip.docExt === null,
+        JSON.stringify(chip));
+    await page.mouse.move(600, 500);
     await page.click(rowSel("notes.txt"));
     const opens = await posted("openProjectFile");
     check("activating a non-document still asks the host to open it, and selects nothing",
@@ -451,6 +482,19 @@ export async function run({ page, check, baseUrl }) {
         return { opacity: parseFloat(after.opacity), width: after.width };
     });
     check("hovering the panel's edge lights the resize sash", edge.opacity === 1 && edge.width === "2px", JSON.stringify(edge));
+    // The line stands off the card's rounded edge, in the strip of page the
+    // panel keeps beside it, rather than lying along the card's own edge.
+    const sashOffCard = await page.evaluate(() => {
+        const panel = document.querySelector(".files-panel").getBoundingClientRect();
+        const card = document.querySelector(".files-card").getBoundingClientRect();
+        const handle = document.querySelector(".files-panel .side-panel-resize-handle");
+        const after = getComputedStyle(handle, "::after");
+        const lineLeft = handle.getBoundingClientRect().right - parseFloat(after.width);
+        return { cardRight: card.right, lineLeft, panelRight: panel.right, gap: lineLeft - card.right };
+    });
+    check("the sash's line stands off the card's rounded edge, inside the panel's box",
+        sashOffCard.gap >= 3 && sashOffCard.lineLeft < sashOffCard.panelRight && sashOffCard.cardRight < sashOffCard.panelRight,
+        JSON.stringify(sashOffCard));
     // The far edge again: the number the sash writes and the host is told.
     const widthBefore = await page.evaluate(() => document.querySelector(".files-panel").getBoundingClientRect().right);
     await page.mouse.down();

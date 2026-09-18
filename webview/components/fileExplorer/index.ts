@@ -160,7 +160,14 @@ export function createFileExplorer(host: FileExplorerHost): FileExplorerControll
     tree.setAttribute("role", "tree");
     tree.setAttribute("aria-label", host.root.name);
     tree.tabIndex = -1;
-    panel.append(header, tree);
+    // The card is the coloured, rounded surface; the panel is its box and
+    // holds a strip of page beside it for the resize sash, so the sash's line
+    // stands off the card's rounded edge rather than lying on it
+    // (`.files-card` in styles.ts).
+    const card = document.createElement("div");
+    card.className = "files-card";
+    card.append(header, tree);
+    panel.append(card);
 
     // ── Listings on the wire ──────────────────────────────────────────────
     let requestSeq = 0;
@@ -276,6 +283,13 @@ export function createFileExplorer(host: FileExplorerHost): FileExplorerControll
         return el;
     }
 
+    /** The extension a file name ends in, upper-cased for the chip; "" for none (a dotfile's dot leads, and is not one). */
+    function extensionOf(name: string): string {
+        const dot = name.lastIndexOf(".");
+        if (dot <= 0 || dot === name.length - 1) { return ""; }
+        return name.slice(dot + 1).toUpperCase();
+    }
+
     function paintRow(el: HTMLElement, row: TreeRow): void {
         const isDir = row.kind === "dir";
         el.className = [
@@ -300,6 +314,12 @@ export function createFileExplorer(host: FileExplorerHost): FileExplorerControll
             : row.kind === "error"
                 ? (row.message ?? t("Could not read this folder"))
                 : row.name;
+        // What a file the host hands elsewhere IS, for the row the name has
+        // no room to say it on: its extension, in a chip the row shows while
+        // hovered (styles.ts). Written on the row rather than drawn, so the
+        // chip exists only for the rows that need one.
+        const ext = row.kind === "file" && !row.openable ? extensionOf(row.name) : "";
+        if (ext) { el.dataset["ext"] = ext; } else { delete el.dataset["ext"]; }
     }
 
     /** Repaint the tree from the model. Runs on every visible commit, so it moves nodes rather than rebuilding them. */

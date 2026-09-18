@@ -60,7 +60,7 @@ final class TitlebarActionsTests: XCTestCase {
         let tips = view.actionsView.buttons.compactMap { $0.label }
         XCTAssertEqual(tips.count, 3)
         XCTAssertTrue(tips[0].hasSuffix("⌘N"), tips[0])
-        XCTAssertTrue(tips[1].hasSuffix("⌘O"), tips[1])
+        XCTAssertEqual(tips[1], "Open…", "the menu button carries its name alone")
         XCTAssertTrue(tips[2].hasSuffix("⇧⌘P"), tips[2])
     }
 
@@ -315,8 +315,10 @@ final class TitlebarActionsTests: XCTestCase {
         let view = boundTitle()
         let open = view.actionsView.buttons.first { $0.action == #selector(AppDelegate.menuOpenMenu(_:)) }
         XCTAssertNotNil(open, "the strip has no button that raises the Open menu")
-        XCTAssertEqual(open?.label, "Open…  ⌘O")
+        XCTAssertEqual(open?.label, "Open…", "a button that opens a menu prints no chord: the key skips the menu")
         XCTAssertEqual(open?.accessibilityLabel(), "Open…")
+        XCTAssertFalse(AppMenu.row(for: #selector(AppDelegate.menuOpenDocument))?.symbols.isEmpty ?? true,
+                       "the row it is named by does carry a chord, so the absence above is a decision")
         for button in view.actionsView.buttons {
             XCTAssertNotNil(button.label, "a button with no row to take a name from has no tooltip")
         }

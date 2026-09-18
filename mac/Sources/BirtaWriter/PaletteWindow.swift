@@ -41,6 +41,7 @@ final class PaletteWindowController: NSObject, NSTextFieldDelegate, NSTableViewD
     private let table = NSTableView()
     private let scroll = NSScrollView()
     private let footer = NSTextField(labelWithString: "")
+    private var footerRule: NSBox?
     private let makeCatalog: () -> PaletteCatalog
     private let onPick: (PaletteAction) -> Void
     private var catalog = PaletteCatalog()
@@ -374,6 +375,7 @@ final class PaletteWindowController: NSObject, NSTextFieldDelegate, NSTableViewD
         let footerRule = NSBox()
         footerRule.boxType = .separator
         footerRule.translatesAutoresizingMaskIntoConstraints = false
+        self.footerRule = footerRule
 
         content.addSubview(fieldRow)
         content.addSubview(rule)
@@ -394,12 +396,24 @@ final class PaletteWindowController: NSObject, NSTextFieldDelegate, NSTableViewD
             footerRule.topAnchor.constraint(equalTo: scroll.bottomAnchor, constant: 6),
             footerRule.leadingAnchor.constraint(equalTo: content.leadingAnchor),
             footerRule.trailingAnchor.constraint(equalTo: content.trailingAnchor),
-            footer.topAnchor.constraint(equalTo: footerRule.bottomAnchor),
+            // The hints sit in the MIDDLE of the footer's band. A label given
+            // the band's whole height draws its text at its top, against the
+            // rule, and the air the band was meant to hold ends up under the
+            // words instead of around them.
+            footer.centerYAnchor.constraint(equalTo: footerRule.bottomAnchor, constant: Self.footerHeight / 2),
             footer.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 16),
             footer.trailingAnchor.constraint(lessThanOrEqualTo: content.trailingAnchor, constant: -16),
-            footer.heightAnchor.constraint(equalToConstant: Self.footerHeight),
-            footer.bottomAnchor.constraint(equalTo: content.bottomAnchor),
+            content.bottomAnchor.constraint(equalTo: footerRule.bottomAnchor, constant: Self.footerHeight),
         ])
+    }
+
+    /// The air over and under the footer's hints, for a check: the words are
+    /// centred in the band under the rule, not sat against it.
+    var footerAirForMeasurement: (above: CGFloat, below: CGFloat)? {
+        guard let footerRule, let content = footer.superview else { return nil }
+        content.layoutSubtreeIfNeeded()
+        let text = footer.frame
+        return (above: footerRule.frame.minY - text.maxY, below: text.minY - content.bounds.minY)
     }
 
     /// The panel is as tall as its list, up to a ceiling past which the list
