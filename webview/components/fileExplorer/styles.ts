@@ -46,10 +46,11 @@ export const FILE_EXPLORER_CSS = `
    theme (darker on light, lighter on dark; the host palette derives it from
    the widget ground so a theme keeps the two apart), with the small radius of
    a surface set into the window rather than the one a floating card takes.
-   The inset from the window's edges is the shell's (index.ts, FILES_INSET),
-   and it is what makes the ground and the radius visible at all: flush to the
-   frame, a rounded corner has nothing to be rounded against. Docked and
-   overlay alike, and not the flyout, which is a card of the shell's own. */
+   The inset from the window's edges is the shell's (SIDE_PANEL_INSET in
+   components/sidePanel/shell.ts, which the outline's card takes too), and it
+   is what makes the ground and the radius visible at all: flush to the frame,
+   a rounded corner has nothing to be rounded against. Docked and overlay
+   alike, and not the flyout, which is a card of the shell's own. */
 .files-panel:not(.files-panel--flyout) .files-card {
     /* The shade unless a host says otherwise. --files-panel-ground is this
        card's ground and nothing else's, so a host that wants the file list

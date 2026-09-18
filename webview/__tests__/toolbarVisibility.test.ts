@@ -8,6 +8,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { mockVscodeApi } from "./setup";
 import { initToolbar } from "../components/toolbar";
 import { initToc } from "../components/toc";
+import { SIDE_PANEL_INSET } from "../components/sidePanel/shell";
 import { EventManager } from "../eventManager";
 import { runEditorCommand } from "../editorCommands";
 import { RELEASES_URL } from "../../shared/product";
@@ -206,7 +207,11 @@ describe("toolbar visibility", () => {
             ({ x: 0, y: 0, top: 0, left: 0, right: 0, width: 0, height: 40, bottom: 40 }) as DOMRect;
         const em = new EventManager();
         const { panel } = initToc(em, () => null);
-        expect(panel.style.top).toBe("40px");
+        // The bar's bottom plus the drawer's own inset, which is the shell's
+        // to move: this test is about the panel FOLLOWING the bar, so it
+        // takes the inset from the same place the panel does.
+        const IN = SIDE_PANEL_INSET;
+        expect(panel.style.top).toBe(`${40 + IN}px`);
 
         // Act — hide from the gear menu (applyVisibility dispatches resize synchronously)
         gearMenuEntry(topbar, "Hide Toolbar")!.dispatchEvent(
@@ -214,8 +219,8 @@ describe("toolbar visibility", () => {
         );
 
         // Assert — the panel pins to the top despite the still-animating bar
-        expect(panel.style.top).toBe("0px");
-        expect(panel.style.height).toBe("calc(100vh - 0px)");
+        expect(panel.style.top).toBe(`${IN}px`);
+        expect(panel.style.height).toBe(`calc(100vh - ${IN * 2}px)`);
 
         // Act — show again while the bar is still translated up (bottom reads 0)
         topbar.getBoundingClientRect = () =>
@@ -223,7 +228,7 @@ describe("toolbar visibility", () => {
         expandTab()!.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
 
         // Assert — the panel realigns below the bar, not underneath it
-        expect(panel.style.top).toBe("40px");
+        expect(panel.style.top).toBe(`${40 + IN}px`);
         em.dispose();
     });
 

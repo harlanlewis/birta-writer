@@ -336,10 +336,25 @@ export async function run({ page, check, baseUrl }) {
         const r = el.getBoundingClientRect();
         return { bottom: r.bottom };
     });
-    // The clean band between the sidebar-toggle chrome (far left) and the
-    // invisible-but-clickable P marker box (right edge ~-6, left ~-34):
-    // -40 clears both at this viewport.
-    const marginX = firstBlock.left - 40;
+    // The clean band between the sidebar-toggle chrome at the window's edge
+    // and the invisible-but-clickable block marker box beside the text.
+    // MEASURED rather than guessed at: a fixed offset from the block silently
+    // lands on the reveal tab the day that tab moves, and a mousedown there
+    // opens the drawer instead of starting a marquee, which fails this check
+    // and every check after it on the same page.
+    const band = await page.evaluate((blockLeft) => {
+        const tab = document.querySelector(".toc-toggle-tab");
+        const shown = tab && getComputedStyle(tab).display !== "none";
+        const marker = document.querySelector(".ProseMirror > *:first-child .heading-fold-marker");
+        return {
+            from: shown ? Math.ceil(tab.getBoundingClientRect().right) : 0,
+            to: Math.floor(marker ? marker.getBoundingClientRect().left : blockLeft - 34),
+        };
+    }, firstBlock.left);
+    const marginX = Math.round((band.from + band.to) / 2);
+    check("the margin has a band clear of the reveal tab and the marker to drag in",
+        band.to - band.from >= 4 && marginX > band.from && marginX < band.to,
+        JSON.stringify({ ...band, marginX }));
     await page.mouse.move(marginX, firstBlock.top + 2);
     await page.mouse.down();
     await page.mouse.move(marginX + 6, firstBlock.top + 12); // threshold

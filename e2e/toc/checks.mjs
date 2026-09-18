@@ -43,20 +43,23 @@ export async function run({ page, check, baseUrl }) {
         await page.locator(".toc-panel").evaluate((el) =>
             getComputedStyle(el).transitionDuration.split(",")[0].trim() === "0.2s"));
 
-    // ── The drawer's ground ───────────────────────────────────────────
-    // The page's own paper unless a host declares --toc-panel-ground (the
-    // Mac app's Transparent table of contents sidebar switch, turned off,
-    // is the one that does). Only a browser answers any of this: that the
-    // default holds, that one declaration on :root moves the panel, that
-    // the tab strip moves with it (a strip left on the paper over a shaded
-    // panel is the defect the alias exists to avoid), and that the flyout
-    // keeps the paper throughout, being a floating card of the shell's own
-    // rather than the drawer.
+    // ── The drawer's card ─────────────────────────────────────────────
+    // The card is the surface and the panel is its box, as the file
+    // explorer's is: the card takes the ground, a radius, and a strip off
+    // its own width for the sash, and the panel stands in from the window by
+    // the shell's inset. Only a browser answers any of it.
+    //
+    // The GROUND is the page's own paper unless a host declares
+    // --toc-panel-ground (the Mac app's Transparent table of contents
+    // sidebar switch, turned off, is the one that does), and the tab strip
+    // moves with the card, since a strip left on the paper over a shaded
+    // card is the defect the alias exists to avoid. The flyout takes
+    // neither the ground nor the geometry: it is a card of the shell's own.
     //
     // A sentinel colour rather than the palette's shade, because this page
     // is not the palette: what is under test is that one declaration reaches
-    // the panel and everything in it that paints the ground. Which colour
-    // the Mac app puts there is its own to say, and its tests do.
+    // the card and everything in it that paints the ground. Which colour the
+    // Mac app puts there is its own to say, and its tests do.
     const GROUND = "rgb(1, 2, 3)";
     const ground = async () => page.evaluate(() => {
         const probe = document.createElement("div");
@@ -65,19 +68,30 @@ export async function run({ page, check, baseUrl }) {
         const paper = getComputedStyle(probe).backgroundColor;
         probe.remove();
         const panel = document.querySelector(".toc-panel");
+        const card = document.querySelector(".toc-card");
         const tabs = document.querySelector(".toc-tabs");
+        const read = () => ({
+            // The PANEL's own fill as well as the card's: the panel is the
+            // box, and it has to stay the page's paper whatever the card is
+            // given, or the strip it keeps for the sash is shaded too and
+            // the sash line is back on the card's ground. Moving one
+            // declaration from the card to the panel is the whole regression.
+            panel: getComputedStyle(panel).backgroundColor,
+            card: card ? getComputedStyle(card).backgroundColor : null,
+            tabs: tabs ? getComputedStyle(tabs).backgroundColor : null,
+            radius: card ? getComputedStyle(card).borderTopLeftRadius : null,
+            strip: card
+                ? Math.round(panel.getBoundingClientRect().right - card.getBoundingClientRect().right)
+                : null,
+        });
+        const docked = read();
         // BOTH modifier classes, which is what the shell writes for a real
         // flyout (`setPanelState`): a probe wearing one of them is a fixture
         // that could not express a defect the product can have.
         panel.classList.add("toc-panel--flyout", "side-panel--flyout");
-        const flyout = getComputedStyle(panel).backgroundColor;
-        const flyoutTabs = tabs ? getComputedStyle(tabs).backgroundColor : null;
+        const flyout = read();
         panel.classList.remove("toc-panel--flyout", "side-panel--flyout");
-        return {
-            panel: getComputedStyle(panel).backgroundColor,
-            tabs: tabs ? getComputedStyle(tabs).backgroundColor : null,
-            flyout, flyoutTabs, paper,
-        };
+        return { ...docked, flyout, paper };
     });
     const bare = await ground();
     // The floor first: every comparison below is against `paper`, and an
@@ -85,8 +99,28 @@ export async function run({ page, check, baseUrl }) {
     // one colour would make all of them agree on transparent and pass.
     check("the page's paper is a real colour, so the comparisons below measure something",
         bare.paper !== "rgba(0, 0, 0, 0)" && bare.paper !== GROUND, JSON.stringify(bare));
-    check("the drawer and its tab strip are the page's own paper with nothing declared",
-        bare.panel === bare.paper && bare.tabs === bare.paper, JSON.stringify(bare));
+    check("the card, its tab strip and the panel around it are the page's own paper with nothing declared",
+        bare.card === bare.paper && bare.tabs === bare.paper && bare.panel === bare.paper,
+        JSON.stringify(bare));
+    // The geometry is the card's whatever the ground is, which is what makes
+    // this drawer read as the file list's sibling rather than only when a
+    // host has shaded it.
+    check("the card is rounded and gives a strip of its width back for the sash",
+        bare.radius !== "0px" && bare.strip > 0, JSON.stringify(bare));
+    // The flyout's ground and border are the SHELL's, painted on the panel,
+    // so the drawer's card must add nothing there: no fill of its own (the
+    // panel's shows through), no radius inside the shell's, and no strip
+    // given up for a sash the flyout does not have. Its tab strip still
+    // paints, because a stuck group header must not show through it.
+    // The strip is 1 rather than 0 there, and that pixel is the flyout's own
+    // border (sidePanel.css) counted into the panel's rect, not slack.
+    check("the flyout is the shell's own card, so the drawer's card dresses nothing",
+        bare.flyout.card === "rgba(0, 0, 0, 0)" && bare.flyout.radius === "0px"
+            && bare.flyout.strip === 1 && bare.flyout.tabs === bare.paper
+            // Its ground is the shell's, on the panel: that is the fill the
+            // flyout actually shows, so it is the one to read.
+            && bare.flyout.panel === bare.paper,
+        JSON.stringify(bare.flyout));
     await page.evaluate((value) => {
         const style = document.createElement("style");
         style.id = "toc-ground-probe";
@@ -95,12 +129,20 @@ export async function run({ page, check, baseUrl }) {
     }, GROUND);
     await page.waitForTimeout(50);
     const declared = await ground();
-    check("one declaration moves the drawer and its tab strip together",
-        declared.panel === GROUND && declared.tabs === GROUND, JSON.stringify(declared));
-    check("and the flyout keeps the paper either way",
-        bare.flyout === bare.paper && bare.flyoutTabs === bare.paper
-            && declared.flyout === declared.paper && declared.flyoutTabs === declared.paper,
-        JSON.stringify({ bare, declared }));
+    check("one declaration moves the card and its tab strip together",
+        declared.card === GROUND && declared.tabs === GROUND, JSON.stringify(declared));
+    // And stops at the card. The panel keeps the page's paper, which is what
+    // makes the strip beside the sash read as page and the sash's line stand
+    // off the card's rounded edge rather than lying along it.
+    check("and the panel around the card keeps the page's paper, so the sash's strip is page",
+        declared.panel === declared.paper && declared.panel !== declared.card, JSON.stringify(declared));
+    // Including the flyout's own panel, which is where its ground is painted:
+    // a `--toc-panel-ground` that reached `.toc-panel--flyout` would shade the
+    // floating card silently, and every other clause here would still pass.
+    check("and a declared ground reaches neither the flyout's card, its strip, nor its panel",
+        declared.flyout.card === "rgba(0, 0, 0, 0)" && declared.flyout.tabs === declared.paper
+            && declared.flyout.panel === declared.paper,
+        JSON.stringify(declared.flyout));
     await page.evaluate(() => document.getElementById("toc-ground-probe")?.remove());
     await page.waitForTimeout(50);
 

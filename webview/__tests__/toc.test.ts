@@ -4,12 +4,17 @@
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { initToc } from "../components/toc";
+import { SIDE_PANEL_INSET } from "../components/sidePanel/shell";
+import { TAB_EDGE_INSET } from "../components/sidePanel/revealTab";
 import type { EventManager } from "../eventManager";
 import { mockVscodeApi } from "./setup";
 import { Schema, EditorState } from "../pm";
 import type { EditorView } from "../pm";
 
 const fakeEventManager = { onWindow: vi.fn(() => () => {}) } as unknown as EventManager;
+/** The tab's inset from the window: its own, plus the drawer's, which it
+ *  follows so the glyph does not move when the drawer opens. */
+const TAB_EDGE = `${TAB_EDGE_INSET + SIDE_PANEL_INSET}px`;
 
 describe("initToc dock side", () => {
     beforeEach(() => {
@@ -31,7 +36,7 @@ describe("initToc dock side", () => {
         const { panel } = initToc(fakeEventManager, () => null);
         const tab = document.querySelector(".toc-toggle-tab") as HTMLElement;
         expect(panel.classList.contains("toc-panel--right")).toBe(false);
-        expect(tab.style.left).toBe("7px");
+        expect(tab.style.left).toBe(TAB_EDGE);
         // Carries the dock-side glyph, not a chevron
         expect(tab.querySelector("svg")).not.toBeNull();
     });
@@ -41,7 +46,7 @@ describe("initToc dock side", () => {
         const { panel } = initToc(fakeEventManager, () => null);
         const tab = document.querySelector(".toc-toggle-tab") as HTMLElement;
         expect(panel.classList.contains("toc-panel--right")).toBe(true);
-        expect(tab.style.right).toBe("7px");
+        expect(tab.style.right).toBe(TAB_EDGE);
         expect(tab.style.left).toBe("auto");
         expect(tab.querySelector("svg")).not.toBeNull();
     });
@@ -53,7 +58,7 @@ describe("initToc dock side", () => {
         const tab = document.querySelector(".toc-toggle-tab") as HTMLElement;
         // The reveal tab no longer slides beside the panel — it stays at the
         // corner; CSS hides it while open, and the header carries a hide button.
-        expect(tab.style.right).toBe("7px");
+        expect(tab.style.right).toBe(TAB_EDGE);
         expect(panel.querySelector(".toc-hide-btn")).not.toBeNull();
     });
 });
@@ -112,12 +117,12 @@ describe("TOC header controls (side-switch, hide, reveal)", () => {
         const { panel, setPosition } = initToc(fakeEventManager, () => null);
         const tab = document.querySelector(".toc-toggle-tab") as HTMLElement;
         // Left-docked initially: reveal tab pinned near the left edge
-        expect(tab.style.left).toBe("7px");
+        expect(tab.style.left).toBe(TAB_EDGE);
 
         setPosition("right");
 
         expect(panel.classList.contains("toc-panel--right")).toBe(true);
-        expect(tab.style.right).toBe("7px");
+        expect(tab.style.right).toBe(TAB_EDGE);
         expect(tab.style.left).toBe("auto");
     });
 
@@ -227,11 +232,19 @@ describe("TOC panel position vs toolbar visibility", () => {
         vi.unstubAllGlobals();
     });
 
+    // The drawer is set into the window, so its top is the content area's
+    // edge plus its own inset and its height gives up that inset at each
+    // end. Derived from the shell's constant rather than restated, since the
+    // number is the shell's to move and both drawers take it.
+    const IN = SIDE_PANEL_INSET;
+    const topBelow = (edge: number) => `${edge + IN}px`;
+    const heightBelow = (edge: number) => `calc(100vh - ${edge + IN * 2}px)`;
+
     it("a visible toolbar should align the panel below the bar's height", () => {
         addTopbar({ height: 40, bottom: 40 });
         const { panel } = initToc(fakeEventManager, () => null);
-        expect(panel.style.top).toBe("40px");
-        expect(panel.style.height).toBe("calc(100vh - 40px)");
+        expect(panel.style.top).toBe(topBelow(40));
+        expect(panel.style.height).toBe(heightBelow(40));
     });
 
     it("body.toolbar-hidden should pin the panel flush to the viewport top", () => {
@@ -240,21 +253,21 @@ describe("TOC panel position vs toolbar visibility", () => {
         addTopbar({ height: 40, bottom: 40 });
         document.body.classList.add("toolbar-hidden");
         const { panel } = initToc(fakeEventManager, () => null);
-        expect(panel.style.top).toBe("0px");
-        expect(panel.style.height).toBe("calc(100vh - 0px)");
+        expect(panel.style.top).toBe(topBelow(0));
+        expect(panel.style.height).toBe(heightBelow(0));
     });
 
     it("a toolbar still sliding in (stale rect bottom) should not push the panel under it", () => {
         addTopbar({ height: 40, bottom: 0 });
         const { panel } = initToc(fakeEventManager, () => null);
-        expect(panel.style.top).toBe("40px");
+        expect(panel.style.top).toBe(topBelow(40));
     });
 
     it("opening the flyout should clear the docked inline height so the card auto-sizes to its headings", () => {
         addTopbar({ height: 40, bottom: 40 });
         const { panel } = initToc(fakeEventManager, () => null);
         // The docked drawer carries a full-height inline style…
-        expect(panel.style.height).toBe("calc(100vh - 40px)");
+        expect(panel.style.height).toBe(heightBelow(40));
         const tab = document.querySelector(".toc-toggle-tab") as HTMLElement;
         tab.dispatchEvent(new MouseEvent("mouseenter"));
         // …which the flyout must drop so CSS (height:auto capped by max-height)
@@ -273,7 +286,7 @@ describe("TOC panel position vs toolbar visibility", () => {
         // reassert the full-height inline style the flyout cleared.
         tab.dispatchEvent(new MouseEvent("mousedown", { button: 0, bubbles: true }));
         expect(panel.classList.contains("toc-panel--flyout")).toBe(false);
-        expect(panel.style.height).toBe("calc(100vh - 40px)");
+        expect(panel.style.height).toBe(heightBelow(40));
     });
 });
 
@@ -473,7 +486,7 @@ describe("TOC drag-to-resize", () => {
         drag(getHandle(panel), 260, 340);
         const tab = document.querySelector(".toc-toggle-tab") as HTMLElement;
         // The reveal tab sits at the docked corner regardless of panel width
-        expect(tab.style.left).toBe("7px");
+        expect(tab.style.left).toBe(TAB_EDGE);
     });
 });
 

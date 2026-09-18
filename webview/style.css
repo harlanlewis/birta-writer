@@ -843,9 +843,18 @@ body.files-open {
     --files-reserve: var(--files-width, 220px);
 
     /* A left TOC starts where the explorer ends. Its flyout positions itself
-       inline and is excluded; a right TOC is untouched. */
+       inline and is excluded; a right TOC is untouched.
+
+       Plus its own inset, because that is what this `left` is replacing: the
+       shell writes `left: var(--side-panel-inset)` so a drawer set into the
+       window stands in from the edge it is docked against, and for a left TOC
+       beside an open explorer that edge is where the explorer ends rather
+       than the window's frame. Dropping the inset here would not move the far
+       edge, which is the reserve the content's margin reads, so the drawer
+       would simply be drawn a strip narrower than the room it takes and the
+       gap would open on the wrong side of it. */
     .toc-panel:not(.toc-panel--right):not(.toc-panel--flyout) {
-        left: var(--files-reserve);
+        left: calc(var(--files-reserve) + var(--side-panel-inset, 0px));
     }
 
     /* And so does its reveal tab while it is closed. The tab's inset from

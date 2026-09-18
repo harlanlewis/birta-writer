@@ -25,12 +25,13 @@
        width below; a custom property does not). */
     width: calc(var(--side-panel-width, 260px) - var(--side-panel-inset, 0px));
     height: calc(100vh - var(--editor-topbar-height, 40px));
-    /* Editor background (not the sidebar shade), and no borders: the docked
-       drawer blends into the editor gutter with no differentiated chrome. The
-       solid fill still covers document text in overlay mode. The only edge
-       treatment is the resize handle's accent line on hover (below). A
-       composer that wants its own ground overrides this on its own class
-       (the file explorer does, in fileExplorer/styles.ts). */
+    /* Editor background (not the sidebar shade), and no borders: the PANEL is
+       the box, so it reads as page. The solid fill still covers document text
+       in overlay mode. The only edge treatment is the resize handle's accent
+       line on hover (below). A composer that wants a ground of its own puts
+       it on a CARD inside this box and leaves the box on the page's paper,
+       which is what keeps the strip beside the sash reading as page: both
+       composers do (`.files-card`, `.toc-card`). */
     background: var(--vscode-editor-background);
     z-index: 99;
     display: flex;

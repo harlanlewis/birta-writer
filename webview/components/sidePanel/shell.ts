@@ -64,6 +64,19 @@ export interface SidePanelWidth {
 }
 
 /**
+ * How far a drawer drawn as a SURFACE SET INTO the window stands in from its
+ * edges, and the one number for every such drawer: a reader sees the two
+ * side by side (the file list and the outline can be docked at once), so two
+ * insets that merely happen to be equal are two that can drift apart in a
+ * commit that only meant to move one.
+ *
+ * Deliberately well under what the platform's own sidebars take: these are
+ * panels inside an editor window, not windows in their own right. A drawer
+ * that wants to be flush against the frame passes no inset at all.
+ */
+export const SIDE_PANEL_INSET = 8;
+
+/**
  * What reveals the panel while it is closed. `tab` puts the reveal tab on the
  * page and arms it as the flyout trigger. `external` builds the tab (the
  * flyout's default anchor, whose box the positioning reads) but never appends
@@ -87,7 +100,9 @@ export interface SidePanelShellOptions {
      * inset comes out of the drawer's OWN box, never out of the room it
      * takes (`dockedReserve` is the width as ever), so the content beside it
      * and the formatting row above that content keep the width as their one
-     * number. Default 0: a drawer flush to the frame, which is the outline's.
+     * number. It also takes the drawer's reveal tab in, since the tab has to
+     * land on a hide button that went in with the panel. Default 0, a drawer
+     * flush to the frame; both drawers that exist take `SIDE_PANEL_INSET`.
      */
     inset?: number;
     eventManager: EventManager;
@@ -210,7 +225,9 @@ export function createSidePanelShell(opts: SidePanelShellOptions): SidePanelShel
     const controlsSlot = document.createElement("div");
     controlsSlot.className = "side-panel-controls";
 
-    const tab = createRevealTab(prefix);
+    // The tab stands in from the window by the drawer's own inset, because
+    // the button it has to land on rides the drawer and went in with it.
+    const tab = createRevealTab(prefix, inset);
     const tabEl = tab.el;
 
     // Injected by the host on :root (the persisted value, or absent).

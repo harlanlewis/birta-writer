@@ -29,7 +29,7 @@
  * (./styles.ts): a single-file window, and every VS Code launch, pays nothing
  * for it.
  */
-import { createSidePanelShell } from "../sidePanel/shell";
+import { createSidePanelShell, SIDE_PANEL_INSET } from "../sidePanel/shell";
 import { wireRoving } from "../sidePanel/keyboardNav";
 import { ensureFileExplorerStyles } from "./styles";
 import { createTreeModel, type TreeRow } from "./treeModel";
@@ -59,14 +59,6 @@ const FILES_MAX_WIDTH = 600;
 // explorer that floats over the document on every such window is one that
 // closes on every click into the document.
 const DOCKED_MIN_CONTENT_WIDTH = 600;
-// How far the panel stands in from the window's edges (the shell's `inset`):
-// it is drawn as a surface set into the window, on the sidebar ground with a
-// small radius, rather than as a column flush against the frame the way the
-// outline is. Out of the panel's own box, so `--files-reserve` and the
-// formatting row's margin stay the width and nothing else. The radius is
-// deliberately well under what the platform's own sidebars take: this is a
-// panel inside an editor window, not a window in its own right.
-const FILES_INSET = 8;
 /** How long a `listDirectory` waits before its folder draws an error row. */
 export const LISTING_TIMEOUT_MS = 10_000;
 
@@ -125,7 +117,11 @@ export function createFileExplorer(host: FileExplorerHost): FileExplorerControll
         // margin math moves over by this panel's reserve when both are left
         // (style.css, `--files-reserve`).
         initialRight: false,
-        inset: FILES_INSET,
+        // Drawn as a surface set into the window rather than a column flush
+        // against the frame. The inset comes out of the panel's own box, so
+        // `--files-reserve` and the formatting row's margin stay the width
+        // and nothing else.
+        inset: SIDE_PANEL_INSET,
         width: {
             cssVar: "--files-width",
             default: FILES_DEFAULT_WIDTH,

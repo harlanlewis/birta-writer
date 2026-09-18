@@ -15,10 +15,12 @@
 const SETTLE = 350;
 const GAP = 100; // --toc-content-gap
 const LEFT_PAD = 76; // --editor-content-left-padding
-// How far the panel stands in from the window's edges (FILES_INSET in
-// components/fileExplorer/index.ts). Out of the panel's OWN box: `--files-width`
-// and `--files-reserve` are the panel's far edge, and every margin below is
-// measured from that edge rather than from the panel's rect width.
+// How far a drawer stands in from the edge it is docked against
+// (SIDE_PANEL_INSET in components/sidePanel/shell.ts). BOTH drawers take it,
+// and it comes out of each one's OWN box: the reserve a drawer takes, which
+// every margin below is measured from, is its far edge rather than its rect
+// width. For the TOC docked beside an open explorer, the edge it stands in
+// from is the explorer's far edge and not the window's.
 const INSET = 8;
 
 export async function run({ page, check, baseUrl }) {
@@ -344,7 +346,12 @@ export async function run({ page, check, baseUrl }) {
         const toc = document.querySelector(".toc-panel").getBoundingClientRect();
         return {
             tocOpen: document.body.classList.contains("toc-open"),
-            tocWidth: Math.round(toc.width),
+            // The room the drawer takes, not the box it draws: both drawers
+            // stand in from the edge they are docked against, and that inset
+            // comes out of their own width. Docked right, the room runs from
+            // the drawer's near edge to the window's, which is what the
+            // content's margin has to clear.
+            tocWidth: Math.round(window.innerWidth - toc.left),
             marginLeft: Math.round(parseFloat(getComputedStyle(ed).marginLeft)),
             pane: ed.parentElement.clientWidth,
             right: Math.round(ed.getBoundingClientRect().right),
@@ -646,7 +653,10 @@ export async function run({ page, check, baseUrl }) {
     await page.waitForTimeout(SETTLE);
     const TAB_W = 20; // --toc-tab-width
     const OPEN_PAD = 48; // #editor's left padding while a left TOC is docked open
-    const TAB_INSET = 7; // revealTab.ts TAB_EDGE_INSET
+    // revealTab.ts TAB_EDGE_INSET, measured from the DRAWER's docked corner,
+    // plus the inset the drawer itself stands in by: the tab has to land on a
+    // hide button that rides the panel, so it goes in with it.
+    const TAB_INSET = 7 + INSET;
     const layout = () => page.evaluate(() => {
         const ed = document.querySelector("#editor");
         const cs = getComputedStyle(ed);
@@ -662,7 +672,14 @@ export async function run({ page, check, baseUrl }) {
             tocDocked: document.body.classList.contains("toc-docked"),
             tocOverlay: document.body.classList.contains("toc-overlay"),
             tocRight: document.body.classList.contains("toc-right"),
-            tocWidth: Math.round(toc.getBoundingClientRect().width),
+            // The room the drawer takes, as `filesWidth` above is: its far
+            // edge, less whatever the drawer it is docked beside already
+            // reserved. The box is a strip narrower, because the inset each
+            // drawer stands in by comes out of its own width and never out of
+            // the room the content clears.
+            tocWidth: Math.round(toc.getBoundingClientRect().right
+                - (document.body.classList.contains("files-open")
+                    ? files.getBoundingClientRect().right : 0)),
             // The drawer's own `left` (a closed drawer is translated off screen,
             // so its box says nothing) and its realized edge while open.
             tocLeft: Math.round(parseFloat(getComputedStyle(toc).left)),
@@ -706,8 +723,11 @@ export async function run({ page, check, baseUrl }) {
         JSON.stringify(closedLeft));
     check("files open, TOC docked closed: the reveal tab sits past the explorer, at its inset from the explorer's edge",
         closedLeft.tabLeft === closedLeft.filesWidth + TAB_INSET, JSON.stringify(closedLeft));
-    check("files open, TOC docked closed: the closed drawer's left is --files-reserve",
-        closedLeft.tocLeft === closedLeft.filesWidth, JSON.stringify(closedLeft));
+    // Where the explorer ends, plus the drawer's own inset: both drawers
+    // stand in from the edge they are docked against, and for this one that
+    // edge is the explorer's far edge rather than the window's.
+    check("files open, TOC docked closed: the closed drawer's left is --files-reserve plus its inset",
+        closedLeft.tocLeft === closedLeft.filesWidth + INSET, JSON.stringify(closedLeft));
     const closedOffset = Math.max(0, closedLeft.filesWidth + TAB_W + GAP - LEFT_PAD);
     check("full width, TOC docked closed left: #editor's margin-left is files + tab + gap - padding, one margin for both",
         closedLeft.marginLeft === closedOffset && closedLeft.marginRight === 0
@@ -733,8 +753,51 @@ export async function run({ page, check, baseUrl }) {
     const openLeft = await layout();
     check("the tab docks the TOC open on the left beside the explorer, which stays put",
         openLeft.tocOpen && openLeft.tocDocked && openLeft.filesOpen && openLeft.filesLeft === INSET, JSON.stringify(openLeft));
-    check("files open, TOC docked open: the TOC drawer starts where the explorer ends",
-        openLeft.tocRectLeft === openLeft.filesWidth && openLeft.tocLeft === openLeft.filesWidth, JSON.stringify(openLeft));
+    // Where the explorer ends plus its own inset, and its far edge is the
+    // room it takes: the two drawers leave one strip of page between them,
+    // the same width as the strip each leaves at the window's frame.
+    check("files open, TOC docked open: the TOC drawer starts an inset past where the explorer ends",
+        openLeft.tocRectLeft === openLeft.filesWidth + INSET
+            && openLeft.tocLeft === openLeft.filesWidth + INSET, JSON.stringify(openLeft));
+
+    // The two drawers are set into the window the SAME way, which is the
+    // claim worth holding rather than either one's numbers: a reader sees
+    // them side by side, so a radius or an inset that moves on one and not
+    // the other is the defect. Derived from the two cards rather than from
+    // the constants, so a change to either sheet has to keep them equal.
+    const sameShape = await page.evaluate(() => {
+        const read = (sel) => {
+            const el = document.querySelector(sel);
+            if (!el) { return null; }
+            const cs = getComputedStyle(el);
+            const rect = el.getBoundingClientRect();
+            const panel = el.closest(".side-panel").getBoundingClientRect();
+            return {
+                radius: cs.borderTopLeftRadius,
+                // The strip the card gives back on its sash side, which is
+                // the trailing edge for both while both are docked left.
+                strip: Math.round(panel.right - rect.right),
+                windowTop: Math.round(panel.top),
+                windowBottom: Math.round(window.innerHeight - panel.bottom),
+            };
+        };
+        return { files: read(".files-card"), toc: read(".toc-card") };
+    });
+    // Each card fills its panel, so its offsets INSIDE the panel are zero for
+    // both by construction and would agree whatever either sheet said; what
+    // can differ, and so is what this compares, is the radius, the strip and
+    // where the panels themselves stand.
+    check("both drawers draw the same card: the same radius and the same strip for the sash",
+        sameShape.files && sameShape.toc
+            && sameShape.toc.radius === sameShape.files.radius
+            && sameShape.toc.strip === sameShape.files.strip
+            && sameShape.toc.strip > 0,
+        JSON.stringify(sameShape));
+    check("and both stand off the window's top and bottom by the same inset",
+        sameShape.toc.windowBottom === sameShape.files.windowBottom
+            && sameShape.toc.windowTop === sameShape.files.windowTop
+            && sameShape.toc.windowBottom === INSET,
+        JSON.stringify(sameShape));
     const openOffset = Math.max(0, openLeft.filesWidth + openLeft.tocWidth + GAP - OPEN_PAD);
     check("full width, both docked open left: #editor's margin-left is files + toc + gap - the open padding, width gives it up",
         openLeft.marginLeft === openOffset && openLeft.paddingLeft === OPEN_PAD && openLeft.marginRight === 0
@@ -759,8 +822,9 @@ export async function run({ page, check, baseUrl }) {
     const tocOnlyFixed = await layout();
     const tocOnlyCentred = Math.max(tocOnlyFixed.tocWidth + GAP - OPEN_PAD,
         tocOnlyFixed.tocWidth + (tocOnlyFixed.pane - tocOnlyFixed.tocWidth - 400) / 2);
-    check("files closed, fixed width: the TOC drawer is back at 0 and #editor centres beside it alone",
-        !tocOnlyFixed.filesOpen && tocOnlyFixed.tocOpen && tocOnlyFixed.tocRectLeft === 0 && tocOnlyFixed.tocLeft === 0
+    check("files closed, fixed width: the TOC drawer is back at the window's edge and #editor centres beside it alone",
+        !tocOnlyFixed.filesOpen && tocOnlyFixed.tocOpen
+            && tocOnlyFixed.tocRectLeft === INSET && tocOnlyFixed.tocLeft === INSET
             && Math.abs(tocOnlyFixed.marginLeft - tocOnlyCentred) <= 1,
         `expected ${tocOnlyCentred}, got ${JSON.stringify(tocOnlyFixed)}`);
     const tocOnlyBw = await breakout();
@@ -824,7 +888,8 @@ export async function run({ page, check, baseUrl }) {
     await page.waitForTimeout(SETTLE);
     const widened = await layout();
     check("widening again docks the TOC back open beside the explorer",
-        widened.tocDocked && widened.tocOpen && widened.tocRectLeft === widened.filesWidth, JSON.stringify(widened));
+        widened.tocDocked && widened.tocOpen && widened.tocRectLeft === widened.filesWidth + INSET,
+        JSON.stringify(widened));
     await page.setViewportSize({ width: 1000, height: 900 });
 
     // ── The viewport grows without a resize event ─────────────────────────

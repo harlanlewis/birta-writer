@@ -5,7 +5,7 @@
  * the question is whether the extraction kept the TOC's numbers.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { createSidePanelShell, type SidePanelShellOptions } from "../components/sidePanel/shell";
+import { createSidePanelShell, SIDE_PANEL_INSET, type SidePanelShellOptions } from "../components/sidePanel/shell";
 import { TAB_EDGE_INSET, TAB_TOP_INSET } from "../components/sidePanel/revealTab";
 import { FLYOUT_EDGE, FLYOUT_WIDTH } from "../components/sidePanel/flyout";
 import type { EventManager } from "../eventManager";
@@ -445,7 +445,10 @@ describe("side-panel shell: the table of contents' own numbers", () => {
         expect(TAB_TOP_INSET).toBe(7);
     });
 
-    it("the tab should land at the edge inset and at the topbar's bottom plus the top inset", () => {
+    // With no inset, which is the shell's default rather than any drawer's:
+    // both composers stand in by `SIDE_PANEL_INSET`, and the case below is
+    // what holds the default itself untouched.
+    it("a drawer flush to the frame should land its tab at the edge inset and the topbar's bottom plus the top inset", () => {
         addTopbar(40);
         const shell = createSidePanelShell(tocOptions());
         shell.updatePosition();
@@ -456,6 +459,24 @@ describe("side-panel shell: the table of contents' own numbers", () => {
         expect(tab.style.top).toBe("47px");
         expect(shell.panel.style.top).toBe("40px");
         expect(shell.panel.style.height).toBe("calc(100vh - 40px)");
+    });
+
+    // The tab is `position: fixed` and the hide button it has to land on
+    // rides the panel, so a drawer that stands in from the window takes the
+    // button in with it. Without this the glyph jumps by the inset on every
+    // toggle, on both axes, and nothing else in the suite would say so: the
+    // cases above build a shell with no inset at all.
+    it("a drawer standing in from the window should take its reveal tab in by the same amount", () => {
+        addTopbar(40);
+        const shell = createSidePanelShell({ ...tocOptions(), inset: SIDE_PANEL_INSET, initialRight: true });
+        shell.updatePosition();
+        shell.sync();
+        const tab = document.querySelector<HTMLElement>(".toc-toggle-tab")!;
+        expect(tab.style.right).toBe(`${TAB_EDGE_INSET + SIDE_PANEL_INSET}px`);
+        expect(tab.style.top).toBe(`${40 + TAB_TOP_INSET + SIDE_PANEL_INSET}px`);
+        // And the tab keeps its offset FROM THE PANEL, which is the whole of
+        // what makes the glyph sit still: the panel moved by the inset too.
+        expect(parseFloat(tab.style.top) - parseFloat(shell.panel.style.top)).toBe(TAB_TOP_INSET);
     });
 
     it("a right-docked TOC should pin the tab to the right edge and mark the panel right", () => {
