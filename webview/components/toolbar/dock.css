@@ -85,6 +85,26 @@ body.toc-open.toc-right .tb-dock {
     flex-direction: column;
     align-items: stretch;
     padding: 0;
+    /* The ground is the ROWS', not the bar's. The bar is one box the width of
+       the window, and the formatting row stands in from a docked panel by a
+       margin, so the bar's box covers the column the panel occupies while the
+       row does not. A ground painted by the bar is painted over the panel's
+       top, above it in the stacking order, and the panel's first rows are
+       drawn and cannot be seen. So each row paints and takes the pointer for
+       itself, and the bar's box does neither: what is left of it beside the
+       row is the panel's to draw in and to be clicked in. e2e/fileExplorer
+       asks the panel's top corner which element is there. */
+    background-color: transparent;
+    pointer-events: none;
+
+    > * {
+        pointer-events: auto;
+    }
+
+    > .toolbar,
+    > .tb-dock {
+        background-color: var(--vscode-editor-background);
+    }
 
     .toolbar {
         flex: none;
@@ -238,21 +258,27 @@ body.toc-open.toc-right .tb-dock {
 
 /* WHERE the hairline goes, and WHEN there is one.
 
-   The bar carries its own bottom border (`.editor-topbar`, style.css), and
-   with the row open that edge is already below the row: the row is the bar's
-   last child and the stacked bar has no padding under it. So the open state
-   needs nothing here, which is the point of putting the line on the bar rather
-   than on the row.
+   Under the open row and only as wide as it. The bar's own bottom border
+   (`.editor-topbar`, style.css) runs the width of the window, which with a
+   panel docked beside the row is a line ruled across the panel's top, so on
+   the stacked bar that border keeps its pixel and loses its colour, and the
+   row draws the line in the same place as a shadow of its own bottom edge.
 
-   Closed is the case that does. A single row of chrome over the text does not
-   need a rule to say where it ends, and the line reads as the top edge of a
-   panel that is not there. Colour rather than `border: none`, because the bar's
-   height is measured and published as `--editor-topbar-height`, and every
-   consumer of it (content padding, heading scroll margins, the find bar) would
-   move by a pixel each time the row opened.
+   Colour rather than `border: none`, because the bar's height is measured and
+   published as `--editor-topbar-height`, and every consumer of it (content
+   padding, heading scroll margins, the find bar) would move by a pixel each
+   time the row opened.
+
+   Closed, there is no line at all. A single row of chrome over the text does
+   not need a rule to say where it ends, and the line reads as the top edge of
+   a panel that is not there.
 
    Scoped to the stacked bar, so the surface with no second row keeps the
    hairline it has always had. */
-.editor-topbar--stacked:has(.tb-dock[hidden]) {
+.editor-topbar--stacked {
     border-bottom-color: transparent;
+
+    .tb-dock:not([hidden]) {
+        box-shadow: 0 1px 0 var(--vscode-panel-border);
+    }
 }

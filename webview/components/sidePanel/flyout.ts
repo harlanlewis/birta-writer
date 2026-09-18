@@ -26,6 +26,8 @@ export const FLYOUT_EXIT_MS = 150;
  *  panel's (possibly dragged) width variable. Kept in sync with sidePanel.css. */
 export const FLYOUT_WIDTH = 260;
 export const FLYOUT_GAP = 6;
+/** The least air between the card and either edge of the window. */
+export const FLYOUT_EDGE = 8;
 /** The grace period that lets the pointer cross the gap from trigger to panel. */
 export const FLYOUT_HIDE_DELAY_MS = 220;
 /** The hover band's height above the card, set inline per show. */
@@ -115,9 +117,15 @@ export function createFlyout(opts: FlyoutOptions): Flyout {
             clearHostStrip(r.bottom + FLYOUT_GAP, panel.offsetHeight || 1, FLYOUT_GAP),
         ));
         panel.style.top = `${flyoutTop}px`;
-        panel.style.left = opts.isRight()
-            ? `${Math.round(Math.max(8, r.right - FLYOUT_WIDTH))}px`
-            : `${Math.round(r.left)}px`;
+        // Held inside the window on BOTH edges, whichever side the panel
+        // docks on. The side says which edge of the trigger the card lines up
+        // with; it says nothing about where the trigger is, and a trigger in
+        // the bar's trailing cluster for a panel that docks on the leading
+        // edge (the file explorer's) would hang a leading-aligned card off the
+        // end of the window.
+        const wanted = opts.isRight() ? r.right - FLYOUT_WIDTH : r.left;
+        const furthest = window.innerWidth - FLYOUT_WIDTH - FLYOUT_EDGE;
+        panel.style.left = `${Math.round(Math.max(FLYOUT_EDGE, Math.min(wanted, furthest)))}px`;
         // The docked drawer sets an inline `height` (the shell's updatePosition);
         // clear it so the flyout card sizes to its content via CSS (height:auto
         // capped by max-height) instead of inheriting the full drawer height and

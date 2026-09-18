@@ -36,6 +36,50 @@ final class RecentsMenuTests: XCTestCase {
         menu.items.map { $0.isSeparatorItem ? "-" : $0.title }
     }
 
+    // MARK: the titlebar's form, which leads with Open…
+
+    private func openMenu(_ list: [URL], elsewhere: [URL] = []) -> RecentsMenu {
+        RecentsMenu(leadsWithOpen: true, source: { list }, exists: { _ in true },
+                    current: { nil }, openElsewhere: { elsewhere })
+    }
+
+    func testTheOpenFormShouldLeadWithOpenThenTheListThenClearRecents() {
+        let m = openMenu([url("/a/one.md"), url("/a/two.md")])
+        XCTAssertEqual(titles(of: m), ["Open…", "-", "one.md", "two.md", "-", "Clear Recents"])
+    }
+
+    func testTheOpenFormWithNothingRecentShouldBeOpenAlone() {
+        // No rule under a row with nothing beneath it, no line saying what is
+        // not there, and nothing to clear.
+        let m = openMenu([])
+        XCTAssertEqual(titles(of: m), ["Open…"])
+    }
+
+    func testTheOpenRowShouldSendTheFileMenusOwnSelectorUpTheChain() {
+        let open = openMenu([]).items[0]
+        XCTAssertEqual(open.action, #selector(AppDelegate.menuOpenDocument))
+        XCTAssertNil(open.target, "a target pins the click to one object and leaves the chain")
+        XCTAssertEqual(open.keyEquivalent, "o")
+        XCTAssertEqual(open.keyEquivalentModifierMask, .command)
+    }
+
+    func testTheOpenFormShouldKeepTheGroupAndTheMorePage() {
+        let m = openMenu(many(RecentFiles.firstPage + 2), elsewhere: [url("/b/two.md")])
+        let all = titles(of: m)
+        XCTAssertEqual(Array(all.prefix(4)), ["Open…", "-", "Open in Other Windows", "two.md"])
+        XCTAssertEqual(Array(all.suffix(3)), ["More", "-", "Clear Recents"])
+    }
+
+    func testTheOpenFormShouldNoticeTheListChangingUnderIt() {
+        var list: [URL] = []
+        let m = RecentsMenu(leadsWithOpen: true, source: { list }, exists: { _ in true },
+                            current: { nil }, openElsewhere: { [] })
+        XCTAssertEqual(titles(of: m), ["Open…"])
+        list = [url("/a/one.md")]
+        m.menuNeedsUpdate(m)
+        XCTAssertEqual(titles(of: m), ["Open…", "-", "one.md", "-", "Clear Recents"])
+    }
+
     func testAShortListShouldBeRowsThenClearMenuAndNoMore() {
         let m = menu([url("/a/one.md"), url("/a/two.md")])
         XCTAssertEqual(titles(of: m), ["one.md", "two.md", "-", "Clear Menu"])
@@ -230,7 +274,7 @@ final class RecentsMenuTests: XCTestCase {
         // edge that is depends on the view's own convention. A point written
         // for one lands the menu over the button under the other, which is
         // what it did: the list came up across the titlebar rather than under
-        // the clock it belongs to.
+        // the button it belongs to.
         let box = NSRect(x: 10, y: 4, width: 26, height: 24)
         let up = RecentsMenu.popUpOrigin(in: box, isFlipped: false, gap: 4)
         let down = RecentsMenu.popUpOrigin(in: box, isFlipped: true, gap: 4)

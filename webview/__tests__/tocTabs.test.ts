@@ -150,6 +150,63 @@ describe("tab visibility — a review tab exists only while it has entries", () 
         toc.dispose();
     });
 
+    it("a panel with only Contents should draw no row of tabs, and keep the strip for its controls", () => {
+        const view = makeView();
+        const toc = initToc(fakeEventManager, () => view);
+        document.body.appendChild(toc.panel);
+        toc.toggle();
+        expect(toc.panel.querySelector<HTMLElement>(".toc-tabs__list")!.hidden).toBe(true);
+        // This surface keeps flip and hide in the strip, so the strip stays.
+        expect(toc.panel.querySelector<HTMLElement>(".toc-tabs")!.hidden).toBe(false);
+        expect(toc.panel.querySelector(".toc-tabs .toc-controls")).not.toBeNull();
+        toc.dispose();
+    });
+
+    it("a second tab should bring the row of tabs back", () => {
+        const view = makeView(docWithLink());
+        const toc = initToc(fakeEventManager, () => view);
+        document.body.appendChild(toc.panel);
+        toc.toggle();
+        expect(toc.panel.querySelector<HTMLElement>(".toc-tabs__list")!.hidden).toBe(false);
+        expect(toc.panel.querySelector<HTMLElement>(".toc-tabs")!.hidden).toBe(false);
+        toc.dispose();
+    });
+
+    it("on a surface that withdrew the panel's controls, a lone Contents tab should take the whole strip with it", () => {
+        (window as unknown as { __i18n: unknown }).__i18n = {
+            host: { capabilities: ["toc"], arrangements: ["fixedTocSide", "tocToggleInBar"], shortcuts: [] },
+        };
+        try {
+            const view = makeView();
+            const toc = initToc(fakeEventManager, () => view);
+            document.body.appendChild(toc.panel);
+            toc.toggle();
+            expect(toc.panel.classList.contains("toc-panel--bare-tabs")).toBe(true);
+            expect(toc.panel.querySelector<HTMLElement>(".toc-tabs")!.hidden).toBe(true);
+            toc.dispose();
+
+            const linked = makeView(docWithLink());
+            const second = initToc(fakeEventManager, () => linked);
+            document.body.appendChild(second.panel);
+            second.toggle();
+            expect(second.panel.querySelector<HTMLElement>(".toc-tabs")!.hidden).toBe(false);
+            second.dispose();
+        } finally {
+            delete (window as unknown as { __i18n?: unknown }).__i18n;
+        }
+    });
+
+    it("a document with no headings should leave the outline empty rather than say so", () => {
+        const view = makeView();
+        const toc = initToc(fakeEventManager, () => view);
+        document.body.appendChild(toc.panel);
+        toc.toggle();
+        const list = toc.panel.querySelector(".toc-list")!;
+        expect(list.children).toHaveLength(0);
+        expect(list.textContent).toBe("");
+        toc.dispose();
+    });
+
     it("an emptied tab is kept while ACTIVE and hides on switch-away", () => {
         const view = makeView(docWithLink()) as EditorView & { state: EditorState };
         const toc = initToc(fakeEventManager, () => view);

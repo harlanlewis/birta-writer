@@ -176,8 +176,10 @@ mac/Sources/BirtaWriterCore/MenuState.swift      What a menu row draws of the st
 mac/Sources/BirtaWriterCore/StyleCategories.swift  The style-check vocabulary ported for the Style Options submenu; guarded against the page's own list
 mac/Sources/BirtaWriterCore/WindowPolicy.swift   Which Space a window belongs to, decided from whether the app has a Dock icon; what neither answer contains, and why that absence is the load-bearing part
 mac/Sources/BirtaWriterCore/SummonActivation.swift Why an activation has to be issued twice when bringing a window forward switches Space, and which Space change is the app's own rather than the reader's
-mac/Sources/BirtaWriter/TitlebarActions.swift    New Note, Open and Open Recent as titlebar buttons; which SF Symbol each takes, and why the near alternatives are wrong
-mac/Sources/BirtaWriter/RecentsMenu.swift        The Open Recent menu, filled by itself rather than by whichever of its three surfaces raised it
+mac/Sources/BirtaWriter/TitlebarActions.swift    New Note, Open (a menu over the recent files) and the Command Palette as titlebar buttons; which SF Symbol each takes, and why the near alternatives are wrong
+mac/Sources/BirtaWriter/RecentsMenu.swift        The Open Recent menu, filled by itself rather than by whichever of its three surfaces raised it; its Open-led form is the titlebar's Open button
+mac/Sources/BirtaWriterCore/StripTooltip.swift   A tooltip the page hands over because the tab bar is painted over it: the request, the CSS colour spellings a computed style uses, and where the chip goes
+mac/Sources/BirtaWriter/StripTooltipWindow.swift Draws that chip in a child window above the tabs; why nothing less than a window is above them, and what the window must never do
 mac/Sources/BirtaWriter/SpellService.swift       Spelling and grammar from NSSpellChecker: why it is sliced across run-loop turns, and why requestChecking is not usable
 mac/Sources/BirtaWriterCore/ProofreadFilter.swift  Which flagged spans are prose and which are paths or identifiers; a port of shared/proofreadFilter.ts, and why it counts in UTF-16
 mac/Sources/BirtaWriterCore/RecentFiles.swift    What the recents list keeps, where the More boundary falls, when a row says more than a file name, and how the menu is grouped once there is more than one window

@@ -1,4 +1,6 @@
 import { clearHostStrip, getTopbarBottom, isInTopbar } from "../utils/headingUtils";
+import { hostHas } from "../../shared/hostProfile";
+import { notifyStripTooltip } from "../messaging";
 
 let tooltipEl: HTMLElement | null = null;
 
@@ -7,6 +9,11 @@ let tooltipEl: HTMLElement | null = null;
 // mouse leaving button A would hide the tooltip keyboard focus just opened
 // on button B.
 let ownerEl: HTMLElement | null = null;
+
+// Whether the chip on screen is the HOST's rather than this page's
+// (`handOverToHost`). Held so that taking the tooltip away takes that one away
+// too, and so a host is told nothing at all while it holds nothing.
+let hostHoldsChip = false;
 
 function getTooltip(): HTMLElement {
     if (!tooltipEl) {
@@ -116,9 +123,16 @@ function position(
     }
     // A strip of the bar the host paints over (the Mac app's tab bar) is the
     // one part of the bar a bar anchor's tip may not hang into: the chip
-    // would be drawn under the tabs. It goes below the strip instead, which
-    // is the nearest place it can be read.
-    y = clearHostStrip(y, tipRect.height, 4);
+    // would be drawn under the tabs. A host that can draw over its own strip
+    // is handed the chip, so it still sits against its control; anywhere
+    // else it goes below the strip, which is the nearest place it can be
+    // read.
+    const clearOfStrip = clearHostStrip(y, tipRect.height, 4);
+    if (clearOfStrip !== y && placement !== "left" && hostHas("stripTooltip")) {
+        handOverToHost(tip, elRect, y);
+        return;
+    }
+    y = clearOfStrip;
     if (y + tipRect.height > window.innerHeight - 4) {
         y = Math.max(safeTop + 4, window.innerHeight - tipRect.height - 4);
     }
@@ -133,11 +147,53 @@ function position(
     tip.style.left = `${x}px`;
     tip.style.top = `${y}px`;
     tip.style.visibility = "visible";
+    releaseHostChip();
+}
+
+/**
+ * Give the chip to the host, to be drawn where this page cannot draw.
+ *
+ * What travels is the control's box, the top edge this page had chosen, and
+ * the chip's look as the live element resolves it. The look is read rather
+ * than restated so the host holds no copy of the palette: the chip follows
+ * the theme and the zoom because the element it was read from does. The host
+ * measures its own text and centres on the box, since its metrics for the
+ * same words are not this page's.
+ *
+ * The page's own chip is put away first. Two chips naming one control, one of
+ * them under the tabs, is the state this exists to end.
+ */
+function handOverToHost(tip: HTMLElement, elRect: TooltipAnchor, top: number): void {
+    const cs = getComputedStyle(tip);
+    const px = (value: string): number => parseFloat(value) || 0;
+    tip.style.display = "none";
+    hostHoldsChip = true;
+    notifyStripTooltip(
+        tip.textContent ?? "",
+        { x: elRect.left, y: elRect.top, width: elRect.width, height: elRect.height },
+        top - elRect.bottom,
+        {
+            background: cs.backgroundColor,
+            color: cs.color,
+            fontSize: px(cs.fontSize),
+            radius: px(cs.borderTopLeftRadius),
+            padX: px(cs.paddingLeft),
+            padY: px(cs.paddingTop),
+        },
+    );
+}
+
+/** Take back a chip the host is drawing, if it is drawing one. */
+function releaseHostChip(): void {
+    if (!hostHoldsChip) { return; }
+    hostHoldsChip = false;
+    notifyStripTooltip(null);
 }
 
 /** Immediately hide the currently visible tooltip (e.g. to clear it after a click interaction) */
 export function hideTooltip(): void {
     ownerEl = null;
+    releaseHostChip();
     if (tooltipEl) {
         tooltipEl.style.display = "none";
     }

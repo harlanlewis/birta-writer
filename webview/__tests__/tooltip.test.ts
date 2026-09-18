@@ -6,8 +6,9 @@
  * so tests never wipe document.body — each test creates its own host
  * buttons and resets visibility through hideTooltip().
  */
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { applyTooltip, hideTooltip, showTooltipAt, showTooltipForRect } from "../ui/tooltip";
+import { mockVscodeApi } from "./setup";
 
 const tip = () => document.querySelector(".custom-tooltip") as HTMLElement | null;
 const tipVisible = () => tip() !== null && tip()!.style.display !== "none";
@@ -320,5 +321,70 @@ describe("placement against the fixed chrome", () => {
         } finally {
             document.documentElement.style.removeProperty("--host-strip-under-topbar");
         }
+    });
+
+    describe("on a host that can draw over its own strip", () => {
+        const posted = (): Array<Record<string, unknown>> =>
+            mockVscodeApi.postMessage.mock.calls
+                .map(([m]) => m as Record<string, unknown>)
+                .filter((m) => m["type"] === "stripTooltip");
+
+        beforeEach(() => {
+            // The chip has a size only once it has been given one: jsdom lays
+            // nothing out, and a chip of no height misses every strip. Stated
+            // here rather than inherited from whichever case ran first.
+            showTooltipForRect(new DOMRect(0, 500, 10, 10), "size me");
+            tip()!.getBoundingClientRect = () => new DOMRect(0, 0, 80, 20);
+            hideTooltip();
+            mockVscodeApi.postMessage.mockClear();
+            (window as unknown as { __i18n: unknown }).__i18n = {
+                host: { capabilities: ["stripTooltip"], arrangements: [], shortcuts: [] },
+            };
+            document.documentElement.style.setProperty("--host-strip-under-topbar", "28px");
+        });
+        afterEach(() => {
+            hideTooltip();
+            delete (window as unknown as { __i18n?: unknown }).__i18n;
+            document.documentElement.style.removeProperty("--host-strip-under-topbar");
+        });
+
+        it("a bar button's tip that would land in the strip should be handed to the host and not drawn here", () => {
+            const { btn } = fixedChrome(68);
+            showTooltipAt(btn, "Checks", "below");
+            expect(tipVisible()).toBe(false);
+            const asked = posted();
+            expect(asked).toHaveLength(1);
+            const box = btn.getBoundingClientRect();
+            expect(asked[0]).toMatchObject({
+                text: "Checks",
+                anchor: { x: box.left, y: box.top, width: box.width, height: box.height },
+                gap: 6,
+            });
+            expect(Object.keys(asked[0]!["style"] as object).sort())
+                .toEqual(["background", "color", "fontSize", "padX", "padY", "radius"]);
+        });
+
+        it("hiding a handed-over tip should take the host's chip away exactly once", () => {
+            const { btn } = fixedChrome(68);
+            showTooltipAt(btn, "Checks", "below");
+            hideTooltip();
+            hideTooltip();
+            expect(posted().map((m) => m["text"])).toEqual(["Checks", null]);
+        });
+
+        it("a tip the page CAN draw should take the host's chip away and be drawn here", () => {
+            const { btn, inDoc } = fixedChrome(68);
+            showTooltipAt(btn, "Checks", "below");
+            showTooltipAt(inDoc, "Insert Table", "below");
+            expect(tipVisible()).toBe(true);
+            expect(posted().map((m) => m["text"])).toEqual(["Checks", null]);
+        });
+
+        it("a host that holds nothing should be told nothing", () => {
+            const { inDoc } = fixedChrome(68);
+            showTooltipAt(inDoc, "Insert Table", "below");
+            hideTooltip();
+            expect(posted()).toEqual([]);
+        });
     });
 });

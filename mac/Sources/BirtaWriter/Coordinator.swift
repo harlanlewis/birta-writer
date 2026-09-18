@@ -321,6 +321,8 @@ final class Coordinator {
     /// How many tabs share this window's bar; one for a window in no group.
     var tabCount: Int { panel.tabGroup?.windows.count ?? 1 }
     private let statusOverlay = StatusOverlay()
+    /// The page's tooltip, where the page cannot draw it: above the tab bar.
+    private let stripTooltipWindow = StripTooltipWindow()
 
     /// What this window's page looks like, as `WindowSet` resolved it
     /// (`Appearance.swift`): the mode in force, the theme in that mode's
@@ -744,6 +746,7 @@ final class Coordinator {
         // hide into a real close: `AppPanel.close` states that rule. A window
         // only ordered out stays in `NSApp.windows` and so stays in the Window
         // menu, listed as open long after it was closed.
+        stripTooltipWindow.tearDown()
         panel.onHideRequest = nil
         panel.close()
         panel.contentView = nil
@@ -1657,6 +1660,10 @@ final class Coordinator {
         case .ready:
             measure.mark("ready")
             guardState.resetForReady()
+            // A page that has just loaded holds no chip, whatever the last one
+            // had handed over: it cannot ask for something to be taken away
+            // that it does not know it gave.
+            stripTooltipWindow.hide()
             // The file is the source only at launch and after the bound file
             // changes; after a content-process death `latest` is fresher than
             // the disk can be (a write may still be in flight), and it is what
@@ -1903,6 +1910,8 @@ final class Coordinator {
             showProjectFileMenu(relative: path, kind: kind, x: x, y: y)
         case let .formattingRowExpanded(expanded):
             onFormattingRowChanged?(expanded)
+        case let .stripTooltip(tooltip):
+            stripTooltipWindow.show(tooltip, over: panel)
         case let .fileExplorerWidth(w): Prefs.explorerWidth = w
         case let .fileExplorerVisibility(visible):
             Prefs.explorerVisibility = visible ? "shown" : "hidden"

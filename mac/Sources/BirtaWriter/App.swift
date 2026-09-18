@@ -788,12 +788,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding, 
     }
     @objc func menuOpenDocument() { windows.openDocumentPanel() }
 
-    /// Raise the recents list from a control that is not a menu row: the
-    /// titlebar's button. The File menu reaches the same list as a submenu
-    /// (`AppMenu.Action.recents`), so this builds the same menu rather than a
-    /// second one, and pops it under the button that sent it.
+    /// The titlebar's Open button: Open…, and under it the recent files
+    /// (`RecentsMenu`, `leadsWithOpen`), popped under the button that sent it,
+    /// for the reason `menuOpenRecent` gives.
+    @objc func menuOpenMenu(_ sender: Any?) {
+        guard let view = sender as? NSView else { return }
+        NSApp.activate(ignoringOtherApps: true)
+        windows.recentsMenu(leadsWithOpen: true).popUp(
+            positioning: nil,
+            at: RecentsMenu.popUpOrigin(in: view.bounds, isFlipped: view.isFlipped),
+            in: view)
+    }
+
+    /// Raise the recents list alone, under the view that sent this.
     ///
-    /// The sender is the button, which is why the selector takes one: a menu
+    /// No control sends it: the titlebar's button raises the Open menu above,
+    /// and the missing-file card pops its own
+    /// (`Coordinator.makeRecentsMenu`). It stays because the selector is the
+    /// File menu's Open Recent row's identity (`AppMenu.Action.recents`,
+    /// `AppMenu.row(for:)`), and an identity with no method behind it is a
+    /// selector the first-run gate below could not name.
+    ///
+    /// The sender is a view, which is why the selector takes one: a menu
     /// has to be popped IN a view, and the only view that knows where this one
     /// belongs is the one that was pressed.
     @objc func menuOpenRecent(_ sender: Any?) {
@@ -1312,7 +1328,7 @@ extension AppDelegate: NSMenuDelegate, NSMenuItemValidation {
     /// first-run gate above cannot drift out of step with the File menu.
     private static let documentCommands: Set<Selector> = [
         #selector(menuNewNote), #selector(menuNewTab), #selector(menuOpenDocument),
-        #selector(menuOpenRecent(_:)), #selector(menuOpenRecentDocument(_:)),
+        #selector(menuOpenMenu(_:)), #selector(menuOpenRecent(_:)), #selector(menuOpenRecentDocument(_:)),
         #selector(menuSaveNow), #selector(menuSaveAs),
         #selector(copyEverything), #selector(shareNote), #selector(revealLastSave),
         #selector(menuBackToNotes), #selector(menuRunEditorCommand(_:)),

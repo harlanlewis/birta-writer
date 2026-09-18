@@ -21,11 +21,26 @@ protocol RecentsMenuProviding: AnyObject {
 ///     Clear Menu
 ///
 /// Three surfaces show this and none of them owns it: the File menu's Open
-/// Recent row (`AppMenu.Action.recents`), the titlebar's recents button
-/// (`AppDelegate.menuOpenRecent`), and the missing-file card's Open Recent
-/// button. It fills ITSELF rather than being filled by whichever surface raised
-/// it, which is what keeps the three from becoming three lists that agree
-/// today.
+/// Recent row (`AppMenu.Action.recents`), the titlebar's Open button
+/// (`AppDelegate.menuOpenMenu`), and the missing-file card's Open Recent
+/// button (`Coordinator.makeRecentsMenu`). It fills ITSELF rather than being
+/// filled by whichever surface raised it, which is what keeps the three from
+/// becoming three lists that agree today.
+///
+/// The titlebar's is the same list under a different first row
+/// (`leadsWithOpen`), because that button is Open and Open Recent in one:
+///
+///     Open…           ⌘O
+///     ─────────
+///     Note.md
+///     Meeting.md
+///     ─────────
+///     Clear Recents
+///
+/// With nothing recent it is Open… alone. The dead "No Recent Files" row is
+/// the other form's, where the alternative is a submenu with one live row in
+/// it; here the menu has a first row that always works, and a line under it
+/// saying what is not there would be the longest thing in it.
 ///
 /// What it cannot fill in for itself is WHICH WINDOW is asking, because that is
 /// a fact about the set of windows and this is one menu shared by all of them.
@@ -97,10 +112,16 @@ final class RecentsMenu: NSMenu, NSMenuDelegate {
     /// menu as it was.
     private let openElsewhere: () -> [URL]
 
-    init(source: @escaping () -> [URL] = { Prefs.recentDocuments },
+    /// Whether this is the titlebar's form: Open… above the list, and the list
+    /// allowed to be absent. See the type's note.
+    private let leadsWithOpen: Bool
+
+    init(leadsWithOpen: Bool = false,
+         source: @escaping () -> [URL] = { Prefs.recentDocuments },
          exists: @escaping (URL) -> Bool = { FileManager.default.fileExists(atPath: $0.path) },
          current: @escaping () -> URL? = { Prefs.activeURL },
          openElsewhere: @escaping () -> [URL] = { [] }) {
+        self.leadsWithOpen = leadsWithOpen
         self.source = source
         self.exists = exists
         self.current = current
@@ -125,6 +146,24 @@ final class RecentsMenu: NSMenu, NSMenuDelegate {
                                     here: current(),
                                     exists: exists)
         let (first, more) = RecentFiles.pages(menu.recent)
+
+        if leadsWithOpen {
+            // The row the File menu has, by its own selector and with no
+            // target, so this Open… and that one are one action. The chord is
+            // printed because the row it repeats prints it; a popped-up menu
+            // only answers key equivalents while it is being tracked, so this
+            // is not a second binding of the chord.
+            let open = addItem(withTitle: "Open…",
+                               action: #selector(AppDelegate.menuOpenDocument),
+                               keyEquivalent: "o")
+            open.keyEquivalentModifierMask = .command
+            open.target = nil
+            if menu.isEmpty {
+                AppDelegate.suppressAutomaticIcons(in: self)
+                return
+            }
+            addItem(.separator())
+        }
 
         if menu.isEmpty {
             // A dead row rather than a menu with only Clear Menu in it: an
@@ -167,7 +206,12 @@ final class RecentsMenu: NSMenu, NSMenuDelegate {
         // Enablement is `AppDelegate.validateMenuItem`'s, for the reason above:
         // this row has an action, so AppKit asks before every showing and the
         // answer has to come from the place it asks.
-        addItem(withTitle: "Clear Menu",
+        //
+        // Two titles for one action, and the menu it is in decides which.
+        // "Clear Menu" is what macOS calls this row under Open Recent, where
+        // the menu IS the list. Under Open… it would promise to clear a menu
+        // whose first row is not clearable, so there it names what goes.
+        addItem(withTitle: leadsWithOpen ? "Clear Recents" : "Clear Menu",
                 action: #selector(AppDelegate.menuClearRecentDocuments),
                 keyEquivalent: "").target = nil
 

@@ -262,8 +262,8 @@ final class AppMenuTests: XCTestCase {
         XCTAssertEqual(item?.action, #selector(NSMenu.submenuAction(_:)))
     }
 
-    func testTheRecentsRowShouldBeReachableBySelectorForTheTitlebarButton() {
-        // What the titlebar button asks for: the row it repeats, so its label
+    func testTheRecentsRowShouldBeReachableBySelector() {
+        // What a titlebar button asks for: the row it repeats, so its label
         // and its tooltip are the menu's rather than literals beside it. The
         // lookup admits `.app` and `.recents` rows and nothing else, so this
         // also pins that it did not start answering command rows.

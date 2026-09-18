@@ -423,6 +423,20 @@ export function notifyProjectFileMenu(path: string, kind: "dir" | "file", x: num
     vscode.postMessage({ type: "projectFileMenu", path, kind, x, y });
 }
 
+/**
+ * Hand the tooltip chip to a host that can draw over its own strip
+ * (`stripTooltip`), or take it back with a null text. See the message's note
+ * in shared/messages.ts.
+ */
+export function notifyStripTooltip(
+    text: string | null,
+    anchor?: { x: number; y: number; width: number; height: number },
+    gap?: number,
+    style?: import("../shared/messages").StripTooltipStyle,
+): void {
+    vscode.postMessage(text === null ? { type: "stripTooltip", text } : { type: "stripTooltip", text, anchor, gap, style });
+}
+
 /** The formatting row was opened or shut here, for the host to remember and push to its other pages. */
 export function notifyFormattingRowExpanded(expanded: boolean): void {
     vscode.postMessage({ type: "formattingRowExpanded", expanded });

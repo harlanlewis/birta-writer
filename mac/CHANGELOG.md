@@ -15,18 +15,19 @@ Versions are shared. Both files are stamped with the same release version, and a
 ### Added
 
 - An Appearance pane in Settings, and VS Code color themes. Birta Writer for Mac follows the macOS light and dark appearance as before; the pane's first row holds it to Light or Dark, or leaves it on Auto. Each of light and dark has a slot: the system's own palette, or any VS Code color theme, so daytime can be one theme and night another, or a theme by day and macOS dark by night. Themes are added from a theme's `.json` file, a theme extension's folder, a `.vsix`, every theme installed in or shipped with VS Code, Cursor and their siblings in one step, or by browsing the Open VSX registry from the pane. A theme colours the whole page and its code blocks, its own token colours included, and every window and tab follows a change at once, chrome included. The theme in force is also picked under View > Theme and in the command palette, where the modes and every theme are rows and the ones in force say so. Beside the themes, the pane carries an accent, a paper tint and a transparent sidebar, which recolour the system's palette or a theme on the fly, and the font and size the toolbar's menu already sets, for every window at once.
-- Line Numbers, in the View menu: the editor's optional column of source line numbers, off until asked for, for every window at once, standing past the file explorer when that is open. It is the same gutter the extension's `birta.lineNumbers` turns on.
-- Go to Line… (⌃G), under Edit > Find, the editor's own prompt.
 
 ### Fixed
 
+- The line-number gutter stood under a docked file explorer. It now stands past the explorer's far edge.
+- With a tab bar showing, the tooltip for a button in the titlebar or the toolbar was drawn under the tabs, a row away from the button it named. It now sits against the button, over the tab bar, as it does in a window with no tabs.
+- With the formatting row open beside a docked file explorer, the top of the explorer was covered: the folder's name and the first rows were hidden behind the toolbar's background and could not be clicked. The explorer now starts level with the row and all of it shows.
+- Resting the pointer on the toolbar's file explorer button while the explorer was closed flew its preview out past the right edge of the window, leaving only a sliver of it visible. The preview now stays inside the window.
 - A file opened as a tab of a folder window could settle its explorer wrongly: closed, or under the formatting row rather than level with it, because the page decided while its view was still the size it was created at and was never told the window's. A docked panel now follows the viewport's own box.
 - The command palette could fail to find a row by the word it starts with: typing `sho` did not list Show Hidden Files, because the match jumped from the S to the H of Hidden and found no o after it. A row that contains the typed letters in order is now always listed.
 
 ### Changed
 
-- The formatting row sits below the tab bar rather than above it, as the top of the content area: with the file explorer or the outline open, the row starts where the panel ends and the panel starts level with the row, so the two draw one edge under the window's chrome. Whether the row is open is now one answer for every window and tab of Birta Writer for Mac; it used to be remembered per file, so a row open in one tab could be shut in the next.
-- The file explorer is drawn as a surface set into the window: on the sidebar shade, a step darker than the page in light mode and a step lighter in dark, with a small corner radius, standing in from the window's edges and running the window's full height whatever the folder holds.
+- The titlebar's Open button is now a menu, and the Open Recent button beside it is gone: Open… comes first, then the recent files, then Clear Recents when there are any. Nothing else about the list has changed, and File > Open Recent still holds it too. ⌘O opens the file panel directly, as before.
 
 ---
 

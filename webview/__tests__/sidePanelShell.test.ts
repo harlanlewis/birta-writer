@@ -7,6 +7,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { createSidePanelShell, type SidePanelShellOptions } from "../components/sidePanel/shell";
 import { TAB_EDGE_INSET, TAB_TOP_INSET } from "../components/sidePanel/revealTab";
+import { FLYOUT_EDGE, FLYOUT_WIDTH } from "../components/sidePanel/flyout";
 import type { EventManager } from "../eventManager";
 
 const fakeEventManager = { onWindow: vi.fn(() => () => {}) } as unknown as EventManager;
@@ -361,6 +362,37 @@ describe("side-panel shell: the reveal tab and the flyout trigger", () => {
         expect(document.body.classList.contains("files-flyout-open")).toBe(true);
         expect(shell.panel.classList.contains("side-panel--flyout")).toBe(true);
         expect(shell.panel.classList.contains("files-panel--flyout")).toBe(true);
+    });
+
+    it("a leading panel's flyout off a trigger near the trailing edge should be held inside the window", () => {
+        // The file explorer's case: it docks on the leading edge and its
+        // button sits in the bar's trailing cluster, so a card lined up with
+        // the button's leading edge would run off the end of the window.
+        const shell = createSidePanelShell(filesOptions({ trigger: { kind: "external" } }));
+        document.body.appendChild(shell.panel);
+        const button = document.createElement("button");
+        button.getBoundingClientRect = () => new DOMRect(window.innerWidth - 60, 5, 26, 24);
+        document.body.appendChild(button);
+        shell.setFlyoutTrigger(button);
+
+        button.dispatchEvent(new MouseEvent("mouseenter"));
+        const left = parseFloat(shell.panel.style.left);
+        expect(left + FLYOUT_WIDTH).toBeLessThanOrEqual(window.innerWidth - FLYOUT_EDGE);
+        // And no further in than it has to be: the card still ends at the edge
+        // its trigger is against.
+        expect(left).toBe(window.innerWidth - FLYOUT_WIDTH - FLYOUT_EDGE);
+    });
+
+    it("a flyout with room should still line up with its trigger", () => {
+        const shell = createSidePanelShell(filesOptions({ trigger: { kind: "external" } }));
+        document.body.appendChild(shell.panel);
+        const button = document.createElement("button");
+        button.getBoundingClientRect = () => new DOMRect(120, 5, 26, 24);
+        document.body.appendChild(button);
+        shell.setFlyoutTrigger(button);
+
+        button.dispatchEvent(new MouseEvent("mouseenter"));
+        expect(shell.panel.style.left).toBe("120px");
     });
 
     it("under a tab trigger, setFlyoutTrigger should be refused so the tab stays the only trigger", () => {

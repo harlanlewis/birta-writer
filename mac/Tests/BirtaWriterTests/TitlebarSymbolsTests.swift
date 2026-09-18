@@ -109,11 +109,11 @@ final class TitlebarSymbolsTests: XCTestCase {
         // version put this glyph within half a pixel of the others.
         guard let low = ink(of: "square.and.pencil"),
               let folder = ink(of: "folder"),
-              let clock = ink(of: "clock") else {
+              let command = ink(of: "command") else {
             return XCTFail("a symbol used as a reference did not resolve")
         }
         XCTAssertGreaterThan(low.centre - folder.centre, 0.5,
                              "the measurement cannot tell a low glyph from a centred one")
-        XCTAssertGreaterThan(low.centre - clock.centre, 0.5)
+        XCTAssertGreaterThan(low.centre - command.centre, 0.5)
     }
 }
