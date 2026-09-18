@@ -188,6 +188,31 @@ describe("the file explorer gate", () => {
         expect(row("a.md")!.hasAttribute("aria-expanded")).toBe(false);
     });
 
+    it("a non-openable file's row should carry its extension for the hover chip, and no other row should", async () => {
+        await mounted(gate);
+        answer(gate, "", [
+            file("a.md"), file("Report Q4 final.PDF", false), file("archive.tar.gz", false),
+            file("Makefile", false), file(".env", false), file("ends-with-dot.", false), dir("docs"),
+        ]);
+        // Upper-cased, the LAST extension of a doubled one, and none for a
+        // name with nothing after its last dot or a dotfile, whose dot leads.
+        expect(row("Report Q4 final.PDF")!.dataset["ext"]).toBe("PDF");
+        expect(row("archive.tar.gz")!.dataset["ext"]).toBe("GZ");
+        expect(row("Makefile")!.dataset["ext"]).toBeUndefined();
+        expect(row(".env")!.dataset["ext"]).toBeUndefined();
+        expect(row("ends-with-dot.")!.dataset["ext"]).toBeUndefined();
+        expect(row("a.md")!.dataset["ext"]).toBeUndefined();
+        expect(row("docs")!.dataset["ext"]).toBeUndefined();
+    });
+
+    it("the panel should hold one card, with the header and the tree inside it", async () => {
+        await mounted(gate);
+        const card = panel()!.querySelector(".files-card");
+        expect(card).not.toBeNull();
+        expect(card!.querySelector(".files-header")).not.toBeNull();
+        expect(card!.querySelector(".files-tree")).not.toBeNull();
+    });
+
     it("an empty root should say so", async () => {
         await mounted(gate);
         answer(gate, "", []);

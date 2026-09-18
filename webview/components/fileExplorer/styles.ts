@@ -28,7 +28,21 @@
 const STYLE_ID = "file-explorer-styles";
 
 export const FILE_EXPLORER_CSS = `
-/* The panel's own ground: the sidebar shade, a step off the page in either
+/* The card is the surface; the panel is its box. The panel keeps a strip of
+   page along its trailing edge (the card's margin) and that strip is where
+   the resize sash draws its line: on the panel's edge, as every drawer's
+   sash is, and so standing off the card's rounded edge rather than lying
+   along it, which read as a border the card had grown on one side. The
+   panel's far edge, the number the content's margin and the formatting row
+   read, is unchanged; the card gives the strip up from its own width. */
+.files-card {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+/* The card's own ground: the sidebar shade, a step off the page in either
    theme (darker on light, lighter on dark; the host palette derives it from
    the widget ground so a theme keeps the two apart), with the small radius of
    a surface set into the window rather than the one a floating card takes.
@@ -36,9 +50,10 @@ export const FILE_EXPLORER_CSS = `
    and it is what makes the ground and the radius visible at all: flush to the
    frame, a rounded corner has nothing to be rounded against. Docked and
    overlay alike, and not the flyout, which is a card of the shell's own. */
-.files-panel:not(.files-panel--flyout) {
+.files-panel:not(.files-panel--flyout) .files-card {
     background: var(--vscode-sideBar-background);
     border-radius: var(--ui-radius-l);
+    margin-right: var(--ui-space-3);
 }
 
 .files-header {
@@ -50,12 +65,16 @@ export const FILE_EXPLORER_CSS = `
     min-height: 22px;
 }
 
+/* The root's name, quieter than the rows under it: it is where the tree
+   is, not something in it, and drawn in the tree's own ink it read as the
+   first and heaviest row. */
 .files-header__name {
     flex: 1 1 auto;
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    color: var(--vscode-descriptionForeground);
 }
 
 .files-tree {
@@ -126,9 +145,40 @@ export const FILE_EXPLORER_CSS = `
 }
 
 /* A file the host hands to another application: still a row, still a
-   click, drawn quieter so the promise reads before it is made. */
+   click, drawn quieter so the promise reads before it is made. The dimming
+   is on the name and the caret, not the row: a row's opacity is a group,
+   and the chip below is inside it, where it would be drawn at the same
+   strength as the words it exists to be read over. */
 .files-row--other {
+    position: relative;
+}
+
+.files-row--other .files-row__name,
+.files-row--other .files-caret {
     opacity: 0.55;
+}
+
+/* And, under the pointer or the keyboard, what it is: the extension, in a
+   chip over the name's trailing end. Over rather than beside, because a
+   long name has already taken the row and the ellipsis hides the one part
+   that said what the file was; a chip laid on the name's end is what the
+   name could not show. Only for a row the host hands elsewhere, whose click
+   is the promise the chip lets a reader judge; an openable file's row says
+   nothing new. */
+.files-row--other[data-ext]:is(:hover, :focus-visible)::after {
+    content: attr(data-ext);
+    position: absolute;
+    right: var(--ui-space-2);
+    top: 50%;
+    transform: translateY(-50%);
+    padding: 0 var(--ui-space-2);
+    border-radius: var(--ui-radius-s);
+    font-size: var(--ui-fs-xs);
+    line-height: 1.6;
+    letter-spacing: 0.04em;
+    background: var(--vscode-badge-background);
+    color: var(--vscode-badge-foreground);
+    pointer-events: none;
 }
 
 .files-row--loading,

@@ -293,6 +293,16 @@ final class PaletteWindowTests: XCTestCase {
         XCTAssertEqual(palette.rows.first?.title, "Italic")
     }
 
+    func testTheFooterHintsShouldSitInTheMiddleOfTheirBandNotAgainstTheRule() throws {
+        let palette = palette()
+        palette.prepare(mode: .all)
+        let air = try XCTUnwrap(palette.footerAirForMeasurement)
+        XCTAssertGreaterThan(air.above, 3, "the hints are against the rule: \(air)")
+        // The rule box is a few points tall around its one-point line, so
+        // the two halves differ by that much and no more.
+        XCTAssertEqual(air.above, air.below, accuracy: 3, "the air is not shared evenly above and below: \(air)")
+    }
+
     func testNoMatchShouldSayNoMatchAndSelectNothing() {
         let palette = palette()
         palette.prepare(mode: .all)

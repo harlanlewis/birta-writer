@@ -27,7 +27,8 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ### Changed
 
-- The titlebar's Open button is now a menu, and the Open Recent button beside it is gone: Open… comes first, then the recent files, then Clear Recents when there are any. Nothing else about the list has changed, and File > Open Recent still holds it too. ⌘O opens the file panel directly, as before.
+- Resting the pointer on a file in the explorer that Birta Writer for Mac hands to another application shows the file's extension in a chip over the end of its name, so a long name that hides its extension still says what it is. The chip shows for the focused row too, under the keyboard.
+- The titlebar's Open button is now a menu, and the Open Recent button beside it is gone: Open… comes first, then the recent files, then Clear Recents when there are any. Nothing else about the list has changed, and File > Open Recent still holds it too. ⌘O opens the file panel directly, as before, and the button's tooltip names it without the key, since the key skips the menu.
 
 ---
 
