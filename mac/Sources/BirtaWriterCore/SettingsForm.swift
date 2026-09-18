@@ -52,7 +52,8 @@ public enum SettingsRow: String, CaseIterable, Sendable {
     case theme = "Theme"
     case accent = "Accent"
     case tint = "Tint"
-    case transparentSidebar = "Transparent file sidebar"
+    case transparentSidebar = "Transparent file list sidebar"
+    case transparentToc = "Transparent table of contents sidebar"
 
     /// What the pane draws as the row's name. The raw value is the row's
     /// NAME, which the palette lists ("Appearance › Theme") and a test
@@ -308,7 +309,7 @@ public enum SettingsForm {
             SettingsGroup(rows: [.font, .fontSize]),
             SettingsGroup(rows: [.followSystemAppearance]),
             SettingsGroup(rows: [.theme]),
-            SettingsGroup(rows: [.accent, .tint, .transparentSidebar]),
+            SettingsGroup(rows: [.accent, .tint, .transparentSidebar, .transparentToc]),
         ])
 
     /// Where the theme row's sentence points: the link drawn after its

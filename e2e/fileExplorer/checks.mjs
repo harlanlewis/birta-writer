@@ -132,6 +132,23 @@ export async function run({ page, check, baseUrl }) {
             probe.remove();
             return same;
         }));
+    // The shade is the DEFAULT, and a host can move it: the Mac app's
+    // Transparent file list sidebar declares --files-panel-ground so the card
+    // reads as page. A sentinel colour rather than the paper, so the check
+    // cannot pass by the card having been the paper all along; which colour
+    // the app puts there is its own to say, and its tests do.
+    const CARD_GROUND = "rgb(1, 2, 3)";
+    const moved = await page.evaluate((value) => {
+        const style = document.createElement("style");
+        style.textContent = `:root { --files-panel-ground: ${value}; }`;
+        document.head.appendChild(style);
+        const seen = getComputedStyle(document.querySelector(".files-card")).backgroundColor;
+        style.remove();
+        const back = getComputedStyle(document.querySelector(".files-card")).backgroundColor;
+        return { seen, back };
+    }, CARD_GROUND);
+    check("one declaration moves the card's ground, and taking it away hands the shade back",
+        moved.seen === CARD_GROUND && moved.back === geom.background, JSON.stringify(moved));
 
     // The formatting row is the top of the CONTENT AREA, beside the panel:
     // opened, it starts where the panel ends, and its controls' top edge is

@@ -11,6 +11,13 @@ import BirtaWriterCore
 /// that they agree: the same rows under the same titles, the same row marked
 /// as in force, and a pick on any of them going through the app rather than
 /// to the surface's own copy of the answer.
+///
+/// ORDER is each surface's own, and deliberately so. All three list by name;
+/// what the pane adds is a GROUPING, because it draws a picker per mode and
+/// each strip leads with the themes of its own kind (`ThemeStore.ordered`).
+/// The menu and the palette are one list with the theme in force ticked, and
+/// grouping there would move that ticked row into the middle of a list a
+/// reader scans from the top.
 @MainActor
 final class ThemeSurfacesTests: XCTestCase {
     private var root: URL!
@@ -186,10 +193,23 @@ final class ThemeSurfacesTests: XCTestCase {
         controller.selectTabForTesting("appearance")
         XCTAssertTrue(controller.followsSystemForTesting, "the switch is on by default")
         XCTAssertEqual(controller.themeCardShapeForTesting, "slots")
-        XCTAssertEqual(controller.themeChoicesForTesting, ["macOS Light", "Paper", "Slate"], "the system first, then the library")
-        XCTAssertEqual(controller.darkThemeChoicesForTesting, ["macOS Dark", "Paper", "Slate"])
-        XCTAssertEqual(controller.heldThemeChoicesForTesting, ["macOS Light", "macOS Dark", "Paper", "Slate"],
-                       "held, one strip of everything, both system cards first")
+        XCTAssertEqual(controller.themeStripHeadingsForTesting, ["Light Theme", "Dark Theme"],
+                       "two strips, so each says which it is")
+        XCTAssertEqual(controller.themeStripNamesForTesting.map(\.name), ["Light Theme", "Dark Theme"],
+                       "and each is spoken by the name it is drawn under")
+        XCTAssertTrue(controller.themeStripNamesForTesting.allSatisfy(\.isElement),
+                      "a name on a view that is not an element is a name nothing announces")
+        XCTAssertEqual(controller.themeChoicesForTesting, ["macOS Light", "Paper", "Slate"],
+                       "the light picker: the system's light, then the light themes, then the rest")
+        XCTAssertEqual(controller.darkThemeChoicesForTesting, ["macOS Dark", "Slate", "Paper"],
+                       "the dark picker leads with the dark themes")
+        // Everything, on one strip. Which card leads is the HELD kind's to
+        // decide and this Mac's appearance is what holds it here, so the
+        // order is pinned below where a kind is held on purpose.
+        XCTAssertEqual(Set(controller.heldThemeChoicesForTesting),
+                       ["macOS Light", "macOS Dark", "Paper", "Slate"], "held, one strip of everything")
+        XCTAssertEqual(controller.heldThemeChoicesForTesting.prefix(2).sorted(),
+                       ["macOS Dark", "macOS Light"], "both system cards lead")
         XCTAssertEqual(controller.accentChoicesForTesting.first, "Default")
         XCTAssertEqual(controller.themeLibraryForTesting.map(\.id), ["paper", "slate"])
 
@@ -215,9 +235,20 @@ final class ThemeSurfacesTests: XCTestCase {
         controller.setFollowSystemForTesting(false)
         XCTAssertEqual(applied.last?.mode, .dark, "off holds the kind that was held, not the sun's")
         XCTAssertEqual(controller.themeCardShapeForTesting, "held")
+        XCTAssertEqual(controller.themeStripHeadingsForTesting, [],
+                       "one strip under the sentence names nothing a heading could add")
+        // The heading is what a sighted reader loses here, so the name a
+        // screen reader is given has to survive on its own.
+        XCTAssertEqual(controller.themeStripNamesForTesting.map(\.name), ["Theme"])
+        XCTAssertTrue(controller.themeStripNamesForTesting.allSatisfy(\.isElement),
+                      "and on an element, or nothing announces it")
         XCTAssertEqual(controller.heldThemeSelectionForTesting, "Slate")
+        XCTAssertEqual(controller.heldThemeChoicesForTesting, ["macOS Dark", "macOS Light", "Slate", "Paper"],
+                       "holding dark, the dark cards lead")
         controller.chooseHeldThemeForTesting("paper", kind: .light)
         XCTAssertEqual(applied.last?.mode, .light)
+        XCTAssertEqual(controller.heldThemeChoicesForTesting, ["macOS Light", "macOS Dark", "Paper", "Slate"],
+                       "the strip re-leads when the kind held flips")
         XCTAssertEqual(applied.last?.lightTheme, "paper")
         XCTAssertEqual(applied.last?.darkTheme, "slate", "the other slot keeps its own")
         XCTAssertEqual(controller.heldThemeSelectionForTesting, "Paper")
@@ -294,6 +325,87 @@ final class ThemeSurfacesTests: XCTestCase {
         XCTAssertEqual(Prefs.fontSize, min(200, before + 10))
         XCTAssertEqual(controller.fontSizeForTesting, "\(Prefs.fontSize)%")
         Prefs.fontSize = before
+    }
+}
+
+/// The two drawer switches on the Appearance pane: their defaults, which
+/// declaration each moves, and the stored key behind each.
+///
+/// Driven through the rows' own switches rather than through a hook, so what
+/// is being read back is a control somebody could reach.
+@MainActor
+final class DrawerGroundSwitchTests: XCTestCase {
+    private var saved = AppearanceSettings()
+
+    override func setUpWithError() throws {
+        try super.setUpWithError()
+        _ = NSApplication.shared
+        saved = Prefs.appearance
+        Prefs.appearance = AppearanceSettings()
+    }
+
+    override func tearDownWithError() throws {
+        Prefs.appearance = saved
+        try super.tearDownWithError()
+    }
+
+    /// The switch in a row of the Appearance pane, by the row's name.
+    private func toggle(_ row: SettingsRow, of controller: SettingsWindowController) throws -> NSSwitch {
+        let view = try XCTUnwrap(controller.rowForTesting(row), "the pane draws no \(row.rawValue) row")
+        var found: [NSSwitch] = []
+        func walk(_ view: NSView) {
+            if let sw = view as? NSSwitch { found.append(sw) }
+            view.subviews.forEach(walk)
+        }
+        walk(view)
+        XCTAssertEqual(found.count, 1, "\(row.rawValue) should carry exactly one switch")
+        return try XCTUnwrap(found.first)
+    }
+
+    private func flip(_ sw: NSSwitch, to on: Bool) {
+        sw.state = on ? .on : .off
+        _ = NSApp.sendAction(sw.action!, to: sw.target, from: sw)
+    }
+
+    func testEachDrawerSwitchShouldOpenOnItsOwnDefaultAndMoveItsOwnGround() throws {
+        var applied: [AppearanceSettings] = []
+        let controller = SettingsWindowController(
+            flavour: .release, onHotkeyChange: { 0 }, onChange: { _ in }, onChangeEverywhere: {},
+            onShowWelcome: {}, onCheckForUpdates: {},
+            onAppearanceChange: { applied.append($0); Prefs.appearance = $0 })
+        defer { controller.window?.close() }
+        controller.selectTabForTesting("appearance")
+
+        let files = try toggle(.transparentSidebar, of: controller)
+        let contents = try toggle(.transparentToc, of: controller)
+        XCTAssertEqual(files.state, .off, "the file list is shaded until asked otherwise")
+        XCTAssertEqual(contents.state, .on, "the table of contents reads as page until asked otherwise")
+
+        flip(contents, to: false)
+        XCTAssertEqual(applied.last?.transparentToc, false)
+        XCTAssertEqual(applied.last?.transparentSidebar, false, "the other switch did not move")
+        // Through the defaults as well as the struct, because the key behind
+        // this one is written INVERTED (absent is transparent, as absent is
+        // the default for every other appearance key).
+        XCTAssertEqual(Prefs.appearance.transparentToc, false)
+
+        flip(files, to: true)
+        XCTAssertEqual(applied.last?.transparentSidebar, true)
+        XCTAssertEqual(applied.last?.transparentToc, false, "and this one did not move the other back")
+
+        // Both set the way the two switches now stand, and the grounds still
+        // disagree: the whole point of two properties.
+        let overlay = Appearance.resolve(Prefs.appearance, systemIsDark: false, theme: { _ in nil }).overlay
+        let grounds = Dictionary(uniqueKeysWithValues: overlay.map { ($0.name, $0.value) })
+        XCTAssertEqual(grounds[AppearanceOverlay.filesGround], "var(--vscode-editor-background)")
+        XCTAssertEqual(grounds[AppearanceOverlay.tocGround], "var(--vscode-sideBar-background)")
+
+        flip(contents, to: true)
+        XCTAssertEqual(Prefs.appearance.transparentToc, true)
+        XCTAssertNil(Dictionary(uniqueKeysWithValues:
+            Appearance.resolve(Prefs.appearance, systemIsDark: false, theme: { _ in nil })
+                .overlay.map { ($0.name, $0.value) })[AppearanceOverlay.tocGround],
+                     "back to the default is back to declaring nothing")
     }
 }
 

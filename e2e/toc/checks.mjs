@@ -43,6 +43,67 @@ export async function run({ page, check, baseUrl }) {
         await page.locator(".toc-panel").evaluate((el) =>
             getComputedStyle(el).transitionDuration.split(",")[0].trim() === "0.2s"));
 
+    // ── The drawer's ground ───────────────────────────────────────────
+    // The page's own paper unless a host declares --toc-panel-ground (the
+    // Mac app's Transparent table of contents sidebar switch, turned off,
+    // is the one that does). Only a browser answers any of this: that the
+    // default holds, that one declaration on :root moves the panel, that
+    // the tab strip moves with it (a strip left on the paper over a shaded
+    // panel is the defect the alias exists to avoid), and that the flyout
+    // keeps the paper throughout, being a floating card of the shell's own
+    // rather than the drawer.
+    //
+    // A sentinel colour rather than the palette's shade, because this page
+    // is not the palette: what is under test is that one declaration reaches
+    // the panel and everything in it that paints the ground. Which colour
+    // the Mac app puts there is its own to say, and its tests do.
+    const GROUND = "rgb(1, 2, 3)";
+    const ground = async () => page.evaluate(() => {
+        const probe = document.createElement("div");
+        probe.style.background = "var(--vscode-editor-background)";
+        document.body.appendChild(probe);
+        const paper = getComputedStyle(probe).backgroundColor;
+        probe.remove();
+        const panel = document.querySelector(".toc-panel");
+        const tabs = document.querySelector(".toc-tabs");
+        // BOTH modifier classes, which is what the shell writes for a real
+        // flyout (`setPanelState`): a probe wearing one of them is a fixture
+        // that could not express a defect the product can have.
+        panel.classList.add("toc-panel--flyout", "side-panel--flyout");
+        const flyout = getComputedStyle(panel).backgroundColor;
+        const flyoutTabs = tabs ? getComputedStyle(tabs).backgroundColor : null;
+        panel.classList.remove("toc-panel--flyout", "side-panel--flyout");
+        return {
+            panel: getComputedStyle(panel).backgroundColor,
+            tabs: tabs ? getComputedStyle(tabs).backgroundColor : null,
+            flyout, flyoutTabs, paper,
+        };
+    });
+    const bare = await ground();
+    // The floor first: every comparison below is against `paper`, and an
+    // undeclared variable paints nothing, so a harness page that lost its
+    // one colour would make all of them agree on transparent and pass.
+    check("the page's paper is a real colour, so the comparisons below measure something",
+        bare.paper !== "rgba(0, 0, 0, 0)" && bare.paper !== GROUND, JSON.stringify(bare));
+    check("the drawer and its tab strip are the page's own paper with nothing declared",
+        bare.panel === bare.paper && bare.tabs === bare.paper, JSON.stringify(bare));
+    await page.evaluate((value) => {
+        const style = document.createElement("style");
+        style.id = "toc-ground-probe";
+        style.textContent = `:root { --toc-panel-ground: ${value}; }`;
+        document.head.appendChild(style);
+    }, GROUND);
+    await page.waitForTimeout(50);
+    const declared = await ground();
+    check("one declaration moves the drawer and its tab strip together",
+        declared.panel === GROUND && declared.tabs === GROUND, JSON.stringify(declared));
+    check("and the flyout keeps the paper either way",
+        bare.flyout === bare.paper && bare.flyoutTabs === bare.paper
+            && declared.flyout === declared.paper && declared.flyoutTabs === declared.paper,
+        JSON.stringify({ bare, declared }));
+    await page.evaluate(() => document.getElementById("toc-ground-probe")?.remove());
+    await page.waitForTimeout(50);
+
     // ── Docked: the list clears the floating controls chip ──
     // The side-switch/hide buttons float over the list's top corner; the
     // first row must START below them (rows may still scroll beneath later).

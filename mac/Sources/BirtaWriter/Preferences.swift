@@ -81,6 +81,10 @@ enum Prefs {
         case accentColor
         case tintColor
         case sidebarTransparent
+        // Written only while the table of contents is NOT transparent, which
+        // is the departure from the default; absent is the default here as
+        // it is for every other key.
+        case tocSidebarOpaque
     }
 
     /// The keys a reset must NOT clear, each for a reason of its own.
@@ -628,8 +632,8 @@ enum Prefs {
     /// How the page looks (`Appearance.swift`): the mode, the theme in each
     /// mode's slot, the colour mod, and the kind the mode last held. One
     /// answer for every window, because a theme is what the app looks like
-    /// and two windows in two themes is a question nobody asked. Seven keys
-    /// rather than one blob, so a reset walks them like any other and
+    /// and two windows in two themes is a question nobody asked. A key per
+    /// answer rather than one blob, so a reset walks them like any other and
     /// `defaults read` shows each by name; an absent key is the default in
     /// every case, which is the system's appearance untouched.
     static var appearance: AppearanceSettings {
@@ -641,6 +645,7 @@ enum Prefs {
                 accent: d.string(forKey: Key.accentColor.rawValue),
                 tint: d.string(forKey: Key.tintColor.rawValue),
                 transparentSidebar: d.bool(forKey: Key.sidebarTransparent.rawValue),
+                transparentToc: !d.bool(forKey: Key.tocSidebarOpaque.rawValue),
                 heldKind: d.string(forKey: Key.appearanceHeld.rawValue).flatMap(AppearanceMode.init(rawValue:))?.heldKind)
         }
         set {
@@ -655,6 +660,8 @@ enum Prefs {
             put(newValue.tint, .tintColor)
             if newValue.transparentSidebar { d.set(true, forKey: Key.sidebarTransparent.rawValue) }
             else { d.removeObject(forKey: Key.sidebarTransparent.rawValue) }
+            if newValue.transparentToc { d.removeObject(forKey: Key.tocSidebarOpaque.rawValue) }
+            else { d.set(true, forKey: Key.tocSidebarOpaque.rawValue) }
         }
     }
 

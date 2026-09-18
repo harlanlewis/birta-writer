@@ -67,6 +67,25 @@ final class ThemeStoreTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: store.directory.appendingPathComponent("harlan-terminal-amber.json").path))
     }
 
+    /// A picker of a kind leads with that kind and keeps the name order
+    /// inside each group, so the other kind is a tail rather than a scatter.
+    func testOrderedShouldLeadWithTheKindAskedForAndKeepEachGroupsOrder() {
+        let themes = [
+            ThemeSummary(id: "a", name: "Abyss", kind: .dark),
+            ThemeSummary(id: "b", name: "Paper", kind: .light),
+            ThemeSummary(id: "c", name: "Red", kind: .dark),
+            ThemeSummary(id: "d", name: "Solarized Light", kind: .light),
+        ]
+        XCTAssertEqual(ThemeStore.ordered(themes, preferring: .dark).map(\.name),
+                       ["Abyss", "Red", "Paper", "Solarized Light"])
+        XCTAssertEqual(ThemeStore.ordered(themes, preferring: .light).map(\.name),
+                       ["Paper", "Solarized Light", "Abyss", "Red"])
+        XCTAssertEqual(ThemeStore.ordered([], preferring: .dark), [])
+        let dark = Array(themes.filter { $0.kind == .dark })
+        XCTAssertEqual(ThemeStore.ordered(dark, preferring: .light).map(\.name), ["Abyss", "Red"],
+                       "nothing of the kind asked for is not nothing at all")
+    }
+
     func testImportingAgainShouldReplaceRatherThanDuplicate() throws {
         let v1 = try write(##"{ "name": "Same", "colors": { "editor.background": "#ffffff" } }"##, to: "a/same.json")
         let v2 = try write(##"{ "name": "Same", "colors": { "editor.background": "#000000" } }"##, to: "b/same.json")

@@ -130,6 +130,19 @@ public struct ThemeStore: Sendable {
             .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
 
+    /// `themes` with the ones of `kind` first, each group keeping the order
+    /// it arrived in, which for `list()` is by name.
+    ///
+    /// What a picker OF a kind lists. A dark slot is being filled for dark
+    /// mode, so the dark themes are what somebody is choosing between and a
+    /// light one interleaved alphabetically is a row to read past; VS Code's
+    /// own theme picker groups its list the same way. A theme of the other
+    /// kind is still offered rather than hidden, because a slot takes a
+    /// theme of either kind on purpose (`AppearanceSettings`).
+    public static func ordered(_ themes: [ThemeSummary], preferring kind: VSCodeTheme.Kind) -> [ThemeSummary] {
+        themes.filter { $0.kind == kind } + themes.filter { $0.kind != kind }
+    }
+
     public func theme(id: String) -> VSCodeTheme? {
         guard Self.isId(id) else { return nil }
         return try? Self.read(file(for: id))

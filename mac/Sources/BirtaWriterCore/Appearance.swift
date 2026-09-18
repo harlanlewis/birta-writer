@@ -51,7 +51,20 @@ public struct AppearanceSettings: Equatable, Sendable {
     public var accent: String?
     /// The paper tint, as a hex colour mixed into every surface, or nil.
     public var tint: String?
+    /// Whether the file list sidebar gives up its shade and draws the page's
+    /// own paper. Off: a docked file list is a surface set into the window.
     public var transparentSidebar: Bool
+    /// The same question for the table of contents, defaulting the other way.
+    ///
+    /// On: the outline draws the page's paper and reads as part of the page,
+    /// which is how the page draws it with nothing declared. Off gives it
+    /// the sidebar shade, for somebody who wants the drawer bounded off the
+    /// page; the ground alone, not the file list's rounded inset card, which
+    /// is the explorer's own shape. Two settings rather than one, because a
+    /// reader who wants their files bounded and their outline not is asking
+    /// for the arrangement each default already is, and one switch cannot
+    /// hold both answers.
+    public var transparentToc: Bool
     /// The kind the mode last HELD, kept while the mode follows the system
     /// again. The Settings pane's switch is what needs it: off, the pane
     /// shows one theme rather than a slot per mode, and switching off has
@@ -61,13 +74,14 @@ public struct AppearanceSettings: Equatable, Sendable {
 
     public init(mode: AppearanceMode = .auto, lightTheme: String? = nil, darkTheme: String? = nil,
                 accent: String? = nil, tint: String? = nil, transparentSidebar: Bool = false,
-                heldKind: VSCodeTheme.Kind? = nil) {
+                transparentToc: Bool = true, heldKind: VSCodeTheme.Kind? = nil) {
         self.mode = mode
         self.lightTheme = lightTheme
         self.darkTheme = darkTheme
         self.accent = accent
         self.tint = tint
         self.transparentSidebar = transparentSidebar
+        self.transparentToc = transparentToc
         // A held mode is the kind it holds, whatever was passed for it.
         self.heldKind = mode.heldKind ?? heldKind
     }
@@ -134,7 +148,8 @@ public struct AppearanceSettings: Equatable, Sendable {
     ///
     /// The held kind is not counted: it is a memory of a choice, not one.
     public var isSystemDefault: Bool {
-        mode == .auto && lightTheme == nil && darkTheme == nil && accent == nil && tint == nil && !transparentSidebar
+        mode == .auto && lightTheme == nil && darkTheme == nil && accent == nil && tint == nil
+            && !transparentSidebar && transparentToc
     }
 }
 
@@ -200,7 +215,8 @@ public enum Appearance {
         let theme = id.flatMap(lookup)
         let overlay = AppearanceOverlay.declarations(
             kind: theme?.kind ?? kind, base: theme,
-            accent: settings.accent, tint: settings.tint, transparentSidebar: settings.transparentSidebar)
+            accent: settings.accent, tint: settings.tint, transparentSidebar: settings.transparentSidebar,
+            transparentToc: settings.transparentToc)
         return ResolvedAppearance(kind: kind, theme: theme, themeId: theme == nil ? nil : id, overlay: overlay)
     }
 }
