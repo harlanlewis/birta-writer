@@ -620,6 +620,10 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         // measurement carries their height too.
         iCloudCaption.say("iCloud Drive is off in System Settings, so notes stay on this Mac.", bad: false)
         rowViews[.startAtLogin]?.apply(.startAtLogin(.blocked))
+        // The theme card's taller shape, a strip per mode, whatever the
+        // defaults suite running this happens to hold.
+        slotStrips.isHidden = false
+        heldStrips.isHidden = true
         fitWindowToPane()
     }
 
@@ -1001,18 +1005,12 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         // No heading is drawn above them: the toolbar already carries one, and
         // a second copy of the tab's title at the top of its own pane is the
         // window saying where you are twice.
-        if let link = pane.link, let last = pane.intro.last {
-            sections.append(contentsOf: pane.intro.dropLast().map(Self.intro))
-            sections.append(Self.introWithLink(last, link))
-        } else {
-            sections.append(contentsOf: pane.intro.map(Self.intro))
-        }
+        sections.append(contentsOf: pane.intro.map(Self.intro))
         for group in pane.groups {
             let box = Self.group(group.rows.map { row in
                 let parts = wiring(for: row)
                 let view = Self.row(row, control: parts.control, below: parts.below,
-                                    caption: parts.caption,
-                                    link: row == .theme ? SettingsForm.themesLink : nil)
+                                    caption: parts.caption, link: row.link)
                 rowViews[row] = view
                 return view
             })
@@ -1243,20 +1241,6 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
 
     /// An intro sentence that ends in a link: the sentence in the intro's
     /// own ink and size, the link where its last word would be.
-    static func introWithLink(_ text: String, _ link: SettingsLink) -> NSView {
-        let label = intro(text)
-        label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        let button = LinkButton(title: link.title, url: link.url)
-        button.font = label.font
-        button.setContentCompressionResistancePriority(.required, for: .horizontal)
-        button.setContentHuggingPriority(.required, for: .horizontal)
-        let stack = NSStackView(views: [label, button])
-        stack.orientation = .horizontal
-        stack.alignment = .firstBaseline
-        stack.spacing = 0
-        return stack
-    }
-
     /// A caption that is FIXED rather than live: reference text a row needs
     /// once, which nothing later rewrites.
     static func help(_ text: String) -> NSView {
@@ -2243,6 +2227,10 @@ extension SettingsWindowController {
         sidebarSwitch.state = settings.transparentSidebar ? .on : .off
         fontControl.selectedSegment = Self.fontChoices.firstIndex { $0.preset == Prefs.fontPreset } ?? 1
         fontSizeStepper.show(percent: Prefs.fontSize)
+        // The card is a strip taller in one shape than the other, so the
+        // window follows, as it follows the rows the other panes show and
+        // hide (`fitWindowToPane`); a no-op while the pane is being built.
+        fitWindowToPane()
     }
 
     // MARK: read back
@@ -2404,21 +2392,25 @@ extension SettingsWindowController {
 
     /// The registry browser, as a sheet; what it adds comes back here when
     /// the sheet closes, which is also when the controller is let go.
-    private func browseThemes() {
+    private func browseThemes(fetch: ((URL) async throws -> (Data, URLResponse))? = nil) {
         guard let window else { return }
         let browser = ThemeBrowserController(store: themeStore) { [weak self] added, failures in
             self?.themeBrowser = nil
             self?.themesChanged(added: added, failures: failures)
         }
+        if let fetch { browser.fetch = fetch }
         themeBrowser = browser
         browser.present(over: window)
     }
 
-    /// Open the browser and say whether its controls still reach it, which
-    /// is the whole of what holding it is for.
-    func browseThemesForTesting() -> Bool {
-        browseThemes()
-        return themeBrowser?.isWiredForTesting ?? false
+    /// Open the browser over `fetch` in place of the registry, and hand it
+    /// back if its controls still reach it, which is the whole of what
+    /// holding it is for. The seam is what keeps a test off the network:
+    /// the sheet asks for its first page as it opens.
+    func browseThemesForTesting(fetch: @escaping (URL) async throws -> (Data, URLResponse)) -> ThemeBrowserController? {
+        browseThemes(fetch: fetch)
+        guard let themeBrowser, themeBrowser.isWiredForTesting else { return nil }
+        return themeBrowser
     }
 
     func dismissThemeBrowserForTesting() { themeBrowser?.dismissForTesting() }

@@ -65,8 +65,7 @@ final class AppearanceTests: XCTestCase {
         let auto = settings.inMode(.auto)
         XCTAssertEqual(auto.heldKind, .dark)
         XCTAssertTrue(auto.followsSystem)
-        XCTAssertFalse(auto.isSystemDefault == false, "a memory is not a customization")
-        XCTAssertTrue(auto.isSystemDefault)
+        XCTAssertTrue(auto.isSystemDefault, "a memory is not a customization")
     }
 
     func testAHeldModeShouldBeItsOwnMemoryWhateverWasPassed() {

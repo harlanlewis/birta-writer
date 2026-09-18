@@ -36,6 +36,14 @@ final class ThemeBrowserController: NSObject, NSTableViewDataSource, NSTableView
     private var added: [ThemeSummary] = []
     private var failures: [String] = []
 
+    /// The search request, as one closure a check can replace: what a test
+    /// needs to vary is the answer, not the session, and a controller built
+    /// by a test must be able to make no request at all (`Updater.fetch`
+    /// is the same seam for the same reason).
+    var fetch: (URL) async throws -> (Data, URLResponse) = { url in
+        try await URLSession.shared.data(from: url, delegate: RedirectGuard())
+    }
+
     init(store: ThemeStore, onAdded: @escaping ([ThemeSummary], [String]) -> Void) {
         self.store = store
         self.onAdded = onAdded
@@ -121,9 +129,10 @@ final class ThemeBrowserController: NSObject, NSTableViewDataSource, NSTableView
         task?.cancel()
         status.stringValue = query.isEmpty ? "Loading the most downloaded themes…" : "Searching…"
         let url = OpenVsx.searchURL(query: query)
+        let fetch = self.fetch
         task = Task { [weak self] in
             do {
-                let (data, response) = try await URLSession.shared.data(from: url, delegate: RedirectGuard())
+                let (data, response) = try await fetch(url)
                 guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
                     throw NSError(domain: "OpenVsx", code: 2,
                                   userInfo: [NSLocalizedDescriptionKey: "The registry did not answer."])
@@ -141,8 +150,9 @@ final class ThemeBrowserController: NSObject, NSTableViewDataSource, NSTableView
     private func show(_ themes: [OpenVsxTheme], query: String) {
         results = themes
         table.reloadData()
-        status.stringValue = themes.isEmpty ? "Nothing on Open VSX matches \(query)."
-            : query.isEmpty ? "The most downloaded themes on Open VSX. Search for more." : ""
+        status.stringValue = query.isEmpty
+            ? (themes.isEmpty ? "Open VSX listed no themes." : "The most downloaded themes on Open VSX. Search for more.")
+            : (themes.isEmpty ? "Nothing on Open VSX matches \(query)." : "")
         addButton.isEnabled = false
     }
 
@@ -189,6 +199,8 @@ final class ThemeBrowserController: NSObject, NSTableViewDataSource, NSTableView
     /// check that whoever presented it is holding it.
     var isWiredForTesting: Bool { search.target === self && table.dataSource === self }
     func dismissForTesting() { finish() }
+    var statusForTesting: String { status.stringValue }
+    var resultCountForTesting: Int { results.count }
 
     /// The package's redirect, decided by `OpenVsx.redirect`: this only
     /// forwards, so the rule is checkable with no session.

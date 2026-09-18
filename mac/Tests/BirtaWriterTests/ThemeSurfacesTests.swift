@@ -162,7 +162,7 @@ final class ThemeSurfacesTests: XCTestCase {
 
     // MARK: the pane
 
-    func testTheAppearancePaneShouldDrawBothSlotsAndMoveTheSettingsThroughTheApp() throws {
+    func testTheAppearancePaneShouldDrawBothSlotsAndMoveTheSettingsThroughTheApp() async throws {
         let a = root.appendingPathComponent("a.json")
         let b = root.appendingPathComponent("b.json")
         try ##"{ "name": "Paper", "type": "light", "colors": { "editor.background": "#f7f3e8" } }"##
@@ -198,14 +198,22 @@ final class ThemeSurfacesTests: XCTestCase {
         XCTAssertEqual(applied.last?.darkTheme, "slate", "the other slot keeps its own")
         controller.chooseModeForTesting(.dark)
         XCTAssertEqual(applied.last?.mode, .dark)
+        // A mode held from outside the pane (View > Theme, the palette) is
+        // what the switch and the card show, not what they were last set to.
+        XCTAssertFalse(controller.followsSystemForTesting, "the switch follows a mode held elsewhere")
+        XCTAssertEqual(controller.themeCardShapeForTesting, "held")
         controller.chooseAccentForTesting("#ff5257")
         XCTAssertEqual(applied.last?.accent, "#ff5257")
 
-        // The switch. Off holds the kind in force (dark was just picked),
-        // shows the one strip with that slot's theme ringed; a pick there
-        // holds the card's own kind; on brings both slots back untouched.
+        // The switch, from the system: off holds the kind last held (dark,
+        // from the pick above), shows the one strip with that slot's theme
+        // ringed; a pick there holds the card's own kind; on brings both
+        // slots back untouched.
+        controller.setFollowSystemForTesting(true)
+        XCTAssertEqual(applied.last?.mode, .auto)
+        XCTAssertEqual(controller.themeCardShapeForTesting, "slots")
         controller.setFollowSystemForTesting(false)
-        XCTAssertEqual(applied.last?.mode, .dark, "off holds the mode that was held")
+        XCTAssertEqual(applied.last?.mode, .dark, "off holds the kind that was held, not the sun's")
         XCTAssertEqual(controller.themeCardShapeForTesting, "held")
         XCTAssertEqual(controller.heldThemeSelectionForTesting, "Slate")
         controller.chooseHeldThemeForTesting("paper", kind: .light)
@@ -219,6 +227,9 @@ final class ThemeSurfacesTests: XCTestCase {
         controller.setFollowSystemForTesting(true)
         XCTAssertEqual(applied.last?.mode, .auto)
         XCTAssertEqual(applied.last?.heldKind, .dark, "the held pick is remembered while following the system")
+        // Through the defaults, not the struct handed to `apply`: the memory
+        // the switch relies on across a relaunch is the stored one.
+        XCTAssertEqual(Prefs.appearance.heldKind, .dark, "the held kind is not written, so a relaunch forgets it")
         XCTAssertEqual(controller.themeCardShapeForTesting, "slots")
         XCTAssertEqual(applied.last?.lightTheme, "paper")
         Prefs.appearance = Prefs.appearance.setting("slate", for: .dark)
@@ -255,7 +266,24 @@ final class ThemeSurfacesTests: XCTestCase {
         // true while the settings window holds it (every reference the
         // sheet keeps is weak). Dismissed again so the window is left as it
         // was found.
-        XCTAssertTrue(controller.browseThemesForTesting(), "the sheet's controls reach a live controller")
+        // Over a fetch of this test's own, because the sheet asks the
+        // registry for its first page as it opens: the request goes to the
+        // seam, the answer fills the table, and the network is never touched.
+        var asked: [URL] = []
+        let page = #"{"extensions":[{"namespace":"n","name":"one","displayName":"One","version":"1.0.0","downloadCount":5,"files":{"download":"https://open-vsx.org/api/n/one/1.0.0/file/one.vsix"}}]}"#
+        let browser = try XCTUnwrap(controller.browseThemesForTesting(fetch: { url in
+            asked.append(url)
+            return (Data(page.utf8), HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+        }), "the sheet's controls reach a live controller")
+        let opened = XCTestExpectation(description: "the first page arrives")
+        Task { @MainActor in
+            while browser.resultCountForTesting == 0 { await Task.yield() }
+            opened.fulfill()
+        }
+        await fulfillment(of: [opened], timeout: 5)
+        XCTAssertEqual(asked.map(\.query), [OpenVsx.searchURL(query: "").query], "the first page is the empty query")
+        XCTAssertEqual(browser.resultCountForTesting, 1)
+        XCTAssertEqual(browser.statusForTesting, "The most downloaded themes on Open VSX. Search for more.")
         controller.dismissThemeBrowserForTesting()
 
         // Typography: the toolbar's own commands, to every window, with the

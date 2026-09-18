@@ -57,10 +57,15 @@ public enum SettingsRow: String, CaseIterable, Sendable {
     /// What the pane draws as the row's name. The raw value is the row's
     /// NAME, which the palette lists ("Appearance › Theme") and a test
     /// finds a row by; the one row whose drawn label is a sentence rather
-    /// than a name says so here, and the sentence's link is beside it in
-    /// `SettingsPane.appearance`.
+    /// than a name says so here, and `link` is the sentence's end.
     public var label: String {
         self == .theme ? "Birta Writer is compatible with" : rawValue
+    }
+
+    /// The link drawn after the label, on its line: only the theme row's
+    /// sentence ends in one.
+    public var link: SettingsLink? {
+        self == .theme ? SettingsForm.themesLink : nil
     }
 }
 
@@ -108,7 +113,7 @@ public struct SettingsGroup: Sendable {
     }
 }
 
-/// A link drawn at the end of a pane's intro.
+/// A link drawn at the end of a row's label (`SettingsRow.link`).
 public struct SettingsLink: Sendable {
     public let title: String
     public let url: URL
@@ -125,17 +130,14 @@ public struct SettingsLink: Sendable {
 /// belongs to. It is for a pane holding a capability somebody has to opt into
 /// and would otherwise have to guess at; a pane of ordinary settings has none,
 /// because a paragraph over a list of switches is a preamble nobody reads on
-/// the way to a control they can already see. A link, where the intro names
-/// something a reader would look up, is drawn at the end of its last line.
+/// the way to a control they can already see.
 public struct SettingsPane: Sendable {
     /// Paragraphs above the first card. Empty for most panes.
     public let intro: [String]
-    public let link: SettingsLink?
     public let groups: [SettingsGroup]
 
-    public init(intro: [String] = [], link: SettingsLink? = nil, groups: [SettingsGroup]) {
+    public init(intro: [String] = [], groups: [SettingsGroup]) {
         self.intro = intro
-        self.link = link
         self.groups = groups
     }
 }
