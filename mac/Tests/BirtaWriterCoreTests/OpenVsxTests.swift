@@ -29,6 +29,16 @@ final class OpenVsxTests: XCTestCase {
         XCTAssertEqual(items.first { $0.name == "sortBy" }?.value, "downloadCount")
     }
 
+    func testAnEmptyQueryShouldAskForTheCategorysFirstPageRatherThanForNothing() {
+        // What the browser opens onto. The registry treats an absent query
+        // as "everything in the category"; an empty one is sent as nothing.
+        let url = OpenVsx.searchURL(query: "")
+        let items = URLComponents(url: url, resolvingAgainstBaseURL: false)!.queryItems!
+        XCTAssertNil(items.first { $0.name == "query" })
+        XCTAssertEqual(items.first { $0.name == "category" }?.value, "Themes")
+        XCTAssertEqual(items.first { $0.name == "sortBy" }?.value, "downloadCount")
+    }
+
     func testAnAnswerShouldBecomeThemesWithTheirVSIXAndRefuseADownloadOffTheRegistry() throws {
         let themes = try OpenVsx.parse(answer)
         XCTAssertEqual(themes.map(\.id), ["dracula-theme.theme-dracula", "Dracula-2.dracula-2"])

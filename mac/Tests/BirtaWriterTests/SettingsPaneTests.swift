@@ -46,12 +46,20 @@ final class SettingsPaneTests: XCTestCase {
     /// on iCloud Drive being switched on for whoever is running this, and the
     /// claim here is that the pane DRAWS every declared row, not which ones an
     /// answer above them is currently taking away.
+    ///
+    /// A label followed by a link on its line (the theme row's sentence)
+    /// sits in a stack at the line's leading edge, with the field first in
+    /// it; the field is still what is read.
     private func rowLabels(in view: NSView) -> [String] {
         var found: [String] = []
         if let field = view as? NSTextField, !(field is Caption), !(field is PathLabel),
-           let line = field.superview, type(of: line) == NSView.self,
-           line.subviews.count == 2, line.subviews.first === field {
-            found.append(field.stringValue)
+           let holder = field.superview {
+            let line: NSView? = type(of: holder) == NSView.self ? holder
+                : (holder as? NSStackView).flatMap { $0.arrangedSubviews.first === field ? $0.superview : nil }
+            if let line, type(of: line) == NSView.self, line.subviews.count == 2,
+               line.subviews.first === holder || line.subviews.first === field {
+                found.append(field.stringValue)
+            }
         }
         for subview in view.subviews { found += rowLabels(in: subview) }
         return found
@@ -71,7 +79,7 @@ final class SettingsPaneTests: XCTestCase {
         let controller = makeController()
         defer { controller.window?.close() }
         let drawn = labels(of: controller, tab: "general")
-        let declared = SettingsForm.rows(of: SettingsForm.general).map(\.rawValue)
+        let declared = SettingsForm.rows(of: SettingsForm.general).map(\.label)
         XCTAssertEqual(drawn, declared,
                        "the General pane and its declaration disagree; drawn: "
                        + drawn.joined(separator: " | "))
@@ -81,7 +89,7 @@ final class SettingsPaneTests: XCTestCase {
         let controller = makeController()
         defer { controller.window?.close() }
         let drawn = labels(of: controller, tab: "aiAgent")
-        let declared = SettingsForm.rows(of: SettingsForm.aiAgent).map(\.rawValue)
+        let declared = SettingsForm.rows(of: SettingsForm.aiAgent).map(\.label)
         XCTAssertEqual(drawn, declared,
                        "the AI Agent pane and its declaration disagree; drawn: "
                        + drawn.joined(separator: " | "))
@@ -91,7 +99,7 @@ final class SettingsPaneTests: XCTestCase {
         let controller = makeController()
         defer { controller.window?.close() }
         let drawn = labels(of: controller, tab: "advanced")
-        let declared = SettingsForm.rows(of: controller.advancedPane).map(\.rawValue)
+        let declared = SettingsForm.rows(of: controller.advancedPane).map(\.label)
         XCTAssertEqual(drawn, declared,
                        "the Advanced pane and its declaration disagree; drawn: "
                        + drawn.joined(separator: " | "))
@@ -125,7 +133,7 @@ final class SettingsPaneTests: XCTestCase {
                 }
                 XCTAssertFalse(declared.isEmpty,
                                "tab \(name) declares an empty pane on a \(flavour) build")
-                XCTAssertEqual(labels(of: controller, tab: name), declared.map(\.rawValue),
+                XCTAssertEqual(labels(of: controller, tab: name), declared.map(\.label),
                                "the \(name) pane and its declaration disagree on a "
                                + "\(flavour) build")
             }

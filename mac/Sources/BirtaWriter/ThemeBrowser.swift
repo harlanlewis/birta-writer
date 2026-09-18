@@ -5,8 +5,9 @@ import BirtaWriterCore
 /// the results, and Add on the one you want, which fetches its VSIX and
 /// hands it to the store exactly as a file chosen from disk is.
 ///
-/// Every request here is one somebody asked for by typing and pressing
-/// Return, or by pressing Add, to the registry's host (`OpenVsx.host`) and,
+/// Every request here is one somebody asked for by opening the sheet (its
+/// first page), by typing and pressing Return, or by pressing Add, to the
+/// registry's host (`OpenVsx.host`) and,
 /// for the package, to wherever the registry redirects the file (its own
 /// file host today), carrying the words typed and nothing else; nothing
 /// runs on a timer and nothing rides the network switch, for the reason
@@ -105,15 +106,20 @@ final class ThemeBrowserController: NSObject, NSTableViewDataSource, NSTableView
     func present(over window: NSWindow) {
         window.beginSheet(sheet) { _ in }
         sheet.makeFirstResponder(search)
+        // The sheet opens onto the registry's most downloaded themes rather
+        // than onto an empty table: a list to scroll is the invitation, and
+        // an empty box under a search field reads as a browser that found
+        // nothing. This is the one request here nobody typed for, and it is
+        // still one they asked for by opening the sheet.
+        runSearch()
     }
 
     // MARK: searching
 
     @objc private func runSearch() {
         let query = search.stringValue.trimmingCharacters(in: .whitespaces)
-        guard !query.isEmpty else { return }
         task?.cancel()
-        status.stringValue = "Searching…"
+        status.stringValue = query.isEmpty ? "Loading the most downloaded themes…" : "Searching…"
         let url = OpenVsx.searchURL(query: query)
         task = Task { [weak self] in
             do {
@@ -135,7 +141,8 @@ final class ThemeBrowserController: NSObject, NSTableViewDataSource, NSTableView
     private func show(_ themes: [OpenVsxTheme], query: String) {
         results = themes
         table.reloadData()
-        status.stringValue = themes.isEmpty ? "Nothing on Open VSX matches \(query)." : ""
+        status.stringValue = themes.isEmpty ? "Nothing on Open VSX matches \(query)."
+            : query.isEmpty ? "The most downloaded themes on Open VSX. Search for more." : ""
         addButton.isEnabled = false
     }
 

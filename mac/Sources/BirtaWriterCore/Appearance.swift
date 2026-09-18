@@ -26,6 +26,19 @@ public enum AppearanceMode: String, CaseIterable, Sendable {
         case .dark: return "Dark"
         }
     }
+
+    /// The kind a held mode holds, or nil for the system's choice.
+    public var heldKind: VSCodeTheme.Kind? {
+        switch self {
+        case .auto: return nil
+        case .light: return .light
+        case .dark: return .dark
+        }
+    }
+
+    public init(holding kind: VSCodeTheme.Kind) {
+        self = kind == .dark ? .dark : .light
+    }
 }
 
 public struct AppearanceSettings: Equatable, Sendable {
@@ -39,15 +52,61 @@ public struct AppearanceSettings: Equatable, Sendable {
     /// The paper tint, as a hex colour mixed into every surface, or nil.
     public var tint: String?
     public var transparentSidebar: Bool
+    /// The kind the mode last HELD, kept while the mode follows the system
+    /// again. The Settings pane's switch is what needs it: off, the pane
+    /// shows one theme rather than a slot per mode, and switching off has
+    /// to bring back the theme that was held before rather than whichever
+    /// the sun has picked meanwhile. Nil until a mode has been held.
+    public var heldKind: VSCodeTheme.Kind?
 
     public init(mode: AppearanceMode = .auto, lightTheme: String? = nil, darkTheme: String? = nil,
-                accent: String? = nil, tint: String? = nil, transparentSidebar: Bool = false) {
+                accent: String? = nil, tint: String? = nil, transparentSidebar: Bool = false,
+                heldKind: VSCodeTheme.Kind? = nil) {
         self.mode = mode
         self.lightTheme = lightTheme
         self.darkTheme = darkTheme
         self.accent = accent
         self.tint = tint
         self.transparentSidebar = transparentSidebar
+        // A held mode is the kind it holds, whatever was passed for it.
+        self.heldKind = mode.heldKind ?? heldKind
+    }
+
+    /// Whether light and dark follow the system: the pane's switch.
+    public var followsSystem: Bool { mode == .auto }
+
+    /// The same settings following the system, or holding the kind last
+    /// held (the system's current one when none has been).
+    public func followingSystem(_ on: Bool, systemIsDark: Bool) -> AppearanceSettings {
+        var next = self
+        if on {
+            next.mode = .auto
+        } else {
+            next.mode = AppearanceMode(holding: heldKind ?? (systemIsDark ? .dark : .light))
+            next.heldKind = next.mode.heldKind
+        }
+        return next
+    }
+
+    /// The same settings holding `kind`, with `id` in its slot: what picking
+    /// a card in the pane's single strip means. The other slot is untouched,
+    /// so switching back to the system finds both as they were.
+    public func holding(_ id: String?, kind: VSCodeTheme.Kind) -> AppearanceSettings {
+        var next = setting(id, for: kind)
+        next.mode = AppearanceMode(holding: kind)
+        next.heldKind = kind
+        return next
+    }
+
+    /// The same settings in `mode`, with the held kind following a held
+    /// mode. Every write of the mode goes through here rather than to the
+    /// field, so a mode picked from the View menu or the palette is
+    /// remembered by the pane's switch too.
+    public func inMode(_ mode: AppearanceMode) -> AppearanceSettings {
+        var next = self
+        next.mode = mode
+        if let held = mode.heldKind { next.heldKind = held }
+        return next
     }
 
     /// Which mode is in force, given what the system says.
@@ -72,6 +131,8 @@ public struct AppearanceSettings: Equatable, Sendable {
     }
 
     /// Whether anything is customized past the system appearance.
+    ///
+    /// The held kind is not counted: it is a memory of a choice, not one.
     public var isSystemDefault: Bool {
         mode == .auto && lightTheme == nil && darkTheme == nil && accent == nil && tint == nil && !transparentSidebar
     }

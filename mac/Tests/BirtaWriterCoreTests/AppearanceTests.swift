@@ -20,6 +20,60 @@ final class AppearanceTests: XCTestCase {
         XCTAssertFalse(held.isSystemDefault)
     }
 
+    // MARK: the switch
+
+    func testSwitchingOffShouldHoldTheSystemsCurrentKindWhenNoneWasHeldBefore() {
+        let auto = AppearanceSettings(lightTheme: "paper", darkTheme: "slate")
+        let byNight = auto.followingSystem(false, systemIsDark: true)
+        XCTAssertEqual(byNight.mode, .dark)
+        XCTAssertEqual(byNight.heldKind, .dark)
+        XCTAssertEqual(byNight.lightTheme, "paper", "both slots survive the switch")
+        XCTAssertEqual(byNight.darkTheme, "slate")
+        XCTAssertEqual(auto.followingSystem(false, systemIsDark: false).mode, .light)
+    }
+
+    func testTheSwitchShouldRememberWhichKindWasHeld() {
+        // Held dark, back to the system, and off again by day: dark, because
+        // that is what was held, not what the sun says now. The three
+        // answers (a light slot, a dark slot, a held pick) are kept apart.
+        let held = AppearanceSettings(lightTheme: "paper").holding("slate", kind: .dark)
+        XCTAssertEqual(held.mode, .dark)
+        XCTAssertEqual(held.darkTheme, "slate")
+        XCTAssertEqual(held.lightTheme, "paper", "the other slot is untouched")
+        let back = held.followingSystem(true, systemIsDark: false)
+        XCTAssertEqual(back.mode, .auto)
+        XCTAssertEqual(back.heldKind, .dark, "the memory survives following the system")
+        XCTAssertEqual(back.effectiveKind(systemIsDark: false), .light)
+        let again = back.followingSystem(false, systemIsDark: false)
+        XCTAssertEqual(again.mode, .dark)
+        XCTAssertEqual(again.themeId(for: .dark), "slate")
+    }
+
+    func testHoldingASystemCardShouldEmptyThatSlotAndHoldItsKind() {
+        let held = AppearanceSettings(lightTheme: "paper", darkTheme: "slate").holding(nil, kind: .light)
+        XCTAssertEqual(held.mode, .light)
+        XCTAssertNil(held.lightTheme)
+        XCTAssertEqual(held.darkTheme, "slate")
+    }
+
+    func testAModePickedElsewhereShouldBeRememberedByTheSwitchToo() {
+        // View > Theme and the palette set the mode directly; the pane's
+        // switch reads the same memory, so a Dark picked there is what Off
+        // brings back.
+        let settings = AppearanceSettings().inMode(.dark)
+        XCTAssertEqual(settings.heldKind, .dark)
+        let auto = settings.inMode(.auto)
+        XCTAssertEqual(auto.heldKind, .dark)
+        XCTAssertTrue(auto.followsSystem)
+        XCTAssertFalse(auto.isSystemDefault == false, "a memory is not a customization")
+        XCTAssertTrue(auto.isSystemDefault)
+    }
+
+    func testAHeldModeShouldBeItsOwnMemoryWhateverWasPassed() {
+        XCTAssertEqual(AppearanceSettings(mode: .light, heldKind: .dark).heldKind, .light)
+        XCTAssertEqual(AppearanceSettings(mode: .auto, heldKind: .dark).heldKind, .dark)
+    }
+
     func testEachModeShouldHaveItsOwnSlotOfEitherKind() {
         // A dark theme by day and the system's dark by night is a real
         // choice, so a slot takes any theme and nil.

@@ -213,13 +213,15 @@ mac/Sources/BirtaWriterCore/OpenRouting.swift    Which window a file opened from
 mac/Sources/BirtaWriter/DirectoryWatcher.swift   FSEvents on a directory window's root, one per root shared by its tabs; what the page is told and when
 mac/Sources/BirtaWriterCore/FuzzyMatch.swift     The palette's subsequence scorer: word starts and runs outrank buried letters, and the matched ranges come back for drawing; no dependency, on purpose
 mac/Sources/BirtaWriterCore/PaletteModel.swift   What the palette lists and in what order, with no window: modes, sections, nested rows, recents
-mac/Sources/BirtaWriterCore/Appearance.swift     How the page looks, resolved with no window: the mode, a theme slot per mode, the colour mod over either; the one seam the menu, the palette, the pane and every window read
+mac/Sources/BirtaWriterCore/Appearance.swift     How the page looks, resolved with no window: the mode, a theme slot per mode, the kind last held (what the pane's switch brings back), the colour mod over either; the one seam the menu, the palette, the pane and every window read
 mac/Sources/BirtaWriterCore/AppearanceOverlay.swift  The colour mod (accent, tint, transparent sidebar) as the declarations a theme is; restates the palette's seeds, held to hostPalette.css by its test
 mac/Sources/BirtaWriterCore/VSCodeTheme.swift    A VS Code colour theme as the page wears it: every colour id its variable, tokenColors resolved per Prism class into --host-token-* (the table codeBlock.css reads)
 mac/Sources/BirtaWriterCore/ThemeStore.swift     The folder of added themes, and what a file, an extension folder, a VSIX or an installed editor becomes in it
 mac/Sources/BirtaWriterCore/OpenVsx.swift        The registry search and its answer, for the pane's Browse; refuses a download off the registry's host
-mac/Sources/BirtaWriter/AppearanceControls.swift The Appearance pane's own controls: the mode pictures, the theme strips, the swatches, the size stepper
-mac/Sources/BirtaWriter/ThemeBrowser.swift       Browse Open VSX as a sheet; why its presenter has to hold it
+mac/Sources/BirtaWriter/AppearanceControls.swift The Appearance pane's own controls: the theme strips (a slot per mode, or one strip while a mode is held) and their cards' remove button, the swatches, the size stepper
+mac/Sources/BirtaWriter/ThemeBrowser.swift       Browse Open VSX as a sheet, opening onto the registry's most downloaded; why its presenter has to hold it
+mac/Sources/BirtaWriterCore/InstalledThemesPick.swift  VS Code's installed themes as a list to tick, with no window: what a row says, which cannot be ticked, what Add counts
+mac/Sources/BirtaWriter/InstalledThemesSheet.swift  Draws that list as a sheet over Settings
 mac/Sources/BirtaWriter/ThemesMenu.swift         View > Theme, filled from the store and the resolved appearance on every opening
 mac/Sources/BirtaWriterCore/FileIndex.swift      The files Go to File can reach in a rooted window: one capped walk, rebuilt when the root changes
 mac/Sources/BirtaWriter/PaletteCatalog.swift     Where the palette's rows come from (the menu table, the page's commands, the windows, Settings, the files) and what a pick does; nothing here is a second table
