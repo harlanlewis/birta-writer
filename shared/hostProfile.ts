@@ -179,7 +179,19 @@ export type HostCapability =
      * the same list twice. So VS Code never declares it, and the three
      * commands it gates are inert there.
      */
-    | "projectFiles";
+    | "projectFiles"
+    /**
+     * A tooltip the host can draw over the strip it paints on the bar
+     * (`--host-strip-under-topbar`, the Mac app's tab bar).
+     *
+     * The page's own chip cannot be seen there, so without this it is placed
+     * under the strip, a row away from the control it names. A host that
+     * declares this is handed the chip instead (`stripTooltip` in
+     * shared/messages.ts) and draws it against the control, over its own
+     * tabs. App-only for the reason the strip is: VS Code paints nothing over
+     * the page.
+     */
+    | "stripTooltip";
 
 export const ALL_HOST_CAPABILITIES: readonly HostCapability[] = [
     "textEditor",
@@ -195,6 +207,7 @@ export const ALL_HOST_CAPABILITIES: readonly HostCapability[] = [
     "contentMeasure",
     "appPreferences",
     "projectFiles",
+    "stripTooltip",
 ];
 
 /**
@@ -214,7 +227,7 @@ export const ALL_HOST_CAPABILITIES: readonly HostCapability[] = [
  * feature". A member here MUST be declared by some other profile, or it
  * names nothing at all; `hostProfile.test.ts` checks both directions.
  */
-export const APP_ONLY_CAPABILITIES: readonly HostCapability[] = ["appPreferences", "projectFiles"];
+export const APP_ONLY_CAPABILITIES: readonly HostCapability[] = ["appPreferences", "projectFiles", "stripTooltip"];
 
 export const HOST_PROFILES = {
     vscode: ALL_HOST_CAPABILITIES.filter(
@@ -224,7 +237,7 @@ export const HOST_PROFILES = {
     // and the e2e mac page restate this list as a literal, because neither
     // Swift nor an HTML bootstrap can import it. They are not free to drift:
     // shared/__tests__/hostProfile.test.ts parses both and fails.
-    mac: ["spellAndGrammar", "imageUpload", "toc", "appPreferences", "agent", "projectFiles"] as readonly HostCapability[],
+    mac: ["spellAndGrammar", "imageUpload", "toc", "appPreferences", "agent", "projectFiles", "stripTooltip"] as readonly HostCapability[],
 } as const satisfies Record<string, readonly HostCapability[]>;
 
 /**

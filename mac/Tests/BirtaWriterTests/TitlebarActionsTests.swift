@@ -54,17 +54,24 @@ final class TitlebarActionsTests: XCTestCase {
     func testEachButtonShouldTakeItsLabelAndChordFromTheMenuRowItRepeats() {
         let view = boundTitle()
         let labels = view.actionsView.buttons.map { $0.accessibilityLabel() ?? "" }
-        XCTAssertEqual(labels, ["New Note", "Open…", "Open Recent", "Command Palette…"])
+        XCTAssertEqual(labels, ["New Note", "Open…", "Command Palette…"])
         // The chord is the menu's, not a literal: a tooltip is a claim about a
-        // binding, and this is the only thing holding the two together. Open
-        // Recent binds no key, so its tooltip is the title alone rather than a
-        // title with a bare modifier string after it.
+        // binding, and this is the only thing holding the two together.
         let tips = view.actionsView.buttons.compactMap { $0.label }
-        XCTAssertEqual(tips.count, 4)
+        XCTAssertEqual(tips.count, 3)
         XCTAssertTrue(tips[0].hasSuffix("⌘N"), tips[0])
         XCTAssertTrue(tips[1].hasSuffix("⌘O"), tips[1])
-        XCTAssertEqual(tips[2], "Open Recent")
-        XCTAssertTrue(tips[3].hasSuffix("⇧⌘P"), tips[3])
+        XCTAssertTrue(tips[2].hasSuffix("⇧⌘P"), tips[2])
+    }
+
+    func testAButtonForARowThatBindsNoKeyShouldBeLabelledByTheTitleAlone() {
+        // No shipped button repeats such a row, so one is built for it: Open
+        // Recent binds no key, and its tooltip must be the title rather than a
+        // title with a bare separator after it.
+        let strip = TitlebarActionsView(actions: [
+            .init(selector: #selector(AppDelegate.menuOpenRecent(_:)), symbol: "clock"),
+        ])
+        XCTAssertEqual(strip.buttons.first?.label, "Open Recent")
     }
 
     func testPointingAtAButtonShouldAskThePageToLabelIt() {
@@ -297,7 +304,22 @@ final class TitlebarActionsTests: XCTestCase {
             XCTAssertNil(button.target, "a target pins the click to one object and leaves the chain")
             button.performClick(nil)
         }
-        XCTAssertEqual(spy.received, ["menuNewNote", "menuOpenDocument", "menuOpenRecent"])
+        XCTAssertEqual(spy.received, ["menuNewNote", "menuOpenMenu", "menuOpenPalette"])
+    }
+
+    func testTheOpenButtonShouldBeNamedByTheRowItsFirstItemRepeats() {
+        // It sends a selector no menu row sends (it raises a menu, which a row
+        // has no reason to do), so the label cannot come from the row it
+        // sends. `namedBy` is that seam, and a button that lost it would draw
+        // correctly and answer its click while naming itself nothing at all.
+        let view = boundTitle()
+        let open = view.actionsView.buttons.first { $0.action == #selector(AppDelegate.menuOpenMenu(_:)) }
+        XCTAssertNotNil(open, "the strip has no button that raises the Open menu")
+        XCTAssertEqual(open?.label, "Open…  ⌘O")
+        XCTAssertEqual(open?.accessibilityLabel(), "Open…")
+        for button in view.actionsView.buttons {
+            XCTAssertNotNil(button.label, "a button with no row to take a name from has no tooltip")
+        }
     }
 
     func testTheNameShouldStillTakeItsOwnClick() {
@@ -475,6 +497,6 @@ final class TitlebarActionsTests: XCTestCase {
 private final class ActionSpy: NSObject, NSApplicationDelegate {
     var received: [String] = []
     @objc func menuNewNote() { received.append("menuNewNote") }
-    @objc func menuOpenDocument() { received.append("menuOpenDocument") }
-    @objc func menuOpenRecent(_ sender: Any?) { received.append("menuOpenRecent") }
+    @objc func menuOpenMenu(_ sender: Any?) { received.append("menuOpenMenu") }
+    @objc func menuOpenPalette() { received.append("menuOpenPalette") }
 }

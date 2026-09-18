@@ -1333,15 +1333,19 @@ export async function run({ page, check, baseUrl }) {
     // inside that number.
     check("mac: the height every consumer reserves includes the row",
         Math.abs(stack.reservedHeight - stack.barHeight) <= 1, JSON.stringify(stack));
-    // Part of the bar rather than a thing on it: the BAR paints the ground and
-    // the row adds none of its own, which is the difference between a second
-    // row and a panel that happens to sit in the same place. A card would
-    // announce itself with a ground, a radius and a shadow; this has none of
-    // the three.
+    // Part of the bar rather than a thing on it. The ground is the ROWS', each
+    // painting the editor's paper for itself, and the bar's own box paints
+    // nothing: it is the width of the window and stacks above a docked panel,
+    // so a ground of the bar's would be drawn over the panel's top beside the
+    // row (e2e/fileExplorer asks that corner what is there). What still
+    // separates a second row from a card is that its ground is the SAME paper
+    // as the row above it, with no radius, and no shadow but the blurless
+    // one-pixel line that stands in for the bar's hairline under it.
+    const hairlineOnly = (shadow) => shadow === "none" || / 0px 1px 0px 0px$/.test(shadow);
     check("mac: the row is part of the bar's ground, not a card on it",
-        stack.barBackground === stack.editorBackground
-            && stack.background === "rgba(0, 0, 0, 0)"
-            && stack.shadow === "none"
+        stack.background === stack.editorBackground
+            && stack.barBackground === "rgba(0, 0, 0, 0)"
+            && hairlineOnly(stack.shadow)
             && stack.radius === "0px",
         JSON.stringify(stack));
     // The row draws NO rule, on any side. Between the rows a line reads as two
@@ -1455,6 +1459,8 @@ export async function run({ page, check, baseUrl }) {
             barBottom: Math.round(bar.getBoundingClientRect().bottom),
             dockBottom: dock && !dock.hidden ? Math.round(dock.getBoundingClientRect().bottom) : null,
             dockOwnBorder: dock ? getComputedStyle(dock).borderBottomWidth : null,
+            dockShadow: dock && !dock.hidden ? getComputedStyle(dock).boxShadow : null,
+            dockWidth: dock && !dock.hidden ? Math.round(dock.getBoundingClientRect().width) : null,
             rowJustify: row ? getComputedStyle(row).justifyContent : null,
             itemLeft: firstItem ? Math.round(firstItem.getBoundingClientRect().left) : null,
             rowLeft: row ? Math.round(row.getBoundingClientRect().left) : null,
@@ -1479,10 +1485,17 @@ export async function run({ page, check, baseUrl }) {
     check("mac: the hairline probe reached both states",
         hlShut.expanded === "false" && hlOpen.expanded === "true",
         JSON.stringify({ shut: hlShut.expanded, open: hlOpen.expanded }));
-    check("mac: closed, the bar draws no hairline",
-        isTransparent(hlShut.borderColor), JSON.stringify(hlShut));
-    check("mac: open, the hairline is drawn",
-        !isTransparent(hlOpen.borderColor), JSON.stringify(hlOpen));
+    // The line is the ROW'S, drawn as a shadow of its own bottom edge, and the
+    // bar's border keeps its pixel and never its colour: a border on the bar
+    // runs the width of the window, which with a panel docked beside the row
+    // is a line ruled across the panel.
+    check("mac: closed, nothing draws a hairline",
+        isTransparent(hlShut.borderColor) && hlShut.dockShadow === null, JSON.stringify(hlShut));
+    check("mac: open, the hairline is drawn, by the row and only as wide as the row",
+        isTransparent(hlOpen.borderColor)
+            && typeof hlOpen.dockShadow === "string" && / 0px 1px 0px 0px$/.test(hlOpen.dockShadow)
+            && !isTransparent(hlOpen.dockShadow),
+        JSON.stringify(hlOpen));
     // Colour rather than width, so the measured bar height every consumer
     // reads does not move by a pixel as the row opens.
     check("mac: and the bar's border box is the same in both, so nothing below shifts",
@@ -1791,25 +1804,49 @@ export async function run({ page, check, baseUrl }) {
     await hlDrive(false);
     // Asked for again: the page has been rebuilt since the handle above was taken.
     const checksTriggerNow = await page.$('.tb-item[data-item-id="styleCheck"] .tb-fmt-trigger, .tb-checks-wrap .ui-btn');
+    check("mac: there is a bar button to ask the strip's tooltip of", !!checksTriggerNow);
     if (checksTriggerNow) {
+        await page.evaluate(() => { window.__posted.length = 0; });
         await checksTriggerNow.hover();
         await page.waitForTimeout(OPEN_WAIT);
-        const tipUnderStrip = await page.evaluate(([bottom, strip]) => {
+        const handed = await page.evaluate(() => {
             const tipEl = document.querySelector(".custom-tooltip");
-            const box = tipEl?.getBoundingClientRect();
-            return box ? {
-                top: box.top, bottom: box.bottom, stripTop: bottom - strip, barBottom: bottom,
-                shown: box.height > 0 && tipEl.style.display !== "none",
-            } : null;
-        }, [barBottom, STRIP]);
-        // Either side of the strip is fine (over the page's own rows above
-        // it, or under it); inside it is under the tabs.
-        check("mac: a bar button's tooltip is never drawn in the strip",
-            tipUnderStrip === null || !tipUnderStrip.shown
-                || tipUnderStrip.bottom <= tipUnderStrip.stripTop || tipUnderStrip.top >= barBottom,
-            JSON.stringify(tipUnderStrip));
-        await page.keyboard.press("Escape");
+            const trigger = document.querySelector('.tb-item[data-item-id="styleCheck"] .tb-fmt-trigger, .tb-checks-wrap .ui-btn').getBoundingClientRect();
+            const asked = window.__posted.filter((m) => m.type === "stripTooltip");
+            const last = asked[asked.length - 1] ?? null;
+            return {
+                pageChipShown: !!tipEl && tipEl.style.display !== "none" && tipEl.getBoundingClientRect().height > 0,
+                asked: asked.length, last,
+                trigger: { x: trigger.left, y: trigger.top, width: trigger.width, height: trigger.height },
+            };
+        });
+        // This page declares `stripTooltip`, as the app does, so a chip that
+        // would land in the strip is the HOST'S to draw: the page draws none
+        // and says what it would have drawn, against which control, and how
+        // it looks. A host that drew nothing from this would be a host with
+        // no tooltip at all, so every field the app reads is asked for.
+        check("mac: a bar button's tooltip that would land in the strip is handed to the host, and the page draws none",
+            !handed.pageChipShown && handed.asked > 0 && typeof handed.last?.text === "string" && handed.last.text.length > 0,
+            JSON.stringify(handed));
+        check("mac: the handover names the control's own box and the air under it",
+            !!handed.last?.anchor
+                && Math.abs(handed.last.anchor.x - handed.trigger.x) < 1 && Math.abs(handed.last.anchor.y - handed.trigger.y) < 1
+                && Math.abs(handed.last.anchor.width - handed.trigger.width) < 1
+                && handed.last.gap > 0 && handed.last.gap < 12,
+            JSON.stringify(handed));
+        check("mac: and carries the chip's resolved look, so the host copies no palette",
+            /^(rgb|color)\(/.test(handed.last?.style?.background ?? "") && /^(rgb|color)\(/.test(handed.last?.style?.color ?? "")
+                && handed.last.style.fontSize > 0 && handed.last.style.padX > 0 && handed.last.style.radius > 0,
+            JSON.stringify(handed.last?.style ?? null));
         await page.mouse.move(20, 400);
+        await page.waitForTimeout(OPEN_WAIT);
+        const released = await page.evaluate(() => {
+            const asked = window.__posted.filter((m) => m.type === "stripTooltip");
+            return asked[asked.length - 1] ?? null;
+        });
+        check("mac: leaving the button takes the host's chip away", released !== null && released.text === null,
+            JSON.stringify(released));
+        await page.keyboard.press("Escape");
         await page.waitForTimeout(OPEN_WAIT);
     }
     const tocButtonForStrip = await page.$('.tb-item[data-item-id="toc"] .tb-toc-btn');

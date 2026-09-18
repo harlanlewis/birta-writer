@@ -146,6 +146,34 @@ export async function run({ page, check, baseUrl }) {
         JSON.stringify(rowBeside));
     check("the row's controls sit on the panel's top edge",
         rowBeside.itemTop !== null && Math.abs(rowBeside.itemTop - rowBeside.panelTop) <= 1, JSON.stringify(rowBeside));
+    // Level with the row is a claim about two boxes, and the bar is a third:
+    // it is the width of the window and stacks above the panel, so whatever it
+    // paints beside the row is painted over the panel's top. Where the boxes
+    // are cannot see that. What is AT the panel's header can, and so can a
+    // pixel of the bar's own box beside the row, which must not be the bar.
+    const panelTopIsThePanels = await page.evaluate(() => {
+        const panel = document.querySelector(".files-panel");
+        const header = panel.querySelector(".files-header").getBoundingClientRect();
+        const bar = document.querySelector(".editor-topbar").getBoundingClientRect();
+        const at = document.elementFromPoint(header.left + header.width / 2, header.top + header.height / 2);
+        return {
+            headerInsideBarBox: header.top < bar.bottom,
+            hit: at ? (at.className || at.tagName) : null,
+            hitIsPanel: !!at && panel.contains(at),
+            barGround: getComputedStyle(document.querySelector(".editor-topbar")).backgroundColor,
+            rowGround: getComputedStyle(document.querySelector(".tb-dock")).backgroundColor,
+            firstRowGround: getComputedStyle(document.querySelector(".editor-topbar .toolbar")).backgroundColor,
+        };
+    });
+    check("the probe is asking about a header that really is inside the bar's box",
+        panelTopIsThePanels.headerInsideBarBox, JSON.stringify(panelTopIsThePanels));
+    check("beside the open row, the panel's header is the panel's: the bar neither covers it nor takes its clicks",
+        panelTopIsThePanels.hitIsPanel, JSON.stringify(panelTopIsThePanels));
+    check("the bar's ground is its rows', so there is nothing of the bar's to paint over the panel",
+        /rgba\(0, 0, 0, 0\)|transparent/.test(panelTopIsThePanels.barGround)
+            && panelTopIsThePanels.rowGround === panelTopIsThePanels.firstRowGround
+            && !/rgba\(0, 0, 0, 0\)|transparent/.test(panelTopIsThePanels.rowGround),
+        JSON.stringify(panelTopIsThePanels));
     await press(".tb-dock-toggle");
     await page.waitForTimeout(SETTLE);
 
@@ -476,8 +504,14 @@ export async function run({ page, check, baseUrl }) {
             belowButton: r.top > btn.bottom,
             rows: panel.querySelectorAll(".files-row").length,
             controlsHidden: getComputedStyle(panel.querySelector(".side-panel-controls")).display === "none",
+            left: Math.round(r.left), right: Math.round(r.right), viewport: window.innerWidth,
         };
     });
+    // The button is in the bar's trailing cluster and the panel docks on the
+    // leading edge, so a card lined up with the button's leading edge hangs
+    // off the end of the window. Both edges, because the clamp has two.
+    check("the flown-out card is wholly inside the window",
+        flyout.left >= 0 && flyout.right <= flyout.viewport, JSON.stringify(flyout));
     check("hovering the bar button flies the panel out below it, transiently, with its rows",
         flyout.flyout && !flyout.open && flyout.bodyFlag && flyout.belowButton && flyout.rows > 3 && flyout.controlsHidden,
         JSON.stringify(flyout));

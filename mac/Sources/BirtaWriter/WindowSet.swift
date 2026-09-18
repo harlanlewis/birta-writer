@@ -117,8 +117,9 @@ final class WindowSet {
     /// Most recently fronted first: `windows` is kept oldest-first, so the
     /// window somebody was last in is the one at the end, and it is the likeliest
     /// place they mean to go back to.
-    func recentsMenu() -> RecentsMenu {
-        RecentsMenu(current: { [weak self] in self?.key?.boundFile },
+    func recentsMenu(leadsWithOpen: Bool = false) -> RecentsMenu {
+        RecentsMenu(leadsWithOpen: leadsWithOpen,
+                    current: { [weak self] in self?.key?.boundFile },
                     openElsewhere: { [weak self] in
                         guard let self else { return [] }
                         let here = self.key

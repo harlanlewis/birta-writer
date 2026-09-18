@@ -176,6 +176,9 @@ public enum WebviewMessage: Equatable {
     /// The page is composing a feedback report and wants the facts only this
     /// host has: the app's version, macOS, and this app's own settings.
     case requestHostDiagnostics(id: String)
+    /// A tooltip the page cannot draw, handed over to be drawn above the tab
+    /// bar; nil takes it away. `StripTooltip` holds the reasoning.
+    case stripTooltip(StripTooltip?)
     case other(type: String)
 
     public static func parse(_ text: String) -> WebviewMessage? {
@@ -296,6 +299,7 @@ public enum WebviewMessage: Equatable {
             guard let path = str("path"), let kind = str("kind"),
                   let x = dict["x"] as? NSNumber, let y = dict["y"] as? NSNumber else { return .other(type: type) }
             return .projectFileMenu(path: path, kind: kind, x: x.doubleValue, y: y.doubleValue)
+        case "stripTooltip": return .stripTooltip(StripTooltip.parse(dict))
         case "formattingRowExpanded": return bool("expanded").map { .formattingRowExpanded($0) } ?? .other(type: type)
         case "fileExplorerWidth": return int("width").map { .fileExplorerWidth($0) } ?? .other(type: type)
         case "fileExplorerVisibility": return bool("visible").map { .fileExplorerVisibility($0) } ?? .other(type: type)

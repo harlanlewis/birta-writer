@@ -411,6 +411,15 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         tabStrip.classList.remove("toc-tabs--select");
         closeTabsMenu();
         const visibleTabs = ALL_TABS.filter(([btn]) => !btn.hidden).map(([btn]) => btn);
+        // One tab is not a choice, so it is not drawn as one: the row of tabs
+        // appears with the second tab and goes with it. The one left is always
+        // Contents (a review tab is only kept while it has entries or the
+        // reader is in it), and an outline under no label reads as what it is.
+        // The strip itself stays while it still holds the panel's controls,
+        // and goes with the tabs where a surface has withdrawn those.
+        const choice = visibleTabs.length > 1;
+        tabsList.hidden = !choice;
+        tabStrip.hidden = !choice && !hasPanelControls;
         const wrapped = visibleTabs.length > 1
             && visibleTabs.some((btn) => btn.offsetTop !== visibleTabs[0]!.offsetTop);
         if (wrapped) {
@@ -922,10 +931,10 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         renderedSignature = signature;
         list.innerHTML = "";
         if (headings.length === 0) {
-            const empty = document.createElement("div");
-            empty.className = "toc-empty";
-            empty.textContent = t("No headings");
-            list.appendChild(empty);
+            // Nothing, rather than a line saying there is nothing. An outline
+            // with no rows already says the document has no headings, and the
+            // sentence was the one thing in the panel that was not the
+            // document's.
             dnd.notifyRerender();
             return;
         }

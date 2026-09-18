@@ -115,6 +115,20 @@
      (`hostStripUnderTopbar`, webview/utils/headingUtils.ts). */
   .editor-topbar.editor-topbar--stacked .toolbar {
     margin-bottom: var(--mac-tabbar-height, 0px);
+    /* The gap is a margin, and the stacked bar's ground is its rows' rather
+       than its own (dock.css), so nothing would paint it: the tab bar macOS
+       draws there is a capsule with the page showing round it, and the text
+       would scroll past behind the tabs. The row's shadow, offset by the
+       gap's own height and with no blur, is the row's ground drawn once more
+       directly under it. It covers the gap while the gap is no taller than
+       the row, which holds because a tab bar is shorter than a titlebar. */
+    box-shadow: 0 var(--mac-tabbar-height, 0px) 0 var(--vscode-editor-background);
+  }
+
+  /* No hairline under the formatting row either, for the reason the bar has
+     none (above). */
+  .editor-topbar.editor-topbar--stacked .tb-dock:not([hidden]) {
+    box-shadow: none;
   }
 
   :root {

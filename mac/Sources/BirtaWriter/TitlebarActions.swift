@@ -3,10 +3,10 @@ import BirtaWriterCore
 
 /// The file actions the titlebar draws, after the window's title.
 ///
-///     ◉ ◉ ◉   Note 2026-08-25.md ⌄   ✎  📁  🕐
+///     ◉ ◉ ◉   Note 2026-08-25.md ⌄   ✎  📁  ⌘
 ///                                    └ this view ┘
 ///
-/// New Note, Open and Open Recent are what a person does to the DOCUMENT as a
+/// New Note and Open (with the recent files under it) are what a person does to the DOCUMENT as a
 /// whole rather than to its text, and they are the ones this app's menu bar is
 /// worst at offering: it appears only once the app is frontmost, which a
 /// summoned panel does not always make it. There is a Dock icon to drop a file
@@ -27,7 +27,7 @@ import BirtaWriterCore
 /// alternatives each cost something this one does not. `square.and.pencil` is
 /// the compose mark Mail and Notes use and is the better MEANING, but the
 /// pencil rides the top-right corner and the square gives way to it, so the
-/// weight of the glyph sits low while a folder's and a clock's sit centred.
+/// weight of the glyph sits low while a folder's sits centred.
 /// `doc.badge.plus` says it most literally and says it in a badge too small to
 /// read at this size. A bare `plus` balances, and is a thin pair of strokes
 /// where its neighbours are closed shapes, so it reads lighter than the row it
@@ -35,7 +35,11 @@ import BirtaWriterCore
 /// sentences is in `TitlebarSymbolsTests`, which measures them rather than
 /// recording them.
 ///
-/// `folder` is Open. macOS has no dedicated Open glyph, because Open is a menu
+/// `folder` is Open, and what it opens is a MENU: Open… first, then the recent
+/// files, then Clear Recents when there are any to clear (`RecentsMenu`, in its
+/// `leadsWithOpen` form). Open and Open Recent are one verb reached two ways,
+/// so they are one button: the list fits under the row that opens the panel.
+/// macOS has no dedicated Open glyph, because Open is a menu
 /// verb everywhere else, and a folder is what every toolbar that has needed
 /// one has settled on. The near alternatives are each wrong in a specific way:
 /// `tray.and.arrow.down` and `square.and.arrow.down` are import and download,
@@ -43,25 +47,18 @@ import BirtaWriterCore
 /// is export, pointing the wrong way entirely; `doc.text.magnifyingglass` is
 /// searching inside a document rather than choosing one.
 ///
-/// `clock` is Open Recent, which is the mark the Finder's own Recents puts in
-/// its sidebar, so it is the one a reader has already been taught here.
-/// `clock.arrow.circlepath` says "history" more precisely and is three marks
-/// deep at this point size, which at eighteen points across is a smudge;
-/// `arrow.uturn.backward` is Undo everywhere else in this app's menus and
-/// would be a second meaning for a gesture that already has one.
-///
 /// `command` is the Command Palette (MAR-458): the key that opens it, which is
 /// also what the palette is full of. The alternatives each say a different
 /// thing. `magnifyingglass` is Find, a gesture this app already binds and
 /// draws; `line.3.horizontal` is a menu, and the palette is what you reach
 /// for when the menus are the long way round; `filemenu.and.selection` and
 /// `rectangle.and.text.magnifyingglass` are each three marks deep at this
-/// size. The looped square is symmetrical, so it balances with the three
+/// size. The looped square is symmetrical, so it balances with the two
 /// beside it without argument, which `TitlebarSymbolsTests` confirms.
 ///
-/// It carries no disclosure chevron, though it opens a menu. There is no room
+/// Open carries no disclosure chevron, though it opens a menu. There is no room
 /// for one that would not come out of the file's name, and every button in
-/// this strip is drawn as a bare symbol, so a chevron on one of the three
+/// this strip is drawn as a bare symbol, so a chevron on one of them
 /// would read as a difference in kind rather than as a promise of a menu.
 ///
 /// The one collision worth naming: a folder is also what this titlebar's path
@@ -114,7 +111,7 @@ final class TitlebarActionsView: NSView {
     static let buttonHeight: CGFloat = 24
     /// The size the symbols are drawn at, chosen to MATCH the page's own icons
     /// rather than picked for this strip alone: `webview/ui/icons.ts` draws a
-    /// 16-point glyph, and thirteen points is where the tallest of these three
+    /// 16-point glyph, and thirteen points is where the tallest of these
     /// measures sixteen. The two halves of this band are one strip to the eye
     /// and were visibly not one strip to the ruler, the native side reading
     /// smaller and lighter than the page's controls a few inches away.
@@ -157,16 +154,13 @@ final class TitlebarActionsView: NSView {
     /// compared the counts, and said nothing at all about the symbols, which
     /// is the half that decides what these buttons look like.
     ///
-    /// Open Recent sits after Open because it is the same verb reached a
-    /// shorter way, and the two read as a pair.
-    ///
-    /// The command palette comes last, after the three file verbs: it is a
+    /// The command palette comes last, after the two file verbs: it is a
     /// different kind of thing (a way to reach every row, not a row), and the
     /// strip reads as the file's controls and then the way in to the rest.
     static let shipped: [Action] = [
         .init(selector: #selector(AppDelegate.menuNewNote), symbol: "plus.square"),
-        .init(selector: #selector(AppDelegate.menuOpenDocument), symbol: "folder"),
-        .init(selector: #selector(AppDelegate.menuOpenRecent(_:)), symbol: "clock"),
+        .init(selector: #selector(AppDelegate.menuOpenMenu(_:)), symbol: "folder",
+              namedBy: #selector(AppDelegate.menuOpenDocument)),
         .init(selector: #selector(AppDelegate.menuOpenPalette), symbol: "command"),
     ]
 
@@ -182,9 +176,22 @@ final class TitlebarActionsView: NSView {
     ///
     /// Everything printed comes from the row too: nothing about this button is
     /// spelled twice.
+    ///
+    /// `namedBy` is for the one button that sends something no menu row sends.
+    /// Open raises a menu under itself, which a row of the File menu has no
+    /// reason to do, so its selector has no row to take a label from; it is
+    /// named by the row its first item repeats instead. Nil everywhere else,
+    /// where the row sent and the row named are the same row.
     struct Action {
         let selector: Selector
         let symbol: String
+        var namedBy: Selector?
+
+        init(selector: Selector, symbol: String, namedBy: Selector? = nil) {
+            self.selector = selector
+            self.symbol = symbol
+            self.namedBy = namedBy
+        }
     }
 
     /// A button was entered or left: its label, and its box, or nil to take
@@ -225,12 +232,12 @@ final class TitlebarActionsView: NSView {
     /// button it was raised from is never sent `mouseExited` and goes on
     /// believing the pointer is on it. The label it asked the page to draw
     /// therefore stays on screen underneath the open menu, naming the control
-    /// the menu already came from. The recents button is where this shows,
+    /// the menu already came from. The Open button is where this shows,
     /// because its menu opens directly under the chip.
     ///
     /// Answered by watching MENUS rather than by clearing the label at each
     /// place that opens one. The two menus reachable from this band are raised
-    /// by different objects (the app delegate for the recents button, the title
+    /// by different objects (the app delegate for the Open button, the title
     /// view for the path popup), and the main menu bar's own menus capture the
     /// pointer just the same, so a per-site clear would be three sites and a
     /// standing invitation to add a fourth without one.
@@ -388,7 +395,7 @@ final class TitlebarActionButton: NSButton {
     private let row: AppMenu.Row?
 
     init(action: TitlebarActionsView.Action) {
-        row = AppMenu.row(for: action.selector)
+        row = AppMenu.row(for: action.namedBy ?? action.selector)
         super.init(frame: .zero)
         // Template, so the symbol inks itself from `contentTintColor` and
         // follows the appearance rather than carrying a colour this file would

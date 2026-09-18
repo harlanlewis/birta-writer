@@ -116,7 +116,7 @@ describe("HOST_PROFILES", () => {
         // owner, no editor font of its own, and no pane wide enough for a
         // reading measure to be a choice.
         expect(HOST_PROFILES.mac).toEqual(
-            ["spellAndGrammar", "imageUpload", "toc", "appPreferences", "agent", "projectFiles"]);
+            ["spellAndGrammar", "imageUpload", "toc", "appPreferences", "agent", "projectFiles", "stripTooltip"]);
     });
 
     it("every capability named on a command should be in ALL_HOST_CAPABILITIES", () => {

@@ -264,6 +264,21 @@ export type ProofreadConfig = {
 };
 
 /**
+ * How the page's tooltip chip looks, resolved: what `stripTooltip` carries so
+ * a host drawing the chip in the page's stead draws the same one. Colours are
+ * computed-style strings (`rgb(...)`, `rgba(...)`, `color(srgb ...)`), lengths
+ * are CSS pixels.
+ */
+export interface StripTooltipStyle {
+    background: string;
+    color: string;
+    fontSize: number;
+    radius: number;
+    padX: number;
+    padY: number;
+}
+
+/**
  * WebView → Extension messages.
  * Every field reflects the sender's real constraints: fields the sender must
  * provide are never optional.
@@ -457,6 +472,23 @@ export type ToExtensionMessage =
     // pages as `setFormattingRowExpanded`. Never posted on a surface without
     // the row, and never posted in answer to that push.
     | { type: "formattingRowExpanded"; expanded: boolean }
+    // ── A tooltip the page cannot draw, under `stripTooltip` ──
+    // The chip belongs against its control, and for a control in the bar's
+    // first row that is inside the strip the host paints over the page (the
+    // Mac app's tab bar), where anything this page draws is drawn under the
+    // tabs. So the page hands the chip over: the text, the control's box in
+    // viewport coordinates, the air between the two, and the chip's own
+    // resolved look, read off the live element so the host copies no palette.
+    // A null text takes it away. Posted only to a host that declares the
+    // capability; every other host keeps the page's chip, placed under the
+    // strip.
+    | {
+        type: "stripTooltip";
+        text: string | null;
+        anchor?: { x: number; y: number; width: number; height: number };
+        gap?: number;
+        style?: StripTooltipStyle;
+    }
     // An explicit show or hide of the panel, for the host to remember and
     // seed back as `__i18n.fileExplorerVisible` on the next page load.
     | { type: "fileExplorerVisibility"; visible: boolean }
