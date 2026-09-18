@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+---
+
+## [2026.918.0] - 2026, September 18
+
 ### Changed
 
 - The sidebar draws its row of tabs only when there is more than one: a document with no links, notes or findings shows the outline with no Contents label over it, and the tabs come back with the second one. A document with no headings shows an empty outline rather than the line "No headings".
