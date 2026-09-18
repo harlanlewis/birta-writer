@@ -257,10 +257,20 @@ final class AppearanceCardShapeSizeTests: XCTestCase {
         let held = try fit()
         XCTAssertEqual(controller.themeCardShapeForTesting, "held")
         XCTAssertGreaterThan(slots.pane - held.pane, 50, "one strip fewer is not a strip's height shorter")
-        // Both fits are exact only below the ceiling; the arm is that the
-        // window MOVED with the card, which a capped window would not show.
-        let cap = SettingsWindowController.Metrics.maxPaneHeight
-        try XCTSkipUnless(slots.pane <= cap, "the Appearance pane is over the ceiling on this machine, so the fit is capped")
+        // Both fits are exact only below the cap, and the cap is the one
+        // `fitWindowToPane` uses: the SMALLER of the ceiling and the screen
+        // the window is on. Taking the ceiling alone reads as a claim about
+        // this pane on a display that cannot show it, and fails there for a
+        // reason that is about the display: a CI runner's screen is shorter
+        // than a desk's, which is the same difference `Metrics.maxPaneHeight`
+        // warns about one file over. The arm above is the one that holds
+        // everywhere, since it compares two panes rather than a window.
+        let screenHeight = (controller.window?.screen ?? NSScreen.main)?.visibleFrame.height
+            ?? SettingsWindowController.Metrics.maxPaneHeight
+        let cap = min(SettingsWindowController.Metrics.maxPaneHeight, screenHeight)
+        try XCTSkipUnless(slots.pane <= cap,
+                          "the Appearance pane is over the cap on this machine (pane \(slots.pane), "
+                            + "cap \(cap)), so the fit is capped and the arms below measure the screen")
         XCTAssertEqual(slots.content, slots.pane, accuracy: 0.5)
         XCTAssertEqual(held.content, held.pane, accuracy: 0.5, "the window kept the taller shape's height")
         controller.setFollowSystemForTesting(true)
