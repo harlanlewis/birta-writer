@@ -12,8 +12,16 @@ final class StripTooltipWindowTests: XCTestCase {
         _ = NSApplication.shared
     }
 
+    /// A window wholly inside the screen's visible area, whichever screen the
+    /// suite is on. AppKit keeps every window, the chip's borderless panel
+    /// included, inside that area, so a fixture hanging past its top (a small
+    /// runner display) would have the chip pushed down by the overhang and the
+    /// geometry below would be measuring the screen rather than the code.
     private func parent() -> NSWindow {
-        let window = NSWindow(contentRect: NSRect(x: 200, y: 200, width: 800, height: 600),
+        let visible = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1024, height: 700)
+        let content = NSRect(x: visible.minX + 20, y: visible.minY + 20,
+                             width: min(800, visible.width - 40), height: min(400, visible.height - 80))
+        let window = NSWindow(contentRect: content,
                               styleMask: [.titled, .fullSizeContentView],
                               backing: .buffered, defer: true)
         window.isReleasedWhenClosed = false
