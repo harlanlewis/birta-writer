@@ -230,3 +230,51 @@ final class SettingsWindowSizeTests: XCTestCase {
         XCTAssertEqual(back.content, general.content, accuracy: 0.5)
     }
 }
+
+/// The theme card is a strip taller in one shape than the other, and the
+/// window has to follow the flip as it follows a pane's conditional rows.
+@MainActor
+final class AppearanceCardShapeSizeTests: XCTestCase {
+    func testTheWindowShouldFollowTheThemeCardsShape() throws {
+        let saved = Prefs.appearance
+        defer { Prefs.appearance = saved }
+        Prefs.appearance = AppearanceSettings()
+        let controller = SettingsWindowController(
+            flavour: .release, onHotkeyChange: { 0 }, onChange: { _ in }, onChangeEverywhere: {},
+            onShowWelcome: {}, onCheckForUpdates: {},
+            onAppearanceChange: { Prefs.appearance = $0 })
+        defer { controller.window?.close() }
+        controller.selectTabForTesting("appearance")
+        func fit() throws -> (pane: CGFloat, content: CGFloat) {
+            let window = try XCTUnwrap(controller.window)
+            let pane = try XCTUnwrap(window.contentView?.firstDescendant(NSScrollView.self)?.documentView)
+            pane.layoutSubtreeIfNeeded()
+            return (pane.fittingSize.height, window.contentRect(forFrameRect: window.frame).height)
+        }
+        let slots = try fit()
+        XCTAssertEqual(controller.themeCardShapeForTesting, "slots")
+        controller.setFollowSystemForTesting(false)
+        let held = try fit()
+        XCTAssertEqual(controller.themeCardShapeForTesting, "held")
+        XCTAssertGreaterThan(slots.pane - held.pane, 50, "one strip fewer is not a strip's height shorter")
+        // Both fits are exact only below the ceiling; the arm is that the
+        // window MOVED with the card, which a capped window would not show.
+        let cap = SettingsWindowController.Metrics.maxPaneHeight
+        try XCTSkipUnless(slots.pane <= cap, "the Appearance pane is over the ceiling on this machine, so the fit is capped")
+        XCTAssertEqual(slots.content, slots.pane, accuracy: 0.5)
+        XCTAssertEqual(held.content, held.pane, accuracy: 0.5, "the window kept the taller shape's height")
+        controller.setFollowSystemForTesting(true)
+        let back = try fit()
+        XCTAssertEqual(back.content, slots.content, accuracy: 0.5, "and it did not follow back")
+    }
+}
+
+private extension NSView {
+    func firstDescendant<T: NSView>(_ type: T.Type) -> T? {
+        for view in subviews {
+            if let match = view as? T { return match }
+            if let match = view.firstDescendant(type) { return match }
+        }
+        return nil
+    }
+}

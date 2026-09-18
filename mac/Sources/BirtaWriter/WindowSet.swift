@@ -696,9 +696,7 @@ final class WindowSet {
     }
 
     func setAppearanceMode(_ mode: AppearanceMode) {
-        var settings = Prefs.appearance
-        settings.mode = mode
-        setAppearance(settings)
+        setAppearance(Prefs.appearance.inMode(mode))
     }
 
     /// The store's contents changed under the settings (a theme added over

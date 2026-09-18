@@ -194,9 +194,16 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     /// Theme and the palette move the same setting, so the pane is re-read
     /// whenever it could be stale (`refreshAppearance`) rather than trusted
     /// to be what was last chosen here.
-    private let modePicker = AppearanceModePicker()
+    private let followSwitch = NSSwitch()
     private let lightStrip = ThemeStrip(kind: .light)
     private let darkStrip = ThemeStrip(kind: .dark)
+    /// The one strip drawn while a mode is held: every theme of either
+    /// kind, with the two system cards first.
+    private let heldStrip = ThemeStrip(kind: nil)
+    /// The two shapes the theme card takes, built once and shown by
+    /// `AppearanceSettings.followsSystem` (`themeCards`).
+    private let slotStrips = NSStackView()
+    private let heldStrips = NSStackView()
     private let addThemeButton = NSPopUpButton()
     private let accentRow = SwatchRow(colors: AppearanceOverlay.accents, noneTitle: "Default")
     private let tintRow = SwatchRow(colors: AppearanceOverlay.tints, noneTitle: "None")
@@ -212,6 +219,9 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     /// gone before its sheet is on screen, and the sheet stays up with
     /// buttons that reach nothing (`UpdatePrompt` says the same of an offer).
     private var themeBrowser: ThemeBrowserController?
+    /// The installed-themes picker while its sheet is up, held for the
+    /// same reason.
+    private var installedThemesSheet: InstalledThemesSheetController?
     static let addThemeFromFileTitle = "Choose File or Folder…"
     static let addThemeFromVSCodeTitle = "Add Themes Installed in VS Code"
     static let browseThemesTitle = "Browse Open VSX…"
@@ -610,6 +620,10 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         // measurement carries their height too.
         iCloudCaption.say("iCloud Drive is off in System Settings, so notes stay on this Mac.", bad: false)
         rowViews[.startAtLogin]?.apply(.startAtLogin(.blocked))
+        // The theme card's taller shape, a strip per mode, whatever the
+        // defaults suite running this happens to hold.
+        slotStrips.isHidden = false
+        heldStrips.isHidden = true
         fitWindowToPane()
     }
 
@@ -991,17 +1005,12 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         // No heading is drawn above them: the toolbar already carries one, and
         // a second copy of the tab's title at the top of its own pane is the
         // window saying where you are twice.
-        if let link = pane.link, let last = pane.intro.last {
-            sections.append(contentsOf: pane.intro.dropLast().map(Self.intro))
-            sections.append(Self.introWithLink(last, link))
-        } else {
-            sections.append(contentsOf: pane.intro.map(Self.intro))
-        }
+        sections.append(contentsOf: pane.intro.map(Self.intro))
         for group in pane.groups {
             let box = Self.group(group.rows.map { row in
                 let parts = wiring(for: row)
                 let view = Self.row(row, control: parts.control, below: parts.below,
-                                    caption: parts.caption)
+                                    caption: parts.caption, link: row.link)
                 rowViews[row] = view
                 return view
             })
@@ -1100,12 +1109,12 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
                 below.append(Self.link(documentation.title, to: documentation.url))
             }
             return (control, below, nil)
-        case .appearanceMode: return (modePicker, [], nil)
+        case .followSystemAppearance: return (followSwitch, [], nil)
         case .theme:
-            // Both slots under one row: a strip per mode, each labelled by
-            // the mode it draws in, and the way to add a theme where a row's
-            // control goes.
-            return (addThemeButton, [Self.inset(themeStrips())], nil)
+            // The cards under one row whose label is the pane's sentence,
+            // with the way to add a theme where a row's control goes. Which
+            // cards is the switch's (`themeCards`).
+            return (addThemeButton, [Self.inset(themeCards())], nil)
         case .accent: return (accentRow, [], nil)
         case .tint: return (tintRow, [], nil)
         case .transparentSidebar: return (sidebarSwitch, [], nil)
@@ -1232,20 +1241,6 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
 
     /// An intro sentence that ends in a link: the sentence in the intro's
     /// own ink and size, the link where its last word would be.
-    static func introWithLink(_ text: String, _ link: SettingsLink) -> NSView {
-        let label = intro(text)
-        label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        let button = LinkButton(title: link.title, url: link.url)
-        button.font = label.font
-        button.setContentCompressionResistancePriority(.required, for: .horizontal)
-        button.setContentHuggingPriority(.required, for: .horizontal)
-        let stack = NSStackView(views: [label, button])
-        stack.orientation = .horizontal
-        stack.alignment = .firstBaseline
-        stack.spacing = 0
-        return stack
-    }
-
     /// A caption that is FIXED rather than live: reference text a row needs
     /// once, which nothing later rewrites.
     static func help(_ text: String) -> NSView {
@@ -1430,12 +1425,17 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     /// A row, labelled from the shared vocabulary. Every row on either screen
     /// goes through here, so a label has one spelling.
     static func row(_ row: SettingsRow, control: NSView, below: [NSView] = [],
-                    caption: Caption? = nil) -> SettingsRowView {
-        self.row(row.rawValue, control: control, below: below, caption: caption)
+                    caption: Caption? = nil, link: SettingsLink? = nil) -> SettingsRowView {
+        self.row(row.label, control: control, below: below, caption: caption, link: link)
     }
 
     /// A settings row: the name on the left, the control on the right, and an
     /// optional sentence under both.
+    ///
+    /// `link` follows the name on its line, for the one row whose name is a
+    /// sentence ending in one (`SettingsRow.label`): a real button, for the
+    /// reason `LinkButton` gives, baseline-aligned so it sits on the
+    /// sentence's line.
     ///
     /// The vertical axis is an NSStackView rather than constraints, and that is
     /// the whole reason it is one: NSStackView is the only thing here that
@@ -1444,25 +1444,42 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     /// collapse to nothing meanwhile, and under plain constraints a hidden
     /// NSTextField keeps its line height and leaves a blank gap.
     static func row(_ title: String, control: NSView, below: [NSView] = [],
-                    caption: Caption? = nil) -> SettingsRowView {
+                    caption: Caption? = nil, link: SettingsLink? = nil) -> SettingsRowView {
         let label = NSTextField(labelWithString: title)
         let line = NSView()
-        for view in [label, control] {
+        // The name, or the name and its link on one line. Either way ONE
+        // view at the line's leading edge, so the line holds the name's view
+        // and the control and nothing else.
+        let name: NSView
+        if let link {
+            let button = LinkButton(title: link.title, url: link.url)
+            button.font = label.font
+            button.setContentCompressionResistancePriority(.required, for: .horizontal)
+            button.setContentHuggingPriority(.required, for: .horizontal)
+            let pair = NSStackView(views: [label, button])
+            pair.orientation = .horizontal
+            pair.alignment = .firstBaseline
+            pair.spacing = 3
+            name = pair
+        } else {
+            name = label
+        }
+        for view in [name, control] {
             view.translatesAutoresizingMaskIntoConstraints = false
             line.addSubview(view)
         }
         label.setContentCompressionResistancePriority(.required, for: .horizontal)
         label.setContentHuggingPriority(.required, for: .horizontal)
         NSLayoutConstraint.activate([
-            label.leadingAnchor.constraint(equalTo: line.leadingAnchor, constant: Metrics.rowInset),
-            label.topAnchor.constraint(greaterThanOrEqualTo: line.topAnchor),
-            label.centerYAnchor.constraint(equalTo: line.centerYAnchor),
+            name.leadingAnchor.constraint(equalTo: line.leadingAnchor, constant: Metrics.rowInset),
+            name.topAnchor.constraint(greaterThanOrEqualTo: line.topAnchor),
+            name.centerYAnchor.constraint(equalTo: line.centerYAnchor),
             control.trailingAnchor.constraint(equalTo: line.trailingAnchor, constant: -Metrics.rowInset),
             control.centerYAnchor.constraint(equalTo: line.centerYAnchor),
             control.topAnchor.constraint(greaterThanOrEqualTo: line.topAnchor),
             control.bottomAnchor.constraint(lessThanOrEqualTo: line.bottomAnchor),
-            control.leadingAnchor.constraint(greaterThanOrEqualTo: label.trailingAnchor, constant: 12),
-            line.bottomAnchor.constraint(greaterThanOrEqualTo: label.bottomAnchor),
+            control.leadingAnchor.constraint(greaterThanOrEqualTo: name.trailingAnchor, constant: 12),
+            line.bottomAnchor.constraint(greaterThanOrEqualTo: name.bottomAnchor),
         ])
 
         // The line, then anything drawn full width under it, then the
@@ -2083,17 +2100,21 @@ final class LinkButton: NSButton {
 
 extension SettingsWindowController {
     fileprivate func wireAppearanceControls() {
-        modePicker.onChange = { [weak self] mode in
-            guard let self else { return }
-            var settings = Prefs.appearance
-            settings.mode = mode
-            self.apply(settings)
-        }
+        followSwitch.target = self
+        followSwitch.action = #selector(toggleFollowSystem)
         for strip in [lightStrip, darkStrip] {
-            strip.onSelect = { [weak self] id in
-                guard let self else { return }
-                self.apply(Prefs.appearance.setting(id, for: strip.kind))
+            strip.onSelect = { [weak self] id, _ in
+                guard let self, let kind = strip.kind else { return }
+                self.apply(Prefs.appearance.setting(id, for: kind))
             }
+        }
+        // A pick in the held strip says which kind is held as well as which
+        // theme: the card's own kind, which for a system card is the one it
+        // is a picture of.
+        heldStrip.onSelect = { [weak self] id, kind in
+            self?.apply(Prefs.appearance.holding(id, kind: kind))
+        }
+        for strip in [lightStrip, darkStrip, heldStrip] {
             strip.onRemove = { [weak self] id in self?.removeTheme(id) }
         }
         accentRow.onSelect = { [weak self] hex in
@@ -2128,34 +2149,51 @@ extension SettingsWindowController {
         fontSizeStepper.onReset = { [weak self] in self?.resetFontSize() }
     }
 
-    /// The two strips, each under the mode it draws in.
-    private func themeStrips() -> NSView {
-        func labelled(_ title: String, _ symbol: String, _ strip: ThemeStrip) -> NSView {
-            let label = NSTextField(labelWithString: title)
-            label.font = .systemFont(ofSize: NSFont.smallSystemFontSize, weight: .medium)
-            label.textColor = .secondaryLabelColor
-            let icon = NSImageView(image: NSImage(systemSymbolName: symbol, accessibilityDescription: title)
-                ?? NSImage())
-            icon.contentTintColor = .secondaryLabelColor
-            icon.symbolConfiguration = .init(pointSize: NSFont.smallSystemFontSize, weight: .medium)
-            let heading = NSStackView(views: [icon, label])
-            heading.orientation = .horizontal
-            heading.spacing = 4
-            let column = NSStackView(views: [heading, strip])
-            column.orientation = .vertical
-            column.alignment = .leading
-            column.spacing = 2
-            strip.widthAnchor.constraint(equalTo: column.widthAnchor).isActive = true
-            return column
+    /// A strip under a heading: an icon and a word, then the cards.
+    private static func labelled(_ title: String, _ symbol: String, _ strip: ThemeStrip) -> NSView {
+        let label = NSTextField(labelWithString: title)
+        label.font = .systemFont(ofSize: NSFont.smallSystemFontSize, weight: .medium)
+        label.textColor = .secondaryLabelColor
+        let icon = NSImageView(image: NSImage(systemSymbolName: symbol, accessibilityDescription: title)
+            ?? NSImage())
+        icon.contentTintColor = .secondaryLabelColor
+        icon.symbolConfiguration = .init(pointSize: NSFont.smallSystemFontSize, weight: .medium)
+        let heading = NSStackView(views: [icon, label])
+        heading.orientation = .horizontal
+        heading.spacing = 4
+        let column = NSStackView(views: [heading, strip])
+        column.orientation = .vertical
+        column.alignment = .leading
+        column.spacing = 2
+        strip.widthAnchor.constraint(equalTo: column.widthAnchor).isActive = true
+        return column
+    }
+
+    /// The theme card's two shapes, one shown at a time (`refreshAppearance`).
+    ///
+    /// Following the system, a strip per mode, each under the mode it draws
+    /// in; holding a mode, one strip of every theme, because then there is
+    /// one answer to "what does it look like" and two rows would be asking
+    /// it twice. Both are built and one is hidden rather than the card
+    /// being rebuilt on each flip, so the pane keeps its scroll and the
+    /// strips keep theirs.
+    private func themeCards() -> NSView {
+        for (stack, views) in [(slotStrips, [Self.labelled("Light Theme", "sun.max", lightStrip),
+                                              Self.labelled("Dark Theme", "moon", darkStrip)]),
+                               (heldStrips, [Self.labelled("Theme", "paintpalette", heldStrip)])] {
+            stack.setViews(views, in: .top)
+            stack.orientation = .vertical
+            stack.alignment = .leading
+            stack.spacing = 8
+            for view in views { view.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true }
         }
-        let stack = NSStackView(views: [labelled("Light", "sun.max", lightStrip),
-                                        labelled("Dark", "moon", darkStrip)])
-        stack.orientation = .vertical
-        stack.alignment = .leading
-        stack.spacing = 8
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        for view in stack.arrangedSubviews { view.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true }
-        return stack
+        let both = NSStackView(views: [slotStrips, heldStrips])
+        both.orientation = .vertical
+        both.alignment = .leading
+        both.spacing = 0
+        both.translatesAutoresizingMaskIntoConstraints = false
+        for view in both.arrangedSubviews { view.widthAnchor.constraint(equalTo: both.widthAnchor).isActive = true }
+        return both
     }
 
     /// Store, apply everywhere, and redraw the pictures, which show the
@@ -2175,21 +2213,42 @@ extension SettingsWindowController {
     fileprivate func refreshAppearance() {
         themeRows = themeStore.list()
         let settings = Prefs.appearance
-        modePicker.show(settings)
+        followSwitch.state = settings.followsSystem ? .on : .off
+        slotStrips.isHidden = !settings.followsSystem
+        heldStrips.isHidden = settings.followsSystem
         lightStrip.show(themes: themeRows, selected: settings.lightTheme, settings: settings)
         darkStrip.show(themes: themeRows, selected: settings.darkTheme, settings: settings)
+        // The held strip ticks the held kind's slot: its system card when
+        // the slot is empty, which is why the pick carries a kind.
+        let held = settings.mode.heldKind ?? settings.heldKind ?? (WindowSet.systemIsDark ? .dark : .light)
+        heldStrip.show(themes: themeRows, selected: settings.themeId(for: held), heldKind: held, settings: settings)
         accentRow.select(settings.accent)
         tintRow.select(settings.tint)
         sidebarSwitch.state = settings.transparentSidebar ? .on : .off
         fontControl.selectedSegment = Self.fontChoices.firstIndex { $0.preset == Prefs.fontPreset } ?? 1
         fontSizeStepper.show(percent: Prefs.fontSize)
+        // The card is a strip taller in one shape than the other, so the
+        // window follows, as it follows the rows the other panes show and
+        // hide (`fitWindowToPane`); a no-op while the pane is being built.
+        fitWindowToPane()
     }
 
     // MARK: read back
 
     var themeChoicesForTesting: [String] { lightStrip.titlesForTesting }
     var darkThemeChoicesForTesting: [String] { darkStrip.titlesForTesting }
-    var appearanceModesForTesting: [String] { modePicker.titlesForTesting }
+    var heldThemeChoicesForTesting: [String] { heldStrip.titlesForTesting }
+    var heldThemeSelectionForTesting: String? { heldStrip.selectedTitleForTesting }
+    var followsSystemForTesting: Bool { followSwitch.state == .on }
+    /// Which of the card's two shapes is showing: "slots" or "held".
+    var themeCardShapeForTesting: String { slotStrips.isHidden ? (heldStrips.isHidden ? "none" : "held") : "slots" }
+    func setFollowSystemForTesting(_ on: Bool) {
+        followSwitch.state = on ? .on : .off
+        toggleFollowSystem()
+    }
+    func chooseHeldThemeForTesting(_ id: String?, kind: VSCodeTheme.Kind) {
+        apply(Prefs.appearance.holding(id, kind: kind))
+    }
     var accentChoicesForTesting: [String] { accentRow.titlesForTesting }
     var themeLibraryForTesting: [ThemeSummary] { themeRows }
     var fontSizeForTesting: String { fontSizeStepper.percentForTesting }
@@ -2197,9 +2256,7 @@ extension SettingsWindowController {
         apply(Prefs.appearance.setting(id, for: kind))
     }
     func chooseModeForTesting(_ mode: AppearanceMode) {
-        var settings = Prefs.appearance
-        settings.mode = mode
-        apply(settings)
+        apply(Prefs.appearance.inMode(mode))
     }
     func chooseAccentForTesting(_ hex: String?) {
         var settings = Prefs.appearance
@@ -2210,6 +2267,10 @@ extension SettingsWindowController {
     func stepFontSizeForTesting(_ delta: Int) { stepFontSize(delta) }
 
     // MARK: actions
+
+    @objc private func toggleFollowSystem() {
+        apply(Prefs.appearance.followingSystem(followSwitch.state == .on, systemIsDark: WindowSet.systemIsDark))
+    }
 
     @objc private func toggleTransparentSidebar() {
         var settings = Prefs.appearance
@@ -2278,14 +2339,15 @@ extension SettingsWindowController {
     }
 
     /// Every theme every extension installed in VS Code (or Cursor, or a
-    /// sibling), and every theme those editors ship with, added at once.
-    /// One by one rather than as a batch, so one theme file the app cannot
-    /// read does not stop the rest.
+    /// sibling) contributes, and every theme those editors ship with, as a
+    /// list to pick from (`InstalledThemesPick`). The picks are added one
+    /// by one rather than as a batch, so one theme file the app cannot read
+    /// does not stop the rest.
     private func importInstalledThemes() {
+        guard let window else { return }
         let roots = ThemeStore.installedExtensionRoots(home: FileManager.default.homeDirectoryForCurrentUser)
         let found = ThemeStore.themesInExtensions(roots: roots)
         guard !found.isEmpty else {
-            guard let window else { return }
             let alert = NSAlert()
             alert.messageText = "No VS Code themes found"
             alert.informativeText = roots.isEmpty
@@ -2294,32 +2356,61 @@ extension SettingsWindowController {
             alert.beginSheetModal(for: window)
             return
         }
-        var added: [ThemeSummary] = []
-        var failures: [String] = []
-        for source in found {
-            do { added += try themeStore.importThemes([source]) }
-            catch { failures.append("\(source.label ?? source.url.lastPathComponent): \(error.localizedDescription)") }
+        presentInstalledThemesPicker(found)
+    }
+
+    /// The picker over `sources`; what it picks is added when the sheet
+    /// closes, which is also when the controller is let go.
+    @discardableResult
+    private func presentInstalledThemesPicker(_ sources: [ThemeSource]) -> InstalledThemesSheetController? {
+        guard let window else { return nil }
+        let picker = InstalledThemesSheetController(
+            pick: InstalledThemesPick(sources: sources, held: themeStore.list().map(\.id))
+        ) { [weak self] chosen in
+            guard let self else { return }
+            self.installedThemesSheet = nil
+            guard !chosen.isEmpty else { return }
+            var added: [ThemeSummary] = []
+            var failures: [String] = []
+            for source in chosen {
+                do { added += try self.themeStore.importThemes([source]) }
+                catch { failures.append("\(source.label ?? source.url.lastPathComponent): \(error.localizedDescription)") }
+            }
+            self.themesChanged(added: added, failures: failures)
         }
-        themesChanged(added: added, failures: failures)
+        installedThemesSheet = picker
+        picker.present(over: window)
+        return picker
+    }
+
+    /// Open the picker over a list this test controls, and hand back the
+    /// controller if its controls reach it; the caller drives it from there.
+    func pickInstalledThemesForTesting(_ sources: [ThemeSource]) -> InstalledThemesSheetController? {
+        guard let picker = presentInstalledThemesPicker(sources), picker.isWiredForTesting else { return nil }
+        return picker
     }
 
     /// The registry browser, as a sheet; what it adds comes back here when
     /// the sheet closes, which is also when the controller is let go.
-    private func browseThemes() {
+    private func browseThemes(fetch: ((URL) async throws -> (Data, URLResponse))? = nil) {
         guard let window else { return }
         let browser = ThemeBrowserController(store: themeStore) { [weak self] added, failures in
             self?.themeBrowser = nil
             self?.themesChanged(added: added, failures: failures)
         }
+        if let fetch { browser.fetch = fetch }
         themeBrowser = browser
         browser.present(over: window)
     }
 
-    /// Open the browser and say whether its controls still reach it, which
-    /// is the whole of what holding it is for.
-    func browseThemesForTesting() -> Bool {
-        browseThemes()
-        return themeBrowser?.isWiredForTesting ?? false
+    /// Open the browser over `fetch` in place of the registry, and hand it
+    /// back if its controls still reach it, which is the whole of what
+    /// holding it is for. The seam is what keeps a test off the network:
+    /// the sheet asks for its first page as it opens.
+    func browseThemesForTesting(fetch: @escaping (URL) async throws -> (Data, URLResponse)) -> ThemeBrowserController? {
+        browseThemes(fetch: fetch)
+        guard let themeBrowser, themeBrowser.isWiredForTesting else { return nil }
+        return themeBrowser
     }
 
     func dismissThemeBrowserForTesting() { themeBrowser?.dismissForTesting() }

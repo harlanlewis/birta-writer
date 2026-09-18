@@ -13,9 +13,9 @@ import BirtaWriterCore
 // MARK: - A mini window
 
 /// A window in miniature: a titlebar band, a sidebar strip, and three lines
-/// of text on paper, in the colours it is given. What the mode picker and
-/// the theme cards both draw, so a theme's card and the system's card are
-/// the same picture in different ink.
+/// of text on paper, in the colours it is given. What every theme card
+/// draws, so a theme's card and the system's card are the same picture in
+/// different ink.
 struct MiniWindowPalette: Equatable {
     var paper: NSColor
     var ink: NSColor
@@ -95,134 +95,21 @@ struct MiniWindowPalette: Equatable {
     }
 }
 
-// MARK: - The mode picker
-
-/// Auto, Light and Dark as three pictures, the way System Settings asks the
-/// same question: a light window, a dark one, and one split down the middle.
-@MainActor
-final class AppearanceModePicker: NSView {
-    var onChange: ((AppearanceMode) -> Void)?
-    private(set) var selected: AppearanceMode = .auto
-    private var settings = AppearanceSettings()
-    private let cards: [ModeCard]
-
-    init() {
-        cards = AppearanceMode.allCases.map { ModeCard(mode: $0) }
-        super.init(frame: .zero)
-        let stack = NSStackView(views: cards)
-        stack.orientation = .horizontal
-        stack.spacing = 14
-        stack.alignment = .top
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(stack)
-        NSLayoutConstraint.activate([
-            stack.topAnchor.constraint(equalTo: topAnchor),
-            stack.bottomAnchor.constraint(equalTo: bottomAnchor),
-            stack.trailingAnchor.constraint(equalTo: trailingAnchor),
-            stack.leadingAnchor.constraint(greaterThanOrEqualTo: leadingAnchor),
-        ])
-        for card in cards {
-            card.onPick = { [weak self] mode in
-                self?.select(mode)
-                self?.onChange?(mode)
-            }
-        }
-    }
-
-    required init?(coder: NSCoder) { fatalError("not used") }
-
-    /// Show `settings`: which mode is picked, and the mod in the pictures.
-    func show(_ settings: AppearanceSettings) {
-        self.settings = settings
-        select(settings.mode)
-        for card in cards { card.show(settings) }
-    }
-
-    func select(_ mode: AppearanceMode) {
-        selected = mode
-        for card in cards { card.isSelected = card.mode == mode }
-    }
-
-    var titlesForTesting: [String] { cards.map(\.label.stringValue) }
-
-    /// One picture and its label.
-    final class ModeCard: NSControl {
-        let mode: AppearanceMode
-        let label: NSTextField
-        var onPick: ((AppearanceMode) -> Void)?
-        private var settings = AppearanceSettings()
-        var isSelected = false {
-            didSet {
-                needsDisplay = true
-                label.font = .systemFont(ofSize: NSFont.smallSystemFontSize, weight: isSelected ? .semibold : .regular)
-            }
-        }
-
-        static let pictureSize = NSSize(width: 66, height: 44)
-
-        init(mode: AppearanceMode) {
-            self.mode = mode
-            label = NSTextField(labelWithString: mode.title)
-            super.init(frame: .zero)
-            label.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
-            label.alignment = .center
-            label.translatesAutoresizingMaskIntoConstraints = false
-            addSubview(label)
-            translatesAutoresizingMaskIntoConstraints = false
-            NSLayoutConstraint.activate([
-                widthAnchor.constraint(equalToConstant: Self.pictureSize.width + 6),
-                heightAnchor.constraint(equalToConstant: Self.pictureSize.height + 6 + 18),
-                label.centerXAnchor.constraint(equalTo: centerXAnchor),
-                label.bottomAnchor.constraint(equalTo: bottomAnchor),
-            ])
-            setAccessibilityRole(.radioButton)
-            setAccessibilityLabel(mode.title)
-        }
-
-        required init?(coder: NSCoder) { fatalError("not used") }
-
-        func show(_ settings: AppearanceSettings) {
-            self.settings = settings
-            needsDisplay = true
-        }
-
-        override func mouseDown(with event: NSEvent) { onPick?(mode) }
-
-        override func draw(_ dirtyRect: NSRect) {
-            let picture = NSRect(x: 3, y: bounds.height - Self.pictureSize.height - 3,
-                                 width: Self.pictureSize.width, height: Self.pictureSize.height)
-            NSGraphicsContext.saveGraphicsState()
-            let light = MiniWindowPalette.system(.light, settings: settings)
-            let dark = MiniWindowPalette.system(.dark, settings: settings)
-            switch mode {
-            case .light: MiniWindowPalette.draw(light, in: picture)
-            case .dark: MiniWindowPalette.draw(dark, in: picture)
-            case .auto:
-                // Split down the middle, as the system's own picture is.
-                MiniWindowPalette.draw(light, in: picture)
-                NSGraphicsContext.saveGraphicsState()
-                NSRect(x: picture.midX, y: picture.minY, width: picture.width / 2, height: picture.height).clip()
-                MiniWindowPalette.draw(dark, in: picture)
-                NSGraphicsContext.restoreGraphicsState()
-            }
-            NSGraphicsContext.restoreGraphicsState()
-            let ring = NSBezierPath(roundedRect: picture.insetBy(dx: -2.5, dy: -2.5), xRadius: 8, yRadius: 8)
-            ring.lineWidth = isSelected ? 2.5 : 1
-            (isSelected ? NSColor.controlAccentColor : NSColor.separatorColor).setStroke()
-            ring.stroke()
-        }
-    }
-}
-
 // MARK: - The theme strip
 
-/// One mode's slot as a row of cards: the system's palette first, then each
-/// theme the store holds, the one in the slot ringed. A theme card's
-/// context menu removes it from the store.
+/// A row of theme cards with one ringed.
+///
+/// With a KIND, it is that mode's slot: the system's palette for the mode
+/// first, then each theme the store holds. With none, it is the strip drawn
+/// while a mode is held: both system cards first, then the themes, and a
+/// pick says which kind it holds as well as which theme. A theme card's
+/// hover button, and its context menu, remove it from the store.
 @MainActor
 final class ThemeStrip: NSView {
-    let kind: VSCodeTheme.Kind
-    var onSelect: ((String?) -> Void)?
+    let kind: VSCodeTheme.Kind?
+    /// A pick: the theme's id (nil for a system card) and the kind the card
+    /// is of.
+    var onSelect: ((String?, VSCodeTheme.Kind) -> Void)?
     var onRemove: ((String) -> Void)?
     private let scroll = NSScrollView()
     private let stack = NSStackView()
@@ -232,7 +119,7 @@ final class ThemeStrip: NSView {
 
     static let height: CGFloat = 108
 
-    init(kind: VSCodeTheme.Kind) {
+    init(kind: VSCodeTheme.Kind?) {
         self.kind = kind
         super.init(frame: .zero)
         stack.orientation = .horizontal
@@ -273,51 +160,85 @@ final class ThemeStrip: NSView {
 
     required init?(coder: NSCoder) { fatalError("not used") }
 
-    /// Draw `themes` with `selected` ringed, the system card first.
+    /// Draw `themes` with `selected` ringed, the mode's system card first.
+    /// For a slot strip; the held strip is shown with a held kind.
     func show(themes: [ThemeSummary], selected: String?, settings: AppearanceSettings) {
+        guard let kind else { return }
+        show(themes: themes, selected: selected, systemKinds: [kind], selectedSystem: kind, settings: settings)
+    }
+
+    /// Draw `themes` after both system cards, ringing `selected`, or the
+    /// system card for `heldKind` when the held kind's slot is empty.
+    func show(themes: [ThemeSummary], selected: String?, heldKind: VSCodeTheme.Kind, settings: AppearanceSettings) {
+        show(themes: themes, selected: selected, systemKinds: [.light, .dark], selectedSystem: heldKind, settings: settings)
+    }
+
+    private func show(themes: [ThemeSummary], selected: String?, systemKinds: [VSCodeTheme.Kind],
+                      selectedSystem: VSCodeTheme.Kind, settings: AppearanceSettings) {
         self.settings = settings
         selectedId = selected
         for card in cards { card.removeFromSuperview() }
-        let system = ThemeCard(id: nil, title: ThemeCard.systemTitle,
-                               palette: MiniWindowPalette.system(kind, settings: settings))
+        let system = systemKinds.map { kind in
+            ThemeCard(id: nil, kind: kind, title: ThemeCard.systemTitle(kind),
+                      palette: MiniWindowPalette.system(kind, settings: settings))
+        }
         let rest = themes.map { theme in
-            ThemeCard(id: theme.id, title: theme.name,
+            ThemeCard(id: theme.id, kind: theme.kind, title: theme.name,
                       palette: MiniWindowPalette.themed(theme.preview, kind: theme.kind, settings: settings))
         }
-        cards = [system] + rest
+        cards = system + rest
         for card in cards {
-            card.isSelected = card.id == selected
-            card.onPick = { [weak self] id in
-                self?.select(id)
-                self?.onSelect?(id)
+            card.isSelected = card.id == selected && (card.id != nil || card.kind == selectedSystem)
+            card.onPick = { [weak self] id, kind in
+                self?.select(id, systemKind: kind)
+                self?.onSelect?(id, kind)
             }
             card.onRemove = { [weak self] id in self?.onRemove?(id) }
             stack.addArrangedSubview(card)
         }
     }
 
-    func select(_ id: String?) {
+    func select(_ id: String?, systemKind: VSCodeTheme.Kind) {
         selectedId = id
-        for card in cards { card.isSelected = card.id == id }
+        for card in cards { card.isSelected = card.id == id && (card.id != nil || card.kind == systemKind) }
     }
 
     var titlesForTesting: [String] { cards.map(\.title) }
+    var selectedTitleForTesting: String? { cards.first { $0.isSelected }?.title }
 
     /// Flipped so the strip's top is the scroll view's top.
     final class FlippedView: NSView {
         override var isFlipped: Bool { true }
     }
 
-    /// One theme as a card: the picture and the name under it.
+    /// One theme as a card: the picture and the name under it, and, for a
+    /// theme the store holds, a remove button in the picture's corner while
+    /// the pointer is on the card.
+    ///
+    /// No confirmation on the remove: the file is one Add Theme… away, and
+    /// a sheet to answer for a card that takes one click to put back would
+    /// be a cost paid on every removal to save one mistaken one. A system
+    /// card has no button, since there is nothing to remove.
     final class ThemeCard: NSControl {
-        static let systemTitle = "System"
+        static func systemTitle(_ kind: VSCodeTheme.Kind) -> String {
+            kind == .dark ? "macOS Dark" : "macOS Light"
+        }
         static let pictureSize = NSSize(width: 84, height: 54)
+        /// The remove button's diameter, and its inset from the picture's
+        /// top-right corner.
+        static let removeSize: CGFloat = 18
+        static let removeInset: CGFloat = 4
         let id: String?
+        /// The kind the card is of: the theme's, or the system palette it is
+        /// a picture of.
+        let kind: VSCodeTheme.Kind
         let title: String
         let palette: MiniWindowPalette
-        var onPick: ((String?) -> Void)?
+        var onPick: ((String?, VSCodeTheme.Kind) -> Void)?
         var onRemove: ((String) -> Void)?
         private let label: NSTextField
+        private var hoverArea: NSTrackingArea?
+        private(set) var isHovered = false { didSet { needsDisplay = true } }
         var isSelected = false {
             didSet {
                 needsDisplay = true
@@ -325,8 +246,9 @@ final class ThemeStrip: NSView {
             }
         }
 
-        init(id: String?, title: String, palette: MiniWindowPalette) {
+        init(id: String?, kind: VSCodeTheme.Kind, title: String, palette: MiniWindowPalette) {
             self.id = id
+            self.kind = kind
             self.title = title
             self.palette = palette
             label = NSTextField(labelWithString: title)
@@ -353,7 +275,52 @@ final class ThemeStrip: NSView {
 
         required init?(coder: NSCoder) { fatalError("not used") }
 
-        override func mouseDown(with event: NSEvent) { onPick?(id) }
+        private var picture: NSRect {
+            NSRect(x: 3, y: bounds.height - Self.pictureSize.height - 3,
+                   width: Self.pictureSize.width, height: Self.pictureSize.height)
+        }
+
+        /// Where the remove button is drawn, or nil for a card with none.
+        var removeButtonRect: NSRect? {
+            guard id != nil else { return nil }
+            let picture = self.picture
+            return NSRect(x: picture.maxX - Self.removeInset - Self.removeSize,
+                          y: picture.maxY - Self.removeInset - Self.removeSize,
+                          width: Self.removeSize, height: Self.removeSize)
+        }
+
+        override func updateTrackingAreas() {
+            super.updateTrackingAreas()
+            if let hoverArea { removeTrackingArea(hoverArea) }
+            let area = NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect],
+                                      owner: self)
+            addTrackingArea(area)
+            hoverArea = area
+        }
+
+        override func mouseEntered(with event: NSEvent) { isHovered = true }
+        override func mouseExited(with event: NSEvent) { isHovered = false }
+
+        override func mouseDown(with event: NSEvent) {
+            press(at: convert(event.locationInWindow, from: nil))
+        }
+
+        /// A click at `point` in this card's coordinates: the remove button
+        /// removes, anywhere else picks. The whole of the decision, so a
+        /// check can press without an event.
+        func press(at point: NSPoint) {
+            if let id, let button = removeButtonRect, button.contains(point) {
+                onRemove?(id)
+            } else {
+                onPick?(id, kind)
+            }
+        }
+
+        /// What a click at `point` does, for a check with no pointer.
+        func actionForMeasurement(at point: NSPoint) -> String {
+            if id != nil, let button = removeButtonRect, button.contains(point) { return "remove" }
+            return "pick"
+        }
 
         override func menu(for event: NSEvent) -> NSMenu? {
             guard let id else { return nil }
@@ -370,8 +337,7 @@ final class ThemeStrip: NSView {
         }
 
         override func draw(_ dirtyRect: NSRect) {
-            let picture = NSRect(x: 3, y: bounds.height - Self.pictureSize.height - 3,
-                                 width: Self.pictureSize.width, height: Self.pictureSize.height)
+            let picture = self.picture
             NSGraphicsContext.saveGraphicsState()
             MiniWindowPalette.draw(palette, in: picture)
             NSGraphicsContext.restoreGraphicsState()
@@ -379,6 +345,21 @@ final class ThemeStrip: NSView {
             ring.lineWidth = isSelected ? 2.5 : 1
             (isSelected ? NSColor.controlAccentColor : NSColor.separatorColor).setStroke()
             ring.stroke()
+            // The remove button: a dark disc with a white minus, in the
+            // picture's corner, only under the pointer. Fixed colours rather
+            // than the appearance's, because it sits on the picture's own
+            // paper, which is whatever the theme says and not the window's.
+            if isHovered, let button = removeButtonRect {
+                NSColor.black.withAlphaComponent(0.6).setFill()
+                NSBezierPath(ovalIn: button).fill()
+                NSColor.white.setStroke()
+                let minus = NSBezierPath()
+                minus.move(to: NSPoint(x: button.minX + 5, y: button.midY))
+                minus.line(to: NSPoint(x: button.maxX - 5, y: button.midY))
+                minus.lineWidth = 1.5
+                minus.lineCapStyle = .round
+                minus.stroke()
+            }
         }
     }
 }

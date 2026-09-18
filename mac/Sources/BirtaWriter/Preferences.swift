@@ -75,6 +75,7 @@ enum Prefs {
         case lineNumbers
         case paletteRecents
         case appearanceMode
+        case appearanceHeld
         case lightTheme
         case darkTheme
         case accentColor
@@ -625,12 +626,12 @@ enum Prefs {
     }
 
     /// How the page looks (`Appearance.swift`): the mode, the theme in each
-    /// mode's slot, and the colour mod. One answer for every window, because
-    /// a theme is what the app looks like and two windows in two themes is a
-    /// question nobody asked. Six keys rather than one blob, so a reset
-    /// walks them like any other and `defaults read` shows each by name; an
-    /// absent key is the default in every case, which is the system's
-    /// appearance untouched.
+    /// mode's slot, the colour mod, and the kind the mode last held. One
+    /// answer for every window, because a theme is what the app looks like
+    /// and two windows in two themes is a question nobody asked. Seven keys
+    /// rather than one blob, so a reset walks them like any other and
+    /// `defaults read` shows each by name; an absent key is the default in
+    /// every case, which is the system's appearance untouched.
     static var appearance: AppearanceSettings {
         get {
             AppearanceSettings(
@@ -639,13 +640,15 @@ enum Prefs {
                 darkTheme: d.string(forKey: Key.darkTheme.rawValue),
                 accent: d.string(forKey: Key.accentColor.rawValue),
                 tint: d.string(forKey: Key.tintColor.rawValue),
-                transparentSidebar: d.bool(forKey: Key.sidebarTransparent.rawValue))
+                transparentSidebar: d.bool(forKey: Key.sidebarTransparent.rawValue),
+                heldKind: d.string(forKey: Key.appearanceHeld.rawValue).flatMap(AppearanceMode.init(rawValue:))?.heldKind)
         }
         set {
             func put(_ value: String?, _ key: Key) {
                 if let value { d.set(value, forKey: key.rawValue) } else { d.removeObject(forKey: key.rawValue) }
             }
             put(newValue.mode == .auto ? nil : newValue.mode.rawValue, .appearanceMode)
+            put(newValue.heldKind.map { AppearanceMode(holding: $0).rawValue }, .appearanceHeld)
             put(newValue.lightTheme, .lightTheme)
             put(newValue.darkTheme, .darkTheme)
             put(newValue.accent, .accentColor)

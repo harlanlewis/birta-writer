@@ -43,16 +43,30 @@ public enum SettingsRow: String, CaseIterable, Sendable {
     case syntaxCalc = "Calculation blocks"
     case resetSettings = "Reset all settings"
     case welcomeScreen = "Welcome screen"
-    // The Appearance pane (`Appearance.swift`): the mode, the theme in each
-    // mode's slot, the colour mod, and the typography the toolbar's menu
-    // also carries.
-    case appearanceMode = "Appearance"
+    // The Appearance pane (`Appearance.swift`): the typography the
+    // toolbar's menu also carries, whether light and dark follow the
+    // system, the theme (one, or one per mode), and the colour mod.
+    case font = "Font"
+    case fontSize = "Font Size"
+    case followSystemAppearance = "Auto light/dark mode"
     case theme = "Theme"
     case accent = "Accent"
     case tint = "Tint"
-    case transparentSidebar = "Transparent sidebar"
-    case font = "Font"
-    case fontSize = "Size"
+    case transparentSidebar = "Transparent file sidebar"
+
+    /// What the pane draws as the row's name. The raw value is the row's
+    /// NAME, which the palette lists ("Appearance › Theme") and a test
+    /// finds a row by; the one row whose drawn label is a sentence rather
+    /// than a name says so here, and `link` is the sentence's end.
+    public var label: String {
+        self == .theme ? "Birta Writer is compatible with" : rawValue
+    }
+
+    /// The link drawn after the label, on its line: only the theme row's
+    /// sentence ends in one.
+    public var link: SettingsLink? {
+        self == .theme ? SettingsForm.themesLink : nil
+    }
 }
 
 /// The rows the FIRST RUN asks about, as their own type.
@@ -99,7 +113,7 @@ public struct SettingsGroup: Sendable {
     }
 }
 
-/// A link drawn at the end of a pane's intro.
+/// A link drawn at the end of a row's label (`SettingsRow.link`).
 public struct SettingsLink: Sendable {
     public let title: String
     public let url: URL
@@ -116,17 +130,14 @@ public struct SettingsLink: Sendable {
 /// belongs to. It is for a pane holding a capability somebody has to opt into
 /// and would otherwise have to guess at; a pane of ordinary settings has none,
 /// because a paragraph over a list of switches is a preamble nobody reads on
-/// the way to a control they can already see. A link, where the intro names
-/// something a reader would look up, is drawn at the end of its last line.
+/// the way to a control they can already see.
 public struct SettingsPane: Sendable {
     /// Paragraphs above the first card. Empty for most panes.
     public let intro: [String]
-    public let link: SettingsLink?
     public let groups: [SettingsGroup]
 
-    public init(intro: [String] = [], link: SettingsLink? = nil, groups: [SettingsGroup]) {
+    public init(intro: [String] = [], groups: [SettingsGroup]) {
         self.intro = intro
-        self.link = link
         self.groups = groups
     }
 }
@@ -278,27 +289,33 @@ public enum SettingsForm {
     /// each mode, the colour mod over it, and the typography.
     ///
     /// Its own pane for the reason Markdown is one: General is what the app
-    /// IS, and this is what it looks like. The intro is one sentence, and it
-    /// is the one thing the rows cannot say: that a VS Code theme can be
-    /// used here at all is not guessable from a card, and the link is where
-    /// such themes are found. Copy stops there; every control below is a
-    /// picture or a swatch rather than a sentence.
+    /// IS, and this is what it looks like. One sentence of copy, and it is
+    /// the one thing the rows cannot say: that a VS Code theme can be used
+    /// here at all is not guessable from a card, and the link is where such
+    /// themes are found. It is the theme row's own label rather than the
+    /// pane's intro, because it introduces the cards under it and nothing
+    /// above them. Every other control is a picture or a swatch rather than
+    /// a sentence.
     ///
-    /// The mode leads, as it does in System Settings; the theme card is one
-    /// row holding both modes' slots, because a slot is not a question on
-    /// its own but half of one; the colour mod and the sidebar are the
-    /// system's own theme made yours; and the typography is the toolbar's
-    /// menu on a pane, for every window at once.
+    /// The typography leads: the toolbar's menu on a pane, for every window
+    /// at once, and the thing most people came for. Then whether light and
+    /// dark follow the system, as one switch, on by default; the theme card
+    /// under it draws a slot per mode while they do and one theme while
+    /// they do not (`AppearanceSettings.followsSystem`); and the colour mod
+    /// and the sidebar are the system's own theme made yours.
     public static let appearance = SettingsPane(
-        intro: ["Birta Writer is compatible with"],
-        link: SettingsLink(title: "VS Code themes.",
-                           url: URL(string: "https://code.visualstudio.com/docs/configure/themes#_color-themes")!),
         groups: [
-            SettingsGroup(rows: [.appearanceMode]),
+            SettingsGroup(rows: [.font, .fontSize]),
+            SettingsGroup(rows: [.followSystemAppearance]),
             SettingsGroup(rows: [.theme]),
             SettingsGroup(rows: [.accent, .tint, .transparentSidebar]),
-            SettingsGroup(rows: [.font, .fontSize]),
         ])
+
+    /// Where the theme row's sentence points: the link drawn after its
+    /// label.
+    public static let themesLink = SettingsLink(
+        title: "VS Code themes.",
+        url: URL(string: "https://code.visualstudio.com/docs/configure/themes#_color-themes")!)
 
     /// Every pane, in toolbar order. `SettingsFormTests` sums these to check
     /// that a case added to `SettingsRow` was actually placed on a screen, and

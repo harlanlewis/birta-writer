@@ -35,14 +35,15 @@ public enum OpenVsx {
     /// The one host every request goes to.
     public static let host = "open-vsx.org"
 
-    /// The search, over theme extensions alone, most downloaded first.
+    /// The search, over theme extensions alone, most downloaded first. An
+    /// empty query is the registry's own first page: the most downloaded of
+    /// the category, which is what the browser opens onto.
     public static func searchURL(query: String, size: Int = 30) -> URL {
         var components = URLComponents()
         components.scheme = "https"
         components.host = host
         components.path = "/api/-/search"
-        components.queryItems = [
-            URLQueryItem(name: "query", value: query),
+        components.queryItems = (query.isEmpty ? [] : [URLQueryItem(name: "query", value: query)]) + [
             URLQueryItem(name: "category", value: "Themes"),
             URLQueryItem(name: "size", value: String(size)),
             URLQueryItem(name: "sortBy", value: "downloadCount"),

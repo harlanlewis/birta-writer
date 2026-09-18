@@ -187,6 +187,24 @@ final class SettingsFormTests: XCTestCase {
         }
         XCTAssertTrue(SettingsForm.general.intro.isEmpty)
         XCTAssertTrue(SettingsForm.advanced(showsWelcomeScreen: true).intro.isEmpty)
+        // Appearance says its one sentence on the theme row rather than as
+        // an intro, so the row's label is the sentence and the link is
+        // declared beside it.
+        XCTAssertTrue(SettingsForm.appearance.intro.isEmpty)
+        XCTAssertEqual(SettingsRow.theme.label, "Birta Writer is compatible with")
+        XCTAssertEqual(SettingsRow.theme.rawValue, "Theme", "the palette and the tests find the row by its name")
+        XCTAssertEqual(SettingsForm.themesLink.title, "VS Code themes.")
+        for row in SettingsRow.allCases where row != .theme {
+            XCTAssertEqual(row.label, row.rawValue, "\(row) draws something other than its name")
+        }
+    }
+
+    func testTheAppearancePaneShouldLeadWithTypeThenTheSwitchThenTheThemes() {
+        XCTAssertEqual(SettingsForm.rows(of: SettingsForm.appearance),
+                       [.font, .fontSize, .followSystemAppearance, .theme, .accent, .tint, .transparentSidebar])
+        XCTAssertEqual(SettingsRow.fontSize.rawValue, "Font Size")
+        XCTAssertEqual(SettingsRow.followSystemAppearance.rawValue, "Auto light/dark mode")
+        XCTAssertEqual(SettingsRow.transparentSidebar.rawValue, "Transparent file sidebar")
     }
 
     /// Replaying the first run is a development affordance, and the reason is

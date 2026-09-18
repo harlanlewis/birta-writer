@@ -162,7 +162,7 @@ final class ThemeSurfacesTests: XCTestCase {
 
     // MARK: the pane
 
-    func testTheAppearancePaneShouldDrawBothSlotsAndMoveTheSettingsThroughTheApp() throws {
+    func testTheAppearancePaneShouldDrawBothSlotsAndMoveTheSettingsThroughTheApp() async throws {
         let a = root.appendingPathComponent("a.json")
         let b = root.appendingPathComponent("b.json")
         try ##"{ "name": "Paper", "type": "light", "colors": { "editor.background": "#f7f3e8" } }"##
@@ -184,9 +184,12 @@ final class ThemeSurfacesTests: XCTestCase {
             onThemesChanged: { changed += 1 },
             onEditorCommand: { commands.append($0) })
         controller.selectTabForTesting("appearance")
-        XCTAssertEqual(controller.appearanceModesForTesting, ["Auto", "Light", "Dark"])
-        XCTAssertEqual(controller.themeChoicesForTesting, ["System", "Paper", "Slate"], "the system first, then the library")
-        XCTAssertEqual(controller.darkThemeChoicesForTesting, controller.themeChoicesForTesting)
+        XCTAssertTrue(controller.followsSystemForTesting, "the switch is on by default")
+        XCTAssertEqual(controller.themeCardShapeForTesting, "slots")
+        XCTAssertEqual(controller.themeChoicesForTesting, ["macOS Light", "Paper", "Slate"], "the system first, then the library")
+        XCTAssertEqual(controller.darkThemeChoicesForTesting, ["macOS Dark", "Paper", "Slate"])
+        XCTAssertEqual(controller.heldThemeChoicesForTesting, ["macOS Light", "macOS Dark", "Paper", "Slate"],
+                       "held, one strip of everything, both system cards first")
         XCTAssertEqual(controller.accentChoicesForTesting.first, "Default")
         XCTAssertEqual(controller.themeLibraryForTesting.map(\.id), ["paper", "slate"])
 
@@ -195,22 +198,92 @@ final class ThemeSurfacesTests: XCTestCase {
         XCTAssertEqual(applied.last?.darkTheme, "slate", "the other slot keeps its own")
         controller.chooseModeForTesting(.dark)
         XCTAssertEqual(applied.last?.mode, .dark)
+        // A mode held from outside the pane (View > Theme, the palette) is
+        // what the switch and the card show, not what they were last set to.
+        XCTAssertFalse(controller.followsSystemForTesting, "the switch follows a mode held elsewhere")
+        XCTAssertEqual(controller.themeCardShapeForTesting, "held")
         controller.chooseAccentForTesting("#ff5257")
         XCTAssertEqual(applied.last?.accent, "#ff5257")
+
+        // The switch, from the system: off holds the kind last held (dark,
+        // from the pick above), shows the one strip with that slot's theme
+        // ringed; a pick there holds the card's own kind; on brings both
+        // slots back untouched.
+        controller.setFollowSystemForTesting(true)
+        XCTAssertEqual(applied.last?.mode, .auto)
+        XCTAssertEqual(controller.themeCardShapeForTesting, "slots")
+        controller.setFollowSystemForTesting(false)
+        XCTAssertEqual(applied.last?.mode, .dark, "off holds the kind that was held, not the sun's")
+        XCTAssertEqual(controller.themeCardShapeForTesting, "held")
+        XCTAssertEqual(controller.heldThemeSelectionForTesting, "Slate")
+        controller.chooseHeldThemeForTesting("paper", kind: .light)
+        XCTAssertEqual(applied.last?.mode, .light)
+        XCTAssertEqual(applied.last?.lightTheme, "paper")
+        XCTAssertEqual(applied.last?.darkTheme, "slate", "the other slot keeps its own")
+        XCTAssertEqual(controller.heldThemeSelectionForTesting, "Paper")
+        controller.chooseHeldThemeForTesting(nil, kind: .dark)
+        XCTAssertEqual(controller.heldThemeSelectionForTesting, "macOS Dark", "a system card rings the one of its kind")
+        XCTAssertEqual(applied.last?.darkTheme, nil)
+        controller.setFollowSystemForTesting(true)
+        XCTAssertEqual(applied.last?.mode, .auto)
+        XCTAssertEqual(applied.last?.heldKind, .dark, "the held pick is remembered while following the system")
+        // Through the defaults, not the struct handed to `apply`: the memory
+        // the switch relies on across a relaunch is the stored one.
+        XCTAssertEqual(Prefs.appearance.heldKind, .dark, "the held kind is not written, so a relaunch forgets it")
+        XCTAssertEqual(controller.themeCardShapeForTesting, "slots")
+        XCTAssertEqual(applied.last?.lightTheme, "paper")
+        Prefs.appearance = Prefs.appearance.setting("slate", for: .dark)
+        controller.chooseModeForTesting(.dark)
 
         controller.removeThemeForTesting("slate")
         XCTAssertEqual(changed, 1, "the app is told the library changed under it")
         XCTAssertEqual(applied.last?.darkTheme, nil, "the slot naming the removed theme is cleared")
         XCTAssertEqual(applied.last?.lightTheme, "paper")
         XCTAssertEqual(store.list().map(\.id), ["paper"], "removed from disk, not only from the strip")
-        XCTAssertEqual(controller.themeChoicesForTesting, ["System", "Paper"])
+        XCTAssertEqual(controller.themeChoicesForTesting, ["macOS Light", "Paper"])
+
+        // The installed-themes picker: a sheet over a list this test
+        // controls, whose Add adds exactly the ticked ones. Held while it is
+        // up, for the reason the registry browser is.
+        let loose = root.appendingPathComponent("loose.json")
+        try ##"{ "name": "Loose", "type": "light", "colors": { "editor.background": "#fafafa" } }"##
+            .write(to: loose, atomically: true, encoding: .utf8)
+        let picker = try XCTUnwrap(controller.pickInstalledThemesForTesting([
+            ThemeSource(label: "Paper", uiTheme: "vs", url: a),
+            ThemeSource(label: "Loose", uiTheme: "vs", url: loose),
+        ]), "the picker's controls reach a live controller")
+        XCTAssertEqual(picker.rowsForTesting.map(\.alreadyAdded), [true, false], "Paper is in the library already")
+        XCTAssertEqual(picker.addTitleForTesting, "Add")
+        picker.toggleForTesting(1)
+        XCTAssertEqual(picker.addTitleForTesting, "Add 1")
+        picker.addForTesting()
+        XCTAssertEqual(store.list().map(\.id), ["loose", "paper"], "only the ticked theme was added")
+        XCTAssertEqual(applied.last?.darkTheme, "loose",
+                       "one theme added is one somebody wants to see, in the slot of the mode in force (dark)")
 
         // The registry browser: presented as a sheet, its controls still
         // reach its controller once `present` has returned, which is only
         // true while the settings window holds it (every reference the
         // sheet keeps is weak). Dismissed again so the window is left as it
         // was found.
-        XCTAssertTrue(controller.browseThemesForTesting(), "the sheet's controls reach a live controller")
+        // Over a fetch of this test's own, because the sheet asks the
+        // registry for its first page as it opens: the request goes to the
+        // seam, the answer fills the table, and the network is never touched.
+        var asked: [URL] = []
+        let page = #"{"extensions":[{"namespace":"n","name":"one","displayName":"One","version":"1.0.0","downloadCount":5,"files":{"download":"https://open-vsx.org/api/n/one/1.0.0/file/one.vsix"}}]}"#
+        let browser = try XCTUnwrap(controller.browseThemesForTesting(fetch: { url in
+            asked.append(url)
+            return (Data(page.utf8), HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+        }), "the sheet's controls reach a live controller")
+        let opened = XCTestExpectation(description: "the first page arrives")
+        Task { @MainActor in
+            while browser.resultCountForTesting == 0 { await Task.yield() }
+            opened.fulfill()
+        }
+        await fulfillment(of: [opened], timeout: 5)
+        XCTAssertEqual(asked.map(\.query), [OpenVsx.searchURL(query: "").query], "the first page is the empty query")
+        XCTAssertEqual(browser.resultCountForTesting, 1)
+        XCTAssertEqual(browser.statusForTesting, "The most downloaded themes on Open VSX. Search for more.")
         controller.dismissThemeBrowserForTesting()
 
         // Typography: the toolbar's own commands, to every window, with the
@@ -221,5 +294,101 @@ final class ThemeSurfacesTests: XCTestCase {
         XCTAssertEqual(Prefs.fontSize, min(200, before + 10))
         XCTAssertEqual(controller.fontSizeForTesting, "\(Prefs.fontSize)%")
         Prefs.fontSize = before
+    }
+}
+
+/// A theme card's remove button: where it is, when it is drawn, and what a
+/// click there does instead of picking.
+@MainActor
+final class ThemeCardRemoveTests: XCTestCase {
+    private func card(id: String?) -> ThemeStrip.ThemeCard {
+        let card = ThemeStrip.ThemeCard(id: id, kind: .light, title: id ?? "macOS Light",
+                                        palette: MiniWindowPalette(preview: ThemePreview.system(.light)))
+        card.frame = NSRect(x: 0, y: 0, width: ThemeStrip.ThemeCard.pictureSize.width + 6,
+                            height: ThemeStrip.ThemeCard.pictureSize.height + 38)
+        return card
+    }
+
+    func testAThemeCardShouldTakeARemoveInThePicturesTopTrailingCorner() throws {
+        let card = card(id: "paper")
+        let button = try XCTUnwrap(card.removeButtonRect)
+        let picture = NSRect(x: 3, y: card.bounds.height - ThemeStrip.ThemeCard.pictureSize.height - 3,
+                             width: ThemeStrip.ThemeCard.pictureSize.width, height: ThemeStrip.ThemeCard.pictureSize.height)
+        XCTAssertTrue(picture.contains(button), "the button sits on the picture, not off it")
+        XCTAssertEqual(button.maxX, picture.maxX - ThemeStrip.ThemeCard.removeInset)
+        XCTAssertEqual(button.maxY, picture.maxY - ThemeStrip.ThemeCard.removeInset)
+        XCTAssertEqual(card.actionForMeasurement(at: NSPoint(x: button.midX, y: button.midY)), "remove")
+        XCTAssertEqual(card.actionForMeasurement(at: NSPoint(x: picture.minX + 4, y: picture.minY + 4)), "pick",
+                       "the rest of the picture still picks")
+    }
+
+    func testASystemCardShouldHaveNothingToRemove() {
+        let card = card(id: nil)
+        XCTAssertNil(card.removeButtonRect)
+        XCTAssertEqual(card.actionForMeasurement(at: NSPoint(x: card.bounds.maxX - 8, y: card.bounds.maxY - 8)), "pick")
+    }
+
+    func testAClickOnTheButtonShouldRemoveWithoutAsking() {
+        let card = card(id: "paper")
+        var removed: [String] = []
+        var picked = 0
+        card.onRemove = { removed.append($0) }
+        card.onPick = { _, _ in picked += 1 }
+        let button = card.removeButtonRect!
+        card.press(at: NSPoint(x: button.midX, y: button.midY))
+        XCTAssertEqual(removed, ["paper"])
+        XCTAssertEqual(picked, 0, "a remove is not also a pick")
+        card.press(at: NSPoint(x: 10, y: card.bounds.height - 10))
+        XCTAssertEqual(picked, 1)
+        XCTAssertEqual(removed.count, 1)
+    }
+}
+
+/// Renders the Appearance pane in both of the theme card's shapes, for a
+/// person to look at. Off unless asked (`BIRTA_MAC_WRITE_SHOTS=1`), for the
+/// reason `WelcomeAppearanceTests.testWriteAppearanceShots` gives; written
+/// where `BIRTA_MAC_SHOTS_DIR` says, or to `/tmp`.
+@MainActor
+final class AppearancePaneShotTests: XCTestCase {
+    func testWriteAppearancePaneShots() throws {
+        try XCTSkipUnless(ProcessInfo.processInfo.environment["BIRTA_MAC_WRITE_SHOTS"] == "1")
+        let dir = URL(fileURLWithPath: ProcessInfo.processInfo.environment["BIRTA_MAC_SHOTS_DIR"] ?? "/tmp", isDirectory: true)
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("pane-shots-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let store = ThemeStore(directory: root)
+        for (name, type, paper) in [("Paper", "light", "#f7f3e8"), ("Slate", "dark", "#182529"), ("Harlan Terracotta", "light", "#f1ebe0")] {
+            let file = root.appendingPathComponent("\(name).json")
+            try "{ \"name\": \"\(name)\", \"type\": \"\(type)\", \"colors\": { \"editor.background\": \"\(paper)\" } }"
+                .write(to: file, atomically: true, encoding: .utf8)
+            try store.importThemes(from: file)
+        }
+        let saved = Prefs.appearance
+        defer { Prefs.appearance = saved }
+        for (shape, settings) in [("slots", AppearanceSettings(lightTheme: "paper", darkTheme: "slate")),
+                                  ("held", AppearanceSettings(lightTheme: "paper", darkTheme: "slate").holding("slate", kind: .dark))] {
+            Prefs.appearance = settings
+            let controller = SettingsWindowController(
+                flavour: .release, onHotkeyChange: { 0 }, onChange: { _ in }, onChangeEverywhere: {},
+                onShowWelcome: {}, onCheckForUpdates: {}, themeStore: store,
+                onAppearanceChange: { Prefs.appearance = $0 }, onThemesChanged: {}, onEditorCommand: { _ in })
+            controller.selectTabForTesting("appearance")
+            let content = try XCTUnwrap(controller.window?.contentView)
+            content.layoutSubtreeIfNeeded()
+            let bounds = content.bounds
+            var data: Data?
+            NSAppearance(named: .aqua)!.performAsCurrentDrawingAppearance {
+                let pdf = content.dataWithPDF(inside: bounds)
+                guard let image = NSImage(data: pdf) else { return }
+                let rendered = NSImage(size: bounds.size)
+                rendered.lockFocus()
+                image.draw(in: bounds)
+                rendered.unlockFocus()
+                data = rendered.tiffRepresentation
+                    .flatMap { NSBitmapImageRep(data: $0) }
+                    .flatMap { $0.representation(using: .png, properties: [:]) }
+            }
+            try XCTUnwrap(data).write(to: dir.appendingPathComponent("appearance-pane-\(shape).png"))
+            controller.window?.close()
+        }
     }
 }

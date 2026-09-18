@@ -5,8 +5,9 @@ import BirtaWriterCore
 /// the results, and Add on the one you want, which fetches its VSIX and
 /// hands it to the store exactly as a file chosen from disk is.
 ///
-/// Every request here is one somebody asked for by typing and pressing
-/// Return, or by pressing Add, to the registry's host (`OpenVsx.host`) and,
+/// Every request here is one somebody asked for by opening the sheet (its
+/// first page), by typing and pressing Return, or by pressing Add, to the
+/// registry's host (`OpenVsx.host`) and,
 /// for the package, to wherever the registry redirects the file (its own
 /// file host today), carrying the words typed and nothing else; nothing
 /// runs on a timer and nothing rides the network switch, for the reason
@@ -34,6 +35,14 @@ final class ThemeBrowserController: NSObject, NSTableViewDataSource, NSTableView
     /// What was added this session, reported once when the sheet closes.
     private var added: [ThemeSummary] = []
     private var failures: [String] = []
+
+    /// The search request, as one closure a check can replace: what a test
+    /// needs to vary is the answer, not the session, and a controller built
+    /// by a test must be able to make no request at all (`Updater.fetch`
+    /// is the same seam for the same reason).
+    var fetch: (URL) async throws -> (Data, URLResponse) = { url in
+        try await URLSession.shared.data(from: url, delegate: RedirectGuard())
+    }
 
     init(store: ThemeStore, onAdded: @escaping ([ThemeSummary], [String]) -> Void) {
         self.store = store
@@ -105,19 +114,25 @@ final class ThemeBrowserController: NSObject, NSTableViewDataSource, NSTableView
     func present(over window: NSWindow) {
         window.beginSheet(sheet) { _ in }
         sheet.makeFirstResponder(search)
+        // The sheet opens onto the registry's most downloaded themes rather
+        // than onto an empty table: a list to scroll is the invitation, and
+        // an empty box under a search field reads as a browser that found
+        // nothing. This is the one request here nobody typed for, and it is
+        // still one they asked for by opening the sheet.
+        runSearch()
     }
 
     // MARK: searching
 
     @objc private func runSearch() {
         let query = search.stringValue.trimmingCharacters(in: .whitespaces)
-        guard !query.isEmpty else { return }
         task?.cancel()
-        status.stringValue = "Searching…"
+        status.stringValue = query.isEmpty ? "Loading the most downloaded themes…" : "Searching…"
         let url = OpenVsx.searchURL(query: query)
+        let fetch = self.fetch
         task = Task { [weak self] in
             do {
-                let (data, response) = try await URLSession.shared.data(from: url, delegate: RedirectGuard())
+                let (data, response) = try await fetch(url)
                 guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
                     throw NSError(domain: "OpenVsx", code: 2,
                                   userInfo: [NSLocalizedDescriptionKey: "The registry did not answer."])
@@ -135,7 +150,9 @@ final class ThemeBrowserController: NSObject, NSTableViewDataSource, NSTableView
     private func show(_ themes: [OpenVsxTheme], query: String) {
         results = themes
         table.reloadData()
-        status.stringValue = themes.isEmpty ? "Nothing on Open VSX matches \(query)." : ""
+        status.stringValue = query.isEmpty
+            ? (themes.isEmpty ? "Open VSX listed no themes." : "The most downloaded themes on Open VSX. Search for more.")
+            : (themes.isEmpty ? "Nothing on Open VSX matches \(query)." : "")
         addButton.isEnabled = false
     }
 
@@ -182,6 +199,8 @@ final class ThemeBrowserController: NSObject, NSTableViewDataSource, NSTableView
     /// check that whoever presented it is holding it.
     var isWiredForTesting: Bool { search.target === self && table.dataSource === self }
     func dismissForTesting() { finish() }
+    var statusForTesting: String { status.stringValue }
+    var resultCountForTesting: Int { results.count }
 
     /// The package's redirect, decided by `OpenVsx.redirect`: this only
     /// forwards, so the rule is checkable with no session.
