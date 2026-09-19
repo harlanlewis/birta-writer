@@ -323,16 +323,26 @@ export async function run({ page, check, baseUrl }) {
     // whichever surface did the flipping, and it is what actually breaks if a
     // control ever grows a private copy of the state.
     const CHECKS_MENU = ".tb-checks-menu";
+    const GEAR = 'button[aria-label="Settings"]';
+    const CHECKS_ROW = ".tb-settings-menu > .tb-submenu-wrap > .tb-submenu-row";
+    // Checks is a submenu of the gear rather than a button on the bar, so
+    // reaching it is two openings rather than one. The gesture is the same at
+    // both levels: ArrowDown on a trigger opens it and focuses its first row.
+    // Keyboard, not hover — hover-opening is flaky headless (e2e/checksMenu).
     const openChecksMenu = async () => {
-        // Keyboard, not hover — hover-opening is flaky headless (e2e/checksMenu).
-        await page.locator('button[aria-label="Checks"]').focus();
+        await page.locator(GEAR).focus();
+        await page.keyboard.press("ArrowDown");
+        await page.waitForSelector(".tb-settings-menu", { state: "visible", timeout: 5000 });
+        await page.locator(CHECKS_ROW).focus();
         await page.keyboard.press("ArrowDown");
         await page.waitForSelector(CHECKS_MENU, { state: "visible", timeout: 5000 });
         await page.waitForTimeout(100);
     };
     const closeChecksMenu = async () => {
-        // Only if it is still open — moving the pointer to the sidebar may have
-        // closed it already, and a stray Escape would reach the editor instead.
+        // Only if it is still open — clicking a row moves focus to the sidebar,
+        // and both menus close on focusout, so at both call sites here this
+        // presses nothing. It is kept for the call site that does leave one up,
+        // and a stray Escape would reach the editor instead.
         if (await page.locator(CHECKS_MENU).isVisible()) {
             await page.keyboard.press("Escape");
             await page.waitForTimeout(100);
@@ -442,24 +452,27 @@ export async function run({ page, check, baseUrl }) {
 
     // ── Toolbar "Show issues" reveals the Proofreading tab ────────────────
     await switchTab(page, "Contents"); // move off Proofreading
-    const checksBtn = page.locator('.editor-topbar [aria-label="Checks"]');
-    if (await checksBtn.count()) {
-        await checksBtn.hover();
-        await page.waitForSelector(".tb-checks-menu .tb-checks-action", { state: "visible", timeout: 5000 });
-        await page.click(".tb-checks-menu .tb-checks-action");
-        await page.waitForTimeout(200);
-        const proofActive = await page.$$eval(".toc-tab",
-            (els) => els.some((el) => el.textContent === "Proofread" && el.classList.contains("toc-tab--active")));
-        check("toolbar 'Show issues' switches the sidebar to the Proofreading tab", proofActive);
-        // MAR-294: "Show issues" means "take me to the issues" — the action
-        // moves focus into the freshly shown list, not just the tab state.
-        check("'Show issues' moves keyboard focus into the sidebar",
-            await page.evaluate(() => !!document.activeElement?.closest(".toc-panel")),
-            await page.evaluate(() => document.activeElement?.className ?? "none"));
-    } else {
-        check("toolbar 'Show issues' switches the sidebar to the Proofreading tab", true,
-            "SKIPPED — Checks button not rendered in this harness");
-    }
+    // Through the gear, like every other opening here. This used to hover a
+    // `[aria-label="Checks"]` button on the bar and skip itself when it found
+    // none, which is what it did once Checks became a submenu: two checks
+    // reported a pass having driven nothing. So there is no skip branch, and
+    // the instrument asserts it reached the row before reading what clicking
+    // it did.
+    await openChecksMenu();
+    const actionRow = page.locator(`${CHECKS_MENU} .tb-checks-action`);
+    const actionCount = await actionRow.count();
+    check("the Checks submenu carries the 'Show issues' action to click",
+        actionCount === 1, String(actionCount));
+    await actionRow.click();
+    await page.waitForTimeout(200);
+    const proofActive = await page.$$eval(".toc-tab",
+        (els) => els.some((el) => el.textContent === "Proofread" && el.classList.contains("toc-tab--active")));
+    check("toolbar 'Show issues' switches the sidebar to the Proofreading tab", proofActive);
+    // MAR-294: "Show issues" means "take me to the issues" — the action
+    // moves focus into the freshly shown list, not just the tab state.
+    check("'Show issues' moves keyboard focus into the sidebar",
+        await page.evaluate(() => !!document.activeElement?.closest(".toc-panel")),
+        await page.evaluate(() => document.activeElement?.className ?? "none"));
 
     // ── MAR-294: the Focus Review Sidebar command is the keyboard entry ────
     // Tab can never reach the panel from the caret (it is the editor's indent

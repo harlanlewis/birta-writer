@@ -201,12 +201,17 @@ final class SettingsFormTests: XCTestCase {
 
     func testTheAppearancePaneShouldLeadWithTypeThenTheSwitchThenTheThemes() {
         XCTAssertEqual(SettingsForm.rows(of: SettingsForm.appearance),
-                       [.font, .fontSize, .contentWidth, .followSystemAppearance, .theme,
-                        .transparentSidebar, .transparentToc, .accent, .tint])
+                       [.font, .fontSize, .contentWidth, .formattingRow, .followSystemAppearance,
+                        .theme, .transparentSidebar, .transparentToc, .accent, .tint])
         // Content Width is in the typography card rather than one of its own:
         // the measure the text is read at is the same question as the face and
         // the size, asked one step out.
         XCTAssertEqual(SettingsForm.appearance.groups.first?.rows, [.font, .fontSize, .contentWidth])
+        // The formatting row is a card of its own directly under that one, and
+        // the flattened order above cannot say so: it adds or takes away a
+        // piece of the window rather than restyling the text, so in the
+        // typography card it would read as a fourth property of the type.
+        XCTAssertEqual(SettingsForm.appearance.groups.dropFirst().first?.rows, [.formattingRow])
         // And the colour mod is a CARD of its own at the foot, which the row
         // order above cannot say: `rows(of:)` flattens the cards away, so a
         // pane that had put all four in one card would read identically here.
