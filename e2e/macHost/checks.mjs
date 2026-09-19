@@ -536,10 +536,14 @@ export async function run({ page, check, baseUrl }) {
     // a real page can answer is whether the two holders actually received it.
     check("mac: the top bar's left zone is empty, leaving the titlebar row to the window",
         mac.leftZone.length === 0, JSON.stringify(mac.leftZone));
-    // No `files` item, though the profile declares `projectFiles`: this
-    // surface carries the explorer's control in its own window frame
-    // (`filesToggleInHostChrome`), so the bar withdraws the button while the
-    // command it ran stays live everywhere else.
+    // Two absences here, and they are not the same kind. No `files` item,
+    // though the profile declares `projectFiles`: this surface carries the
+    // explorer's control in its own window frame (`filesToggleInHostChrome`),
+    // so the bar withdraws the button while the command it ran stays live
+    // everywhere else, and VS Code still draws one. No `styleCheck` either,
+    // and that one is not this surface's doing: Checks is a submenu of the
+    // gear on every surface now, so the item is gone from the registry rather
+    // than withdrawn from this bar.
     check("mac: the top bar keeps only the controls that read the document",
         JSON.stringify(mac.rightZone) === JSON.stringify(["find", "settings", "toc"]),
         JSON.stringify(mac.rightZone));
