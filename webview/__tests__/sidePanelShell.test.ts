@@ -5,12 +5,20 @@
  * the question is whether the extraction kept the TOC's numbers.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { createSidePanelShell, SIDE_PANEL_INSET, type SidePanelShellOptions } from "../components/sidePanel/shell";
+import { createSidePanelShell, SIDE_PANEL_INSET, type SidePanelShell, type SidePanelShellOptions } from "../components/sidePanel/shell";
 import { TAB_EDGE_INSET, TAB_TOP_INSET } from "../components/sidePanel/revealTab";
 import { FLYOUT_EDGE, FLYOUT_WIDTH } from "../components/sidePanel/flyout";
 import type { EventManager } from "../eventManager";
 
-const fakeEventManager = { onWindow: vi.fn(() => () => {}) } as unknown as EventManager;
+// Registers for real, so a test can drive the shell through the same
+// `resize` the window sends it. A stub that recorded the call and listened to
+// nothing would leave every resize path here untested while looking wired.
+const fakeEventManager = {
+    onWindow: vi.fn((type: string, handler: EventListener) => {
+        window.addEventListener(type, handler);
+        return () => window.removeEventListener(type, handler);
+    }),
+} as unknown as EventManager;
 
 function addTopbar(bottom: number): void {
     const topbar = document.createElement("div");
@@ -31,7 +39,7 @@ function filesOptions(overrides: Partial<SidePanelShellOptions> = {}): SidePanel
         eventManager: fakeEventManager,
         initialRight: false,
         width: { cssVar: "--files-width", default: 220, min: 180, max: 480, onCommit: vi.fn() },
-        dockedMinContentWidth: 600,
+        narrow: { kind: "float", minContentWidth: 600 },
         trigger: { kind: "tab", tooltip: "Show files" },
         openOnDock: () => true,
         renderBody: vi.fn(),
@@ -135,39 +143,55 @@ describe("side-panel shell: open state and body classes", () => {
 
 describe("side-panel shell: docked vs overlay from the viewport", () => {
     const originalInnerWidth = window.innerWidth;
+    /**
+     * Every shell this block builds, torn down after each test.
+     *
+     * A live shell keeps a window listener and goes on writing the width
+     * variable that every shell in this file shares, so one left behind
+     * answers the NEXT test's resize. That is a test reading another test's
+     * panel, and it looks exactly like the code under test being wrong.
+     */
+    const built: SidePanelShell[] = [];
+    function build(options: SidePanelShellOptions): SidePanelShell {
+        const shell = createSidePanelShell(options);
+        built.push(shell);
+        return shell;
+    }
 
     beforeEach(() => {
         vi.clearAllMocks();
         document.body.className = "";
         document.body.innerHTML = "";
+        document.documentElement.style.cssText = "";
     });
 
     afterEach(() => {
+        while (built.length > 0) { built.pop()?.dispose(); }
         setViewportWidth(originalInnerWidth);
     });
 
     it("a viewport that holds the drawer plus the content column should dock", () => {
         setViewportWidth(820); // 220 + 600 exactly
-        const shell = createSidePanelShell(filesOptions());
+        const shell = build(filesOptions());
         expect(shell.settleMode()).toBe("docked");
     });
 
     it("a viewport one pixel short should float", () => {
         setViewportWidth(819);
-        const shell = createSidePanelShell(filesOptions());
+        const shell = build(filesOptions());
         expect(shell.settleMode()).toBe("overlay");
     });
 
     it("a neighbour's reserve should be taken off the viewport before the decision", () => {
         setViewportWidth(900); // room for 220 + 600, until a neighbour takes 100
-        const shell = createSidePanelShell(filesOptions({ neighborReserve: () => 100 }));
+        const shell = build(filesOptions({ neighborReserve: () => 100 }));
         expect(shell.settleMode()).toBe("overlay");
     });
 
     it("the neighbour should be told when, and only when, the docked footprint moves", () => {
         setViewportWidth(1200);
         const onReserveChange = vi.fn();
-        const shell = createSidePanelShell(filesOptions({ onReserveChange }));
+        const shell = build(filesOptions({ onReserveChange }));
         shell.settleMode();
         expect(shell.dockedReserve()).toBe(0);
         shell.open();
@@ -190,7 +214,7 @@ describe("side-panel shell: docked vs overlay from the viewport", () => {
     it("a neighbour opening should be able to float this panel through checkResponsiveMode", () => {
         setViewportWidth(900); // room for 220 + 600 alone
         let neighbour = 0;
-        const shell = createSidePanelShell(filesOptions({ neighborReserve: () => neighbour }));
+        const shell = build(filesOptions({ neighborReserve: () => neighbour }));
         shell.settleMode();
         shell.open();
         expect(shell.mode()).toBe("docked");
@@ -206,7 +230,7 @@ describe("side-panel shell: docked vs overlay from the viewport", () => {
     it("a responsive flip to docked should ask the composer whether to reopen", () => {
         setViewportWidth(700);
         const openOnDock = vi.fn(() => true);
-        const shell = createSidePanelShell(filesOptions({ openOnDock }));
+        const shell = build(filesOptions({ openOnDock }));
         document.body.appendChild(shell.panel);
         shell.settleMode();
         expect(shell.isOpen()).toBe(false);
@@ -219,10 +243,121 @@ describe("side-panel shell: docked vs overlay from the viewport", () => {
         expect(document.body.classList.contains("files-open")).toBe(true);
     });
 
+    it("a drawer that holds the dock should stay docked at a width that would float a floating one", () => {
+        setViewportWidth(300); // narrower than the drawer plus any content at all
+        const float = build(filesOptions());
+        const hold = build(filesOptions({ narrow: { kind: "hold" } }));
+        // Both arms, so a viewport that floated nothing cannot pass this by
+        // agreeing with itself: the pair is the measurement.
+        expect(float.settleMode()).toBe("overlay");
+        expect(hold.settleMode()).toBe("docked");
+    });
+
+    it("a drawer that holds the dock should not close itself when the viewport narrows", () => {
+        setViewportWidth(1200);
+        const openOnDock = vi.fn(() => true);
+        const shell = build(filesOptions({ narrow: { kind: "hold" }, openOnDock }));
+        document.body.appendChild(shell.panel);
+        shell.settleMode();
+        shell.open();
+
+        setViewportWidth(400);
+        shell.checkResponsiveMode();
+
+        expect(shell.mode()).toBe("docked");
+        expect(shell.isOpen()).toBe(true);
+        expect(document.body.classList.contains("files-open")).toBe(true);
+        // Never asked, because the mode never moved: nothing reopened it, so
+        // what is on screen is the state the reader left.
+        expect(openOnDock).not.toHaveBeenCalled();
+    });
+
+    it("a drawer that holds the dock should not be drawn wider than its window", () => {
+        setViewportWidth(1200);
+        const onCommit = vi.fn();
+        const shell = build(filesOptions({
+            narrow: { kind: "hold" },
+            width: { cssVar: "--files-width", default: 220, min: 180, max: 480, onCommit },
+        }));
+        document.body.appendChild(shell.panel);
+        shell.settleMode();
+        shell.open();
+        shell.setWidth(480); // the reader drags it wide
+        const wide = document.documentElement.style.getPropertyValue("--files-width");
+
+        setViewportWidth(400); // ...and then makes the window narrower than it
+        window.dispatchEvent(new Event("resize"));
+
+        const drawn = parseInt(document.documentElement.style.getPropertyValue("--files-width"), 10);
+        expect(wide).toBe("480px");
+        expect(drawn).toBeLessThan(400);
+        // A strip of document is still there to click into, and the drawer's
+        // own reserve agrees with what is drawn rather than with what was
+        // stored: the content's margin reads the same variable.
+        expect(400 - drawn).toBeGreaterThanOrEqual(100);
+        expect(shell.dockedReserve()).toBe(drawn);
+        // The reader's width is kept rather than rewritten, so the room
+        // coming back brings it back (below), and nothing was committed to
+        // the host: a window resize is not the reader settling on a width.
+        expect(onCommit).not.toHaveBeenCalled();
+        setViewportWidth(1200);
+        window.dispatchEvent(new Event("resize"));
+        expect(document.documentElement.style.getPropertyValue("--files-width")).toBe("480px");
+    });
+
+    it("a drag against the pin should store the width that was drawn", () => {
+        // The pair to the test above: there the window moves and the reader's
+        // width is kept, here the READER moves and what they could see is what
+        // is kept. Without it the shell holds a width nothing ever drew.
+        setViewportWidth(400);
+        const onCommit = vi.fn();
+        const shell = build(filesOptions({
+            narrow: { kind: "hold" },
+            width: { cssVar: "--files-width", default: 220, min: 180, max: 480, onCommit },
+        }));
+        document.body.appendChild(shell.panel);
+        shell.settleMode();
+        shell.open();
+        const handle = shell.panel.querySelector<HTMLElement>(".side-panel-resize-handle")!;
+
+        handle.dispatchEvent(mouse("mousedown", 220));
+        document.dispatchEvent(mouse("mousemove", 460)); // drag well past the pin
+        document.dispatchEvent(mouse("mouseup", 460));
+
+        const drawn = parseInt(document.documentElement.style.getPropertyValue("--files-width"), 10);
+        expect(drawn).toBe(400 - 120);
+        expect(onCommit).toHaveBeenCalledWith(drawn);
+        expect(shell.width()).toBe(drawn);
+    });
+
+    it("a floating drawer's width should be untouched by the viewport", () => {
+        // The arm that says the clamp above belongs to the policy rather than
+        // to the shell: the same narrow window leaves a floating drawer's
+        // width exactly where the reader put it.
+        setViewportWidth(1200);
+        const shell = build(filesOptions());
+        document.body.appendChild(shell.panel);
+        shell.settleMode();
+        shell.open();
+        shell.setWidth(420);
+        setViewportWidth(400);
+        window.dispatchEvent(new Event("resize"));
+        expect(document.documentElement.style.getPropertyValue("--files-width")).toBe("420px");
+    });
+
+    it("a neighbour's reserve should not float a drawer that holds the dock either", () => {
+        setViewportWidth(900);
+        const shell = build(filesOptions({
+            narrow: { kind: "hold" },
+            neighborReserve: () => 800,
+        }));
+        expect(shell.settleMode()).toBe("docked");
+    });
+
     it("a responsive flip to overlay should close the panel and hand focus back", () => {
         setViewportWidth(1200);
         const focusEditor = vi.fn();
-        const shell = createSidePanelShell(filesOptions({ focusEditor }));
+        const shell = build(filesOptions({ focusEditor }));
         document.body.appendChild(shell.panel);
         shell.settleMode();
         shell.open();
@@ -432,7 +567,7 @@ describe("side-panel shell: the table of contents' own numbers", () => {
             eventManager: fakeEventManager,
             initialRight: false,
             width: { cssVar: "--toc-width", default: 260, min: 240, max: 600, onCommit: vi.fn() },
-            dockedMinContentWidth: 720,
+            narrow: { kind: "float", minContentWidth: 720 },
             trigger: { kind: "tab", tooltip: "Show table of contents" },
             openOnDock: () => false,
             renderBody: vi.fn(),

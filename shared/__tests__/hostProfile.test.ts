@@ -108,15 +108,16 @@ describe("HOST_PROFILES", () => {
         // The Mac shell answers spelling and grammar with the system's own
         // checker (`SpellService`); it saves a pasted image beside the document
         // and serves it back over its own scheme, so it owns an image store;
-        // its window has a sidebar to dock the outline in; it has a Settings
+        // its window has a sidebar to dock the outline in and a frame the
+        // reader can drag wider than a reading measure; it has a Settings
         // window of its own; it runs a coding agent as a child process; and
         // it can open a window on a directory and list it for the page's file
         // explorer. It provides none of the others: there is no text editor
         // to switch to, no VS Code settings or keybindings UI, no read-only
-        // owner, no editor font of its own, and no pane wide enough for a
-        // reading measure to be a choice.
+        // owner, and no editor font of its own.
         expect(HOST_PROFILES.mac).toEqual(
-            ["spellAndGrammar", "imageUpload", "toc", "appPreferences", "agent", "projectFiles", "stripTooltip"]);
+            ["spellAndGrammar", "imageUpload", "toc", "contentMeasure", "appPreferences", "agent",
+             "projectFiles", "stripTooltip"]);
     });
 
     it("every capability named on a command should be in ALL_HOST_CAPABILITIES", () => {

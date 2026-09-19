@@ -370,6 +370,21 @@ final class ThemeSurfacesTests: XCTestCase {
         XCTAssertEqual(Prefs.fontSize, min(200, before + 10))
         XCTAssertEqual(controller.fontSizeForTesting, "\(Prefs.fontSize)%")
         Prefs.fontSize = before
+
+        // Content width: the same shape, and the same two reasons for it. The
+        // command is the PAGE'S, so the pane and the toolbar's gear menu run
+        // one implementation; the preference is written here as well, so a
+        // window opened before the round trip lands boots on the answer just
+        // given.
+        let width = Prefs.contentWidth
+        controller.chooseContentWidthForTesting("Fixed")
+        XCTAssertEqual(commands.last, "contentWidthFixed")
+        XCTAssertEqual(Prefs.contentWidth, "fixed")
+        XCTAssertEqual(controller.contentWidthForTesting, "Fixed")
+        controller.chooseContentWidthForTesting("Full")
+        XCTAssertEqual(commands.last, "contentWidthFull")
+        XCTAssertEqual(Prefs.contentWidth, "full")
+        Prefs.contentWidth = width
     }
 }
 

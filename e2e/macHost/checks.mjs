@@ -459,11 +459,12 @@ export async function run({ page, check, baseUrl }) {
     // a real page can answer is whether the two holders actually received it.
     check("mac: the top bar's left zone is empty, leaving the titlebar row to the window",
         mac.leftZone.length === 0, JSON.stringify(mac.leftZone));
-    // `files` is the file explorer's pinned button (MAR-460): the profile
-    // declares `projectFiles`, so the bar carries it beside the TOC's even in
-    // a single-file window, where the command it runs is inert.
+    // No `files` item, though the profile declares `projectFiles`: this
+    // surface carries the explorer's control in its own window frame
+    // (`filesToggleInHostChrome`), so the bar withdraws the button while the
+    // command it ran stays live everywhere else.
     check("mac: the top bar keeps only the controls that read the document",
-        JSON.stringify(mac.rightZone) === JSON.stringify(["styleCheck", "find", "settings", "files", "toc"]),
+        JSON.stringify(mac.rightZone) === JSON.stringify(["styleCheck", "find", "settings", "toc"]),
         JSON.stringify(mac.rightZone));
     check("mac: every editing control is in the dock instead",
         ["format", "bold", "italic", "link", "listMenu", "quote", "codeBlock", "table", "image"]
@@ -578,12 +579,18 @@ export async function run({ page, check, baseUrl }) {
     check("mac: and neither layout row, because the arrangement is not the user's",
         !gear.labels.includes("Customize Toolbar") && !gear.labels.includes("Hide Toolbar"),
         JSON.stringify(gear.labels));
-    // Editor font needs an editor font to inherit and the width segments need
-    // a pane wide enough for a measure to be a choice; the shell declares
-    // neither, so neither row is here even though both would be in VS Code.
-    check("mac: the gear offers no Editor-font row and no width segments",
-        !gear.labels.includes("Editor font") && !gear.hasWidthRow,
-        JSON.stringify({ labels: gear.labels, hasWidthRow: gear.hasWidthRow }));
+    // Editor font needs an editor font to inherit, which a window with no
+    // editor behind its page has none of, so that row is absent here though
+    // it is there in VS Code.
+    check("mac: the gear offers no Editor-font row",
+        !gear.labels.includes("Editor font"), JSON.stringify(gear.labels));
+    // The width segments ARE here: the shell declares `contentMeasure`,
+    // because its window is one the reader can drag wider than a comfortable
+    // measure. Both halves of that pair are asserted, one line apart, because
+    // each is a capability doing its job and a build that gated everything
+    // would pass the first alone.
+    check("mac: the gear offers the width segments, because the window has a measure to choose",
+        gear.hasWidthRow, JSON.stringify({ labels: gear.labels, hasWidthRow: gear.hasWidthRow }));
     check("mac: the size stepper came with them", gear.hasSizeRow, JSON.stringify(gear.kinds));
 
     // The point of moving the rows rather than rebuilding them: the palette

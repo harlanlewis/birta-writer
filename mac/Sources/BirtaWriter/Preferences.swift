@@ -1208,7 +1208,7 @@ enum Prefs {
             // Withdrawing `projectFiles` is the same shape: a window on a loose
             // file is a host with no directory to provide, so the page it
             // mounts is never offered the explorer (MAR-457).
-            hostCapabilities: ["spellAndGrammar", "imageUpload", "toc", "appPreferences", "agent", "projectFiles", "stripTooltip"]
+            hostCapabilities: ["spellAndGrammar", "imageUpload", "toc", "contentMeasure", "appPreferences", "agent", "projectFiles", "stripTooltip"]
                 .filter { $0 != "agent" || agentAvailable }
                 .filter { $0 != "projectFiles" || explorerRoot != nil },
             viewStateJSON: viewState,
