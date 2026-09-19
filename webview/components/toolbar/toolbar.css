@@ -1052,3 +1052,50 @@ body:is(.toc-open, .toc-overlay-open) .tb-toc-btn {
 body.toc-right .tb-toc-btn svg {
     transform: scaleX(-1);
 }
+
+/* ─── Submenu rows ───
+   A row that opens a panel beside it (`createSubmenuRow` in menuPrimitives.ts).
+   The wrap is a plain block rather than the positioned box the bar's dropdowns
+   use: the panel takes viewport coordinates from `placeSubmenu`, so it needs
+   no positioned ancestor, and a block stretches to the menu's width so the row
+   inside it looks like every sibling row. */
+.tb-submenu-wrap {
+    display: block;
+}
+
+/* No gap bridge on a submenu wrap.
+   The bridge (`.tb-fmt-wrap.tb-menu-open::after`, above) is a transparent
+   strip UNDER a wrap, so the pointer does not leave it while crossing the gap
+   down to a dropdown. A submenu has no such crossing: it opens beside its row
+   with no gap, and its panel is a DOM child of this wrap, so the pointer is
+   never outside it on the way in.
+   Left in place it is worse than useless. It is `position: absolute` with no
+   `pointer-events: none`, and this wrap sits inside a menu that is itself
+   positioned, so the strip resolves against THAT box: a full-width band across
+   the bottom of the gear, over whichever row is last, swallowing its clicks
+   for as long as the submenu is open. */
+.tb-submenu-wrap.tb-menu-open::after {
+    content: none;
+}
+
+.tb-submenu-row {
+    cursor: default;
+}
+
+/* The label takes the slack so the chevron sits at the trailing edge, where a
+   native submenu puts it and where the other rows put their chord. */
+.tb-submenu-row-label {
+    flex: 1 1 auto;
+}
+
+.tb-submenu-row-chevron {
+    display: inline-flex;
+    align-items: center;
+    flex: 0 0 auto;
+    opacity: 0.7;
+
+    & svg {
+        width: 14px;
+        height: 14px;
+    }
+}

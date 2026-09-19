@@ -146,6 +146,7 @@ shared/fixedChords.ts                         The chords the editor binds itself
 webview/ui/fullscreenSurface.ts               THE fullscreen shell (grounds + control geography) every lightbox composes
 webview/ui/exclusiveChrome.ts                 One piece of transient chrome out at a time: which surfaces join, and why a working surface and a docked panel do not
 webview/ui/hoverSelection.ts                  Hover and the arrows share one menu highlight; the guard that stops a still pointer taking it back
+webview/ui/proximityReveal.ts                 Chrome that comes up as the pointer APPROACHES it; why hover and focus stay in CSS and only the band is measured
 webview/ui/icons.ts                           SVG icons
 webview/ui/tooltip.ts                         Tooltip component
 webview/ui/toast.ts                           THE transient-message surface: one node per surface class, reused; tone and dwell are the caller's

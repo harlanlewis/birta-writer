@@ -1208,7 +1208,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding, 
                 themeStore: windows.themeStore,
                 onAppearanceChange: { [weak self] settings in self?.windows.setAppearance(settings) },
                 onThemesChanged: { [weak self] in self?.windows.themesChanged() },
-                onEditorCommand: { [weak self] id in self?.windows.runEditorCommandEverywhere(id) })
+                onEditorCommand: { [weak self] id in self?.windows.runEditorCommandEverywhere(id) },
+                onFormattingRowChange: { [weak self] on in
+                    self?.windows.setFormattingRowExpanded(on)
+                })
         }
         NSApp.activate(ignoringOtherApps: true)
         settingsWindow?.showWindow(nil)

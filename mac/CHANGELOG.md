@@ -12,6 +12,11 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ## [Unreleased]
 
+### Changed
+
+- The formatting toolbar in Birta Writer for Mac is turned on in Settings > Appearance > Formatting toolbar. The T button that opened it from the title bar is gone. The setting is off by default, as the row was, and it still applies to every window and tab at once. Whether you want a row of formatting controls is a question asked once, and a button on the bar of every window was spending permanent space on it; the controls it holds are in the Format menu, the slash menu and the command palette whether the row is showing or not.
+- The formatting row, when it is showing, is grouped and quiet. A hairline separates the paragraph style, the inline marks, the block containers, the inserts and Clear Formatting, so the row can be scanned in five pieces instead of read one glyph at a time. The row is also drawn back until you move the pointer toward it, or focus a control in it with the keyboard, so it stays out of the way while you write.
+
 ---
 
 ## [2026.919.0] - 2026, September 19

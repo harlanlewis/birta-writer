@@ -386,3 +386,87 @@ describe("wireHoverMenu under barMenusOnClick", () => {
         expect(parts.menu.style.display).toBe("flex");
     });
 });
+
+describe("wireHoverMenu with a menu nested inside another (MAR-486)", () => {
+    beforeEach(() => {
+        vi.useFakeTimers();
+        while (closeTopmostLayer()) { /* drain */ }
+    });
+    afterEach(() => { vi.useRealTimers(); document.body.innerHTML = ""; });
+
+    /**
+     * A parent menu holding two ordinary rows and a nested menu whose own
+     * panel holds two more. This is the overflow menu's shape and the Checks
+     * submenu's shape, and it is the one arrangement where "which rows are
+     * mine" has a wrong answer that looks right.
+     */
+    function nested(): {
+        parent: HTMLElement; child: HTMLElement; button: HTMLButtonElement; ownRows: HTMLElement[];
+    } {
+        const wrap = document.createElement("div");
+        const button = document.createElement("button");
+        const parent = document.createElement("div");
+        parent.style.display = "none";
+
+        const mkRow = (text: string): HTMLElement => {
+            const r = document.createElement("div");
+            r.className = "tb-fmt-item";
+            r.textContent = text;
+            return r;
+        };
+        const a = mkRow("a");
+        const b = mkRow("b");
+
+        const childWrap = document.createElement("div");
+        const childRow = mkRow("submenu");
+        const child = document.createElement("div");
+        child.style.display = "none";
+        child.append(mkRow("x"), mkRow("y"));
+        childWrap.append(childRow, child);
+        wireHoverMenu(childWrap, childRow, child);
+
+        parent.append(a, b, childWrap);
+        wrap.append(button, parent);
+        document.body.appendChild(wrap);
+        wireHoverMenu(wrap, button, parent);
+        return { parent, child, button, ownRows: [a, b, childRow] };
+    }
+
+    it("the parent's keyboard walk should skip a nested menu's rows, open or shut", () => {
+        // The failure this guards is silent in both directions. The nested
+        // rows carry no inline display of their own — only their PANEL is
+        // hidden — so a walk that filtered on the row's own display roved into
+        // rows nobody could see, and roved into them again from the parent
+        // while the child had its own walk running.
+        const { button, child, ownRows } = nested();
+        button.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }));
+        expect(document.activeElement).toBe(ownRows[0]);
+
+        // Wrapping BACKWARD off the first row is the discriminating gesture:
+        // it lands on whatever the walk thinks its last row is. Roving forward
+        // is not, because ArrowDown on the submenu's own row is a press on a
+        // trigger, which opens it and dives in on purpose.
+        const wrapBack = (): string => {
+            document.activeElement!.dispatchEvent(
+                new KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true }));
+            return (document.activeElement as HTMLElement).textContent ?? "";
+        };
+        // "submenu", never "y": the nested panel's last row is not this walk's.
+        expect(wrapBack()).toBe("submenu");
+
+        // ...and again with the nested panel OPEN, which is when its rows are
+        // displayed and a display-based filter would let them in.
+        ownRows[0]!.focus();
+        child.style.display = "flex";
+        expect(wrapBack()).toBe("submenu");
+    });
+
+    it("every wired panel should mark itself, so the scoping needs nothing from the nested menu", () => {
+        // Stamped by `wireHoverMenu` rather than by each factory: a menu added
+        // later is scoped correctly without being told, which is the property
+        // that makes this fix hold for the next nested surface.
+        const { parent, child } = nested();
+        expect(parent.dataset["tbMenu"]).toBe("");
+        expect(child.dataset["tbMenu"]).toBe("");
+    });
+});

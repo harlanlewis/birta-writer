@@ -8,6 +8,8 @@ import {
     ITEM_HOST_CAPABILITY,
     ITEM_MUTATES,
     TOOLBAR_ITEM_IDS,
+    ITEM_GROUP,
+    groupRuns,
 } from "../components/toolbar/registry";
 import type { ToolbarItemId } from "../components/toolbar/registry";
 import type { ToolbarConfig, ToolbarPlacements } from "../../shared/messages";
@@ -39,7 +41,7 @@ describe("computeZones", () => {
             "table",
             "image",
         ]);
-        expect(zones.right).toEqual(["viewSource", "styleCheck", "find", "fontPreset", "settings", "toc"]);
+        expect(zones.right).toEqual(["viewSource", "find", "fontPreset", "settings", "toc"]);
         // readOnly ships hidden (MAR-53): the Toggle Read-only command and
         // `birta.readOnly` cover it. Shown, it sits beside viewSource, the
         // two answering the same question about how you are working with
@@ -284,9 +286,15 @@ describe("ITEM_HOST_CAPABILITY against the command metadata (MAR-373)", () => {
         // A floor per bucket rather than a sum, because every item leaves
         // through exactly one of them and a sum is a tautology. Uniformly
         // gated: image, readOnly, viewSource. Mixed, and therefore always
-        // built: the gear, the font menu (width segments and the Editor-font
-        // row beside a stepper every host can honour), and the Checks menu.
-        // Needing nothing at all: the marks and the block inserts.
+        // built: the gear, and the font menu (width segments and the
+        // Editor-font row beside a stepper every host can honour). Needing
+        // nothing at all: the marks and the block inserts.
+        //
+        // Mixed floors at TWO rather than three because the Checks menu, which
+        // was the third, is no longer a bar item at all: it is a submenu of the
+        // gear (checksMenu.ts), and its own withdrawal rule moved with it to
+        // `CHECKS_COMMANDS` there. The floor is named rather than tuned, so a
+        // bucket emptying below what is listed above is still a failure.
         const buckets = { gated: 0, mixed: 0, free: 0 };
         for (const id of TOOLBAR_ITEM_IDS) {
             const { uniform } = requirement(id);
@@ -296,7 +304,7 @@ describe("ITEM_HOST_CAPABILITY against the command metadata (MAR-373)", () => {
             else { buckets.free++; }
         }
         expect(buckets.gated).toBeGreaterThanOrEqual(3);
-        expect(buckets.mixed).toBeGreaterThanOrEqual(3);
+        expect(buckets.mixed).toBeGreaterThanOrEqual(2);
         expect(buckets.free).toBeGreaterThanOrEqual(3);
     });
 });
@@ -317,7 +325,7 @@ describe("computeZones with a host that lacks a capability (MAR-373)", () => {
             expect(zones[zone]).not.toContain("viewSource");
         }
         // Everything else is where it was.
-        expect(zones.right).toEqual(["styleCheck", "find", "fontPreset", "settings", "toc"]);
+        expect(zones.right).toEqual(["find", "fontPreset", "settings", "toc"]);
         expect(zones.hidden).toContain("footnote");
     });
 
@@ -335,11 +343,9 @@ describe("computeZones with a host that lacks a capability (MAR-373)", () => {
             expect(none.has("viewSource")).toBe(false);
             expect(none.has("image")).toBe(false);
             expect(none.has("readOnly")).toBe(false);
-            // Present with a host that declares nothing, like the gear and the
-            // font menu: it is a row-filtering menu whose style half the page
-            // answers by itself, so the item survives and the two lint rows
-            // inside it are what a host without an engine loses.
-            expect(none.has("styleCheck")).toBe(true);
+            // Present with a host that declares nothing: a row-filtering menu
+            // survives and loses only the rows the host cannot answer. The
+            // gear is the worked example now that Checks has left the bar.
             expect(none.has("settings")).toBe(true);
             expect(none.has("bold")).toBe(true);
             // Absent means all, minus the items an arrangement withdraws. `toc`
@@ -448,5 +454,52 @@ describe("computeDockPartition", () => {
         // …and the rest still arrived, or "not contains" would hold vacuously.
         expect(dock).toContain("bold");
         expect(topBar).toContain("settings");
+    });
+});
+
+describe("item groups and the runs a separator bounds", () => {
+    it("every group should be ONE contiguous run of the canonical order", () => {
+        // The property the dock's separators rest on. A group split across
+        // `TOOLBAR_ITEM_IDS` draws two rules and reads as two different kinds
+        // of thing wearing one name, and the only way that happens is an item
+        // declared in the wrong place in the canonical list — which is a
+        // mistake nothing else in this file would catch.
+        const runs = groupRuns(TOOLBAR_ITEM_IDS);
+        const names = runs.map((run) => ITEM_GROUP[run[0]!]);
+        expect(new Set(names).size).toBe(names.length);
+        // And the instrument reached something: a table that had collapsed to
+        // one group would satisfy the uniqueness above trivially.
+        expect(names.length).toBeGreaterThanOrEqual(5);
+    });
+
+    it("groupRuns should preserve the caller's order and drop nothing", () => {
+        // It splits, it never sorts. A surface that has already decided its
+        // order gets that order back with rules in it.
+        const ids: ToolbarItemId[] = ["bold", "format", "table", "italic"];
+        expect(groupRuns(ids).flat()).toEqual(ids);
+        // ...including when that order puts one group either side of another,
+        // which yields two runs of it rather than one merged run somewhere
+        // the caller did not ask for.
+        expect(groupRuns(ids).map((r) => r.length)).toEqual([1, 1, 1, 1]);
+    });
+
+    it("an empty list should produce no runs, so a lone run can carry no rule", () => {
+        expect(groupRuns([])).toEqual([]);
+        expect(groupRuns(["bold", "italic"])).toEqual([["bold", "italic"]]);
+    });
+
+    it("the formatting row should break into several runs, or the separators buy nothing", () => {
+        // The dock is the one reader. Asserted on the real partition rather
+        // than a hand-made list, so a change to `ITEM_MUTATES` that emptied a
+        // group shows up here.
+        const { dock } = computeDockPartition();
+        const runs = groupRuns(dock);
+        expect(dock.length).toBeGreaterThan(10);
+        expect(runs.length).toBeGreaterThanOrEqual(4);
+        // Every run is non-empty, which is what lets the caller draw a rule
+        // BETWEEN runs without checking for a leading or trailing one.
+        expect(runs.every((r) => r.length > 0)).toBe(true);
+        // Nothing is lost or duplicated on the way through.
+        expect(runs.flat()).toEqual(dock);
     });
 });

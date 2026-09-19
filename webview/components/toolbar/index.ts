@@ -50,7 +50,7 @@ import { showImageInsertPanel } from "./imageInsertPanel";
 import { createLinkPrompt } from "./linkPrompt";
 import { createTypographyControl } from "./typography";
 import { createFormatMenu, createListMenu, createCodeMenu, createQuoteMenu } from "./containerPickers";
-import { createChecksMenu } from "./checksMenu";
+import { createChecksMenu, checksAvailable } from "./checksMenu";
 import { createSettingsMenu } from "./settingsMenu";
 import { createDebugMenu, type DebugOpts } from "./debugMenu";
 import { createToolbarLayout, type ToolbarLayout } from "./layout";
@@ -319,10 +319,11 @@ export function initToolbar(
     logseqItem.style.display = "none";
 
     // ── Checks (spelling, grammar, style + the note-marker highlight) ──
-    // Host-gated: the menu names a proofreading engine and a review sidebar,
-    // and a host without them gets neither the item nor its hooks.
-    const checks = available.has("styleCheck") ? createChecksMenu(onShowProofreading) : null;
-    if (checks) { items.styleCheck = wrap("styleCheck", checks.el); }
+    // A submenu of the gear on every surface rather than an item on the bar,
+    // so it is built here and PLACED by the settings menu below rather than by
+    // the layout controller. Host-gated as before: a surface that can answer
+    // none of its rows gets neither the panel nor its hooks.
+    const checks = checksAvailable() ? createChecksMenu(onShowProofreading) : null;
 
     // Mode switch: leave the rendered editor for the raw markdown text editor.
     // Same code path as the switch-to-text-editor keybinding and the tab-bar
@@ -395,6 +396,9 @@ export function initToolbar(
         // built either way, so `chooseFontPreset` and its siblings reach the
         // same code from the palette and the slash menu whichever it is.
         typographyRows: (close) => typography.gearRows(close),
+        // Absent on a surface that can answer none of its rows, which is the
+        // same gate the bar item carried before this moved.
+        ...(checks ? { checksRow: checks.el } : {}),
     }));
 
     // ── Table of contents ─────────────────────────────

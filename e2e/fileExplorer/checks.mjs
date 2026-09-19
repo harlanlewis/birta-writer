@@ -32,6 +32,13 @@ export async function run({ page, check, baseUrl }) {
         document.querySelector(s).dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true, button: 0 }));
     }, sel);
     const px = (v) => Math.round(parseFloat(v));
+    /**
+     * Turn the formatting row on or off. The host's setting is the only route:
+     * the row has no control of its own on the page, so this is what the
+     * shell's Settings window does (`setFormattingRowExpanded`).
+     */
+    const setFormattingRow = (on) => page.evaluate(
+        (v) => { window.postMessage({ type: "setFormattingRowExpanded", expanded: v }, "*"); }, on);
 
     // ── The single-file window: nothing is built ─────────────────────────
     await page.goto(`${baseUrl}/index.html?root=0`);
@@ -161,7 +168,7 @@ export async function run({ page, check, baseUrl }) {
     // The formatting row is the top of the CONTENT AREA, beside the panel:
     // opened, it starts where the panel ends, and its controls' top edge is
     // the panel's top edge, so the two draw one line under the window's chrome.
-    await press(".tb-dock-toggle");
+    await setFormattingRow(true);
     await page.waitForTimeout(SETTLE);
     const rowBeside = await page.evaluate(() => {
         const panel = document.querySelector(".files-panel").getBoundingClientRect();
@@ -212,7 +219,7 @@ export async function run({ page, check, baseUrl }) {
             && panelTopIsThePanels.rowGround === panelTopIsThePanels.firstRowGround
             && !/rgba\(0, 0, 0, 0\)|transparent/.test(panelTopIsThePanels.rowGround),
         JSON.stringify(panelTopIsThePanels));
-    await press(".tb-dock-toggle");
+    await setFormattingRow(false);
     await page.waitForTimeout(SETTLE);
 
     const rootOrder = await page.$$eval(".files-row", (els) => els.map((el) => el.dataset.path));
@@ -321,7 +328,7 @@ export async function run({ page, check, baseUrl }) {
     // A FLOATED panel is not beside the formatting row: the row carries no
     // margin for it and paints above it, so with the row open the panel has
     // to start below the whole bar, not at the row's edge as a docked one does.
-    await press(".tb-dock-toggle");
+    await setFormattingRow(true);
     await page.waitForTimeout(SETTLE);
     const floatedUnderRow = await page.evaluate(() => {
         const panel = document.querySelector(".toc-panel").getBoundingClientRect();
@@ -336,7 +343,7 @@ export async function run({ page, check, baseUrl }) {
     check("with the row open, the floated TOC starts below the whole bar rather than under the row",
         floatedUnderRow.overlayOpen && floatedUnderRow.rowShown && floatedUnderRow.panelTop >= floatedUnderRow.barBottom,
         JSON.stringify(floatedUnderRow));
-    await press(".tb-dock-toggle");
+    await setFormattingRow(false);
     await page.waitForTimeout(SETTLE);
     await press(".tb-toc-btn"); // close the floating TOC
     await page.waitForTimeout(SETTLE);

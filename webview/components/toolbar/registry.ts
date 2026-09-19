@@ -34,7 +34,6 @@ export const TOOLBAR_ITEM_IDS = [
     "clearFormatting",
     "readOnly",
     "viewSource",
-    "styleCheck",
     "find",
     "fontPreset",
     "settings",
@@ -91,7 +90,6 @@ export const DEFAULT_PLACEMENTS: Record<ToolbarItemId, ToolbarPlacement> = {
     // with this file right now").
     readOnly: "hidden",
     viewSource: "right",
-    styleCheck: "right",
     find: "right",
     fontPreset: "right",
     settings: "right",
@@ -134,7 +132,6 @@ export const ITEM_MUTATES: Record<ToolbarItemId, boolean> = {
     // gear all leave the document alone.
     readOnly: false,
     viewSource: false,
-    styleCheck: false,
     find: false,
     fontPreset: false,
     settings: false,
@@ -171,7 +168,6 @@ export const ITEM_COMMANDS: Record<ToolbarItemId, readonly EditorCommandId[]> = 
     clearFormatting: ["clearFormatting"],
     readOnly: ["toggleReadOnly"],
     viewSource: ["editRawMarkdown"],
-    styleCheck: ["toggleSpellCheck", "toggleGrammarCheck", "toggleStyleCheck", "toggleNoteHighlights"],
     find: ["openFind"],
     fontPreset: ["contentWidthFull", "contentWidthFixed", "fontEditor", "fontSans", "fontSerif", "fontMono", "increaseFontSize", "decreaseFontSize"],
     settings: ["openExtensionSettings", "openHostPreferences", "customizeToolbar", "hideToolbar", "openKeyboardShortcuts", "openWhatsNew"],
@@ -218,10 +214,6 @@ export const ITEM_HOST_CAPABILITY: Record<ToolbarItemId, HostCapability | null> 
     clearFormatting: null,
     readOnly: "readOnlyMode",
     viewSource: "textEditor",
-    // Mixed, and so null: Check Spelling and Check Grammar need a host lint
-    // engine, and Check Style, the style sub-checks and Highlight Note Markers
-    // are answered by the page. `checksMenu.ts` filters the two.
-    styleCheck: null,
     find: null,
     fontPreset: null,
     settings: null,
@@ -318,6 +310,98 @@ export function computeDockPartition(
         (ITEM_MUTATES[id] ? dock : topBar).push(id);
     }
     return { dock, topBar };
+}
+
+/**
+ * The kinds of thing a toolbar item is, which is what a separator separates.
+ *
+ * A run of evenly spaced glyphs is scanned one glyph at a time, because nothing
+ * in it tells the eye where it may skip. Grouping is what lets somebody look
+ * for an insert and pass the marks without reading them, and it costs no
+ * control.
+ */
+export type ToolbarItemGroup =
+    /** The paragraph-style picker: what this block IS. */
+    | "paragraph"
+    /** Inline marks, link included: what a RUN of text is. */
+    | "mark"
+    /** Block containers the caret goes inside: lists, quotes, code. */
+    | "container"
+    /** Things put INTO the document that were not there: a table, an image. */
+    | "insert"
+    /** Taking formatting away again. */
+    | "revert"
+    /** How the document is being worked with rather than what it says. */
+    | "mode"
+    /** Controls over the view: find, typography. */
+    | "view"
+    /** The window's own furniture: the gear, the panels it opens. */
+    | "shell";
+
+/**
+ * Which group each item belongs to.
+ *
+ * Exhaustive by type, like the three tables above and for the same reason: a
+ * new toolbar item must answer where it sits rather than inherit the answer of
+ * whichever item it happens to be declared next to. The formatting row
+ * (`dock.ts`) is the one reader today, through `groupRuns`.
+ *
+ * The groups are CONTIGUOUS in `TOOLBAR_ITEM_IDS`, and that is a property
+ * rather than a coincidence: a run is the unit a separator bounds, so a group
+ * split across the canonical order would draw two of them and read as two
+ * different kinds of thing with the same name. `toolbarRegistry.test.ts` holds
+ * it, which is what turns an item declared in the wrong place into a failure
+ * rather than into a second divider nobody notices.
+ */
+export const ITEM_GROUP: Record<ToolbarItemId, ToolbarItemGroup> = {
+    format: "paragraph",
+    bold: "mark",
+    italic: "mark",
+    strikethrough: "mark",
+    highlight: "mark",
+    inlineCode: "mark",
+    // A link is a mark, and it sits with the marks rather than with the
+    // inserts although it is reached by a dialog: what it does to the
+    // selection is what bold does to it.
+    link: "mark",
+    listMenu: "container",
+    quote: "container",
+    codeBlock: "container",
+    horizontalRule: "insert",
+    table: "insert",
+    image: "insert",
+    math: "insert",
+    footnote: "insert",
+    clearFormatting: "revert",
+    readOnly: "mode",
+    viewSource: "mode",
+    find: "view",
+    fontPreset: "view",
+    settings: "shell",
+    toc: "shell",
+};
+
+/**
+ * Split `ids` into runs of one group each, in the order given.
+ *
+ * The caller draws a separator BETWEEN runs, never around them, so a row of
+ * one group carries no chrome at all and a leading or trailing rule is
+ * impossible by construction rather than by a check at the call site.
+ *
+ * Splitting on CHANGE rather than collecting by group is what keeps the
+ * caller's order intact: this never reorders, so a surface that has already
+ * decided its order gets its own order back with rules in it.
+ */
+export function groupRuns(ids: readonly ToolbarItemId[]): ToolbarItemId[][] {
+    const runs: ToolbarItemId[][] = [];
+    let group: ToolbarItemGroup | undefined;
+    for (const id of ids) {
+        const next = ITEM_GROUP[id];
+        if (next !== group || runs.length === 0) { runs.push([]); }
+        runs[runs.length - 1]!.push(id);
+        group = next;
+    }
+    return runs;
 }
 
 // "center" is intentionally NOT valid: the zone was removed, and persisted

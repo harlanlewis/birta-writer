@@ -4,6 +4,14 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Spelling, grammar and style checks are now Checks, a submenu of the toolbar's gear, rather than a button of their own on the bar. Every row is the same and every command is unchanged, so Check Spelling, Check Grammar, Check Style, the style sub-checks and Highlight Note Markers still run from the command palette and the slash menu exactly as before. The bar loses a permanent control for a set of modes most readers set once.
+
+### Removed
+
+- The `birta.toolbar.items.styleCheck` setting, which placed or hid the Checks button. There is no such button to place now. A stored value is ignored rather than refused, so nothing has to be cleaned up.
+
 ---
 
 ## [2026.919.0] - 2026, September 19

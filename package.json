@@ -2325,17 +2325,6 @@
                     "default": "right",
                     "description": "Edit Raw Markdown button (switch to the plain text editor): pick a toolbar zone or hide it."
                 },
-                "birta.toolbar.items.styleCheck": {
-                    "order": 49,
-                    "type": "string",
-                    "enum": [
-                        "hidden",
-                        "left",
-                        "right"
-                    ],
-                    "default": "right",
-                    "description": "Checks menu (spelling, grammar, style): pick a toolbar zone or hide it."
-                },
                 "birta.toolbar.items.find": {
                     "order": 50,
                     "type": "string",
@@ -2376,7 +2365,7 @@
                         "type": "string"
                     },
                     "default": [],
-                    "markdownDescription": "Left-to-right ordering of toolbar items within their zone. List item ids in the order you want; within each zone, listed items come first (in this order), then any unlisted items in the built-in order. Ids: `format`, `clearFormatting`, `fontPreset`, `bold`, `italic`, `strikethrough`, `highlight`, `inlineCode`, `link`, `image`, `table`, `footnote`, `math`, `listMenu`, `quote`, `codeBlock`, `horizontalRule`, `viewSource`, `styleCheck`, `find`, `settings`, `toc`. Example: to put Clear Formatting last in a zone, list the other items in that zone before `clearFormatting`."
+                    "markdownDescription": "Left-to-right ordering of toolbar items within their zone. List item ids in the order you want; within each zone, listed items come first (in this order), then any unlisted items in the built-in order. Ids: `format`, `clearFormatting`, `fontPreset`, `bold`, `italic`, `strikethrough`, `highlight`, `inlineCode`, `link`, `image`, `table`, `footnote`, `math`, `listMenu`, `quote`, `codeBlock`, `horizontalRule`, `viewSource`, `find`, `settings`, `toc`. Example: to put Clear Formatting last in a zone, list the other items in that zone before `clearFormatting`."
                 },
                 "birta.floatingToolbar.enabled": {
                     "order": 54,

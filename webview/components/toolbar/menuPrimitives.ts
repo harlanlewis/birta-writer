@@ -11,6 +11,8 @@
  * row does.
  */
 import { createButton } from "@/ui/dom";
+import { IconChevronRight } from "@/ui/icons";
+import { wireHoverMenu } from "./hoverMenu";
 import { commandChord } from "@/commandChords";
 import { kbd } from "@/i18n";
 import { applyTooltip } from "@/ui/tooltip";
@@ -229,4 +231,72 @@ export function createSwitchItem(label: string, iconHtml?: string): CheckItem {
             el.setAttribute("aria-checked", on ? "true" : "false");
         },
     };
+}
+
+/** A menu row that opens a panel of its own beside it. */
+export interface SubmenuRow {
+    /** The wrap to append into the parent menu. Holds the row and its panel. */
+    el: HTMLElement;
+    /** The panel, for the caller to fill with rows. */
+    panel: HTMLElement;
+    /** Shut the submenu — the shared close, which owns the Escape layer. */
+    close: () => void;
+    /** Drop the listeners (tests). */
+    dispose: () => void;
+}
+
+/**
+ * A row that opens a SUBMENU: a label, a trailing disclosure chevron, and a
+ * panel that runs out beside it.
+ *
+ * Three things make this a placement of the existing dropdown rather than a
+ * second kind of menu, and all three are what a hand-rolled flyout would have
+ * had to re-earn. It is wired by `wireHoverMenu`, so it opens the way the
+ * surface says its menus open (`barMenusOnClick`), registers an Escape layer
+ * of its own so one Escape shuts the submenu and the next shuts its parent,
+ * and roves its rows with the same keyboard code. It claims the same
+ * exclusive-chrome slot and is spared by its parent through that module's DOM
+ * containment test, which is why the panel stays a CHILD of this wrap even
+ * though `placeSubmenu` gives it viewport coordinates: moving it to the body
+ * would make the parent close the moment this one opened.
+ *
+ * The panel wears `.tb-fmt-menu` like every other dropdown, so a submenu is
+ * not a surface anybody has to theme twice.
+ */
+export function createSubmenuRow(label: string, opts: { onOpen?: () => void } = {}): SubmenuRow {
+    const el = document.createElement("div");
+    el.className = "tb-fmt-wrap tb-submenu-wrap";
+
+    const row = document.createElement("div");
+    row.className = "ui-menu-row tb-fmt-item tb-submenu-row";
+    row.setAttribute("role", "menuitem");
+    row.tabIndex = -1;
+    const labelEl = document.createElement("span");
+    labelEl.className = "tb-submenu-row-label";
+    labelEl.textContent = label;
+    const chevron = document.createElement("span");
+    chevron.className = "tb-submenu-row-chevron";
+    chevron.setAttribute("aria-hidden", "true");
+    chevron.innerHTML = IconChevronRight;
+    row.append(labelEl, chevron);
+    // Swallowed for the reason `createMenuTrigger` swallows it: a press on a
+    // trigger must not run an action, start a text selection, or reach the
+    // editor. The open rides `click` on a click surface and hover elsewhere,
+    // and neither is this event.
+    row.addEventListener("mousedown", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+    });
+
+    const panel = document.createElement("div");
+    panel.className = "tb-fmt-menu tb-submenu-menu";
+    panel.style.display = "none";
+    panel.setAttribute("role", "menu");
+
+    el.append(row, panel);
+    const { close, dispose } = wireHoverMenu(el, row, panel, {
+        placement: "beside",
+        ...(opts.onOpen ? { onOpen: opts.onOpen } : {}),
+    });
+    return { el, panel, close, dispose };
 }

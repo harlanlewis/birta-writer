@@ -1,6 +1,12 @@
 /**
- * The Checks menu: the proofreading gate, its domain and style sub-checks, and
- * the in-text note-marker highlight that sits beside them.
+ * The Checks submenu: the proofreading gate, its domain and style sub-checks,
+ * and the in-text note-marker highlight that sits beside them.
+ *
+ * It lives inside the gear rather than on the bar, and that is a placement
+ * rather than a demotion: every row here is a mode somebody sets and leaves,
+ * so it was a permanent control for a question asked once a session. The rows
+ * are unchanged and so are the commands, which the palette and the slash menu
+ * still reach directly.
  *
  * Two of its rules are easy to break from outside and are the reason the menu
  * owns its own state. Visibility is by DETACHING a container, never by dimming
@@ -9,20 +15,43 @@
  * And the gate never rewrites the domain switches, so turning proofreading back
  * on restores exactly what was enabled before.
  */
-import { IconStyleCheck, IconChevronDown } from "@/ui/icons";
 import { t } from "@/i18n";
 import { STYLE_CATEGORIES, STYLE_SECTIONS } from "@/utils/styleCategories";
 import { getProofreadConfig, setProofreadConfig } from "@/plugins";
 import { getEditorView } from "@/editor";
 import { notifySetProofreadOption } from "@/messaging";
 import { NOTE_HIGHLIGHT_EVENT, noteMarkersEnabled, setNoteMarkersEnabled } from "@/plugins/noteMarkers";
-import { createMenuTrigger, createSwitchItem, makeSep, type CheckItem } from "./menuPrimitives";
-import { wireHoverMenu } from "./hoverMenu";
+import { createSubmenuRow, createSwitchItem, makeSep, type CheckItem } from "./menuPrimitives";
 import { commandAvailable } from "../../../shared/commandAvailability";
 import type { ProofreadConfig, ProofreadOptionKey } from "../../../shared/messages";
+import type { EditorCommandId } from "../../../shared/editorCommands";
+
+/**
+ * The commands the Checks panel's rows run, which is what decides whether the
+ * panel is offered at all.
+ *
+ * Here rather than at the composition root because the rows are here: a row
+ * added below wants its command added beside it, and a list kept one file away
+ * is a list that stops matching quietly. It replaces the withdrawal
+ * `registry.ts` used to derive from `ITEM_COMMANDS.styleCheck` when Checks was
+ * a bar item, and it withdraws on the same rule: the panel goes when EVERY
+ * command in it is gone, never when one is, because the rows filter
+ * themselves (`commandAvailable` at each of the two host-gated ones).
+ */
+export const CHECKS_COMMANDS = [
+    "toggleSpellCheck",
+    "toggleGrammarCheck",
+    "toggleStyleCheck",
+    "toggleNoteHighlights",
+] as const satisfies readonly EditorCommandId[];
+
+/** Whether this surface can answer any of the Checks rows. */
+export function checksAvailable(): boolean {
+    return CHECKS_COMMANDS.some(commandAvailable);
+}
 
 export interface ChecksControl {
-    /** The control, ready to be placed in a toolbar zone. */
+    /** The submenu row, ready to be appended into the gear menu. */
     el: HTMLElement;
     /** Flip one proofread toggle - shared with the palette and the slash menu. */
     toggleProofread: (key: ProofreadOptionKey) => void;
@@ -35,17 +64,10 @@ export interface ChecksControl {
  * review sidebar's Proofreading list.
  */
 export function createChecksMenu(onShowProofreading?: () => void): ChecksControl {
-    // ── Checks menu (spelling, grammar, style + per-check toggles) ───────────
-    // One toolbar button opens a menu of checkmarkable items: the three masters
+    // ── Checks (spelling, grammar, style + per-check toggles) ───────────────
+    // A row in the gear opens a panel of checkmarkable items: the three masters
     // up top, then the style sub-checks grouped under headers. Every row toggles
-    // one option live (webview state) and persists it (settings). The menu opens
-    // on hover, like the font picker; the button itself is just its anchor.
-    // The chevron signals it opens a menu; aria-label names it for assistive tech.
-    const checksBtn = createMenuTrigger({
-        html: `${IconStyleCheck}${IconChevronDown}`,
-        ariaLabel: t("Checks"),
-    });
-
+    // one option live (webview state) and persists it (settings).
     // Every option key except the gate maps 1:1 to a boolean ProofreadConfig
     // field (the gate's key "proofreading" ↔ field "proofreadingEnabled"), so the
     // domain rows use this narrowed key and index the config directly.
@@ -83,10 +105,10 @@ export function createChecksMenu(onShowProofreading?: () => void): ChecksControl
             item.setChecked(Boolean(cfg[key]));
         }
         masterItem?.setChecked(cfg.proofreadingEnabled);
-        // The button carries no state of its own. It is an anchor for a menu
-        // whose first row already says whether the gate is on, and a dimmed
-        // control in a bar of live ones reads as unavailable rather than as
-        // off, which is a different claim from the one it would be making.
+        // The row carries no state of its own. It opens a panel whose first
+        // rows already say whether each gate is on, and a checkmark or a dimmed
+        // label on the row that opens them would be summarising four
+        // independent switches with one mark.
         //
         // Gate: the whole body shows only while the master switch is on. It is
         // the menu's last child, so a re-attach appends it straight back.
@@ -142,15 +164,26 @@ export function createChecksMenu(onShowProofreading?: () => void): ChecksControl
     }
 
     function createChecksControl(): HTMLElement {
-        const wrapEl = document.createElement("div");
-        wrapEl.className = "tb-fmt-wrap tb-checks-wrap";
-        wrapEl.appendChild(checksBtn);
-
-        const menu = document.createElement("div");
-        menu.className = "tb-fmt-menu tb-checks-menu";
-        menu.style.display = "none";
-        menu.setAttribute("role", "menu");
+        // Built before the rows, so `closeChecksMenu` exists for the "Show
+        // issues" handler below; the panel is filled afterwards, which the
+        // keyboard walk reads lazily and so never sees empty.
+        const submenu = createSubmenuRow(t("Checks"), {
+            onOpen: () => {
+                // Proofread state lives in the editor's plugin state, so it is
+                // read fresh on open. The notes row is not repainted here: it
+                // is already correct (see its listener below), and a defensive
+                // repaint on open would hide a missing announcement in this one
+                // surface while the sidebar's pill went quietly stale.
+                const view = getEditorView();
+                if (view) { repaintChecks(getProofreadConfig(view)); }
+            },
+        });
+        const wrapEl = submenu.el;
+        wrapEl.classList.add("tb-checks-wrap");
+        const menu = submenu.panel;
+        menu.classList.add("tb-checks-menu");
         checksMenuEl = menu;
+        closeChecksMenu = submenu.close;
 
         const addRow = (parent: HTMLElement, key: DomainCheckKey, label: string): void => {
             const item = createSwitchItem(label);
@@ -274,19 +307,6 @@ export function createChecksMenu(onShowProofreading?: () => void): ChecksControl
         body.appendChild(children); // repaintChecks detaches it when Check style is off
         menu.appendChild(body); // repaintChecks detaches it when the gate is off
 
-        closeChecksMenu = wireHoverMenu(wrapEl, checksBtn, menu, {
-            onOpen: () => {
-                // Proofread state lives in the editor's plugin state, so it is
-                // read fresh on open. The notes row is not repainted here: it
-                // is already correct (see its listener below), and a defensive
-                // repaint on open would hide a missing announcement in this one
-                // surface while the sidebar's pill went quietly stale.
-                const view = getEditorView();
-                if (view) { repaintChecks(getProofreadConfig(view)); }
-            },
-        }).close;
-
-        wrapEl.appendChild(menu);
         return wrapEl;
     }
     const checksControl = createChecksControl();
