@@ -216,6 +216,9 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     private let fontControl = NSSegmentedControl(labels: SettingsWindowController.fontChoices.map(\.title), trackingMode: .selectOne,
                                                  target: nil, action: nil)
     private let fontSizeStepper = FontSizeStepper()
+    private let contentWidthControl = NSSegmentedControl(
+        labels: SettingsWindowController.contentWidthChoices.map(\.title),
+        trackingMode: .selectOne, target: nil, action: nil)
     /// The library as last read.
     private var themeRows: [ThemeSummary] = []
     /// The registry browser while its sheet is up. Held here because nothing
@@ -235,6 +238,21 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     /// editor command that picks it.
     static let fontChoices: [(preset: String, title: String, command: String)] = [
         ("sans", "Sans", "fontSans"), ("serif", "Serif", "fontSerif"), ("mono", "Mono", "fontMono"),
+    ]
+    /// Full against fixed, in the page's own words and running the page's own
+    /// commands: the segmented control the toolbar's gear menu carries
+    /// (`webview/components/toolbar/typography.ts`), on a pane, for every
+    /// window at once.
+    ///
+    /// The stored value is the page's spelling too (`shared/contentWidth.ts`),
+    /// so what this pane writes and what a page posts back are one vocabulary
+    /// and the pane never has to translate. What "fixed" measures is the
+    /// page's as well, and it is not offered here: the measure is in `ch`, so
+    /// it already follows the font size the row above sets, and a second
+    /// number to tune would be asking for a decision the reading measure has
+    /// already made.
+    static let contentWidthChoices: [(mode: String, title: String, command: String)] = [
+        ("full", "Full", "contentWidthFull"), ("fixed", "Fixed", "contentWidthFixed"),
     ]
     /// One switch per publishing target, keyed by the target itself.
     ///
@@ -1141,6 +1159,11 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         case .transparentToc: return (tocSidebarSwitch, [], nil)
         case .font: return (fontControl, [], nil)
         case .fontSize: return (fontSizeStepper, [], nil)
+        // No caption. Full fills the window and Fixed caps the text at a
+        // reading measure, which is what the two words say; a sentence under
+        // them would be the same claim at greater length, and the control is
+        // one click away from showing it.
+        case .contentWidth: return (contentWidthControl, [], nil)
         case .resetSettings:
             return (resetButton, [],
                     Caption("Revert \(flavour.displayName) to default settings. Will not "
@@ -2172,6 +2195,9 @@ extension SettingsWindowController {
         fontControl.action = #selector(chooseFont)
         fontSizeStepper.onStep = { [weak self] delta in self?.stepFontSize(delta) }
         fontSizeStepper.onReset = { [weak self] in self?.resetFontSize() }
+        contentWidthControl.controlSize = .small
+        contentWidthControl.target = self
+        contentWidthControl.action = #selector(chooseContentWidth)
     }
 
     /// What the held strip is called. It has no drawn counterpart to read it
@@ -2278,6 +2304,11 @@ extension SettingsWindowController {
         formattingRowSwitch.state = Prefs.formattingRowExpanded ? .on : .off
         fontControl.selectedSegment = Self.fontChoices.firstIndex { $0.preset == Prefs.fontPreset } ?? 1
         fontSizeStepper.show(percent: Prefs.fontSize)
+        // Falling back to the first segment rather than to an index: full is
+        // what the page resolves an unknown mode to (`normalizeContentWidthMode`),
+        // and a number here would be a second place that decision is made.
+        contentWidthControl.selectedSegment =
+            Self.contentWidthChoices.firstIndex { $0.mode == Prefs.contentWidth } ?? 0
         // The card is a strip taller in one shape than the other, so the
         // window follows, as it follows the rows the other panes show and
         // hide (`fitWindowToPane`); a no-op while the pane is being built.
@@ -2332,6 +2363,20 @@ extension SettingsWindowController {
     var accentChoicesForTesting: [String] { accentRow.titlesForTesting }
     var themeLibraryForTesting: [ThemeSummary] { themeRows }
     var fontSizeForTesting: String { fontSizeStepper.percentForTesting }
+    /// The segment the pane is drawing as chosen, by its own label, so a check
+    /// reads the word somebody would click rather than an index.
+    var contentWidthForTesting: String? {
+        let index = contentWidthControl.selectedSegment
+        guard index >= 0 else { return nil }
+        return contentWidthControl.label(forSegment: index)
+    }
+    /// Pick a segment as a click would, through the same action, so what is
+    /// under test is the control's own path to `Prefs` and the command.
+    func chooseContentWidthForTesting(_ title: String) {
+        guard let index = Self.contentWidthChoices.firstIndex(where: { $0.title == title }) else { return }
+        contentWidthControl.selectedSegment = index
+        contentWidthControl.performClick(nil)
+    }
     func chooseThemeForTesting(_ id: String?, for kind: VSCodeTheme.Kind) {
         apply(Prefs.appearance.setting(id, for: kind))
     }
@@ -2378,6 +2423,20 @@ extension SettingsWindowController {
         // Written here as well as posted back by each page, so a window
         // opened before the round trip lands boots with the new answer.
         Prefs.fontPreset = choice.preset
+        onEditorCommand(choice.command)
+    }
+
+    /// Full or Fixed, for every window at once.
+    ///
+    /// Written here as well as posted back by each page, for the reason the
+    /// font row is: a window opened before the round trip lands has to boot
+    /// with the answer that was just given, and the page's echo is what keeps
+    /// the two in step afterwards.
+    @objc private func chooseContentWidth() {
+        let index = contentWidthControl.selectedSegment
+        guard index >= 0, index < Self.contentWidthChoices.count else { return }
+        let choice = Self.contentWidthChoices[index]
+        Prefs.contentWidth = choice.mode
         onEditorCommand(choice.command)
     }
 

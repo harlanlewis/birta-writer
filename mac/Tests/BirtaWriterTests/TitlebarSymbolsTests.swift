@@ -73,8 +73,13 @@ final class TitlebarSymbolsTests: XCTestCase {
         return Ink(centre: weighted / mass - Double(height - 1) / 2, mass: mass)
     }
 
+    /// Every symbol the titlebar draws, both rows of it: they sit on one axis
+    /// across the whole band, so the leading toggle has to balance with the
+    /// file buttons at the other end of the name rather than only with itself.
+    private static let allShipped = TitlebarActionsView.leadingShipped + TitlebarActionsView.shipped
+
     func testEveryShippedSymbolShouldBalanceOnTheSameLineAsTheOthers() {
-        let measured = TitlebarActionsView.shipped.map { ($0.symbol, ink(of: $0.symbol)) }
+        let measured = Self.allShipped.map { ($0.symbol, ink(of: $0.symbol)) }
         // The instrument's own arm, twice over. A symbol name the system does
         // not have renders nothing, and a set that measured nothing agrees
         // with itself perfectly; so does a set of one.
@@ -82,7 +87,7 @@ final class TitlebarSymbolsTests: XCTestCase {
             XCTAssertNotNil(ink, "\(symbol) drew no ink, so nothing below measured it")
         }
         let centres = measured.compactMap { $0.1?.centre }
-        XCTAssertEqual(centres.count, TitlebarActionsView.shipped.count)
+        XCTAssertEqual(centres.count, Self.allShipped.count)
         XCTAssertGreaterThan(centres.count, 1, "one symbol cannot disagree with anything")
 
         let spread = (centres.max() ?? 0) - (centres.min() ?? 0)

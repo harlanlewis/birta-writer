@@ -596,9 +596,13 @@ enum AppMenu {
     /// ⌘+ / ⌘- / ⌘0 are VS Code's own workbench zoom, which an editor inside it
     /// must not take, so the commands ship there with no chord at all.
     ///
-    /// Full Width / Fixed Width are absent by the same rule that keeps Edit Raw
-    /// Markdown out: `hostHasCommand` withdraws them from a host that declares
-    /// no `contentMeasure`, and a panel is already its own reading measure.
+    /// Full Width / Fixed Width run here (the app declares `contentMeasure`)
+    /// and are still absent from this table, which is a placement rather than
+    /// a withdrawal: the measure the text is read at is a setting, so it sits
+    /// on the Appearance pane beside the font and its size, where it is set
+    /// for every window at once. The toolbar's gear carries the same
+    /// segmented control on the window it is opened from, and the palette
+    /// reaches both commands from the page's own list.
     /// The master proofreading gate, named once because four rows are governed
     /// by it and a typo in one of their keys would silently un-gate that row.
     private static let gate = MenuToggle.proofread("proofreading")

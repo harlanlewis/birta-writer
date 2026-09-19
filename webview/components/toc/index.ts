@@ -193,7 +193,7 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
             max: TOC_MAX_WIDTH,
             onCommit: notifyTocWidth,
         },
-        dockedMinContentWidth: DOCKED_MIN_CONTENT_WIDTH,
+        narrow: { kind: "float", minContentWidth: DOCKED_MIN_CONTENT_WIDTH },
         neighborReserve: options.neighborReserve ?? (() => 0),
         onReserveChange: options.onReserveChange,
         // Under `tocToggleInBar` the reveal tab is never put on the page: the

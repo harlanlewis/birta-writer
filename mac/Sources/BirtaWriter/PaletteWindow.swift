@@ -621,17 +621,74 @@ final class PaletteHeaderView: NSTableCellView {
 /// text (a file's folder, a window's root), and a chevron on a row that
 /// opens rows. The trailing cluster is right-aligned across every row, so
 /// the chords form a column the eye can run down.
+///
+/// ## What a long name may not do
+///
+/// Every row is one line tall (`rowHeight`), and the two labels compete for
+/// one row's width, so both of those have to be settled here rather than left
+/// to a cell's defaults. The defaults are wrong in three ways that only show
+/// on the long names a file list is full of, and each is a separate rule
+/// below: a title that WRAPS is drawn in a box one line tall and has its tail
+/// clipped away with no ellipsis to say so; a title with no floor is
+/// compressed by a long folder path until the name the query matched is not
+/// drawn at all; and a path truncated in the middle keeps a prefix every row
+/// shares ("Work/Notable/") and spends the ellipsis on the folders that tell
+/// the rows apart.
 final class PaletteCellView: NSTableCellView {
     private let title = NSTextField(labelWithString: "")
     private let detail = NSTextField(labelWithString: "")
     private let keys = NSStackView(views: [])
     private let chevron = NSTextField(labelWithString: "›")
 
+    /// The most of a row the folder path may take.
+    ///
+    /// A ceiling rather than a column: a path shorter than this keeps its own
+    /// width and sits against the trailing edge with the chords, and only the
+    /// long ones are cut. Under half, because the name is the thing the query
+    /// matched and the path is where it happens to live, so what is left over
+    /// is the larger share.
+    ///
+    /// It is also the floor under the NAME, which is the load-bearing part: a
+    /// row is one width, so a ceiling on one label is a floor under the other,
+    /// and without it a deep folder compresses the file name to nothing at all.
+    static let detailShare: CGFloat = 0.45
+
+    /// What the path is holding on to: whatever it needs, up to the ceiling.
+    ///
+    /// Set per row, because the ceiling alone is only half the rule. With a
+    /// ceiling and nothing else, a long enough NAME compresses the path away
+    /// instead, which is the same defect wearing the other label. Its priority
+    /// sits above the title's compression resistance, so the name gives way
+    /// first, and below required, so the ceiling still trims it and no window
+    /// width can make the pair unsatisfiable.
+    private var detailWanted: NSLayoutConstraint!
+
     init() {
         super.init(frame: .zero)
         title.font = .systemFont(ofSize: 13)
-        title.lineBreakMode = .byTruncatingTail
-        title.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        // One line, with an ellipsis where the name does not fit. The
+        // paragraph style rides the STRING, which is the half that matters: a
+        // cell lays an attributed value out under the style that value
+        // carries and never under the field's own `lineBreakMode`, so a title
+        // set this way wraps whatever the field was told (`emphasised` is
+        // where the style is put on). The two field settings are the belt
+        // beside it: no wrapping, and a line that does not fit ending in an
+        // ellipsis rather than at whatever pixel the box ends on.
+        //
+        // The trade, which `TitleBar.swift` names from the other side: a cell
+        // in a truncating style wants its box a shade wider than the string
+        // measures, so a name that only just fits can draw an ellipsis it did
+        // not need. Here that is the cheaper of the two failures, because the
+        // box is whatever is left after the path takes its share; the window
+        // title does not take this style, because there the box is sized to
+        // the string and the ellipsis would be a lie about the window.
+        title.usesSingleLineMode = true
+        title.cell?.truncatesLastVisibleLine = true
+        // The name is the half that keeps its width when the two cannot both
+        // fit: it is what the query matched, and the path is where it happens
+        // to live. The path's own two constraints below are what stop that
+        // from erasing the path in turn.
+        title.setContentCompressionResistancePriority(.defaultHigh, for: .horizontal)
         // The title is what takes the row's spare width, so the trailing
         // cluster stays a cluster. Both priorities have to say so: a stack's
         // own hugging is `setHuggingPriority`, not the view one, and at its
@@ -641,8 +698,12 @@ final class PaletteCellView: NSTableCellView {
         detail.font = .systemFont(ofSize: 12)
         detail.textColor = .secondaryLabelColor
         detail.alignment = .right
-        detail.lineBreakMode = .byTruncatingMiddle
+        // From the HEAD: the tail of a path is the folders that tell one row
+        // from another, and the head is the prefix every row in a rooted
+        // window shares.
+        detail.lineBreakMode = .byTruncatingHead
         detail.setContentHuggingPriority(.required, for: .horizontal)
+        detail.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         keys.orientation = .horizontal
         keys.spacing = 3
         keys.setHuggingPriority(.required, for: .horizontal)
@@ -656,11 +717,19 @@ final class PaletteCellView: NSTableCellView {
         stack.edgeInsets = NSEdgeInsets(top: 0, left: 18, bottom: 0, right: 16)
         stack.translatesAutoresizingMaskIntoConstraints = false
         addSubview(stack)
+        detailWanted = detail.widthAnchor.constraint(greaterThanOrEqualToConstant: 0)
+        detailWanted.priority = NSLayoutConstraint.Priority(rawValue: 900)
         NSLayoutConstraint.activate([
+            detailWanted,
             stack.leadingAnchor.constraint(equalTo: leadingAnchor),
             stack.trailingAnchor.constraint(equalTo: trailingAnchor),
             stack.topAnchor.constraint(equalTo: topAnchor),
             stack.bottomAnchor.constraint(equalTo: bottomAnchor),
+            // The ceiling on the path. Written against the cell rather than
+            // as a number of points, so it holds at every window width the
+            // palette is drawn at.
+            detail.widthAnchor.constraint(lessThanOrEqualTo: widthAnchor,
+                                          multiplier: Self.detailShare),
         ])
     }
 
@@ -671,6 +740,10 @@ final class PaletteCellView: NSTableCellView {
         let asKeys = row.item.kind == .command && row.item.detail != nil
         detail.stringValue = asKeys ? "" : (row.item.detail ?? "")
         detail.isHidden = asKeys || row.item.detail == nil
+        // What this row's path needs, which the ceiling then trims. Zero for a
+        // row that draws none, so the constraint says nothing about a hidden
+        // label (`detailWanted`).
+        detailWanted.constant = detail.isHidden ? 0 : detail.intrinsicContentSize.width
         keys.arrangedSubviews.forEach { $0.removeFromSuperview() }
         if asKeys, let chord = row.item.detail {
             for cap in Self.keyCaps(chord) { keys.addArrangedSubview(KeyCapView(cap)) }
@@ -679,6 +752,46 @@ final class PaletteCellView: NSTableCellView {
         chevron.isHidden = row.item.kind != .group
         // Non-Markdown files are dimmed in the explorer; the palette lists
         // only what the index admitted, so nothing here is dimmed.
+    }
+
+    /// Where the two labels ended up once the row was laid out, for a check
+    /// with no window.
+    ///
+    /// Boxes rather than strings, because what goes wrong here is geometry:
+    /// every model-side number about a squeezed title is correct, and the
+    /// only thing that disagrees is the width the label was left with. The
+    /// height is in it for the same reason: a wrapped title is two lines tall
+    /// in a row that is one line high, and nothing else reports that.
+    func labelBoxesForMeasurement() -> (title: NSRect, detail: NSRect) {
+        layoutSubtreeIfNeeded()
+        return (title.frame, detail.frame)
+    }
+
+    /// How tall the title's cell would DRAW the string in the box the layout
+    /// left it.
+    ///
+    /// The only number that says whether the title wrapped, and two nearer
+    /// ones cannot stand in for it. A label with no `preferredMaxLayoutWidth`
+    /// reports a one-line intrinsic height whatever box it is given, so every
+    /// frame in the row agrees with every other frame and with nothing on
+    /// screen; and `cellSize(forBounds:)` answers with the width the string
+    /// WANTS rather than laying it out in the box, so it reports one line for
+    /// a string that wraps to two. Asked of the attributed string, which is
+    /// where the paragraph style that decides this lives.
+    func titleDrawnHeightForMeasurement() -> CGFloat {
+        layoutSubtreeIfNeeded()
+        let box = CGSize(width: title.frame.width, height: .greatestFiniteMagnitude)
+        return title.attributedStringValue
+            .boundingRect(with: box, options: [.usesLineFragmentOrigin, .usesFontLeading])
+            .height
+    }
+
+    /// One line of the title's own font, which is what that height is
+    /// compared against. Asked of the font rather than written down, so it
+    /// follows the system's text size.
+    static var titleLineHeight: CGFloat {
+        let font = NSFont.systemFont(ofSize: 13)
+        return ceil(font.ascender - font.descender + font.leading)
     }
 
     /// A chord in menu-bar symbols, split into the caps a keyboard has: each
@@ -695,8 +808,20 @@ final class PaletteCellView: NSTableCellView {
 
     /// The title with the matched letters in a heavier weight, which reads
     /// as the letters the query hit without a second colour.
+    ///
+    /// It carries its own paragraph style, and that is the load-bearing part
+    /// rather than a detail of the attributed string: a cell lays an
+    /// attributed value out under the style THAT VALUE carries and never
+    /// under the field's `lineBreakMode`, so a title set this way wraps under
+    /// the default style whatever the field was told. `TitleBar.swift`
+    /// documents the same trap from the other side.
     static func emphasised(_ text: String, at ranges: [Range<Int>]) -> NSAttributedString {
-        let result = NSMutableAttributedString(string: text, attributes: [.font: NSFont.systemFont(ofSize: 13)])
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.lineBreakMode = .byTruncatingTail
+        let result = NSMutableAttributedString(string: text, attributes: [
+            .font: NSFont.systemFont(ofSize: 13),
+            .paragraphStyle: paragraph,
+        ])
         let characters = Array(text)
         for range in ranges {
             guard range.lowerBound >= 0, range.upperBound <= characters.count else { continue }

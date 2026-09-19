@@ -916,17 +916,31 @@ export async function run({ page, check, baseUrl }) {
     // Playwright's setViewportSize fires `resize` too, and it reaches the
     // shell ahead of anything this check could register, so the page is
     // loaded with `?noresize=1`, under which it keeps no `resize` listener
-    // at all: the observer is then the only thing that can dock the panel.
-    // Last, on its own page load, so nothing above runs under that flag.
+    // at all: the observer is then the only thing that can dock a panel.
+    //
+    // Read off the TOC rather than the explorer, and that is what makes it an
+    // instrument: the explorer holds its dock at every width, so it is docked
+    // before and after and would report a healthy pass with the observer
+    // disconnected. The TOC is the panel whose mode the viewport still
+    // decides. Last, on its own page load, so nothing above runs under the
+    // flag.
     await page.setViewportSize({ width: 700, height: 700 });
     await page.goto(`${baseUrl}/index.html?noresize=1`);
     await page.waitForSelector(".files-panel", { state: "attached", timeout: 10000 });
     await page.waitForTimeout(SETTLE);
-    const narrow = await page.evaluate(() => document.body.classList.contains("files-docked"));
-    check("viewport: at a width too narrow to dock, the explorer is not docked", !narrow);
+    const narrow = await page.evaluate(() => ({
+        filesDocked: document.body.classList.contains("files-docked"),
+        filesOpen: document.body.classList.contains("files-open"),
+        tocDocked: document.body.classList.contains("toc-docked"),
+    }));
+    check("viewport: a width too narrow for a content column leaves the explorer docked and open",
+        narrow.filesDocked && narrow.filesOpen, JSON.stringify(narrow));
+    check("viewport: the same width floats the TOC, which is the panel the viewport still decides",
+        !narrow.tocDocked, JSON.stringify(narrow));
     await page.setViewportSize({ width: 1280, height: 700 });
     await page.waitForTimeout(SETTLE);
     const grown = await page.evaluate(() => ({
+        tocDocked: document.body.classList.contains("toc-docked"),
         docked: document.body.classList.contains("files-docked"),
         open: document.body.classList.contains("files-open"),
         top: Math.round(document.querySelector(".files-panel").getBoundingClientRect().top),
@@ -935,6 +949,7 @@ export async function run({ page, check, baseUrl }) {
     }));
     check("viewport: the flag took, refusing the resize listeners the page tried to keep",
         grown.listeners > 0, JSON.stringify(grown));
-    check("viewport: grown with no resize event heard, the explorer docks and opens on the root's own box",
-        grown.docked && grown.open && grown.top === grown.edge, JSON.stringify(grown));
+    check("viewport: grown with no resize event heard, the TOC docks on the root's own box",
+        grown.tocDocked && grown.docked && grown.open && grown.top === grown.edge,
+        JSON.stringify(grown));
 }

@@ -39,6 +39,10 @@
       return add(type, ...rest);
     };
   }
+  // Deliberately NOT `filesToggleInHostChrome`: this page stands for a host
+  // that declares `projectFiles` and has no chrome of its own to put the
+  // control in, so the bar keeps its button and this suite can press it. The
+  // Mac app's own withdrawal is what e2e/macHost asserts.
   const ARRANGEMENTS = ["typographyInGearMenu", "formattingInSecondRow", "fixedToolbarLayout", "barMenusOnClick", "nativeFindBar", "nativeDatePicker", "fixedTocSide", "tocToggleInBar"]
     .filter((a) => !LEFT_TOC || (a !== "fixedTocSide" && a !== "tocToggleInBar"));
   window.__i18n = { translations: {}, isMac: true, toolbar: { placements: {}, order: [] }, tocAutoHideThreshold: 3, tocVisibility: "hidden", host: { capabilities: ["spellAndGrammar", "imageUpload", "toc", "appPreferences", "agent", "projectFiles"], arrangements: ARRANGEMENTS, shortcuts: [] } };

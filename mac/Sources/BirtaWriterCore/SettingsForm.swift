@@ -48,6 +48,7 @@ public enum SettingsRow: String, CaseIterable, Sendable {
     // system, the theme (one, or one per mode), and the colour mod.
     case font = "Font"
     case fontSize = "Font Size"
+    case contentWidth = "Content Width"
     // Whether the window carries a row of formatting controls under its
     // titlebar. A setting rather than a button on the bar because of how
     // often it is asked: somebody decides once and then writes, and every
@@ -305,7 +306,10 @@ public enum SettingsForm {
     /// a sentence.
     ///
     /// The typography leads: the toolbar's menu on a pane, for every window
-    /// at once, and the thing most people came for. Then whether light and
+    /// at once, and the thing most people came for. Content Width is in that
+    /// card rather than a card of its own, because what it sets is the
+    /// measure the font is read at: the three rows are one question about the
+    /// text, asked from the size out to the column. Then whether light and
     /// dark follow the system, as one switch, on by default; the theme card
     /// under it draws a slot per mode while they do and one theme while
     /// they do not (`AppearanceSettings.followsSystem`); then the drawers'
@@ -328,7 +332,7 @@ public enum SettingsForm {
     /// in the typography card it would read as a third property of the text.
     public static let appearance = SettingsPane(
         groups: [
-            SettingsGroup(rows: [.font, .fontSize]),
+            SettingsGroup(rows: [.font, .fontSize, .contentWidth]),
             SettingsGroup(rows: [.formattingRow]),
             SettingsGroup(rows: [.followSystemAppearance]),
             SettingsGroup(rows: [.theme]),

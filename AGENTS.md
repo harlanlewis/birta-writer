@@ -157,7 +157,7 @@ webview/components/table/tableView.ts         Table NodeView (overlay chrome: gr
 webview/components/table/reorder.ts           Pure row/column block-reorder + drop-index helpers
 webview/components/codeBlock/index.ts         Code block UI
 webview/components/toc/index.ts               Table of contents (TOC) panel
-webview/components/sidePanel/shell.ts         THE docked side panel every drawer composes: side, width and resize, docked against overlay, reveal tab, flyout; the TOC and the file explorer are two of it
+webview/components/sidePanel/shell.ts         THE docked side panel every drawer composes: side, width and resize, docked against overlay, whether a narrow window may take it away at all, reveal tab, flyout; the TOC and the file explorer are two of it
 webview/components/fileExplorer/index.ts      The file explorer over a host-provided directory (`projectFiles`): a lazy chunk, host-driven selection, one listing per opened folder
 webview/components/linkPopup/index.ts         Link hover popup
 webview/components/imageView/index.ts         Image NodeView (selection/lightbox/toolbar)
@@ -177,7 +177,7 @@ mac/Sources/BirtaWriterCore/MenuState.swift      What a menu row draws of the st
 mac/Sources/BirtaWriterCore/StyleCategories.swift  The style-check vocabulary ported for the Style Options submenu; guarded against the page's own list
 mac/Sources/BirtaWriterCore/WindowPolicy.swift   Which Space a window belongs to, decided from whether the app has a Dock icon; what neither answer contains, and why that absence is the load-bearing part
 mac/Sources/BirtaWriterCore/SummonActivation.swift Why an activation has to be issued twice when bringing a window forward switches Space, and which Space change is the app's own rather than the reader's
-mac/Sources/BirtaWriter/TitlebarActions.swift    New Note, Open (a menu over the recent files) and the Command Palette as titlebar buttons; which SF Symbol each takes, and why the near alternatives are wrong
+mac/Sources/BirtaWriter/TitlebarActions.swift    The titlebar's buttons, in two rows around the name: the file explorer's toggle before it, New Note, Open (a menu over the recent files) and the Command Palette after it; which SF Symbol each takes, why the near alternatives are wrong, and why the room is held in a window that draws none
 mac/Sources/BirtaWriter/RecentsMenu.swift        The Open Recent menu, filled by itself rather than by whichever of its three surfaces raised it; its Open-led form is the titlebar's Open button
 mac/Sources/BirtaWriterCore/StripTooltip.swift   A tooltip the page hands over because the tab bar is painted over it: the request, the CSS colour spellings a computed style uses, and where the chip goes
 mac/Sources/BirtaWriter/StripTooltipWindow.swift Draws that chip in a child window above the tabs; why nothing less than a window is above them, and what the window must never do

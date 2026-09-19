@@ -1,9 +1,10 @@
 /**
  * The side-panel shell: a fixed drawer under the topbar that docks beside the
- * content when the viewport has room and floats over it when it does not, with
- * a hover-revealed resize sash on its inner edge, a reveal tab at its docked
- * corner while closed, a hover/focus flyout preview off that tab, and a side
- * switch. Everything INSIDE the drawer is the composer's: the table of
+ * content, and, in a window with no room for both, either floats over it or
+ * holds the dock and takes the room, whichever the composer asked for
+ * (`SidePanelNarrowPolicy`). It has a hover-revealed resize sash on its inner
+ * edge, a reveal tab at its docked corner while closed, a hover/focus flyout
+ * preview off that tab, and a side switch. Everything INSIDE the drawer is the composer's: the table of
  * contents (components/toc) is the first, and a file explorer composes the
  * same shell with different rows.
  *
@@ -50,6 +51,39 @@ import { createFlyout } from "./flyout";
 
 export type SidePanelMode = "docked" | "overlay";
 
+/**
+ * What a viewport too narrow to hold the drawer AND a comfortable column
+ * beside it does to the drawer.
+ *
+ * `float` is the responsive rule: the drawer becomes an overlay over the
+ * content and closes, and comes back docked (if `openOnDock` says so) when the
+ * room returns. It is right for a drawer the document's own shape opens, where
+ * a window too narrow for both means the document wins.
+ *
+ * `hold` keeps the drawer docked at every width, and the content column gives
+ * up the room instead. It is right for a drawer the reader opened on purpose
+ * and navigates with: a file list that closes itself when the window narrows
+ * is one they have to open again after every resize, and an overlay that
+ * dismisses on the next click into the document is the same cost per file.
+ * There is no floor under it, deliberately: a window narrow enough for the
+ * content column to be uncomfortable is a window whose reader can hide the
+ * drawer, and a drawer that decided that for them is what this exists to stop.
+ */
+export type SidePanelNarrowPolicy =
+    | { kind: "float"; minContentWidth: number }
+    | { kind: "hold" };
+
+/**
+ * The least document a holding drawer leaves beside itself, in CSS pixels.
+ *
+ * Not a reading measure and not a threshold to float at: it is the strip that
+ * keeps the document clickable and the drawer's own sash reachable in a window
+ * narrower than the drawer. The one state it rules out is a drawer drawn wider
+ * than the window it is in, which the reader can otherwise reach by widening
+ * the drawer and then narrowing the window.
+ */
+const HELD_CONTENT_GLIMPSE = 120;
+
 export interface SidePanelWidth {
     /** The `:root` custom property the width is read from at mount and
      *  written to on every change; the composer's host injects the persisted
@@ -80,8 +114,10 @@ export const SIDE_PANEL_INSET = 8;
  * What reveals the panel while it is closed. `tab` puts the reveal tab on the
  * page and arms it as the flyout trigger. `external` builds the tab (the
  * flyout's default anchor, whose box the positioning reads) but never appends
- * it: the surface carries a button that does exactly this elsewhere, and
- * registers it through `setFlyoutTrigger`.
+ * it: what reveals the panel is a control elsewhere. One on the PAGE registers
+ * itself through `setFlyoutTrigger` and inherits the hover preview; one
+ * outside the page, in a host's own window chrome, cannot register anything,
+ * and that panel has no preview at all.
  */
 export type SidePanelTrigger =
     | { kind: "tab"; tooltip: string }
@@ -111,9 +147,9 @@ export interface SidePanelShellOptions {
     /** The docked edge at mount; `setSide` moves it. */
     initialRight: boolean;
     width: SidePanelWidth;
-    /** The content column that must fit beside the docked drawer, or the
-     *  panel floats instead. */
-    dockedMinContentWidth: number;
+    /** What a viewport with no room for both does to this drawer, and the
+     *  content column "room" is measured against (`SidePanelNarrowPolicy`). */
+    narrow: SidePanelNarrowPolicy;
     /** Pixels another docked panel already takes on the viewport (a second
      *  side panel on the same surface). Read at every mode decision. */
     neighborReserve?: () => number;
@@ -243,16 +279,58 @@ export function createSidePanelShell(opts: SidePanelShellOptions): SidePanelShel
     }
     let width = readInitialWidth();
 
-    function setWidth(next: number): void {
-        width = clampWidth(next);
-        document.documentElement.style.setProperty(opts.width.cssVar, `${width}px`);
+    /**
+     * The width the drawer is DRAWN at, which is the width the reader settled
+     * on everywhere except one case: a drawer holding its dock in a window
+     * narrower than that width.
+     *
+     * A drawer wider than its window covers the document it is a list of, and
+     * takes the two ways back with it, the content and the resize sash. The
+     * float policy never reaches that state because it hands the window over
+     * long before; `hold` promises not to, so the promise has to be paid for
+     * here instead. What is clamped is what is drawn: the reader's width is
+     * kept and comes back the moment the room does.
+     */
+    function drawnWidth(): number {
+        if (opts.narrow.kind !== "hold") {
+            return width;
+        }
+        return Math.max(opts.width.min, Math.min(width, window.innerWidth - HELD_CONTENT_GLIMPSE));
+    }
+
+    /**
+     * What was last written to the variable, so a pass that changes nothing
+     * writes nothing.
+     *
+     * Seeded with the width the host injected, which is what the page is
+     * already drawing, so a mount that does not move it writes nothing
+     * either. The guard is not tidiness: the variable is on `:root`, and a
+     * custom-property write there restyles the whole document, which is a
+     * cost proportional to the document landing on the frame that wrote it.
+     * Without it every window resize would pay that.
+     */
+    let appliedWidth = width;
+
+    /** Write the drawn width where the panel and the content's margin read it. */
+    function applyWidth(): void {
+        const next = drawnWidth();
+        if (next === appliedWidth) {
+            return;
+        }
+        appliedWidth = next;
+        document.documentElement.style.setProperty(opts.width.cssVar, `${next}px`);
         updateTab();
         onPresentationSync(); // the row's available width changed
         notifyReserve();
     }
 
+    function setWidth(next: number): void {
+        width = clampWidth(next);
+        applyWidth();
+    }
+
     function dockedReserve(): number {
-        return isOpen && mode === "docked" ? width : 0;
+        return isOpen && mode === "docked" ? drawnWidth() : 0;
     }
 
     // The neighbour is told only when the number it reads actually moved, so
@@ -394,8 +472,15 @@ export function createSidePanelShell(opts: SidePanelShellOptions): SidePanelShel
     // pure viewport measure, identical in fixed and full-width mode. Measuring
     // the content's own position instead would be circular, since the content
     // recenters into the space beside a docked drawer.
+    //
+    // A drawer that holds the dock asks nothing: its answer is yes at every
+    // width, which is also why it has no content column to be measured against
+    // (`SidePanelNarrowPolicy`).
     function hasEnoughSpace(): boolean {
-        return window.innerWidth - neighborReserve() >= width + opts.dockedMinContentWidth;
+        if (opts.narrow.kind === "hold") {
+            return true;
+        }
+        return window.innerWidth - neighborReserve() >= width + opts.narrow.minContentWidth;
     }
 
     function resolveMode(): SidePanelMode {
@@ -466,7 +551,10 @@ export function createSidePanelShell(opts: SidePanelShellOptions): SidePanelShel
         prefix,
         cursor: resizeCursor,
         isRight: () => right,
-        width: () => width,
+        // What is DRAWN, so a drag in a window narrower than the drawer
+        // starts where the sash actually is and commits the width the reader
+        // can see, rather than one held back off screen.
+        width: () => drawnWidth(),
         defaultWidth: opts.width.default,
         applyWidth: setWidth,
         setResizing: (on) => {
@@ -474,7 +562,15 @@ export function createSidePanelShell(opts: SidePanelShellOptions): SidePanelShel
             tab.setInstant(on);
         },
         tabEl,
-        onCommit: opts.width.onCommit,
+        onCommit: (settled) => {
+            // What the reader settled on is what they could SEE. With the
+            // drawer pinned by a narrow window, a drag past the pin would
+            // otherwise leave the shell holding a width nothing on screen
+            // ever showed and the host holding the drawn one, and the two
+            // would part company the next time the window grew.
+            width = settled;
+            opts.width.onCommit(settled);
+        },
         afterCommit: checkResponsiveMode,
     });
 
@@ -515,11 +611,23 @@ export function createSidePanelShell(opts: SidePanelShellOptions): SidePanelShel
         applyTooltip(tabEl, opts.trigger.tooltip, { placement: "below" });
     }
 
+    /**
+     * Re-apply the width when the viewport changes, for the one policy whose
+     * drawn width depends on it (`drawnWidth`). Under `float` it returns at
+     * once, and under `hold` the write itself is guarded on the number having
+     * moved (`applyWidth`), so an ordinary resize costs a comparison.
+     */
+    function followViewportWidth(): void {
+        if (opts.narrow.kind !== "hold") { return; }
+        applyWidth();
+    }
+
     // Kept to unbind on dispose: a resize after the panel is gone would
     // otherwise re-sync it and write its body classes back, and the editor's
     // margin math would make room for a panel that does not exist.
     const offResize = opts.eventManager.onWindow("resize", () => {
         updatePosition();
+        followViewportWidth();
         checkResponsiveMode();
     });
     // The viewport can change size without a `resize` event this page hears:
@@ -531,9 +639,15 @@ export function createSidePanelShell(opts: SidePanelShellOptions): SidePanelShel
     // row's top. So the root element's box is watched too, which follows the
     // viewport whatever delivered the change.
     const viewportResize = typeof ResizeObserver !== "undefined"
-        ? new ResizeObserver(() => { updatePosition(); checkResponsiveMode(); })
+        ? new ResizeObserver(() => { updatePosition(); followViewportWidth(); checkResponsiveMode(); })
         : null;
     viewportResize?.observe(document.documentElement);
+    // The width the host injected can already be wider than the window this
+    // page is mounting into, so the clamp is applied once before anything is
+    // drawn rather than only on the next resize. Nothing is written under
+    // `float`, where the drawn width is the stored one and the host's own
+    // value stands.
+    followViewportWidth();
     // The edge the drawer hangs from moves without the window moving: the bar
     // grows a row, a host's strip under it comes or goes. The inline `top`
     // written above cannot follow a variable, so the bar's box is watched.
@@ -565,7 +679,9 @@ export function createSidePanelShell(opts: SidePanelShellOptions): SidePanelShel
         updatePosition,
         setSide,
         sideIcon: () => sideIcon(right),
-        width: () => width,
+        /** What is on screen (`drawnWidth`), which is what a caller measuring
+         *  the layout is asking about. */
+        width: () => drawnWidth(),
         setWidth,
         showFlyout: flyout.show,
         hideFlyout: flyout.hide,

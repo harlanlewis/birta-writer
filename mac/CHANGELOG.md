@@ -12,10 +12,20 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ## [Unreleased]
 
+### Added
+
+- Content Width, on the Appearance pane beside the font and its size: Full fills the window, and Fixed caps the text at a reading measure and centres it, for every window at once. The measure is in character widths, so it follows the font size rather than needing one of its own. The same control is in the toolbar's gear menu, for the window it is opened from, and Full Width and Fixed Width are rows in the command palette.
+
 ### Changed
 
 - The formatting toolbar in Birta Writer for Mac is turned on in Settings > Appearance > Formatting toolbar. The T button that opened it from the title bar is gone. The setting is off by default, as the row was, and it still applies to every window and tab at once. Whether you want a row of formatting controls is a question asked once, and a button on the bar of every window was spending permanent space on it; the controls it holds are in the Format menu, the slash menu and the command palette whether the row is showing or not.
+- Showing and hiding the file list is now a button in the titlebar, just after the traffic lights and before the file's name, drawn as a sidebar rather than as a folder. The toolbar no longer carries one, and with it goes the preview that flew the list out while the pointer rested on that button: the titlebar button shows and hides the list, and ⇧⌘E and View > Show Files still do. A window on a single file has no file list and draws no button, and holds the room it would have taken, so the name sits in the same place in both kinds of window.
+- The file list no longer closes itself when the window is narrow. It stays docked at whatever width the window is and the text gives up the room, so a window dragged smaller is not a window the list has to be opened in again; hiding it stays the reader's to ask for.
 - The formatting row, when it is showing, is grouped and quiet. A hairline separates the paragraph style, the inline marks, the block containers, the inserts and Clear Formatting, so the row can be scanned in five pieces instead of read one glyph at a time. The row is also drawn back until you move the pointer toward it, or focus a control in it with the keyboard, so it stays out of the way while you write.
+
+### Fixed
+
+- In the command palette, a long file name was drawn on two lines and had its tail cut away with nothing to say so, and a deep folder path could take enough of the row to leave the name it belongs to undrawn. A name is now one line, ending in an ellipsis where it does not fit; the folder takes at most part of the row and is cut from its start, so what is left is the folders that tell one row from another.
 
 ---
 

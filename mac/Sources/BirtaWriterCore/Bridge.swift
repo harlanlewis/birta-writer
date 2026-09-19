@@ -836,9 +836,14 @@ public struct BootConfig: Equatable {
             //     to go, and the one that stays is the one that is on screen
             //     whether the sidebar is open or shut; it inherits the reveal
             //     tab's hover preview rather than replacing it with nothing.
+            //   filesToggleInHostChrome   the file explorer's control is this
+            //     window's own, in the titlebar beside the file's name, where
+            //     macOS puts a sidebar toggle. The bar draws none, and the
+            //     preview that hung off the bar's button goes with it: a
+            //     control outside the page cannot be hovered by it.
             "host": [
                 "capabilities": hostCapabilities,
-                "arrangements": ["typographyInGearMenu", "formattingInSecondRow", "fixedToolbarLayout", "barMenusOnClick", "nativeFindBar", "nativeDatePicker", "fixedTocSide", "tocToggleInBar"],
+                "arrangements": ["typographyInGearMenu", "formattingInSecondRow", "fixedToolbarLayout", "barMenusOnClick", "nativeFindBar", "nativeDatePicker", "fixedTocSide", "tocToggleInBar", "filesToggleInHostChrome"],
                 "shortcuts": hostShortcuts.map { shortcut -> [String: Any] in
                 // The optional halves are omitted rather than sent as null: an
                 // absent `command` is the claim "this key runs no editor

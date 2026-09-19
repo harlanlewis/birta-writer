@@ -863,6 +863,11 @@ final class Coordinator {
             // written since. Seeded only at construction, this window's menus
             // would go on drawing the state its page had before the reload.
             self.menuState = self.menuStateFromPrefs()
+            // And the titlebar's toggle with it, for the same reason: it
+            // names what a press will do out of that same mirror, so a page
+            // seeded with an explorer already open must not leave a button
+            // beside the name offering to show it.
+            self.titleBar.titleView.setSidebarShown(self.menuState.isOn(.explorerShown))
             // The view state is the load's, not the file's: `loadPage` has
             // already decided whether this page is opening a file or
             // remounting one, and that decision is what seeds the shim.
@@ -962,6 +967,14 @@ final class Coordinator {
         // What the set IS, and the argument for every symbol in it, is
         // `TitlebarActionsView.shipped`.
         titleBar.titleView.setActions(TitlebarActionsView.shipped)
+        // The explorer's toggle, before the name, drawn only where there is an
+        // explorer. Asked once and never again: the root is what a window IS
+        // (`explorerRoot`), so this cannot change while the window is open.
+        titleBar.titleView.setSidebarAvailable(explorerRoot != nil)
+        // What the toggle is CALLED follows the panel, the way the menu row it
+        // repeats does; the app's mirror of that is `menuState`, which the
+        // page keeps current.
+        titleBar.titleView.setSidebarShown(menuState.isOn(.explorerShown))
         // The file buttons name themselves with the PAGE'S tooltip, so the two
         // halves of this band label their controls the same way. `NSView`'s
         // own `toolTip` is what this replaces: it draws the system tooltip,
@@ -1913,6 +1926,7 @@ final class Coordinator {
         case let .fileExplorerVisibility(visible):
             Prefs.explorerVisibility = visible ? "shown" : "hidden"
             menuState.record(.explorerShown, on: visible)
+            titleBar.titleView.setSidebarShown(visible)
         case let .setFileExplorerShowHidden(value):
             // The setting is the app's, so every rooted window's page hears
             // about it, this one included; `WindowSet` fans it out.
@@ -3809,6 +3823,8 @@ final class Coordinator {
                 guard let self, let controls else { return }
                 self.titlebarControlsWidth = controls.width
                 self.titleBar.titleView.actionsView.setBandChrome(
+                    hoverFill: controls.hoverFill, cornerRadius: controls.cornerRadius)
+                self.titleBar.titleView.sidebarView.setBandChrome(
                     hoverFill: controls.hoverFill, cornerRadius: controls.cornerRadius)
                 self.layoutTitlebarDrag()
                 self.traceTitlebarDrag()

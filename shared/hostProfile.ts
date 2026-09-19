@@ -144,11 +144,15 @@ export type HostCapability =
      */
     | "editorFont"
     /**
-     * An editor area wide enough that constraining text to a reading measure
-     * is a choice worth offering. VS Code gives the editor whatever the window
-     * has, which on a wide display is far past comfortable. A small floating
-     * panel is already its own measure, so the full/fixed control there offers
-     * a choice between one width and the same width.
+     * An editor area the reader can make wider than a comfortable reading
+     * measure, so capping the text at one is a choice worth offering. VS Code
+     * gives the editor whatever the window has, which on a wide display is far
+     * past comfortable, and a resizable application window is the same
+     * question asked by a different frame.
+     *
+     * What it rules out is a surface with ONE width: a control offering full
+     * against fixed there is offering a choice between a width and the same
+     * width.
      */
     | "contentMeasure"
     /**
@@ -237,7 +241,7 @@ export const HOST_PROFILES = {
     // and the e2e mac page restate this list as a literal, because neither
     // Swift nor an HTML bootstrap can import it. They are not free to drift:
     // shared/__tests__/hostProfile.test.ts parses both and fails.
-    mac: ["spellAndGrammar", "imageUpload", "toc", "appPreferences", "agent", "projectFiles", "stripTooltip"] as readonly HostCapability[],
+    mac: ["spellAndGrammar", "imageUpload", "toc", "contentMeasure", "appPreferences", "agent", "projectFiles", "stripTooltip"] as readonly HostCapability[],
 } as const satisfies Record<string, readonly HostCapability[]>;
 
 /**
@@ -370,7 +374,26 @@ export type HostArrangement =
      * the surface that declines it the same `toggleToc` still runs from the
      * bar, the palette and the slash menu.
      */
-    | "tocToggleInBar";
+    | "tocToggleInBar"
+    /**
+     * Showing and hiding the file explorer is the HOST's own chrome, so the
+     * bar carries no button for it.
+     *
+     * A sibling of `tocToggleInBar` rather than its opposite: both settle
+     * WHO shows a drawer, and they answer differently because the drawers
+     * are in different places. That one keeps the control on the bar rather
+     * than on the panel, at the corner the panel's own would sit in; this one
+     * takes it off the bar entirely, because a host with a window frame has
+     * somewhere better for it, beside the file's name, where every other
+     * application on the platform puts a sidebar toggle.
+     *
+     * Not a capability: `toggleFileExplorer` still runs, from the palette,
+     * the slash menu and the host's own key, and it is what the host's
+     * control runs too. What the page gives up is the button, and with it the
+     * hover preview that hangs off one (`setFlyoutTrigger`), which a host
+     * outside the page cannot arm.
+     */
+    | "filesToggleInHostChrome";
 
 export const ALL_HOST_ARRANGEMENTS: readonly HostArrangement[] = [
     "typographyInGearMenu",
@@ -381,6 +404,7 @@ export const ALL_HOST_ARRANGEMENTS: readonly HostArrangement[] = [
     "nativeDatePicker",
     "fixedTocSide",
     "tocToggleInBar",
+    "filesToggleInHostChrome",
 ];
 
 /** One key the host binds itself, for the keyboard cheatsheet to print. */

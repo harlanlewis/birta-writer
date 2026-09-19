@@ -56,6 +56,7 @@ import { createDebugMenu, type DebugOpts } from "./debugMenu";
 import { createToolbarLayout, type ToolbarLayout } from "./layout";
 import { ITEM_MUTATES, hostAvailableItems, type ToolbarItemId } from "./registry";
 import { commandAvailable } from "../../../shared/commandAvailability";
+import { hostArranges } from "../../../shared/hostProfile";
 import { isReadOnly, setReadOnly, subscribeReadOnly } from "@/readOnly";
 import { computeToolbarActiveState, DETACHED_STATE, type ToolbarActiveState } from "./activeState";
 import { notifyOpenSettings, notifyOpenKeybindings, notifyResolveSyncConflict } from "@/messaging";
@@ -441,7 +442,14 @@ export function initToolbar(
     // is built once and a folder arrives on a message; the panel's gate holds
     // the button as its flyout trigger from then on (index.ts), and a
     // single-file window has a button that runs an inert command.
+    //
+    // Withdrawn where the HOST carries the control instead
+    // (`filesToggleInHostChrome`): a window with a frame of its own puts it
+    // beside the file's name, and a second button a few inches away is the
+    // same control drawn twice. The command is untouched, so the palette, the
+    // slash menu and the host's own key still run it.
     const filesItem = commandAvailable("toggleFileExplorer")
+        && !hostArranges("filesToggleInHostChrome")
         ? wrap("files", btn(
             IconFolder,
             withChord(t("Toggle File Explorer"), "toggleFileExplorer"),

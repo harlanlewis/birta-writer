@@ -737,7 +737,10 @@ const barTocBtn = topbar?.querySelector<HTMLElement>(".tb-toc-btn");
 if (toc && barTocBtn) { toc.setFlyoutTrigger(barTocBtn); }
 // The file explorer's button is the same shape: the gate holds the trigger
 // until the panel exists, so it is registered here whether or not a folder
-// ever opens.
+// ever opens. Absent where the host carries that control itself
+// (`filesToggleInHostChrome`), and then the explorer has no hover preview at
+// all: the trigger has to be an element in this page for the pointer to be
+// tracked over it, and a control outside the page is not one.
 const barFilesBtn = topbar?.querySelector<HTMLElement>(".tb-files-btn");
 if (barFilesBtn) { fileExplorer.setFlyoutTrigger(barFilesBtn); }
 

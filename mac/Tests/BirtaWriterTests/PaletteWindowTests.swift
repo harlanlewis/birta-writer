@@ -380,6 +380,97 @@ final class PaletteWindowTests: XCTestCase {
         XCTAssertEqual(PaletteCellView.keyCaps("F5"), ["F5"], "a key of several characters stays one cap")
     }
 
+    /// The palette's own width, which is what a row is laid out at.
+    private static let rowWidth = PaletteWindowController.width
+
+    /// One cell, filled and laid out at that width.
+    ///
+    /// The width is a CONSTRAINT rather than a frame, which is the difference
+    /// between asking the layout a question and letting it answer a different
+    /// one: a cell whose width is only a frame is free to grow to whatever its
+    /// contents want, and every share measured against it then comes back
+    /// correct on a row a foot wide. A table gives its cell a real width, and
+    /// so does this.
+    private func laidOutCell(title: String, detail: String?) -> PaletteCellView {
+        let cell = PaletteCellView()
+        cell.show(PaletteRow(item: PaletteItem(id: title, title: title, detail: detail,
+                                               section: "Files", kind: .file),
+                             title: title, matched: [0..<1], score: 1))
+        cell.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            cell.widthAnchor.constraint(equalToConstant: Self.rowWidth),
+            cell.heightAnchor.constraint(equalToConstant: 32),
+        ])
+        cell.layoutSubtreeIfNeeded()
+        return cell
+    }
+
+    func testALongFolderShouldTruncateRatherThanEraseTheFileName() {
+        let deep = "Work (shared)/Notable/03-People/Team Members/exited/Anna Santiago/2025-08 MYR"
+        let boxes = laidOutCell(title: "Anna Santiago Worklog.md", detail: deep)
+            .labelBoxesForMeasurement()
+        // The name is what the query matched, so it is the half that keeps
+        // its width: the path has a ceiling and gives way first. The failure
+        // this is here for is a title compressed to nothing, which draws a
+        // row with a folder on it and no file name at all.
+        XCTAssertGreaterThan(boxes.title.width, 200,
+                             "the folder squeezed the file name: \(boxes)")
+        // The ceiling is on the box Auto Layout governs, which is a text
+        // field's alignment rect; the frame read back here is a point or two
+        // wider on each side of it, and the slack is that and nothing more.
+        XCTAssertLessThanOrEqual(boxes.detail.width, Self.rowWidth * PaletteCellView.detailShare + 6,
+                                 "the folder took more than its share: \(boxes)")
+        XCTAssertGreaterThan(boxes.detail.width, 0, "the folder is not drawn at all: \(boxes)")
+    }
+
+    func testALongNameShouldNotEraseTheFolderEither() {
+        // The mirror of the case above, and the reason the path holds a floor
+        // as well as a ceiling: with the name winning every squeeze and
+        // nothing under the path, a long enough name is the same defect
+        // wearing the other label.
+        let long = "Agentic Platform — Support and Monitoring User Journeys and Runbooks.md"
+        let boxes = laidOutCell(title: long, detail: "Work (shared)/Notable/02-Projects")
+            .labelBoxesForMeasurement()
+        XCTAssertGreaterThan(boxes.detail.width, 100, "the name squeezed the folder away: \(boxes)")
+        XCTAssertGreaterThan(boxes.title.width, 200, "and the name still has most of the row: \(boxes)")
+    }
+
+    func testALongNameShouldStayOnOneLineAndSayItWasCut() {
+        let long = "Agentic Platform — Support and Monitoring User Journeys and Runbooks.md"
+        // With a folder beside it, which is the case this is about: the name
+        // is then in a box narrower than it needs, and what a box narrower
+        // than the string does to it is the whole question.
+        let cell = laidOutCell(title: long, detail: "Work (shared)/Notable/02-Projects/Agentic Platform")
+        let drawn = cell.titleDrawnHeightForMeasurement()
+        let boxes = cell.labelBoxesForMeasurement()
+        // A row is one line tall, so a title that wrapped would have its
+        // second line drawn outside the row and its tail cut away with
+        // nothing on screen to say so. Measured against the font's own line
+        // rather than a number written here.
+        XCTAssertLessThanOrEqual(drawn, PaletteCellView.titleLineHeight + 1,
+                                 "the title wrapped: \(drawn) in one line of \(PaletteCellView.titleLineHeight)")
+        // The arm that says the check above can fail at all, and that this
+        // case really is a name in too small a box: the same string in the
+        // same box under the default style, which is what a field lays an
+        // attributed value out under when the value carries none, comes back
+        // taller than one line.
+        let plain = NSAttributedString(string: long, attributes: [.font: NSFont.systemFont(ofSize: 13)])
+        let box = CGSize(width: boxes.title.width, height: CGFloat.greatestFiniteMagnitude)
+        let wrapped = plain.boundingRect(with: box,
+                                         options: [.usesLineFragmentOrigin, .usesFontLeading]).height
+        XCTAssertGreaterThan(wrapped, PaletteCellView.titleLineHeight + 1,
+                             "the name fits its box, so nothing here is about wrapping: \(boxes)")
+    }
+
+    func testTheTitleShouldCarryTheStyleThatTruncatesIt() {
+        // The field's own `lineBreakMode` is inert for an attributed value,
+        // so the style has to ride the string. Nothing about the drawing says
+        // which of the two was read, which is why this asks the string.
+        let drawn = PaletteCellView.emphasised("A very long name indeed.md", at: [0..<1])
+        let style = drawn.attribute(.paragraphStyle, at: 0, effectiveRange: nil) as? NSParagraphStyle
+        XCTAssertEqual(style?.lineBreakMode, .byTruncatingTail)
+    }
+
     func testTheMatchedLettersShouldBeDrawnHeavier() {
         let drawn = PaletteCellView.emphasised("Italic", at: [0..<4])
         var bold = 0
