@@ -6,11 +6,11 @@
 
 ### Changed
 
-- Spelling, grammar and style checks are now Checks, a submenu of the toolbar's gear, rather than a button of their own on the bar. Every row is the same and every command is unchanged, so Check Spelling, Check Grammar, Check Style, the style sub-checks and Highlight Note Markers still run from the command palette and the slash menu exactly as before. The bar loses a permanent control for a set of modes most readers set once.
+- Spelling, grammar and style checks are now Proofreading, a submenu of the toolbar's gear, rather than a button of their own on the bar. Every row is the same and every command is unchanged, so Check Spelling, Check Grammar, Check Style, the style sub-checks and Highlight Note Markers still run from the command palette and the slash menu exactly as before. The bar loses a permanent control for a set of modes most readers set once, and the submenu is named for what it checks, which is what the Mac app's own View menu already calls the same rows.
 
 ### Removed
 
-- The `birta.toolbar.items.styleCheck` setting, which placed or hid the Checks button. There is no such button to place now. A stored value is ignored rather than refused, so nothing has to be cleaned up.
+- The `birta.toolbar.items.styleCheck` setting, which placed or hid the checks button. There is no such button to place now. A stored value is ignored rather than refused, so nothing has to be cleaned up.
 
 ---
 

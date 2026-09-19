@@ -164,6 +164,7 @@ final class WindowSet {
             self?.newNote(in: folder, beside: coordinator)
         }
         coordinator.onShowHiddenChanged = { [weak self] shown in self?.setShowHiddenFiles(shown) }
+        coordinator.onFormattingRowChanged = { [weak self] on in self?.setFormattingRowExpanded(on) }
         coordinator.onOpenDirectoryRequest = { [weak self] url in self?.openDirectory(at: url) }
         coordinator.makeRecentsMenu = { [weak self] in self?.recentsMenu() ?? RecentsMenu() }
         coordinator.onOpenRequest = { [weak self] url in
@@ -647,13 +648,15 @@ final class WindowSet {
         windows.forEach { $0.applyShowHiddenFiles(shown) }
     }
 
-    /// The formatting row was switched on or off in Settings: the app's one
-    /// answer moves, and every window's page follows it, including any that
-    /// already agree (the page treats a push that changes nothing as nothing).
+    /// The formatting row was switched on or off: the app's one answer moves,
+    /// and every window's page follows it, including any that already agree
+    /// (the page treats a push that changes nothing as nothing).
     ///
-    /// Settings is the only caller. The row is a setting rather than a control
-    /// on the bar, so no page originates a flip and nothing here is answering
-    /// a page.
+    /// Two callers, and the page is one of them: the gear menu carries a
+    /// switch beside the Settings window's. What the page posts is a REQUEST
+    /// (`setFormattingRowExpanded`, handed up by `Coordinator`), so the page
+    /// that asked hears the answer on the way back exactly as its siblings do
+    /// and cannot get ahead of the stored setting.
     func setFormattingRowExpanded(_ expanded: Bool) {
         Prefs.formattingRowExpanded = expanded
         windows.forEach { $0.applyFormattingRowExpanded(expanded) }

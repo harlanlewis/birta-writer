@@ -52,7 +52,7 @@ A finding offers a fix, a dictionary add, or Ignore. Suggestions apply on click,
 
 ### The user can always go quiet
 
-All checks ship on. A single master Proofreading switch (the Checks menu's gate row, and the `birta.toggleProofreading` command) silences spelling, grammar, and style in one step. Defaulting loud is only acceptable because going quiet is one action away. Name the domain in the control, "Proofreading" rather than "all checks". The row sits inside a menu already called Checks, so a bare "all" has nothing to scope it against.
+All checks ship on. A single master Proofreading switch (the gate row leading the gear's Proofreading submenu, and the `birta.toggleProofreading` command) silences spelling, grammar, and style in one step. Defaulting loud is only acceptable because going quiet is one action away. Name the domain in the control, "Proofreading" rather than "all checks". The submenu it gates is named for the same domain, so the pair reads as the subject and its master switch and a bare "all" has nothing to scope it against.
 
 ### A master gates its children; it never overwrites them
 
@@ -60,7 +60,7 @@ The Proofreading switch enables and disables the whole feature without touching 
 
 ### A gate silences the editor's opinions, never the writer's own content
 
-Proofreading findings are volunteered by the editor. The in-text editor-note chips mark up text the writer typed on purpose. So the Highlight note markers switch is a sibling of the Proofreading gate: it leads the Checks menu, sits outside the body the gate detaches, and survives proofreading being turned off.
+Proofreading findings are volunteered by the editor. The in-text editor-note chips mark up text the writer typed on purpose. So the Highlight note markers switch is a sibling of the Proofreading gate: it leads that submenu, sits outside the body the gate detaches, and survives proofreading being turned off.
 
 The layout has to carry that without a sentence of explanation. Same rank and emphasis (`tb-checks-master`), separated by a rule rather than a header, since a header would read as a section the gate opens. That rule is the whole argument, so it has to be there. A one-pixel divider is a flex item in a column menu and shrinks to nothing the moment the menu overflows its cap, which is exactly where the grouping it draws matters most, so `.ui-menu-divider` pins `flex: none`.
 
@@ -68,7 +68,7 @@ Before nesting any new toggle under a master, ask which side of that line it fal
 
 ### One switch, one announcement, however many surfaces wear it
 
-The note highlight is flippable from four places: the Checks menu, the Notes tab, the palette and slash command, and the setting. Every one of them funnels through the plugin's re-gate, which fires a single event that each mirroring control repaints from. No polling, and no surface holding a private copy. A defensive second repaint, say on menu open, is the anti-pattern: it makes one surface look right while another goes quietly stale, which is the failure that is hardest to notice.
+The note highlight is flippable from four places: the Proofreading submenu, the Notes tab, the palette and slash command, and the setting. Every one of them funnels through the plugin's re-gate, which fires a single event that each mirroring control repaints from. No polling, and no surface holding a private copy. A defensive second repaint, say on menu open, is the anti-pattern: it makes one surface look right while another goes quietly stale, which is the failure that is hardest to notice.
 
 A surface outside the page is the exception, and it is narrow enough to state: a native menu cannot hear that event, so Birta Writer for Mac's View menu reads what the host has recorded when it opens. That is not the defensive second repaint above, which is a surface that has an announcement to listen to and repaints again anyway. It is the only pass such a surface has, the record is written by the same flip that fires the event, and a menu is looked at only at the moment it opens.
 

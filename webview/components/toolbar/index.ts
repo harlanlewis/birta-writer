@@ -51,7 +51,7 @@ import { createLinkPrompt } from "./linkPrompt";
 import { createTypographyControl } from "./typography";
 import { createFormatMenu, createListMenu, createCodeMenu, createQuoteMenu } from "./containerPickers";
 import { createChecksMenu, checksAvailable } from "./checksMenu";
-import { createSettingsMenu } from "./settingsMenu";
+import { createSettingsMenu, setFormattingRowChecked } from "./settingsMenu";
 import { createDebugMenu, type DebugOpts } from "./debugMenu";
 import { createToolbarLayout, type ToolbarLayout } from "./layout";
 import { ITEM_MUTATES, hostAvailableItems, type ToolbarItemId } from "./registry";
@@ -400,6 +400,9 @@ export function initToolbar(
         // Absent on a surface that can answer none of its rows, which is the
         // same gate the bar item carried before this moved.
         ...(checks ? { checksRow: checks.el } : {}),
+        // A thunk for the same reason the two above are: the layout
+        // controller that owns the row is built below this call.
+        isFormattingRowExpanded: () => layout.isFormattingRowExpanded(),
     }));
 
     // ── Table of contents ─────────────────────────────
@@ -465,6 +468,10 @@ export function initToolbar(
     // never from a private copy, and never defensively on menu open.
     paintReadOnly(isReadOnly());
     subscribeReadOnly(paintReadOnly);
+    // The gear's formatting-row switch, on the same rule. Painted here rather
+    // than where it is built, because the row it mirrors is the layout
+    // controller's and that is built on the line above the menu's own.
+    setFormattingRowChecked(layout.isFormattingRowExpanded());
 
     // Expose the toolbar-owned actions to the shared editor-command registry so
     // the command palette / context menu reach the exact same code paths.
@@ -566,7 +573,14 @@ export function initToolbar(
         resetFontSize: typography.resetFontSize,
         toggleProofread: (key) => checks?.toggleProofread(key),
         isVisible: layout.isVisible,
-        setFormattingRowExpanded: layout.setFormattingRowExpanded,
+        // The row AND the switch that asked for it, from the one announcement.
+        // The gear's switch is a mirror of this state, so it repaints here
+        // rather than when the menu next opens: a control that caught up on
+        // open would look right in front of a row that had not moved.
+        setFormattingRowExpanded: (expanded) => {
+            layout.setFormattingRowExpanded(expanded);
+            setFormattingRowChecked(expanded);
+        },
         openLinkPrompt,
     };
 }

@@ -520,6 +520,17 @@ export type ToExtensionMessage =
     // menu; the extension persists it to the `contentWidth` setting, which
     // round-trips back as a `setContentWidth` message.
     | { type: "setContentWidth"; mode: ContentWidthMode }
+    // The formatting row's switch in the gear menu, on a surface that has one
+    // (`formattingInSecondRow`). A REQUEST rather than a flip: the row's state
+    // is the host's setting, so the host stores it and fans it back out to
+    // every window as `setFormattingRowExpanded`, and the page that asked
+    // learns the answer the same way every other window does.
+    //
+    // The extension never sees one and has no handler: VS Code does not
+    // arrange a second row, so the switch that posts this is not built there.
+    // That gate is the arrangement rather than a check here, which is the rule
+    // for every difference between surfaces (shared/hostProfile.ts).
+    | { type: "setFormattingRowExpanded"; expanded: boolean }
     // Persisted by the extension (settings write-back), which echoes it
     // back as a `setBlockHandles` message to every open editor.
     | { type: "setBlockHandles"; mode: BlockHandlesMode }

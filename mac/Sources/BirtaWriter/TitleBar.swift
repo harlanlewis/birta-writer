@@ -109,9 +109,9 @@ final class TitleBarView: NSView {
     /// Built here rather than handed in like the file actions, because there
     /// is nothing to decide: it is one button, running the menu row the
     /// window's own ⇧⌘E runs. What the coordinator says about it is whether
-    /// this window HAS an explorer (`setSidebarAvailable`), and the room is
-    /// held either way, so the name starts at the same x in both kinds of
-    /// window.
+    /// this window HAS an explorer (`setSidebarAvailable`); a window with none
+    /// draws no button and reserves no room for one, so the name starts
+    /// against the traffic lights rather than after a blank stretch of band.
     private let sidebar = TitlebarActionsView(actions: TitlebarActionsView.leadingShipped,
                                               edge: .leading)
     /// Hover over the title itself, and hover over the drag strip beside it.
@@ -329,6 +329,13 @@ final class TitleBarView: NSView {
     /// those probes can read this decision rather than restate it. The fade is
     /// the only reason a caller would ever want the value late.
     private func syncHoverChrome(animated: Bool = true) {
+        // First, and before the early return below, because the page's half of
+        // the band has to hear about a pointer on the title whatever this view
+        // then decides to draw.
+        if isPointedAt != wasPointedAt {
+            wasPointedAt = isPointedAt
+            onPointedAtChange?()
+        }
         // Nothing to point at while the title names the application: the
         // chevron is a picture of a click this view is not taking, and the
         // buttons beside it are two actions the app is refusing. That last is
@@ -370,7 +377,7 @@ final class TitleBarView: NSView {
             return
         }
         NSAnimationContext.runAnimationGroup { context in
-            context.duration = 0.12
+            context.duration = TitlebarActionsView.chromeFadeSeconds
             chevron.animator().alphaValue = wanted
         }
     }
@@ -393,6 +400,11 @@ final class TitleBarView: NSView {
     /// the two kinds of window.
     func setSidebarAvailable(_ available: Bool) {
         sidebar.setAvailable(available)
+        // The row's room goes with its availability (`TitlebarActionsView.room`),
+        // so this view is a different width than it was and the drag strip
+        // behind it starts somewhere else. Re-sized here rather than by the
+        // caller: every reader of `chromeWidth` is downstream of this frame.
+        resize()
     }
 
     /// Whether the file explorer is out, so the toggle names what pressing it
@@ -406,6 +418,37 @@ final class TitleBarView: NSView {
     /// tests. The view rather than a summary, for the reason `actionsView`
     /// is one.
     var sidebarView: TitlebarActionsView { sidebar }
+
+    /// Whether the title itself is being pointed at, or the popover it opened
+    /// is still up. The two sources of "awake" this view holds.
+    ///
+    /// The POPOVER is the half that is demonstrably missing from the window's
+    /// own answer, and it is missing because a popover is a window of its own:
+    /// a pointer that has left the title to use one is nowhere in this window
+    /// at all, and the window may have given up key to it as well.
+    /// `syncHoverChrome` has held the native chrome through that since it was
+    /// written; `Coordinator.applyChromeVisibility` had no term for it, so the
+    /// page's half of the band faded out under an open popup.
+    ///
+    /// The hover half is this view's own tracking area, which is the one the
+    /// native chrome already trusts. Whether the content view's area covers
+    /// the titlebar as well is not a question anything here can answer:
+    /// `mac/scripts/measure.sh` says in as many words that a script has no
+    /// pointer without an Accessibility grant, so no check in this repository
+    /// ever fires a tracking area. Reading this view's own flag costs a Bool
+    /// and takes the question out of the answer.
+    var isPointedAt: Bool { isHovered || popover?.isShown == true }
+
+    /// `isPointedAt` changed. Raised from `syncHoverChrome`, which every
+    /// writer of either source already goes through, so there is no list of
+    /// call sites to keep complete.
+    var onPointedAtChange: (() -> Void)?
+
+    /// What `isPointedAt` last reported, so the callback fires on a change
+    /// rather than on every settle: `syncHoverChrome` runs on key
+    /// notifications and layout passes too, and the coordinator's answer is a
+    /// message into a live web view.
+    private var wasPointedAt = false
 
     /// Hover anywhere on the draggable stretch of the band, forwarded by the
     /// coordinator. See `isBandHovered`.
@@ -874,10 +917,12 @@ final class TitleBarView: NSView {
         let local = convert(point, from: superview)
         guard bounds.contains(local) else { return nil }
         if let button = actions.button(at: convert(local, to: actions)) { return button }
-        // The sidebar toggle takes its own click the same way, and its
-        // reserved room falls through to the band exactly as the file
-        // buttons' does: in a window with no explorer that strip is empty
-        // titlebar, and empty titlebar drags the window.
+        // The sidebar toggle takes its own click the same way, and its room
+        // falls through to the band while it is merely not drawn, exactly as
+        // the file buttons' does. In a window with no explorer there is no
+        // room to fall through: the row reports zero width
+        // (`TitlebarActionsView.room`), so the name starts where the strip
+        // would have been.
         if let button = sidebar.button(at: convert(local, to: sidebar)) { return button }
         // The title's own click area is the NAME and the chevron that points at
         // it, and stops at both ends. Either row's room is deliberately

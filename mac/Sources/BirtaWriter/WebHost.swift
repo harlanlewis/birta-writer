@@ -278,25 +278,19 @@ final class WebHost: NSObject, WKScriptMessageHandler, WKNavigationDelegate, WKU
     }
 
     /// Host → page: whether the window is at rest, which the page's own
-    /// stylesheet (mac/Resources/index.html) reads to put the toolbar away.
+    /// stylesheet (mac/Resources/index.html) reads to put its chrome away.
+    ///
     /// A class rather than a message: the bundle is the extension's and knows
     /// nothing about a window nobody is pointing at.
-    /// Toggle `body.mac-resting`, which the page styles when it has a resting
-    /// treatment to apply.
     ///
-    /// It currently has none. The rule this drove faded the formatting
-    /// controls when the pointer left the window, and that stopped being
-    /// possible when they became a row of the bar: the strip it was written
-    /// for was fixed to the window's bottom edge and outside the layout, so
-    /// fading it left nothing behind, where fading a row of the bar leaves the
-    /// text pushed down around a gap with nothing drawn in it. Removing the
-    /// row instead reflows the document every time the pointer leaves the
-    /// window, which is what the original rule chose opacity to avoid.
-    ///
-    /// The machinery is kept rather than deleted because the question it
-    /// answers is still a good one and the hover tracking behind it is the
-    /// expensive half to rebuild. Anything that fades here has to cost no
-    /// layout, which is a real constraint on what the next treatment can be.
+    /// `body.mac-resting` takes the bar's trailing controls, the formatting
+    /// row and the palette over a selection, all on one duration with the
+    /// native half of the band. Anything that fades there has to cost no
+    /// layout, which is a real constraint rather than a preference: the row is
+    /// part of the bar's height, so removing it would reflow the document
+    /// every time attention left the window, and the trailing block's width is
+    /// what the title's ceiling is computed against. That is why every one of
+    /// them goes by opacity and keeps its box.
     func setChromeResting(_ resting: Bool) {
         let js = "document.body.classList.toggle('mac-resting', \(resting ? "true" : "false"));"
         webView.evaluateJavaScript(js) { _, _ in }

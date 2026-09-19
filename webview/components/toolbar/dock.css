@@ -342,6 +342,13 @@ body.toc-open.toc-right .tb-dock {
     transition: opacity 140ms ease-out;
 }
 
+/* A host that puts this row away when its window goes to rest overrides that
+   duration with its own, because the row is then one of several things fading
+   together and a strip that finished last would read as a fault rather than as
+   a window settling down. `mac/Resources/index.html` is the one that does, and
+   its rule carries the argument; this note is here so the number above is not
+   read as the only one in force. */
+
 .tb-dock--near,
 .tb-dock:hover,
 .tb-dock:focus-within,

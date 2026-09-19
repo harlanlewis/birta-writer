@@ -101,7 +101,7 @@ declare global {
             pasteFormat?: "markdown" | "plainText";
             proofread?: ProofreadConfig;
             /**
-             * The Checks menu's answers by OPTION KEY, for a host that stores
+             * The Proofreading menu's answers by OPTION KEY, for a host that stores
              * what the reader changed rather than a whole config.
              *
              * A second shape for the same fact, and the split is deliberate:

@@ -68,6 +68,11 @@ export interface ToolbarLayout {
      * on the surface that has one; a no-op elsewhere. Not posted back.
      */
     setFormattingRowExpanded: (expanded: boolean) => void;
+    /**
+     * Whether that row is open right now, for the gear's switch. False where
+     * there is no such row, which is every surface but the one arranging it.
+     */
+    isFormattingRowExpanded: () => boolean;
     /** Show or hide the debug dropdown. */
     setDebugMode: (enabled: boolean) => void;
     /** Show or hide the disk-drift badge. */
@@ -439,6 +444,7 @@ export function createToolbarLayout(deps: ToolbarLayoutDeps): ToolbarLayout {
         setToolbarVisible,
         isVisible: () => toolbarVisible,
         setFormattingRowExpanded: (expanded) => dock?.setExpanded(expanded),
+        isFormattingRowExpanded: () => dock?.isExpanded() ?? false,
         setDebugMode(enabled: boolean): void {
             debugVisible = enabled;
             if (dbgItem) {
