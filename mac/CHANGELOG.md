@@ -12,6 +12,22 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ## [Unreleased]
 
+### Added
+
+- Open Recent now remembers folders as well as files. A folder opened as a directory window joins the same list, in the same recency order, and picking its row brings that window back or opens it again; the row carries the Finder's own icon, so a folder and a file are told apart at a glance without reading the extension. The folder the window you are in is rooted at is left out of that window's own menu, as the file it is on already was. Go to File… in the command palette still lists files only.
+
+### Fixed
+
+- The traffic lights, the file name and the buttons beside it sat high in the strip that reads as the window's toolbar. The titlebar band is now the height macOS gives a window with a toolbar, which is what that strip has always been drawing as, so the window's own controls are centred in it. The file list and the table of contents hang from the band instead of standing 8 points below it, so the window keeps the room it had.
+- The update windows carry the Birta Writer mark, as the About window does. Both the offer to install a new version and the answer to Check for Updates… were drawing a title and a button with nothing saying which application was asking.
+
+### Changed
+
+- A command palette row that turns something on or off says which it will do. The menu can carry a checkmark and does; a palette row is a title and nothing else, so Line Numbers was the same row whether the gutter was up or down. It now reads Show Line Numbers or Hide Line Numbers, and the same rule reaches every toggle the menus hold: Show or Hide Hidden Files, Turn On or Turn Off Proofreading, Check Spelling or Stop Checking Spelling, Check for Passive voice or Stop Checking for it. View > Show Line Numbers and View > Show Hidden Files are Show and Hide pairs in the menu too, which is what Table of Contents and Files already were.
+- Accent and Tint are their own group at the foot of the Appearance pane, under the two transparency switches rather than above them. They recolour whichever theme is in force, and in one card with the switches they read as two more properties of a sidebar.
+- Each theme picker draws a line where its own mode's themes run out, so the dark themes in the picker for dark read as the dark ones and the rest as the rest. Drawn only where both kinds are there to divide, and only while Auto light/dark mode is on, since there is one picker and one question with it off.
+- A settings row in the command palette reads Settings › General › Show in Dock rather than General › Show in Dock. Typed at, the palette draws no section heading over the row, so the pane's name was the only word in front of it and a setting read as a command.
+
 ---
 
 ## [2026.918.0] - 2026, September 18

@@ -113,6 +113,11 @@ struct MiniWindowPalette: Equatable {
 /// Either way the cards of the kind the strip is PICKING FOR lead, system
 /// card included, so a dark slot opens on the dark themes; the rest follow
 /// in the store's own order, which is by name (`ThemeStore.ordered`).
+///
+/// A slot strip draws a line where that order turns over, so the two halves
+/// read as the mode's own themes and then the rest rather than as one list
+/// that happens to start with the right ones. Only a slot strip: see the
+/// reasoning at the line itself.
 @MainActor
 final class ThemeStrip: NSView {
     let kind: VSCodeTheme.Kind?
@@ -124,6 +129,9 @@ final class ThemeStrip: NSView {
     private let stack = NSStackView()
     private(set) var cards: [ThemeCard] = []
     private(set) var selectedId: String?
+    /// Where the kind divider sits, as an index into `cards`: the first card
+    /// drawn after it. Nil when the strip drew none.
+    private(set) var dividerIndex: Int?
     private var settings = AppearanceSettings()
 
     static let height: CGFloat = 108
@@ -193,7 +201,13 @@ final class ThemeStrip: NSView {
                       selectedSystem: VSCodeTheme.Kind, settings: AppearanceSettings) {
         self.settings = settings
         selectedId = selected
-        for card in cards { card.removeFromSuperview() }
+        // Everything the last pass put in the row, not only the cards: the
+        // divider below is an arranged subview too, and a rebuild that took
+        // back the cards alone would leave one line behind per redraw.
+        for view in stack.arrangedSubviews {
+            stack.removeArrangedSubview(view)
+            view.removeFromSuperview()
+        }
         // The kind this strip is a picker FOR: its own, or, held, the kind
         // being held. Its cards lead, system card included, so the strip
         // opens on what is being chosen between (`ThemeStore.ordered`).
@@ -208,7 +222,27 @@ final class ThemeStrip: NSView {
                       palette: MiniWindowPalette.themed(theme.preview, kind: theme.kind, settings: settings))
         }
         cards = system + rest
-        for card in cards {
+        dividerIndex = nil
+        for (index, card) in cards.enumerated() {
+            // The line where the strip stops offering the kind it is picking
+            // FOR and starts offering the other one. The cards are already in
+            // that order (`ThemeStore.ordered`), so the boundary is the first
+            // card of the other kind and there is only ever one.
+            //
+            // A slot strip only, which is what `kind` being set means: with
+            // the system followed there are two strips, each picking for one
+            // mode, and the line says which of its cards belong to the mode
+            // named above it. Holding a mode there is one strip and one
+            // question, and a line across it would be dividing the answers to
+            // a question nobody asked.
+            //
+            // Nothing is drawn when every card is of the one kind: a divider
+            // with nothing on the far side of it is a promise of cards that
+            // are not there.
+            if let kind, dividerIndex == nil, index > 0, card.kind != kind {
+                dividerIndex = index
+                stack.addArrangedSubview(KindDivider())
+            }
             card.isSelected = card.id == selected && (card.id != nil || card.kind == selectedSystem)
             card.onPick = { [weak self] id, kind in
                 self?.select(id, systemKind: kind)
@@ -226,6 +260,43 @@ final class ThemeStrip: NSView {
 
     var titlesForTesting: [String] { cards.map(\.title) }
     var selectedTitleForTesting: String? { cards.first { $0.isSelected }?.title }
+    /// The title of the first card after the divider, or nil where the strip
+    /// drew none. The TITLE rather than the index, so a check reads the same
+    /// sentence the pane does.
+    var titleAfterDividerForTesting: String? { dividerIndex.map { cards[$0].title } }
+    /// What is actually in the row, so a check can see a divider that was
+    /// counted and never added, and one left behind by an earlier pass.
+    var dividersDrawnForTesting: Int { stack.arrangedSubviews.filter { $0 is KindDivider }.count }
+
+    /// The line between the kinds: a hairline the height of a card's picture,
+    /// so it ends where the pictures do rather than running down beside the
+    /// names.
+    ///
+    /// Drawn rather than layer-backed, for the reason the rest of this file
+    /// gives: a layer colour is resolved once and goes stale across the
+    /// appearance flip this pane exists to make.
+    final class KindDivider: NSView {
+        static let width: CGFloat = 1
+
+        init() {
+            super.init(frame: .zero)
+            translatesAutoresizingMaskIntoConstraints = false
+            NSLayoutConstraint.activate([
+                widthAnchor.constraint(equalToConstant: Self.width),
+                heightAnchor.constraint(equalToConstant: ThemeCard.pictureSize.height + 6),
+            ])
+            // Furniture, not a control: it takes no clicks and is not
+            // something to land on while reading the strip by keyboard.
+            setAccessibilityElement(false)
+        }
+
+        required init?(coder: NSCoder) { fatalError("not used") }
+
+        override func draw(_ dirtyRect: NSRect) {
+            NSColor.separatorColor.setFill()
+            bounds.fill()
+        }
+    }
 
     /// Flipped so the strip's top is the scroll view's top.
     final class FlippedView: NSView {

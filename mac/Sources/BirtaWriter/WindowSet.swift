@@ -100,13 +100,14 @@ final class WindowSet {
 
     /// A recents menu that knows which window is asking.
     ///
-    /// Built here rather than by whoever raises it, because the two facts it
-    /// needs are the SET's and not any window's: which file the window in front
-    /// is on, so that row is not offered back to somebody already reading it,
-    /// and which files the other windows hold, so those become the group at the
-    /// top. Three surfaces raise this menu (the File menu's submenu, the
-    /// titlebar's clock button, and the missing-file card), and a menu built
-    /// three times from three answers is three menus that agree today.
+    /// Built here rather than by whoever raises it, because the facts it needs
+    /// are the SET's and not any window's: which file the window in front is
+    /// on and which folder it is rooted at, so neither row is offered back to
+    /// somebody already there, and which files the other windows hold, so
+    /// those become the group at the top. Three surfaces raise this menu (the
+    /// File menu's submenu, the titlebar's clock button, and the missing-file
+    /// card), and a menu built three times from three answers is three menus
+    /// that agree today.
     ///
     /// Read through closures rather than captured, because a menu rebuilds
     /// itself every time it opens and the answer changes as windows come and
@@ -120,6 +121,7 @@ final class WindowSet {
     func recentsMenu(leadsWithOpen: Bool = false) -> RecentsMenu {
         RecentsMenu(leadsWithOpen: leadsWithOpen,
                     current: { [weak self] in self?.key?.boundFile },
+                    currentRoot: { [weak self] in self?.key?.explorerRoot },
                     openElsewhere: { [weak self] in
                         guard let self else { return [] }
                         let here = self.key
@@ -595,6 +597,10 @@ final class WindowSet {
     func openDirectory(at folder: URL, atLaunch: Bool = false) -> Coordinator? {
         let root = folder.standardizedFileURL
         if let open = windows(rootedAt: root).last {
+            // The folder joins the recents list on this path too: fronting a
+            // folder's window is a visit, and a row that did not move up
+            // would sink under files opened since.
+            Prefs.rememberRecent(root)
             if !atLaunch { open.show() }
             return open
         }
@@ -619,6 +625,17 @@ final class WindowSet {
                 return nil
             }
         }
+        // The folder joins the recents list, as the file a window is bound to
+        // does (`Coordinator.boundURL`, `close`). Here rather than at the
+        // gestures that open one, because there are several of them (the
+        // Finder, Open…, a row of this very menu, the palette) and this is
+        // the one place they all arrive at; a directory window's root never
+        // rebinds, so opening is the only moment it has.
+        //
+        // After the failures above and not before them, so a folder the app
+        // could not open does not leave a row that will fail the same way
+        // next time.
+        Prefs.rememberRecent(root)
         let made = makeWindow(on: file, slot: slot(for: file), explorerRoot: root)
         if !atLaunch { open(made) }
         return made

@@ -289,7 +289,10 @@ export async function run({ page, check, baseUrl }) {
             return {
                 lead: Math.round(rect.left - panel.left),
                 trail: Math.round(panel.right - rect.right),
-                radius: getComputedStyle(el).borderTopLeftRadius,
+                // The BOTTOM corner, because the top two are square: the
+                // card is flush with the chrome above it and rounds only
+                // where it stands in from the window (`toc.css`).
+                radius: getComputedStyle(el).borderBottomLeftRadius,
                 // The token the rule spends, resolved by the browser: the
                 // strip's WIDTH is pinned to it rather than to a number here,
                 // so a literal or a different token in that rule fails.
@@ -1459,19 +1462,18 @@ export async function run({ page, check, baseUrl }) {
         };
     });
     check("mac: the sidebar docks open on the right with the row open", beside.open && beside.rowShown, JSON.stringify(beside));
-    // The drawer is set into the window, so its top is the content area's own
-    // top plus its inset; the row's BOX starts higher and its CONTROLS start
-    // level with the drawer, which is where the one line under the window's
-    // chrome is actually drawn. The file explorer's suite holds the same pair
-    // for the same reason.
-    check("mac: the docked sidebar starts an inset below the formatting row's box, beside it rather than under it",
-        beside.panelTop === beside.contentAreaTop + INSET && beside.panelTop === beside.dockTop + INSET,
+    // The drawer hangs from the content area's own top, flush with the
+    // chrome above it, and its controls start there too, which is where the
+    // one line under the window's chrome is drawn. The file explorer's suite
+    // holds the same pair for the same reason.
+    check("mac: the docked sidebar starts level with the formatting row, beside it rather than under it",
+        beside.panelTop === beside.contentAreaTop && beside.panelTop === beside.dockTop,
         JSON.stringify(beside));
     // And the row's controls start where the drawer's card does, which is the
-    // one line under the window's chrome: a drawer docked open gives the row
-    // its own top padding for exactly this (`dock.css`), so the two meet
-    // rather than sitting a few pixels apart. `e2e/fileExplorer` holds the
-    // same pair for the explorer.
+    // one line under the window's chrome: a drawer docked open takes the
+    // row's own top padding off for exactly this (`dock.css`), so the two
+    // meet rather than sitting a few pixels apart. `e2e/fileExplorer` holds
+    // the same pair for the explorer.
     check("mac: and the row's controls sit on the sidebar's top edge, so the two draw one line",
         beside.itemTop !== null && Math.abs(beside.itemTop - beside.panelTop) <= 1, JSON.stringify(beside));
     check("mac: and the row ends where the sidebar begins",

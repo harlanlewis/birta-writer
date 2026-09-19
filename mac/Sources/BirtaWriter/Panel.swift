@@ -124,6 +124,7 @@ final class AppPanel: NSPanel {
         title = AppFlavor.current.displayName
         titleVisibility = .hidden
         titlebarAppearsTransparent = true
+        installBandToolbar()
         // The window policy, all three lines of it. The header says what each
         // one buys and why none of them can be left to the panel's default.
         level = .normal
@@ -150,7 +151,16 @@ final class AppPanel: NSPanel {
         }
         // The system's own show and hide, not a chosen one.
         animationBehavior = .default
-        minSize = PanelSize.minimum
+        // The CONTENT floor, not the frame's, which is the box every other
+        // number from `PanelSize` describes: `preferred` is handed to
+        // `contentRect:` above and `forScreen` is compared against the content
+        // rect. `minSize` is a frame size, so the same struct was being
+        // applied to two different boxes, and the difference between them is
+        // the chrome: with the band a toolbar's height, AppKit raised a frame
+        // minimum of 240 to 248 and the rule went on promising 240. Asked of
+        // the content, the app says how small the page may get and the system
+        // adds its own chrome to it.
+        contentMinSize = PanelSize.minimum
         // Remembered for a person, never for a measurement. The autosave goes
         // to the app's standard defaults rather than through `Prefs`, so it is
         // the one piece of state `BIRTA_MAC_DEFAULTS_SUITE` does not already
@@ -159,6 +169,48 @@ final class AppPanel: NSPanel {
         if remembersFrame, Prefs.isUserStore, !setFrameAutosaveName("AppPanel") {
             NSLog("Birta Writer: the panel frame autosave name was refused, so this window will not remember its size")
         }
+    }
+
+    /// An empty toolbar, for the HEIGHT it gives the titlebar band and for
+    /// nothing else.
+    ///
+    /// The band is the page's own toolbar row, drawn under a transparent
+    /// full-height titlebar, and a bare titlebar is 32 points: shorter than
+    /// the unified toolbar every document app on the system wears, which is
+    /// why the window's furniture read as sitting high in what looks like a
+    /// toolbar. macOS centres the traffic lights on whatever height the band
+    /// has, so the fix is the height rather than the placement, and asking for
+    /// it this way keeps the placement the system's. A hand-moved close button
+    /// is a number this file would own and would have to re-apply on every
+    /// layout, on every screen, in every macOS to come.
+    ///
+    /// `.unifiedCompact` is the style that yields the band this window wants.
+    /// The height is NOT written down anywhere on this side: `Coordinator`
+    /// reads it off the window (`titlebarBandHeight`) and hands it to the page,
+    /// which sizes its first row from it, so both halves of the band follow
+    /// whatever the system does with this style. `TitlebarBandTests` and the
+    /// app tests read it the same way.
+    ///
+    /// Nothing is ever put IN it. The window's controls are a titlebar
+    /// accessory (`TitleBarAccessory`) and the page's are HTML, both of which
+    /// were here before this toolbar and neither of which it touches; an item
+    /// added here would be a third claimant on a band that already has two.
+    /// So customization is off: there is nothing to customize, and the
+    /// contextual menu offering it would be a promise the window cannot keep.
+    ///
+    /// It adds no rows to the menu bar, which is worth writing down because a
+    /// View menu is the one macOS does add to out of process
+    /// (`Menu.takesSystemRows`), and a Show Toolbar or Customize Toolbar row
+    /// appearing there would offer to take away a band the page is laid out
+    /// against. Read off the running app with `mac/scripts/menu-bar.sh`, which
+    /// is the only instrument that can see a row the app did not author.
+    private func installBandToolbar() {
+        let bar = NSToolbar(identifier: "BirtaWriterBand")
+        bar.showsBaselineSeparator = false
+        bar.allowsUserCustomization = false
+        bar.displayMode = .iconOnly
+        toolbar = bar
+        toolbarStyle = .unifiedCompact
     }
 
     // MARK: window policy

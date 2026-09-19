@@ -464,8 +464,15 @@ describe("side-panel shell: the table of contents' own numbers", () => {
     // The tab is `position: fixed` and the hide button it has to land on
     // rides the panel, so a drawer that stands in from the window takes the
     // button in with it. Without this the glyph jumps by the inset on every
-    // toggle, on both axes, and nothing else in the suite would say so: the
-    // cases above build a shell with no inset at all.
+    // toggle, and nothing else in the suite would say so: the cases above
+    // build a shell with no inset at all.
+    //
+    // The two axes are NOT symmetric, and the last assertion is what holds
+    // that: the drawer stands in at its docked edge and is flush with the
+    // chrome above it, so the tab takes the inset sideways and not
+    // vertically. An inset added to both, which is what this did while the
+    // drawer took one at the top, now puts the tab a whole inset below the
+    // button it is meant to sit over.
     it("a drawer standing in from the window should take its reveal tab in by the same amount", () => {
         addTopbar(40);
         const shell = createSidePanelShell({ ...tocOptions(), inset: SIDE_PANEL_INSET, initialRight: true });
@@ -473,9 +480,9 @@ describe("side-panel shell: the table of contents' own numbers", () => {
         shell.sync();
         const tab = document.querySelector<HTMLElement>(".toc-toggle-tab")!;
         expect(tab.style.right).toBe(`${TAB_EDGE_INSET + SIDE_PANEL_INSET}px`);
-        expect(tab.style.top).toBe(`${40 + TAB_TOP_INSET + SIDE_PANEL_INSET}px`);
+        expect(tab.style.top).toBe(`${40 + TAB_TOP_INSET}px`);
         // And the tab keeps its offset FROM THE PANEL, which is the whole of
-        // what makes the glyph sit still: the panel moved by the inset too.
+        // what makes the glyph sit still.
         expect(parseFloat(tab.style.top) - parseFloat(shell.panel.style.top)).toBe(TAB_TOP_INSET);
     });
 

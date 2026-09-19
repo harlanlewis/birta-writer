@@ -38,6 +38,12 @@ enum UpdateCheckPrompt {
         alert.messageText = report.title
         alert.informativeText = report.detail
         alert.alertStyle = .informational
+        // The app's own mark, set rather than left to `NSAlert`, which hides
+        // the icon it fills in for itself as soon as the alert is a sheet.
+        // `AppIcon` holds the reasoning; what is at stake here is that this
+        // sheet names a version and offers to replace it, and a sheet with no
+        // mark on it does not say whose version.
+        alert.icon = AppIcon.image
         let buttons = report.buttons.map { alert.addButton(withTitle: $0) }
         // Return takes the first button and Escape the last, whatever they
         // say. AppKit binds Escape to a button called Cancel and to nothing

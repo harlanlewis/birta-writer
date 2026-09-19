@@ -201,8 +201,12 @@ final class SettingsFormTests: XCTestCase {
 
     func testTheAppearancePaneShouldLeadWithTypeThenTheSwitchThenTheThemes() {
         XCTAssertEqual(SettingsForm.rows(of: SettingsForm.appearance),
-                       [.font, .fontSize, .followSystemAppearance, .theme, .accent, .tint,
-                        .transparentSidebar, .transparentToc])
+                       [.font, .fontSize, .followSystemAppearance, .theme,
+                        .transparentSidebar, .transparentToc, .accent, .tint])
+        // And the colour mod is a CARD of its own at the foot, which the row
+        // order above cannot say: `rows(of:)` flattens the cards away, so a
+        // pane that had put all four in one card would read identically here.
+        XCTAssertEqual(SettingsForm.appearance.groups.last?.rows, [.accent, .tint])
         XCTAssertEqual(SettingsRow.fontSize.rawValue, "Font Size")
         XCTAssertEqual(SettingsRow.followSystemAppearance.rawValue, "Auto light/dark mode")
         XCTAssertEqual(SettingsRow.transparentSidebar.rawValue, "Transparent file list sidebar",

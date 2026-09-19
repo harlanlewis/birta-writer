@@ -2291,6 +2291,15 @@ extension SettingsWindowController {
         guard themeCardShapeForTesting != "none" else { return [] }
         return headings(in: slotStrips.isHidden ? heldStrips : slotStrips)
     }
+    /// Per strip in the shape now showing: the card the kind divider is drawn
+    /// before, and how many dividers are actually in the row. The count is
+    /// what stops the title reporting on a divider that was decided and never
+    /// added, and on one an earlier pass left behind.
+    var themeDividersForTesting: [(titleAfter: String?, drawn: Int)] {
+        guard themeCardShapeForTesting != "none" else { return [] }
+        let strips: [ThemeStrip] = slotStrips.isHidden ? [heldStrip] : [lightStrip, darkStrip]
+        return strips.map { ($0.titleAfterDividerForTesting, $0.dividersDrawnForTesting) }
+    }
     func setFollowSystemForTesting(_ on: Bool) {
         followSwitch.state = on ? .on : .off
         toggleFollowSystem()

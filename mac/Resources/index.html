@@ -91,8 +91,11 @@
        number rather than ours: it is not the same under every macOS titlebar
        style, so a literal here would be right until it was not, with nothing
        on this side able to tell. The fallback stands only for a page served
-       before the window has been laid out. */
-    min-height: var(--mac-titlebar-height, 34px);
+       before the window has been laid out, and is the band this window's own
+       toolbar style gives today: close enough that the first frame does not
+       visibly resettle, and wrong in a way nothing here could notice, which
+       is why it is a fallback and not the number. */
+    min-height: var(--mac-titlebar-height, 40px);
     padding-top: 0;
     padding-bottom: 0;
   }

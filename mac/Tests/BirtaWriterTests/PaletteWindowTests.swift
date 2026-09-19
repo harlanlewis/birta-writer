@@ -56,24 +56,31 @@ final class PaletteWindowTests: XCTestCase {
         XCTAssertEqual(bold?.detail, "⌘B", "the chord the menu binds, in the symbols the menu draws")
         XCTAssertEqual(bold?.section, "Format")
         XCTAssertEqual(bold?.kind, .command)
-        // Every row a menu offers and that runs something, under the title
-        // the menu draws in the default state, less the two that open the
-        // palette itself and the two that only a rooted window can run.
-        let state = MenuState()
-        let menuTitles = Set(AppMenu.rows.filter {
+        // Every row a menu offers and that runs something, less the two that
+        // open the palette itself and the two that only a rooted window can
+        // run.
+        //
+        // Matched by IDENTITY rather than by title, which is the difference
+        // between asking whether a row reached the palette and asking what it
+        // is called there. A toggle row is deliberately called something else
+        // here (`title(of:)`), so a title-matched version of this reports
+        // every one of them as missing, and would have to be taught each
+        // retitling rule to stop; the id says nothing about the words and
+        // answers the question this check is actually about.
+        let runnable = AppMenu.rows.filter {
             switch $0.action {
             case .app, .command, .link: return true
             case .submenu, .recents, .themes: return false
             }
-        }.map { row -> String in
-            if case let .title(toggle, whenOn)? = row.state, state.isOn(toggle) { return whenOn }
-            return row.title
-        }).subtracting(["Command Palette…", "Go to File…", "Hide Files", "Show Hidden Files"])
-        let listed = Set(rows.filter { $0.id.hasPrefix("menu:") }.map(\.title))
-        XCTAssertTrue(menuTitles.isSubset(of: listed),
-                      "menu rows missing from the palette: \(menuTitles.subtracting(listed).sorted())")
-        XCTAssertFalse(listed.contains("Command Palette…"), "a palette that offers to open itself")
-        XCTAssertFalse(listed.contains("Hide Files"), "an explorer row in a window with no explorer")
+        }.filter { !["Command Palette…", "Go to File…", "Show Files", "Show Hidden Files"].contains($0.title) }
+        XCTAssertGreaterThan(runnable.count, 20, "the menu table came back nearly empty, so nothing below is checked")
+        let wanted = Set(runnable.map { "menu:" + $0.itemIdentifier.rawValue })
+        let listed = Set(rows.filter { $0.id.hasPrefix("menu:") }.map(\.id))
+        XCTAssertTrue(wanted.isSubset(of: listed),
+                      "menu rows missing from the palette: \(wanted.subtracting(listed).sorted())")
+        let titles = Set(rows.filter { $0.id.hasPrefix("menu:") }.map(\.title))
+        XCTAssertFalse(titles.contains("Command Palette…"), "a palette that offers to open itself")
+        XCTAssertFalse(titles.contains("Hide Files"), "an explorer row in a window with no explorer")
     }
 
     func testARowTheMenuBarWouldDimShouldNotBeOffered() {
@@ -111,9 +118,14 @@ final class PaletteWindowTests: XCTestCase {
         off.menuState = MenuState(proofreadOptions: ["proofreading": false])
         let withGateOff = flattened(PaletteSources.catalog(off).items).map(\.title)
         XCTAssertFalse(withGateOff.contains("Check Spelling"), "withdrawn as the menu withdraws it")
-        XCTAssertTrue(withGateOff.contains("Proofreading"), "the gate itself stays reachable to turn back on")
+        XCTAssertFalse(withGateOff.contains("Stop Checking Spelling"), "withdrawn under either name")
+        XCTAssertTrue(withGateOff.contains("Turn On Proofreading"),
+                      "the gate itself stays reachable, under what picking it does")
+        // Every proofreading option ships ON and an absent key is on
+        // (`MenuState.isOn`), so with the gate back the check is running and
+        // the row is what stops it.
         let withGateOn = flattened(realCatalog().items).map(\.title)
-        XCTAssertTrue(withGateOn.contains("Check Spelling"))
+        XCTAssertTrue(withGateOn.contains("Stop Checking Spelling"))
     }
 
     func testARowThatRenamesItselfShouldBeOfferedUnderWhatPickingItDoes() {
@@ -122,6 +134,53 @@ final class PaletteWindowTests: XCTestCase {
         XCTAssertTrue(flattened(PaletteSources.catalog(shown).items).map(\.title).contains("Hide Table of Contents"))
         XCTAssertTrue(flattened(realCatalog().items).map(\.title).contains("Show Table of Contents"),
                       "hidden by default in this context")
+    }
+
+    /// A row the MENU says with a checkmark has no checkmark here, so it says
+    /// what picking it does instead.
+    ///
+    /// Both states, because one alone is satisfied by a row whose title never
+    /// moves: a build that ignored the state entirely would pass whichever
+    /// half happened to match the default.
+    func testACheckmarkRowShouldBeOfferedUnderWhatPickingItDoes() {
+        var on = PaletteSources.Context(front: nil, allows: Self.looseFileGate)
+        on.menuState = MenuState(lineNumbers: true)
+        let whenOn = flattened(PaletteSources.catalog(on).items).map(\.title)
+        XCTAssertTrue(whenOn.contains("Hide Line Numbers"), "the gutter is up, so the row takes it away")
+        XCTAssertFalse(whenOn.contains("Show Line Numbers"))
+
+        let whenOff = flattened(realCatalog().items).map(\.title)
+        XCTAssertTrue(whenOff.contains("Show Line Numbers"), "off by default in this context")
+        XCTAssertFalse(whenOff.contains("Hide Line Numbers"))
+
+        // And a row whose own name is what it does keeps it, rather than being
+        // wrapped in a verb: the three checks are imperatives already. Both
+        // states again, and the OFF one has to be asked for, because every
+        // proofreading option ships on (`MenuState.isOn`).
+        XCTAssertTrue(whenOff.contains("Stop Checking Spelling"), "running by default")
+        var quiet = PaletteSources.Context(front: nil, allows: Self.looseFileGate)
+        quiet.menuState = MenuState(proofreadOptions: ["spellCheck": false, "passive": false])
+        let whenQuiet = flattened(PaletteSources.catalog(quiet).items).map(\.title)
+        XCTAssertTrue(whenQuiet.contains("Check Spelling"), "not \"Turn On Check Spelling\"")
+
+        // A style category names the thing it FLAGS, so the palette supplies
+        // the verb rather than appearing to turn the thing itself on.
+        XCTAssertTrue(whenQuiet.contains("Check for Passive voice"), "not \"Turn On Passive voice\"")
+        XCTAssertTrue(whenOff.contains("Stop Checking for Passive voice"))
+        XCTAssertFalse(whenOff.contains("Passive voice"), "the bare label says nothing about the check")
+    }
+
+    /// A settings row says which pane it is in AND that it is a setting.
+    ///
+    /// Matched on a query there is no section heading over the row, so
+    /// "General › Show in Dock" reads as a command called General. Asked of
+    /// the ROWS the model returns for a query rather than of the catalog,
+    /// because the crumb is the model's to build and the catalog holds only
+    /// the nesting it is built from.
+    func testASettingsRowShouldBeFoundUnderSettingsAndItsPane() {
+        let rows = PaletteModel.rank(realCatalog().items, query: "show in dock", mode: .all, recents: [])
+        XCTAssertEqual(rows.first?.title, "Settings › General › Show in Dock",
+                       rows.prefix(3).map(\.title).description)
     }
 
     func testSettingsShouldBeOneGroupPerPaneNamedAsTheWindowNamesThem() {

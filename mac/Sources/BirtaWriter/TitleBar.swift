@@ -9,11 +9,17 @@ import BirtaWriterCore
 /// A leading `NSTitlebarAccessoryViewController` rather than the window's own
 /// `title`, and the reason is geometry. A standard title is CENTRED; the
 /// leading placement TextEdit and every document app now uses comes from an
-/// `NSToolbar` with `toolbarStyle = .unified`, and giving this panel a toolbar
-/// would put a second bar in a window whose titlebar band is already the page's
-/// own toolbar, drawn under a transparent full-height titlebar. An accessory
-/// sits in that band without claiming height, which is the only thing the panel
+/// `NSToolbar` holding the title, and a toolbar that held anything would be a
+/// second bar in a window whose titlebar band is already the page's own
+/// toolbar, drawn under a transparent full-height titlebar. An accessory sits
+/// in that band and draws the title itself, which is the only thing the panel
 /// can afford.
+///
+/// The panel does carry a toolbar, and it is EMPTY: `AppPanel` installs one
+/// for the height it gives the band and puts nothing in it. That is the
+/// opposite of the case above rather than an exception to it, and the two must
+/// not be confused: an item added there would be the second bar this view
+/// exists to avoid.
 ///
 /// What it draws is what macOS draws, deliberately and not approximately: the
 /// document's name in the title face, and ` — Edited` after it in secondary ink
@@ -869,9 +875,10 @@ final class TitleBarView: NSView {
                                     keyEquivalent: "")
             item.target = self
             item.representedObject = target
-            // Icons here and nowhere else in the app's menus: this popup is a
-            // picture of the filesystem, and the icons are how the volume and
-            // the folders are told apart at a glance.
+            // Icons, for the reason Open Recent draws them
+            // (`RecentsMenu.drawKinds`, the app's only other inked menu):
+            // this popup is a picture of the filesystem, and the icons are
+            // how the volume and the folders are told apart at a glance.
             let icon = NSWorkspace.shared.icon(forFile: target.path)
             icon.size = NSSize(width: 16, height: 16)
             item.image = icon

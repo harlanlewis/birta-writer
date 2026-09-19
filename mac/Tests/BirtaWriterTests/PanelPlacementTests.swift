@@ -77,8 +77,18 @@ final class PanelPlacementTests: XCTestCase {
     /// The floor the size rule stops at is the floor the window enforces. Two
     /// properties in two files, and a rule that stopped above or below the
     /// window's own minimum would produce sizes AppKit quietly ignores.
+    ///
+    /// Asked of the CONTENT floor, which is the box the rule is about: every
+    /// other number in `PanelSize` describes the content, and a frame minimum
+    /// is that plus whatever chrome the window carries. Set on the frame, the
+    /// two drifted by exactly the band's height the moment the band grew, and
+    /// the rule went on offering a size the window would not take.
     func testThePanelsMinimumShouldBeTheRulesFloor() {
-        XCTAssertEqual(AppPanel(remembersFrame: false).minSize, PanelSize.minimum)
+        let panel = AppPanel(remembersFrame: false)
+        XCTAssertEqual(panel.contentMinSize, PanelSize.minimum)
+        // And the frame floor AppKit derives is at least as tall, or the
+        // content floor above is one the window would shrink past.
+        XCTAssertGreaterThanOrEqual(panel.minSize.height, PanelSize.minimum.height)
     }
 
     /// A second placement is not a placement. `placeIfUnplaced` runs from every
