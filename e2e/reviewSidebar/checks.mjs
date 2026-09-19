@@ -339,10 +339,10 @@ export async function run({ page, check, baseUrl }) {
         await page.waitForTimeout(100);
     };
     const closeChecksMenu = async () => {
-        // Only if it is still open — clicking a row moves focus to the sidebar,
-        // and both menus close on focusout, so at both call sites here this
-        // presses nothing. It is kept for the call site that does leave one up,
-        // and a stray Escape would reach the editor instead.
+        // Only if it is still open. Its one call site flips the pill in the
+        // sidebar, which takes focus, and both menus close on focusout, so as
+        // this suite stands the press never happens. The visibility check is
+        // what keeps a stray Escape out of the editor on the day it does.
         if (await page.locator(CHECKS_MENU).isVisible()) {
             await page.keyboard.press("Escape");
             await page.waitForTimeout(100);
