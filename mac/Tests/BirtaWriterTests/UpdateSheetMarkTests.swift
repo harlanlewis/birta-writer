@@ -25,20 +25,41 @@ final class UpdateSheetMarkTests: XCTestCase {
 
     /// The icon view AppKit built for `alert`, once the sheet is laid out, or
     /// nil when it built none at all.
+    ///
+    /// Waited for by ASKING rather than by sleeping a fixed span. AppKit lays
+    /// a sheet out on the run loop and not on the call that asked for it, so
+    /// the read has to come after that; a sleep long enough on an idle machine
+    /// is a sleep a loaded one runs out of, and what that produces is a red
+    /// about the machine wearing the words of a red about the product. The
+    /// ceiling is generous and is not a measurement of anything: it is the
+    /// point past which "not laid out yet" stops being a plausible
+    /// explanation.
     private func markView(of alert: NSAlert, on host: NSWindow) -> NSImageView? {
         alert.beginSheetModal(for: host) { _ in }
-        // AppKit lays a sheet out on the run loop, not on the call that asked
-        // for it, so a read taken straight after `beginSheetModal` is a read
-        // of a window that has not been arranged yet.
-        RunLoop.current.run(until: Date().addingTimeInterval(0.3))
-        var found: NSImageView?
-        func walk(_ view: NSView) {
-            if found == nil, let image = view as? NSImageView { found = image }
-            for sub in view.subviews where found == nil { walk(sub) }
+        func firstImageView() -> NSImageView? {
+            var found: NSImageView?
+            func walk(_ view: NSView) {
+                if found == nil, let image = view as? NSImageView { found = image }
+                for sub in view.subviews where found == nil { walk(sub) }
+            }
+            if let root = alert.window.contentView { walk(root) }
+            return found
         }
-        if let root = alert.window.contentView { walk(root) }
+        let deadline = Date().addingTimeInterval(10)
+        var found = firstImageView()
+        while found == nil, Date() < deadline {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+            found = firstImageView()
+        }
+        // Existence is not arrangement, and the property this is read for is
+        // the arrangement's: waiting only for the view to appear would leave
+        // the control arm racing a hide that had not been applied yet, and
+        // its failure would read as "a plain sheet drew a mark". Forcing the
+        // pending layout is what makes the read deterministic rather than
+        // early.
+        alert.window.layoutIfNeeded()
         host.endSheet(alert.window)
-        RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+        RunLoop.current.run(until: Date().addingTimeInterval(0.05))
         return found
     }
 
