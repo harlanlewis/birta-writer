@@ -199,16 +199,16 @@ enum AppMenu {
     /// invisible: "Line Numbers" is the same five rows whether they are on or
     /// off, and picking it is a coin toss. The menu keeps the tick, which is
     /// the native idiom and readable in place.
+    /// Both labelled, and they stay labelled: two strings of the same type,
+    /// one the opposite of the other, is the shape whose swap is invisible.
+    /// Reversed, the row would say "Stop Checking Spelling" while nothing is
+    /// being checked, which nothing in the type system or in a passing suite
+    /// would notice.
     struct ToggleAction {
         /// What it says while the thing is OFF, which is what picking it turns
         /// on, and what it says while it is on.
         let whenOff: String
         let whenOn: String
-
-        init(_ whenOff: String, _ whenOn: String) {
-            self.whenOff = whenOff
-            self.whenOn = whenOn
-        }
     }
 
     enum RowState {
@@ -236,7 +236,11 @@ enum AppMenu {
 
         /// What the row is called on a surface with no checkmark, given the
         /// title it carries while the thing is off and whether it is on now.
-        func title(offTitle: String, isOn: Bool) -> String {
+        ///
+        /// Not `title`, which is the name of a case of this very enum: a
+        /// method and a case reading the same at a glance is a line nobody
+        /// can check by eye.
+        func actionTitle(offTitle: String, isOn: Bool) -> String {
             switch self {
             case let .checkmark(_, action): return isOn ? action.whenOn : action.whenOff
             case let .title(_, whenOn): return isOn ? whenOn : offTitle
@@ -678,7 +682,7 @@ enum AppMenu {
         .init(title: "Proofreading",
               action: .command("toggleProofreading"), menu: .view, submenu: "Proofreading", group: 0,
               state: .checkmark(.proofread("proofreading"),
-                                action: .init("Turn On Proofreading", "Turn Off Proofreading"))),
+                                action: .init(whenOff: "Turn On Proofreading", whenOn: "Turn Off Proofreading"))),
         // The three checks are named as imperatives already, so the palette
         // says what stopping them is called rather than wrapping the name in
         // Turn On: "Stop Checking Spelling" is the sentence, and "Turn Off
@@ -686,17 +690,17 @@ enum AppMenu {
         .init(title: "Check Spelling",
               action: .command("toggleSpellCheck"), menu: .view, submenu: "Proofreading", group: 1,
               state: .checkmark(.proofread("spellCheck"),
-                                action: .init("Check Spelling", "Stop Checking Spelling")),
+                                action: .init(whenOff: "Check Spelling", whenOn: "Stop Checking Spelling")),
               needs: [gate]),
         .init(title: "Check Grammar",
               action: .command("toggleGrammarCheck"), menu: .view, submenu: "Proofreading", group: 1,
               state: .checkmark(.proofread("grammarCheck"),
-                                action: .init("Check Grammar", "Stop Checking Grammar")),
+                                action: .init(whenOff: "Check Grammar", whenOn: "Stop Checking Grammar")),
               needs: [gate]),
         .init(title: "Check Style",
               action: .command("toggleStyleCheck"), menu: .view, submenu: "Proofreading", group: 1,
               state: .checkmark(.proofread("styleCheck"),
-                                action: .init("Check Style", "Stop Checking Style")),
+                                action: .init(whenOff: "Check Style", whenOn: "Stop Checking Style")),
               needs: [gate]),
         // Two gates, because the style options are two levels down: the
         // master silences everything, and Check Style silences these. Declaring
@@ -712,8 +716,8 @@ enum AppMenu {
         .init(title: "Highlight Note Markers",
               action: .command("toggleNoteHighlights"), menu: .view, submenu: "Proofreading", group: 2,
               state: .checkmark(.noteHighlight,
-                                action: .init("Highlight Note Markers",
-                                              "Stop Highlighting Note Markers"))),
+                                action: .init(whenOff: "Highlight Note Markers",
+                                              whenOn: "Stop Highlighting Note Markers"))),
     ] + styleOptionRows
 
     /// One row per style-check category, derived from `StyleCategory` rather
@@ -735,8 +739,8 @@ enum AppMenu {
             // than written out fourteen times, which is the rule the rows
             // themselves follow.
             state: .checkmark(.proofread(category.rawValue),
-                              action: .init("Check for \(category.label)",
-                                            "Stop Checking for \(category.label)")))
+                              action: .init(whenOff: "Check for \(category.label)",
+                                            whenOn: "Stop Checking for \(category.label)")))
     }
 
     // MARK: help

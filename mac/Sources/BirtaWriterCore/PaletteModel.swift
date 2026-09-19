@@ -36,7 +36,11 @@ public struct PaletteItem: Equatable, Sendable {
     public let id: String
     public let title: String
     /// What the row says after its title: a chord for a command, a folder for
-    /// a file, a pane for a setting. Nil for nothing.
+    /// a file, a mark on the theme or mode in force. Nil for nothing.
+    ///
+    /// NOT the pane a setting is in, which is the row's own title through
+    /// `crumb` below: a pane drawn after the row would put the word a query
+    /// matched at the far end of the line, away from the letters it lit.
     public let detail: String?
     public let section: String
     public let kind: Kind

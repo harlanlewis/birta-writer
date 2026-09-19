@@ -197,6 +197,13 @@ final class AppPanel: NSPanel {
     /// added here would be a third claimant on a band that already has two.
     /// So customization is off: there is nothing to customize, and the
     /// contextual menu offering it would be a promise the window cannot keep.
+    ///
+    /// It adds no rows to the menu bar, which is worth writing down because a
+    /// View menu is the one macOS does add to out of process
+    /// (`Menu.takesSystemRows`), and a Show Toolbar or Customize Toolbar row
+    /// appearing there would offer to take away a band the page is laid out
+    /// against. Read off the running app with `mac/scripts/menu-bar.sh`, which
+    /// is the only instrument that can see a row the app did not author.
     private func installBandToolbar() {
         let bar = NSToolbar(identifier: "BirtaWriterBand")
         bar.showsBaselineSeparator = false

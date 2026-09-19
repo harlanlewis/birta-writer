@@ -246,11 +246,12 @@ final class RecentsMenu: NSMenu, NSMenuDelegate {
     /// A notes folder this app has badged then arrives wearing its own mark,
     /// which no symbol could say.
     ///
-    /// Every row and not only the folders: a menu where some rows carry an
-    /// icon and others do not indents its titles raggedly, and the ragged
-    /// edge reads as the defect rather than as the distinction. The rows that
-    /// open nothing (the heading, More, Clear Recents, the empty state) carry
-    /// none, which is the distinction that IS worth drawing.
+    /// Every row that opens something, and not only the folders: inked on the
+    /// folders alone, the icon would be a mark on the unusual row rather than
+    /// a column saying what each row is, and the file rows would be the ones
+    /// that looked odd. The rows that open NOTHING (the heading, More, Clear
+    /// Recents, the empty state) carry none, so the one distinction the
+    /// column draws is between a place to go and a thing to do.
     private static func drawKinds(in menu: NSMenu) {
         for item in menu.items {
             if let submenu = item.submenu { drawKinds(in: submenu) }

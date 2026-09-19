@@ -235,7 +235,7 @@ enum PaletteSources {
     /// cannot come to answer differently.
     private static func title(of row: AppMenu.Row, _ context: Context) -> String {
         guard let state = row.state else { return row.title }
-        return state.title(offTitle: row.title, isOn: context.menuState.isOn(state.toggle))
+        return state.actionTitle(offTitle: row.title, isOn: context.menuState.isOn(state.toggle))
     }
 
     // MARK: page commands
