@@ -59,7 +59,12 @@ export const FILE_EXPLORER_CSS = `
        another reader of its own, the hidden toolbar's tab, and is what the
        outline's ground is set TO when a host asks for one. */
     background: var(--files-panel-ground, var(--vscode-sideBar-background));
-    border-radius: var(--ui-radius-l);
+    /* Rounded where it stands in from the window and square where it does
+       not. The drawer is flush with the chrome above it (SIDE_PANEL_INSET is
+       the sides and the foot, never the top), and a rounded corner with
+       nothing between it and the bar leaves two notches of page under the
+       toolbar that read as a rendering fault rather than as a shape. */
+    border-radius: 0 0 var(--ui-radius-l) var(--ui-radius-l);
     margin-right: var(--ui-space-3);
 }
 

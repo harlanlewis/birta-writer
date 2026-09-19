@@ -302,14 +302,24 @@ public enum SettingsForm {
     /// at once, and the thing most people came for. Then whether light and
     /// dark follow the system, as one switch, on by default; the theme card
     /// under it draws a slot per mode while they do and one theme while
-    /// they do not (`AppearanceSettings.followsSystem`); and the colour mod
-    /// and the sidebar are the system's own theme made yours.
+    /// they do not (`AppearanceSettings.followsSystem`); then the drawers'
+    /// grounds; and last the colour mod, which is the system's own theme
+    /// made yours.
+    ///
+    /// The mod is a card of its own at the foot of the pane, under the
+    /// switches rather than over them, because the two are different kinds of
+    /// answer. A switch is about ONE piece of the window and is read against
+    /// the row above it; the accent and the tint are a wash over every theme
+    /// in the card further up, whichever of them is in force. In one card
+    /// with the switches they read as two more properties of a sidebar, which
+    /// is what they were taken for.
     public static let appearance = SettingsPane(
         groups: [
             SettingsGroup(rows: [.font, .fontSize]),
             SettingsGroup(rows: [.followSystemAppearance]),
             SettingsGroup(rows: [.theme]),
-            SettingsGroup(rows: [.accent, .tint, .transparentSidebar, .transparentToc]),
+            SettingsGroup(rows: [.transparentSidebar, .transparentToc]),
+            SettingsGroup(rows: [.accent, .tint]),
         ])
 
     /// Where the theme row's sentence points: the link drawn after its

@@ -137,6 +137,10 @@ enum UpdatePrompt {
                                                     staged: staged)
             + "\n\n" + UpdatePolicy.armingNote
         alert.alertStyle = .informational
+        // As `UpdateCheckPrompt` does, and for the sharper version of the same
+        // reason: this one arrives unasked, so the mark is what says which
+        // application is asking before a word of it has been read.
+        alert.icon = AppIcon.image
         let confirm = alert.addButton(
             withTitle: UpdatePolicy.confirmTitle(hasUnwrittenBytes: hasUnwrittenBytes))
         let cancel = alert.addButton(withTitle: "Cancel")

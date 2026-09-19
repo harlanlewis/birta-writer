@@ -207,11 +207,12 @@ describe("toolbar visibility", () => {
             ({ x: 0, y: 0, top: 0, left: 0, right: 0, width: 0, height: 40, bottom: 40 }) as DOMRect;
         const em = new EventManager();
         const { panel } = initToc(em, () => null);
-        // The bar's bottom plus the drawer's own inset, which is the shell's
-        // to move: this test is about the panel FOLLOWING the bar, so it
-        // takes the inset from the same place the panel does.
+        // The bar's bottom exactly: the drawer is flush with the chrome
+        // above it and takes its inset at the sides and the foot. The inset
+        // is still the shell's to move, so the height below reads it from
+        // there rather than restating the number.
         const IN = SIDE_PANEL_INSET;
-        expect(panel.style.top).toBe(`${40 + IN}px`);
+        expect(panel.style.top).toBe("40px");
 
         // Act — hide from the gear menu (applyVisibility dispatches resize synchronously)
         gearMenuEntry(topbar, "Hide Toolbar")!.dispatchEvent(
@@ -219,8 +220,8 @@ describe("toolbar visibility", () => {
         );
 
         // Assert — the panel pins to the top despite the still-animating bar
-        expect(panel.style.top).toBe(`${IN}px`);
-        expect(panel.style.height).toBe(`calc(100vh - ${IN * 2}px)`);
+        expect(panel.style.top).toBe("0px");
+        expect(panel.style.height).toBe(`calc(100vh - ${IN}px)`);
 
         // Act — show again while the bar is still translated up (bottom reads 0)
         topbar.getBoundingClientRect = () =>
@@ -228,7 +229,7 @@ describe("toolbar visibility", () => {
         expandTab()!.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
 
         // Assert — the panel realigns below the bar, not underneath it
-        expect(panel.style.top).toBe(`${40 + IN}px`);
+        expect(panel.style.top).toBe("40px");
         em.dispose();
     });
 

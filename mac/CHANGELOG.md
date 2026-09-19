@@ -12,6 +12,14 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ## [Unreleased]
 
+### Changed
+
+- Open Recent now remembers folders as well as files. A folder opened as a directory window joins the same list, in the same recency order, and picking its row brings that window back or opens it again; the row carries the Finder's own icon, so a folder and a file are told apart at a glance without reading the extension. The folder the window you are in is rooted at is left out of that window's own menu, as the file it is on already was. Go to File… in the command palette still lists files only.
+- The window's titlebar band is taller, and the traffic lights, the file name and the buttons beside it sit in the middle of it rather than high in it. The band is now the height macOS gives a window with a toolbar, which is what the strip under it has always been drawing as. The file list and the table of contents now hang from that band instead of standing 8 points below it, so the window keeps the room it had.
+- The update windows carry the Birta Writer mark, as the About window does. Both the offer to install a new version and the answer to Check for Updates… were drawing a title and a button with nothing saying which application was asking.
+- Accent and Tint are their own group at the foot of the Appearance pane, under the two transparency switches rather than above them. They recolour whichever theme is in force, and in one card with the switches they read as two more properties of a sidebar.
+- Each theme picker draws a line where its own mode's themes run out, so the dark themes in the picker for dark read as the dark ones and the rest as the rest. Drawn only where both kinds are there to divide, and only while Auto light/dark mode is on, since there is one picker and one question with it off.
+
 ---
 
 ## [2026.918.0] - 2026, September 18

@@ -46,7 +46,11 @@
 
 .toc-panel:not(.toc-panel--flyout) .toc-card {
     background: var(--toc-surface);
-    border-radius: var(--ui-radius-l);
+    /* Square where the drawer is flush with the chrome above it and rounded
+       where it stands in; `.files-card` carries the reasoning, and the two
+       cards have to agree or one drawer reads as a different kind of
+       surface from the other. */
+    border-radius: 0 0 var(--ui-radius-l) var(--ui-radius-l);
     margin-right: var(--ui-space-3);
 }
 

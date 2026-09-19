@@ -180,22 +180,10 @@ final class AboutWindowController: NSWindowController {
     }
 
     /// The app's own icon, with the treatment macOS composites onto it.
-    ///
-    /// `NSApp.applicationIconImage` rather than the artwork beside it, which is
-    /// the opposite of the choice the first-run screen makes, and for the
-    /// opposite reason: that screen sits the mark on its own paper, where a
-    /// border and a drop shadow are chrome around a join that should be
-    /// invisible. Here the mark sits on the window's ground exactly as it sits
-    /// in the Dock and in the standard About panel, which is where its shadow
-    /// belongs.
-    ///
-    /// The named fallback is for a process with no bundle, every test host
-    /// among them, and is the generic application icon rather than nothing.
-    private static func appIcon() -> NSImage {
-        NSApp.applicationIconImage
-            ?? NSImage(named: NSImage.applicationIconName)
-            ?? NSImage(size: NSSize(width: Metrics.icon, height: Metrics.icon))
-    }
+    /// `AppIcon` is where that choice is made and why; the update sheets read
+    /// the same one, so the mark this window draws and the mark a sheet asking
+    /// to replace the app draws cannot come apart.
+    private static func appIcon() -> NSImage { AppIcon.image }
 }
 
 /// A bordered button that owns what it does, the way `LinkButton` owns its

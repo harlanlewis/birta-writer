@@ -107,6 +107,12 @@ final class RecentsMenu: NSMenu, NSMenuDelegate {
     /// ask is a menu in a test.
     private let current: () -> URL?
 
+    /// The folder the window this menu belongs to is rooted at, for the same
+    /// reason `current` exists: a directory window IS its root, and a row
+    /// that brought the window you raised the menu from forward is the "you
+    /// are here" row this menu does not have. Nil for a loose window.
+    private let currentRoot: () -> URL?
+
     /// The files open in OTHER windows, most recently fronted first, for the
     /// group at the top. Empty by default, which is the one-window app and the
     /// menu as it was.
@@ -120,11 +126,13 @@ final class RecentsMenu: NSMenu, NSMenuDelegate {
          source: @escaping () -> [URL] = { Prefs.recentDocuments },
          exists: @escaping (URL) -> Bool = { FileManager.default.fileExists(atPath: $0.path) },
          current: @escaping () -> URL? = { Prefs.activeURL },
+         currentRoot: @escaping () -> URL? = { nil },
          openElsewhere: @escaping () -> [URL] = { [] }) {
         self.leadsWithOpen = leadsWithOpen
         self.source = source
         self.exists = exists
         self.current = current
+        self.currentRoot = currentRoot
         self.openElsewhere = openElsewhere
         super.init(title: "Open Recent")
         identifier = AppMenu.recentsMenuIdentifier
@@ -144,6 +152,7 @@ final class RecentsMenu: NSMenu, NSMenuDelegate {
         let menu = RecentFiles.menu(stored: source(),
                                     openElsewhere: openElsewhere(),
                                     here: current(),
+                                    rootedAt: currentRoot(),
                                     exists: exists)
         let (first, more) = RecentFiles.pages(menu.recent)
 
@@ -218,6 +227,38 @@ final class RecentsMenu: NSMenu, NSMenuDelegate {
         // This menu is built after the one sweep that clears the system's
         // automatic symbols, so it does its own. See `suppressAutomaticIcons`.
         AppDelegate.suppressAutomaticIcons(in: self)
+        // ...and the rows are inked AFTER that sweep, which clears every
+        // item's image and cannot tell one this menu set on purpose from one
+        // macOS added. Found by the payload the rows already carry rather
+        // than by a second list kept in step with the one built above.
+        Self.drawKinds(in: self)
+    }
+
+    /// Give every row that opens something the Finder's own icon for it.
+    ///
+    /// The list holds folders as well as files, and a name alone does not say
+    /// which: an extension nearly always does, and nearly always is not a
+    /// rule a reader can use. The icon is the channel that always says it.
+    ///
+    /// The Finder's picture rather than a pair of SF Symbols, because this
+    /// menu is now a picture of the filesystem and the app already made that
+    /// choice once, for the titlebar's path popup (`TitleBarView.showPathMenu`).
+    /// A notes folder this app has badged then arrives wearing its own mark,
+    /// which no symbol could say.
+    ///
+    /// Every row and not only the folders: a menu where some rows carry an
+    /// icon and others do not indents its titles raggedly, and the ragged
+    /// edge reads as the defect rather than as the distinction. The rows that
+    /// open nothing (the heading, More, Clear Recents, the empty state) carry
+    /// none, which is the distinction that IS worth drawing.
+    private static func drawKinds(in menu: NSMenu) {
+        for item in menu.items {
+            if let submenu = item.submenu { drawKinds(in: submenu) }
+            guard let url = item.representedObject as? URL else { continue }
+            let icon = NSWorkspace.shared.icon(forFile: url.path)
+            icon.size = NSSize(width: 16, height: 16)
+            item.image = icon
+        }
     }
 
     private func fileRow(_ row: RecentFiles.Row) -> NSMenuItem {

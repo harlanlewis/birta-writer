@@ -232,13 +232,14 @@ describe("TOC panel position vs toolbar visibility", () => {
         vi.unstubAllGlobals();
     });
 
-    // The drawer is set into the window, so its top is the content area's
-    // edge plus its own inset and its height gives up that inset at each
-    // end. Derived from the shell's constant rather than restated, since the
-    // number is the shell's to move and both drawers take it.
+    // The drawer is set into the window at the sides and the foot and flush
+    // with the chrome above it, so its top IS the content area's edge and its
+    // height gives up the inset once, at the bottom. Derived from the shell's
+    // constant rather than restated, since the number is the shell's to move
+    // and both drawers take it.
     const IN = SIDE_PANEL_INSET;
-    const topBelow = (edge: number) => `${edge + IN}px`;
-    const heightBelow = (edge: number) => `calc(100vh - ${edge + IN * 2}px)`;
+    const topBelow = (edge: number) => `${edge}px`;
+    const heightBelow = (edge: number) => `calc(100vh - ${edge + IN}px)`;
 
     it("a visible toolbar should align the panel below the bar's height", () => {
         addTopbar({ height: 40, bottom: 40 });

@@ -95,8 +95,10 @@ export interface SidePanelShellOptions {
     panelClasses?: readonly string[];
     /**
      * How far the drawer stands in from the window's edges, in CSS pixels:
-     * the top, the bottom and the docked edge, so it reads as a surface set
-     * into the window rather than a column flush against its frame. The
+     * the bottom and the docked edge, so it reads as a surface set into the
+     * window rather than a column flush against its frame. Never the top,
+     * which is the window's own chrome rather than an edge (`updatePosition`
+     * has the reason). The
      * inset comes out of the drawer's OWN box, never out of the room it
      * takes (`dockedReserve` is the width as ever), so the content beside it
      * and the formatting row above that content keep the width as their one
@@ -412,7 +414,16 @@ export function createSidePanelShell(opts: SidePanelShellOptions): SidePanelShel
 
     /**
      * The drawer runs from its top edge to the window's bottom edge, less its
-     * inset at each end, and which edge that is depends on the mode.
+     * inset at the BOTTOM only, and which top edge that is depends on the mode.
+     *
+     * Flush at the top, and that is the one direction the inset does not go.
+     * The chrome above the drawer is the window's own, and the air between the
+     * two read as part of it: on the Mac app the toolbar band ends where this
+     * drawer begins, so an inset there put eight points of paper under a row
+     * of controls that were centred without it, and the window's furniture
+     * looked high in a strip it did not own. The sides and the foot still
+     * stand in, which is what gives the card its ground and its radius
+     * something to be drawn against.
      *
      * DOCKED, the drawer stands beside the content: its top is the content
      * area's, which on the surface with a formatting row is the row's own top
@@ -430,8 +441,8 @@ export function createSidePanelShell(opts: SidePanelShellOptions): SidePanelShel
      */
     function updatePosition(): void {
         const edge = mode === "docked" ? getContentAreaTop() : getTopbarBottom();
-        panel.style.top = `${edge + inset}px`;
-        panel.style.height = `calc(100vh - ${edge + inset * 2}px)`;
+        panel.style.top = `${edge}px`;
+        panel.style.height = `calc(100vh - ${edge + inset}px)`;
         tab.setTop(edge);
     }
 

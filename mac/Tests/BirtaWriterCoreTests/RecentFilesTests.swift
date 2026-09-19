@@ -213,4 +213,43 @@ final class RecentFilesTests: XCTestCase {
                                     openElsewhere: [], here: nil, exists: all)
         XCTAssertEqual(menu.recent.count, 2)
     }
+
+    // MARK: folders, which are remembered the same way files are
+
+    /// A folder is a row like any other: same list, same recency order, no
+    /// group of its own.
+    func testAFolderShouldSitInTheOneListInRecencyOrder() {
+        let menu = RecentFiles.menu(stored: urls(["/work/Project", "/notes/a.md", "/work/Other"]),
+                                    openElsewhere: [], here: nil, exists: all)
+        XCTAssertEqual(menu.recent.map(\.url.path), ["/work/Project", "/notes/a.md", "/work/Other"])
+        XCTAssertEqual(menu.recent.map(\.title), ["Project", "a.md", "Other"])
+    }
+
+    /// The root of the window asking is left out, for the reason its file is:
+    /// a row that brings forward the window you raised the menu from is the
+    /// "you are here" row this menu does not have.
+    func testTheFolderThisWindowIsRootedAtShouldAppearInNeitherGroup() {
+        let root = URL(fileURLWithPath: "/work/Project")
+        let menu = RecentFiles.menu(stored: urls(["/work/Project", "/work/Other", "/notes/here.md"]),
+                                    openElsewhere: [], here: here, rootedAt: root, exists: all)
+        XCTAssertEqual(menu.recent.map(\.url.path), ["/work/Other"],
+                       "the root and the bound file both go, and nothing else does")
+        // Both exclusions, separately, or an arm above could be carrying the
+        // other one: the root alone on a window bound to a file the list does
+        // not hold, and the file alone on a loose window.
+        let rootOnly = RecentFiles.menu(stored: urls(["/work/Project", "/work/Other"]),
+                                        openElsewhere: [], here: nil, rootedAt: root, exists: all)
+        XCTAssertEqual(rootOnly.recent.map(\.url.path), ["/work/Other"])
+        let loose = RecentFiles.menu(stored: urls(["/work/Project", "/work/Other"]),
+                                     openElsewhere: [], here: here, exists: all)
+        XCTAssertEqual(loose.recent.count, 2, "a loose window is rooted at nothing and excludes nothing")
+    }
+
+    /// Reached through a different spelling of the same path, it is still the
+    /// window's own root. The same rule `recording` holds for a file.
+    func testARootSpeltDifferentlyShouldStillBeTheWindowsOwn() {
+        let menu = RecentFiles.menu(stored: urls(["/work/Project"]), openElsewhere: [], here: nil,
+                                    rootedAt: URL(fileURLWithPath: "/work/./Project/"), exists: all)
+        XCTAssertTrue(menu.recent.isEmpty, menu.recent.map(\.url.path).description)
+    }
 }

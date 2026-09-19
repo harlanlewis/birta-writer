@@ -203,6 +203,14 @@ final class ThemeSurfacesTests: XCTestCase {
                        "the light picker: the system's light, then the light themes, then the rest")
         XCTAssertEqual(controller.darkThemeChoicesForTesting, ["macOS Dark", "Slate", "Paper"],
                        "the dark picker leads with the dark themes")
+        // And each slot strip draws ONE line where its own kind runs out, so
+        // the leading half reads as the mode's themes rather than as a list
+        // that happens to start well. The card named is the first one after
+        // the line, which is what says the line landed on the turn rather
+        // than somewhere in the middle of a run.
+        XCTAssertEqual(controller.themeDividersForTesting.map(\.titleAfter), ["Slate", "Paper"])
+        XCTAssertEqual(controller.themeDividersForTesting.map(\.drawn), [1, 1],
+                       "a line decided and never drawn, or one left behind by an earlier pass")
         // Everything, on one strip. Which card leads is the HELD kind's to
         // decide and this Mac's appearance is what holds it here, so the
         // order is pinned below where a kind is held on purpose.
@@ -245,6 +253,9 @@ final class ThemeSurfacesTests: XCTestCase {
         XCTAssertEqual(controller.heldThemeSelectionForTesting, "Slate")
         XCTAssertEqual(controller.heldThemeChoicesForTesting, ["macOS Dark", "macOS Light", "Slate", "Paper"],
                        "holding dark, the dark cards lead")
+        // No line on the held strip: one strip is one question, and a line
+        // across it would divide the answers to a question nobody asked.
+        XCTAssertEqual(controller.themeDividersForTesting.map(\.drawn), [0])
         controller.chooseHeldThemeForTesting("paper", kind: .light)
         XCTAssertEqual(applied.last?.mode, .light)
         XCTAssertEqual(controller.heldThemeChoicesForTesting, ["macOS Light", "macOS Dark", "Paper", "Slate"],
@@ -272,6 +283,14 @@ final class ThemeSurfacesTests: XCTestCase {
         XCTAssertEqual(applied.last?.lightTheme, "paper")
         XCTAssertEqual(store.list().map(\.id), ["paper"], "removed from disk, not only from the strip")
         XCTAssertEqual(controller.themeChoicesForTesting, ["macOS Light", "Paper"])
+        // With the one dark theme gone the light strip is light throughout,
+        // so it draws no line: a divider with nothing on the far side of it
+        // promises cards that are not there. The dark strip still has both
+        // kinds and still draws one, which is what says the absence above is
+        // a decision rather than the feature having stopped working.
+        controller.setFollowSystemForTesting(true)
+        XCTAssertEqual(controller.themeDividersForTesting.map(\.drawn), [0, 1])
+        XCTAssertEqual(controller.themeDividersForTesting.map(\.titleAfter), [nil, "Paper"])
 
         // The installed-themes picker: a sheet over a list this test
         // controls, whose Add adds exactly the ticked ones. Held while it is

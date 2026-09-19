@@ -287,6 +287,56 @@ final class RecentsMenuTests: XCTestCase {
         // passing because the convention was never consulted.
         XCTAssertNotEqual(up.y, down.y)
     }
+
+    // MARK: folders
+
+    /// The list holds folders as well as files, and the icon is what says
+    /// which a row is.
+    ///
+    /// Built over REAL entries on disk, because the icon is the Finder's
+    /// answer about a path and there is no way to ask it about a name that is
+    /// not there: handed two paths that do not exist, it returns the same
+    /// generic picture for both and the check would compare a thing with
+    /// itself. The `differ` arm is what would catch that.
+    ///
+    /// The structural rows are asserted to carry none in the same pass. They
+    /// are the reason an icon is legible at all: every row that opens
+    /// something is inked and every row that does not is bare, so the
+    /// indentation says which kind of row it is before the picture says which
+    /// kind of thing.
+    func testAFolderRowAndAFileRowShouldBeDrawnWithTheirOwnIcons() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("recents-\(UUID().uuidString)")
+        let folder = root.appendingPathComponent("Project", isDirectory: true)
+        let file = root.appendingPathComponent("note.md")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try "hi".write(to: file, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let m = RecentsMenu(source: { [folder, file] },
+                            exists: { FileManager.default.fileExists(atPath: $0.path) },
+                            current: { nil })
+        XCTAssertEqual(titles(of: m), ["Project", "note.md", "-", "Clear Menu"])
+
+        let inked = m.items.filter { $0.representedObject is URL }
+        XCTAssertEqual(inked.count, 2, "the rows that open something")
+        XCTAssertTrue(inked.allSatisfy { $0.image != nil },
+                      "a row was left bare by the sweep that clears the system's own symbols")
+        let differ = inked[0].image?.tiffRepresentation != inked[1].image?.tiffRepresentation
+        XCTAssertTrue(differ, "a folder and a file drew the same picture, so the icon says nothing")
+
+        for item in m.items where !(item.representedObject is URL) {
+            XCTAssertNil(item.image, item.title)
+        }
+    }
+
+    /// The folder the asking window is rooted at is not offered back to it.
+    func testAWindowsOwnRootShouldNotBeARowInItsMenu() {
+        let root = url("/work/Project")
+        let m = RecentsMenu(source: { [root, self.url("/work/Other")] }, exists: { _ in true },
+                            current: { nil }, currentRoot: { root })
+        XCTAssertEqual(titles(of: m), ["Other", "-", "Clear Menu"])
+    }
 }
 
 /// Stands in for the application's delegate, so a pick that leaves the menu can

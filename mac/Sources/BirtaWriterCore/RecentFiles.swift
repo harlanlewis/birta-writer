@@ -1,7 +1,19 @@
 import Foundation
 
-/// The files the app has been pointed at lately: what the list keeps, and how
-/// a menu of it is split and labelled.
+/// The files and folders the app has been pointed at lately: what the list
+/// keeps, and how a menu of it is split and labelled.
+///
+/// ## Why folders are in the same list
+///
+/// A folder opened as a directory window is a place the app was pointed at, in
+/// exactly the sense a file is, and going back to one is the same gesture. So
+/// there is one list in one recency order rather than a list each: split by
+/// kind, the row somebody wants is in whichever group they did not look at
+/// first, and the ordering that actually answers "where was I" is lost.
+///
+/// What a split would have bought is telling the two apart, and the row's
+/// icon buys that instead (`RecentsMenu`). A file's extension nearly always
+/// says which it is, and nearly always is not a rule.
 ///
 /// It is a memory of the window rather than a setting, in the same family as
 /// `Prefs.saveAsDirectory`, which is why it has no row in Settings and why
@@ -38,7 +50,13 @@ public enum RecentFiles {
     public static let morePage = 20
     public static let capacity = firstPage + morePage
 
-    /// One row: the file it opens, and what it says.
+    /// One row: what it opens, and what it says.
+    ///
+    /// It carries no flag for which of the two kinds it is, deliberately.
+    /// Nothing here decides anything differently for a folder, and the one
+    /// place the kind is visible at all draws it from the Finder's own icon
+    /// for the path (`RecentsMenu.drawKinds`); a field restating it would be
+    /// a second answer with no reader, free to disagree with the disk.
     public struct Row: Equatable {
         public let url: URL
         public let title: String
@@ -151,6 +169,14 @@ public enum RecentFiles {
     ///     fronted first. The caller has already left this window's own file
     ///     out, because only it knows which window raised the menu.
     ///   - here: the file this window is on, or nil when it is on none.
+    ///   - rootedAt: the folder this window is a directory window of, or nil
+    ///     for a loose one. Left out for the same reason `here` is: a
+    ///     directory window IS its root, and offering a row that would bring
+    ///     the window you are reading it from forward is the "you are here"
+    ///     row this menu does not have. The two are separate parameters
+    ///     rather than one list because they are separate facts about the
+    ///     window, and a caller that knows only one of them has to be able to
+    ///     say so.
     ///   - exists: asked of the remembered list alone; see the type's note on
     ///     why the group is not filtered.
     ///
@@ -162,14 +188,14 @@ public enum RecentFiles {
     public static func menu(stored: [URL],
                             openElsewhere: [URL],
                             here: URL?,
+                            rootedAt: URL? = nil,
                             exists: (URL) -> Bool = { FileManager.default.fileExists(atPath: $0.path) }) -> Menu {
         let key = { (url: URL) in url.standardizedFileURL.path }
-        let mine = here.map(key)
         // Deduped on the way in: the same file cannot be open in two windows
         // (`WindowSet.openDocument` refuses it), but a caller assembling this
         // list is not the place to rely on that.
         var seen = Set<String>()
-        if let mine { seen.insert(mine) }
+        for mine in [here, rootedAt].compactMap({ $0 }) { seen.insert(key(mine)) }
         var group: [URL] = []
         for url in openElsewhere where seen.insert(key(url)).inserted {
             group.append(url)

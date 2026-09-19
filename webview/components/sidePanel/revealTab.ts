@@ -16,7 +16,9 @@
  * drawer that stands in from the window (`SIDE_PANEL_INSET`) takes its button
  * in with it and the tab has to follow by the same amount. Both of these
  * insets are therefore measured from the DRAWER's corner rather than the
- * window's, and the shell hands each one the drawer's inset to add.
+ * window's. Only the EDGE one adds the drawer's inset, because that is the
+ * only direction the drawer takes it in: its top is flush with the chrome
+ * above it (`updatePosition` in shell.ts).
  *
  * State the tab draws is written on the tab itself (`side-panel-tab--*`),
  * never keyed on a body class: the shell serves more than one panel, and a
@@ -75,7 +77,12 @@ export function createRevealTab(prefix: string, inset = 0): RevealTab {
             }
         },
         setTop: (topbarBottom) => {
-            el.style.top = `${topbarBottom + TAB_TOP_INSET + inset}px`;
+            // The drawer's own inset is NOT added here, because the drawer
+            // does not take it at the top: it is flush with the chrome above
+            // it (`updatePosition` in shell.ts). The tab has to sit over the
+            // hide button that rides the panel, so it follows the panel's top
+            // edge and not the window's.
+            el.style.top = `${topbarBottom + TAB_TOP_INSET}px`;
         },
         setConcealed: (on) => { el.classList.toggle("side-panel-tab--concealed", on); },
         setInstant: (on) => { el.classList.toggle("side-panel-tab--instant", on); },

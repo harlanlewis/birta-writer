@@ -248,8 +248,9 @@ enum PaletteSources {
     // MARK: files
 
     /// In a rooted window, the root's files; elsewhere the notes folder's;
-    /// then, either way, the files opened lately that are not already among
-    /// them, so Go to File reaches what Open Recent reaches. Each as a row
+    /// then, either way, the FILES opened lately that are not already among
+    /// them, so Go to File reaches what Open Recent reaches, less the folders
+    /// that menu also holds (below). Each as a row
     /// whose title is the file's name and whose detail is its folder (under
     /// the root, or the folder's own name for a file outside it), so a typed
     /// folder name finds the files in it (`PaletteModel` matches a file on
@@ -273,7 +274,15 @@ enum PaletteSources {
             }
             catalog.filesTruncated = indexed.index.truncated
         }
-        for url in context.recents {
+        // Files only. The recents list also remembers the FOLDERS opened as
+        // directory windows (`WindowSet.openDirectory`), and this is Go to
+        // File: a folder row here would be a row in a Files section that does
+        // not go to a file, and the one branch that would take it treats
+        // anything under the root as a file to move this tab to. Asked of the
+        // name rather than of the disk, which is the same question
+        // `WindowSet.openDocument` asks before it opens anything, and which
+        // costs no stat per row every time the palette is built.
+        for url in context.recents where DocumentTypes.accepts(url) {
             add(url, folder: url.deletingLastPathComponent().lastPathComponent)
         }
     }

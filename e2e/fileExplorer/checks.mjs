@@ -96,11 +96,13 @@ export async function run({ page, check, baseUrl }) {
     });
     check("the panel docks open at load", geom.open && geom.docked, JSON.stringify(geom));
     // The formatting row is collapsed on this page, so the content area's top
-    // is the bar's bottom; the panel stands in from it, and from the window's
-    // left and bottom edges, by its inset, and runs the window's full height
-    // between them whatever the tree holds.
-    check("the panel stands in from the window's edges by its inset, full height between them",
-        geom.inset === `${INSET}px` && geom.top === geom.topbarBottom + INSET && geom.left === INSET
+    // is the bar's bottom; the panel is FLUSH with it, stands in from the
+    // window's left and bottom edges by its inset, and runs the height
+    // between them whatever the tree holds. Flush at the top because the
+    // chrome above is the window's rather than an edge (shell.ts,
+    // `updatePosition`).
+    check("the panel hangs from the bar and stands in from the window's other edges",
+        geom.inset === `${INSET}px` && geom.top === geom.topbarBottom && geom.left === INSET
             && geom.bottom === geom.viewportHeight - INSET,
         JSON.stringify(geom));
     check("the inset comes out of the panel's own box: its far edge is the reserve the content reads",
@@ -120,9 +122,13 @@ export async function run({ page, check, baseUrl }) {
         }));
     // Its own ground, a step off the page: the sidebar shade the palette
     // derives from the widget ground (darker on light, lighter on dark), a
-    // small radius, and still no border.
-    check("the panel draws the sidebar ground with a small radius and no border",
-        geom.background !== geom.bodyBackground && geom.sideBar !== "" && geom.radius === "6px"
+    // small radius on the corners that stand in from the window, square on
+    // the two that meet the chrome above, and still no border. A rounded
+    // corner against the bar leaves a notch of page under the toolbar, which
+    // reads as a rendering fault rather than as a shape.
+    check("the panel draws the sidebar ground, rounded below and square where it meets the bar, with no border",
+        geom.background !== geom.bodyBackground && geom.sideBar !== ""
+            && geom.radius === "0px 0px 6px 6px"
             && geom.borders.every((b) => b === "0px"),
         JSON.stringify(geom));
     check("and that ground is the palette's sidebar shade, not a literal of its own",
@@ -172,7 +178,7 @@ export async function run({ page, check, baseUrl }) {
     });
     check("the formatting row opens on this page", rowBeside.expanded === "true", JSON.stringify(rowBeside));
     check("the open row starts where the panel ends, and the panel starts level with the row, not under it",
-        rowBeside.dockLeft === rowBeside.panelRight && rowBeside.panelTop === rowBeside.dockTop + INSET
+        rowBeside.dockLeft === rowBeside.panelRight && rowBeside.panelTop === rowBeside.dockTop
             // The bar's own hairline sits under the row.
             && rowBeside.barBottom - rowBeside.dockBottom <= 1,
         JSON.stringify(rowBeside));
@@ -773,7 +779,11 @@ export async function run({ page, check, baseUrl }) {
             const rect = el.getBoundingClientRect();
             const panel = el.closest(".side-panel").getBoundingClientRect();
             return {
-                radius: cs.borderTopLeftRadius,
+                // The whole shape rather than one corner: the cards are
+                // square where they meet the chrome above and rounded below
+                // it, so a single corner is "0px" on both by construction
+                // and would agree whatever either sheet said about the rest.
+                radius: cs.borderRadius,
                 // The strip the card gives back on its sash side, which is
                 // the trailing edge for both while both are docked left.
                 strip: Math.round(panel.right - rect.right),
@@ -919,5 +929,5 @@ export async function run({ page, check, baseUrl }) {
     check("viewport: the flag took, refusing the resize listeners the page tried to keep",
         grown.listeners > 0, JSON.stringify(grown));
     check("viewport: grown with no resize event heard, the explorer docks and opens on the root's own box",
-        grown.docked && grown.open && grown.top === grown.edge + INSET, JSON.stringify(grown));
+        grown.docked && grown.open && grown.top === grown.edge, JSON.stringify(grown));
 }

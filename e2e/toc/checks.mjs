@@ -79,7 +79,10 @@ export async function run({ page, check, baseUrl }) {
             panel: getComputedStyle(panel).backgroundColor,
             card: card ? getComputedStyle(card).backgroundColor : null,
             tabs: tabs ? getComputedStyle(tabs).backgroundColor : null,
-            radius: card ? getComputedStyle(card).borderTopLeftRadius : null,
+            // The BOTTOM corner, because the top two are square: the drawer
+            // is flush with the chrome above it and rounds only where it
+            // stands in from the window (`toc.css`, `.files-card`).
+            radius: card ? getComputedStyle(card).borderBottomLeftRadius : null,
             strip: card
                 ? Math.round(panel.getBoundingClientRect().right - card.getBoundingClientRect().right)
                 : null,
@@ -105,7 +108,7 @@ export async function run({ page, check, baseUrl }) {
     // The geometry is the card's whatever the ground is, which is what makes
     // this drawer read as the file list's sibling rather than only when a
     // host has shaded it.
-    check("the card is rounded and gives a strip of its width back for the sash",
+    check("the card is rounded below and gives a strip of its width back for the sash",
         bare.radius !== "0px" && bare.strip > 0, JSON.stringify(bare));
     // The flyout's ground and border are the SHELL's, painted on the panel,
     // so the drawer's card must add nothing there: no fill of its own (the
