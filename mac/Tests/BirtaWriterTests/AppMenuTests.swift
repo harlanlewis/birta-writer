@@ -831,6 +831,40 @@ final class AppMenuTests: XCTestCase {
         XCTAssertGreaterThan(swept, 10, "the sweep reached almost nothing")
     }
 
+    /// The Window menu keeps its symbols while every other menu loses them.
+    ///
+    /// The sweep's reason and this exemption's are the same one, which is why
+    /// the pair is asserted together rather than in two files: a menu should be
+    /// all plain or all decorated. Everywhere else all-plain is reachable;
+    /// in the Window menu it is not, because AppKit redecorates the rows it
+    /// inserted itself after any clear, so the sweep left Minimize and Zoom
+    /// bare beside a decorated Fill and Center.
+    ///
+    /// Images are PUT ON before the sweep rather than waited for. Whether
+    /// macOS decorates a row at all is its decision and its version's, so a
+    /// test that asserted on the automatic symbols would be asserting about
+    /// the host rather than about this app; what is this app's is whether the
+    /// sweep reaches a menu, and an image it did not put there is the way to
+    /// ask.
+    func testTheWindowMenuShouldBeSparedTheSweepThatClearsEveryOtherMenu() throws {
+        let delegate = AppDelegate()
+        let built = delegate.mainMenu()
+        let marker = { NSImage(size: NSSize(width: 1, height: 1)) }
+        let elsewhere = try XCTUnwrap(built.menu.items.first?.submenu)
+        for item in allItems(of: built.windows) { item.image = marker() }
+        for item in allItems(of: elsewhere) { item.image = marker() }
+        // Both arms have something to say only if both menus have rows.
+        XCTAssertGreaterThan(built.windows.items.count, 2, "the Window menu was not built")
+        XCTAssertGreaterThan(elsewhere.items.count, 2, "the menu standing for every other one was not built")
+
+        AppDelegate.suppressAutomaticIcons(in: built.menu, except: built.windows)
+
+        XCTAssertTrue(built.windows.items.allSatisfy { $0.image != nil },
+                      "the Window menu was swept, so its rows are bare beside the system's decorated ones")
+        XCTAssertTrue(allItems(of: elsewhere).allSatisfy { $0.image == nil },
+                      "the sweep stopped reaching the menus it is for")
+    }
+
     /// A zero-size image still takes the icon column, which is the premise the
     /// sweep having no exception rests on.
     ///

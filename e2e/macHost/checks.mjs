@@ -73,9 +73,10 @@ export async function run({ page, check, baseUrl }) {
     // ── The mac profile ────────────────────────────────────────────────
     await mount("index.html");
     /**
-     * Turn the formatting row on or off the only way anything can: the host's
-     * setting arriving. There is no control on the page, so every check below
-     * that wants the row open asks for it the way the Settings window does.
+     * Turn the formatting row on or off the way the host does: its setting
+     * arriving. This is the only thing that opens the row. The gear's switch
+     * asks rather than flips, so every check below that wants the row open
+     * plays the host's part instead of pressing it.
      */
     const setFormattingRow = async (on) => {
         await page.evaluate(
@@ -138,13 +139,13 @@ export async function run({ page, check, baseUrl }) {
     await page.locator(gearSel).click();
     await page.waitForTimeout(OPEN_WAIT);
     const checksRow = await page.$(".tb-settings-menu .tb-submenu-row");
-    check("mac: Checks is a row of the gear, not a button on the bar", !!checksRow);
+    check("mac: Proofreading is a row of the gear, not a button on the bar", !!checksRow);
     if (checksRow) {
         await checksRow.click();
         await page.waitForTimeout(OPEN_WAIT);
         const rows = await page.$$eval(".tb-checks-menu .tb-fmt-item, .tb-checks-menu .ui-menu-row",
             (els) => els.map((el) => el.textContent.trim()).filter(Boolean));
-        check("mac: the Checks panel offers the style check the page computes itself",
+        check("mac: the Proofreading panel offers the style check the page computes itself",
             rows.some((r) => /Check style/i.test(r)), JSON.stringify(rows));
         check("mac: and the note-marker highlight beside it",
             rows.some((r) => /note markers/i.test(r)), JSON.stringify(rows));
@@ -177,7 +178,7 @@ export async function run({ page, check, baseUrl }) {
                 gearStillOpen: getComputedStyle(gear).display !== "none",
             };
         });
-        check("mac: the Checks panel is drawn, not clipped away inside the gear",
+        check("mac: the Proofreading panel is drawn, not clipped away inside the gear",
             panel && panel.w > 0 && panel.h > 0 && panel.fixed, JSON.stringify(panel));
         check("mac: it opens BESIDE the gear and stays on screen",
             panel && panel.beside && panel.onScreen, JSON.stringify(panel));
@@ -638,15 +639,15 @@ export async function run({ page, check, baseUrl }) {
     // The shell has a Settings window (`appPreferences`), so its row belongs;
     // VS Code's own settings and keybindings rows do not, and neither does the
     // release page. This asserts both directions in one list.
-    check("mac: gear menu offers the typography presets, the cheatsheet and the shell's own Settings",
+    check("mac: gear menu offers the typography presets, the formatting row, the cheatsheet and the shell's own Settings",
         JSON.stringify(gear.labels) === JSON.stringify(
-            ["Sans serif", "Serif", "Monospace",
+            ["Sans serif", "Serif", "Monospace", "Formatting toolbar",
              "Show Keyboard Shortcuts", "Birta Writer Settings"]),
         JSON.stringify(gear.labels));
     // Checks is one row here and not twenty: it is a submenu, so the panel it
     // opens is not part of this menu's own list.
-    check("mac: and Checks, as a single row that opens a panel of its own",
-        JSON.stringify(gear.submenus) === JSON.stringify(["Checks"]),
+    check("mac: and Proofreading, as a single row that opens a panel of its own",
+        JSON.stringify(gear.submenus) === JSON.stringify(["Proofreading"]),
         JSON.stringify(gear.submenus));
     // The typography rows stay at the TOP with the layout rows withdrawn. They
     // are what a reader opens this menu for, and the rule that placed them
@@ -671,6 +672,51 @@ export async function run({ page, check, baseUrl }) {
         gear.hasWidthRow, JSON.stringify({ labels: gear.labels, hasWidthRow: gear.hasWidthRow }));
     check("mac: the size stepper came with them", gear.hasSizeRow, JSON.stringify(gear.kinds));
 
+    // The formatting row's switch: it ASKS the host and applies nothing.
+    //
+    // Both halves matter and only a real click can show either. The page owns
+    // no copy of this setting, so a build that flipped the row locally would
+    // look right in one window and disagree with every other one the moment
+    // the host answered; and a build that posted nothing would leave a switch
+    // that moves under the pointer and does nothing at all.
+    const rowSwitchBefore = await page.evaluate(() => ({
+        posted: window.__posted.filter((m) => m.type === "setFormattingRowExpanded").length,
+        expanded: document.querySelector(".tb-dock")?.dataset.expanded,
+    }));
+    // A direct child: the Proofreading submenu holds twenty switches of its
+    // own, and they are descendants of this menu.
+    await page.locator(`${gearMenu} > .tb-switch-item`).click();
+    await page.waitForTimeout(OPEN_WAIT);
+    const rowSwitchAfter = await page.evaluate(() => {
+        const posts = window.__posted.filter((m) => m.type === "setFormattingRowExpanded");
+        return {
+            posted: posts.length,
+            asked: posts[posts.length - 1]?.expanded,
+            expanded: document.querySelector(".tb-dock")?.dataset.expanded,
+        };
+    });
+    check("mac: the gear's formatting-row switch asks the host to open the row",
+        rowSwitchBefore.posted === 0 && rowSwitchAfter.posted === 1 && rowSwitchAfter.asked === true,
+        JSON.stringify({ rowSwitchBefore, rowSwitchAfter }));
+    check("mac: …and opens nothing itself, because the answer is the host's to give",
+        rowSwitchAfter.expanded === "false", JSON.stringify(rowSwitchAfter));
+    // The host answering is what opens it, exactly as it would in any other
+    // window, and the switch then draws the state it asked for.
+    await setFormattingRow(true);
+    await page.locator(gearBtn).click();
+    await page.waitForTimeout(OPEN_WAIT);
+    const rowSwitchSettled = await page.evaluate(() => ({
+        expanded: document.querySelector(".tb-dock")?.dataset.expanded,
+        checked: document.querySelector(".tb-settings-menu > .tb-switch-item")?.getAttribute("aria-checked"),
+    }));
+    check("mac: the host's answer opens the row and the switch draws it",
+        rowSwitchSettled.expanded === "true" && rowSwitchSettled.checked === "true",
+        JSON.stringify(rowSwitchSettled));
+    // Put the page back the way the checks below expect to meet it.
+    await setFormattingRow(false);
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(150);
+
     // The point of moving the rows rather than rebuilding them: the palette
     // and slash-menu commands run the SAME control, so a font pick from a
     // command still reaches the document. Without this the suite would pass a
@@ -693,6 +739,10 @@ export async function run({ page, check, baseUrl }) {
         [...menu.querySelectorAll(":scope > .tb-fmt-item")]
             .filter((el) => el.getAttribute("aria-checked") === "true")
             .map((el) => el.textContent));
+    // The formatting-row switch reports `aria-checked` too, and it is off here
+    // (the row was put back after the geometry check above), so the list is
+    // the font preset alone. A switch that had drifted on would show up here
+    // rather than silently.
     check("mac: …and the gear's checkmark moved with it",
         JSON.stringify(checked) === JSON.stringify(["Monospace"]), JSON.stringify(checked));
     await page.keyboard.press("Escape");
@@ -932,10 +982,12 @@ export async function run({ page, check, baseUrl }) {
             expanded: dock?.dataset.expanded,
             rowShown: shown(row),
             overflows: row ? row.scrollWidth > row.clientWidth + 1 : null,
-            // Nothing the page posts. The row is a SETTING of the host's now,
-            // changed in its Settings window, so a page that posted anything
-            // here would be a page that had grown a control of its own.
-            posted: window.__posted.filter((m) => m.type === "formattingRowExpanded").length,
+            // How many requests the page has made. The gear's switch makes
+            // one and the row's own arrival makes none, so this is read as a
+            // DELTA either side of a host push rather than as a total: a page
+            // that echoed a push back would be two windows telling each other
+            // about the same flip forever.
+            posted: window.__posted.filter((m) => m.type === "setFormattingRowExpanded").length,
             barHeight: bar?.getBoundingClientRect().height ?? null,
         };
     });
@@ -962,8 +1014,9 @@ export async function run({ page, check, baseUrl }) {
     check("mac: turning it on grows the bar, so everything that measures the bar follows",
         expanded.barHeight > collapsed.barHeight,
         JSON.stringify({ collapsed: collapsed.barHeight, expanded: expanded.barHeight }));
-    check("mac: and the page posts nothing, because it originates no flip",
-        expanded.posted === 0, JSON.stringify(expanded));
+    check("mac: and the page posts nothing back, because a push is not a flip of its own",
+        expanded.posted === collapsed.posted,
+        JSON.stringify({ before: collapsed.posted, after: expanded.posted }));
 
     // ── Grouping ───────────────────────────────────────────────────────
     // The runs are unit-tested (`toolbarRegistry.test.ts`, `formattingDock.test.ts`);
@@ -1521,7 +1574,7 @@ export async function run({ page, check, baseUrl }) {
         expanded: document.querySelector(".tb-dock")?.dataset.expanded,
         rowShown: !!document.querySelector(".tb-dock-row")?.getClientRects().length,
         seeded: window.__i18n?.formattingRowExpanded,
-        posted: window.__posted.filter((m) => m.type === "formattingRowExpanded").length,
+        posted: window.__posted.filter((m) => m.type === "setFormattingRowExpanded").length,
     }));
     check("mac: the host's remembered flag boots the dock open, without a click",
         booted.expanded === "true" && booted.rowShown === true, JSON.stringify(booted));
@@ -1537,7 +1590,7 @@ export async function run({ page, check, baseUrl }) {
     const pushed = await page.evaluate(() => ({
         expanded: document.querySelector(".tb-dock")?.dataset.expanded,
         rowShown: !!document.querySelector(".tb-dock-row")?.getClientRects().length,
-        posted: window.__posted.filter((m) => m.type === "formattingRowExpanded").length,
+        posted: window.__posted.filter((m) => m.type === "setFormattingRowExpanded").length,
     }));
     check("mac: the host's push shuts the row here, following another window",
         pushed.expanded === "false" && !pushed.rowShown, JSON.stringify(pushed));

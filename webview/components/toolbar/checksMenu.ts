@@ -1,12 +1,24 @@
 /**
- * The Checks submenu: the proofreading gate, its domain and style sub-checks,
- * and the in-text note-marker highlight that sits beside them.
+ * The Proofreading submenu: the proofreading gate, its domain and style
+ * sub-checks, and the in-text note-marker highlight that sits beside them.
  *
  * It lives inside the gear rather than on the bar, and that is a placement
  * rather than a demotion: every row here is a mode somebody sets and leaves,
  * so it was a permanent control for a question asked once a session. The rows
  * are unchanged and so are the commands, which the palette and the slash menu
  * still reach directly.
+ *
+ * It is named for its domain rather than for what it does to it
+ * (docs/DESIGN_PRINCIPLES.md), and the name is the Mac menu bar's: the View
+ * menu holds this same set of rows under Proofreading
+ * (`AppMenu`, `MenuTable`), so a reader who learns one surface has learnt the
+ * other. "Checks" said only that something was being checked and left the
+ * subject out, which is what put it beside a Checks row in a menu whose other
+ * rows all name a thing.
+ *
+ * The file, the module's symbols and the CSS classes still say "checks". They
+ * are the identifiers a rename would churn for nothing; the label is what a
+ * reader sees, and it is the only place the name has to be right.
  *
  * Two of its rules are easy to break from outside and are the reason the menu
  * owns its own state. Visibility is by DETACHING a container, never by dimming
@@ -167,7 +179,7 @@ export function createChecksMenu(onShowProofreading?: () => void): ChecksControl
         // Built before the rows, so `closeChecksMenu` exists for the "Show
         // issues" handler below; the panel is filled afterwards, which the
         // keyboard walk reads lazily and so never sees empty.
-        const submenu = createSubmenuRow(t("Checks"), {
+        const submenu = createSubmenuRow(t("Proofreading"), {
             onOpen: () => {
                 // Proofread state lives in the editor's plugin state, so it is
                 // read fresh on open. The notes row is not repainted here: it

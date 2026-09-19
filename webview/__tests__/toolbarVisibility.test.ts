@@ -91,7 +91,7 @@ describe("toolbar visibility", () => {
         const menu = topbar.querySelector(".tb-settings-menu")!;
 
         // Every query here is over DIRECT CHILDREN, and that is the point
-        // rather than a detail of style. The Checks submenu's panel is a DOM
+        // rather than a detail of style. The Proofreading submenu's panel is a DOM
         // descendant of this menu (it has to be, or `ui/exclusiveChrome.ts`
         // would let opening it close the menu it came out of), so a descendant
         // selector reads the panel's own switches and section headings as
@@ -117,7 +117,7 @@ describe("toolbar visibility", () => {
         ]);
         // A separator on every menuGroup change: layout | shortcuts | settings.
         // What's New shares the settings group, so it adds a row and no rule.
-        // The Checks submenu sits in the editor block between the layout rows
+        // The Proofreading submenu sits in the editor block between the layout rows
         // and the plumbing, fenced by a rule on each side.
         expect(Array.from(menu.children).map(kindOf)).toEqual([
             "item", "item", "sep", "submenu", "sep", "item", "item", "sep", "item", "item",
@@ -128,7 +128,7 @@ describe("toolbar visibility", () => {
         // The submenu names itself and says it opens something, which is what
         // makes it findable at all now that it has no button on the bar.
         const checks = menu.querySelector(":scope > .tb-submenu-wrap > .tb-submenu-row")!;
-        expect(checks.textContent).toBe("Checks");
+        expect(checks.textContent).toBe("Proofreading");
         expect(checks.getAttribute("aria-haspopup")).toBe("menu");
         expect(checks.getAttribute("aria-expanded")).toBe("false");
     });

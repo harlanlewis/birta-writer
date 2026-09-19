@@ -33,19 +33,25 @@
  * `getContentAreaTop()` (utils/headingUtils.ts) reads this element's top
  * edge and hands every panel that edge.
  *
- * Whether the row is open is the HOST'S fact and the HOST'S control: it is a
- * setting, read from the bootstrap (`window.__i18n.formattingRowExpanded`) and
- * changed only in the host's own Settings window, which pushes the answer to
- * every page (`setFormattingRowExpanded`, landing in `setExpanded` below).
- * The page originates no flip, so this module posts nothing.
+ * Whether the row is open is the HOST'S fact: it is a setting, read from the
+ * bootstrap (`window.__i18n.formattingRowExpanded`) and pushed to every page
+ * (`setFormattingRowExpanded`, landing in `setExpanded` below). This module
+ * posts nothing and applies nothing of its own.
+ *
+ * Two places ask for it, and neither of them flips it. The host's Settings
+ * window is one; the gear menu's switch (settingsMenu.ts) is the other, and it
+ * posts a REQUEST that the host stores and fans back out, so every window
+ * learns the new answer the same way and no page can be showing a row the
+ * setting says is shut.
  *
  * It is a setting rather than a button on the bar because of how often it is
  * asked. Somebody decides once whether they want a formatting row and then
  * writes; a control on the bar of every window spends permanent space on a
  * question answered at most a handful of times, which is the density this row
- * was already the worst offender for. The rows it opens are all reachable
- * without it, from the menu bar, the slash menu and the palette, so what the
- * setting governs is whether they are also resident.
+ * was already the worst offender for. A row in a menu is not that space, which
+ * is why the gear may hold the switch and the bar may not. The rows it opens
+ * are all reachable without it, from the menu bar, the slash menu and the
+ * palette, so what the setting governs is whether they are also resident.
  *
  * Two states, and no chrome at all announces them:
  *

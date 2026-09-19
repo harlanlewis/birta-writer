@@ -52,7 +52,7 @@ Spelling, grammar, and style checking runs entirely on your machine, on the [Har
 
 Style checks cover fillers, redundancies, clichés, wordiness, passive voice, long sentences, and AI-writing tells (vocabulary, artifacts, em-dash habits, non-ASCII punctuation, and uniform rhythm: a paragraph whose sentences all run to about the same length, the structural habit that most makes prose read as machine-written). Each rule toggles individually under `birta.styleCheck.*`. The tells are a lens on your own habits, never a verdict on who wrote the text: each finding names the habit and why it reads as generic, and you keep it or change it.
 
-Findings are quiet dotted underlines, with suggested fixes in a hover popup. "Add to dictionary" writes to your personal settings, never the workspace, and "Keep this phrase" on a flagged phrase does the same for `birta.styleCheck.exceptions`, your protect-list of phrases that are yours and no check may flag. Toggle everything with `Cmd+Alt+Shift+D` or the Checks submenu in the toolbar's gear.
+Findings are quiet dotted underlines, with suggested fixes in a hover popup. "Add to dictionary" writes to your personal settings, never the workspace, and "Keep this phrase" on a flagged phrase does the same for `birta.styleCheck.exceptions`, your protect-list of phrases that are yours and no check may flag. Toggle everything with `Cmd+Alt+Shift+D` or the Proofreading submenu in the toolbar's gear.
 
 ## Folding and navigation
 

@@ -487,6 +487,14 @@ export function notifySetFontSize(size: number): void {
     vscode.postMessage({ type: "setFontSize", size });
 }
 
+/**
+ * Ask the host to open or shut the formatting row. The page applies nothing
+ * itself: the answer arrives as `setFormattingRowExpanded` for every window.
+ */
+export function notifySetFormattingRowExpanded(expanded: boolean): void {
+    vscode.postMessage({ type: "setFormattingRowExpanded", expanded });
+}
+
 /** Persist the content-width mode (auto/narrow/wide); echoes back as setContentWidth. */
 export function notifySetContentWidth(mode: import("../shared/contentWidth").ContentWidthMode): void {
     vscode.postMessage({ type: "setContentWidth", mode });

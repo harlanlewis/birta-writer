@@ -11,6 +11,12 @@
  * between the button and the menu. On click it must close on a press
  * anywhere else, INCLUDING another menu's trigger; nothing about a pointer
  * leaving does it, so `ui/outsidePress.ts` stands in for the mouseleave.
+ *
+ * A SUBMENU opens on hover on every surface, click ones included. The
+ * arrangement is about the bar, and a submenu is not on it: its row is inside
+ * a menu somebody already opened deliberately, so the sweep a click surface
+ * guards against cannot reach it. `opensOnHover` below is the one predicate,
+ * read by both the listener wiring and the outside-press registration.
  */
 import { placeMenu, placeSubmenu, MENU_CLIP_ATTR, MENU_GAP } from "@/ui/anchoredPlacement";
 import { hideTooltip } from "@/ui/tooltip";
@@ -108,6 +114,22 @@ export function wireHoverMenu(
      * that registers a click surface's outside-press watcher.
      */
     const onClickSurface = hostArranges("barMenusOnClick");
+    /**
+     * Whether the POINTER opens this menu.
+     *
+     * `barMenusOnClick` is about the BAR, and a submenu is not on it: it is a
+     * row inside a menu the reader has already opened deliberately, so the
+     * question the arrangement answers (does a pointer crossing the bar throw
+     * menus open) is already settled by the time one of these can be reached.
+     * Requiring a second click there is the behaviour no macOS menu has, and
+     * the row sits under a chevron that promises the opposite.
+     *
+     * The whole gesture follows, not just the listeners: a hover-opened
+     * submenu registers no outside-press watcher, because leaving the wrap is
+     * what closes it, and a watcher would fire on the press that dismissed the
+     * parent and unregister a layer twice.
+     */
+    const opensOnHover = !onClickSurface || options.placement === "beside";
     let hideTimer: ReturnType<typeof setTimeout> | null = null;
     let openTimer: ReturnType<typeof setTimeout> | null = null;
     // Escape-layer unregister handle (null while closed): a hover-opened
@@ -166,7 +188,7 @@ export function wireHoverMenu(
         // the pointer leaves its wrap, so there is no state left for an
         // outside press to resolve. The wrap holds both the trigger and the
         // menu, so one element covers both halves.
-        if (onClickSurface) { outsideOff ??= watchOutsidePress([wrap], close); }
+        if (!opensOnHover) { outsideOff ??= watchOutsidePress([wrap], close); }
     };
     const close = (): void => {
         escapeOff?.();
@@ -293,12 +315,12 @@ export function wireHoverMenu(
         if (isOpen()) { close(); } else { open(); }
     };
 
-    if (onClickSurface) {
-        button.addEventListener("click", onClick);
-    } else {
+    if (opensOnHover) {
         wrap.addEventListener("mouseenter", scheduleOpen);
         wrap.addEventListener("mouseleave", scheduleHide);
         menu.addEventListener("mouseenter", cancelHide);
+    } else {
+        button.addEventListener("click", onClick);
     }
     button.addEventListener("keydown", onButtonKeydown);
     menu.addEventListener("keydown", onMenuKeydown);

@@ -76,7 +76,9 @@ import BirtaWriterCore
 /// ## Geometry, which is not negotiable here
 ///
 /// The room is reserved WHETHER OR NOT the buttons are drawn, and hover
-/// changes what is painted and never a frame. `TitleBarView` states the rule
+/// changes what is painted and never a frame. A row that cannot be offered at
+/// all is the one exception and is a different question; `room` has it. This
+/// is about a row that exists and is at rest. `TitleBarView` states the rule
 /// and the reason; one level out it is worse rather than better, because this view
 /// sits at the accessory's trailing edge and the drag strip starts where the
 /// accessory ends (`Coordinator.layoutTitlebarDrag`). Buttons that took their
@@ -143,6 +145,16 @@ final class TitlebarActionsView: NSView {
     /// wears, but the page's icons are shared with the extension and this side
     /// is the half that can move.
     static let symbolPointSize: CGFloat = 13
+    /// How long the band's chrome takes to arrive and to go.
+    ///
+    /// ONE number for the whole band, native and page alike. The titlebar's
+    /// two halves and the page's own controls fade on the same gesture, and a
+    /// duration that differs between them is visible as a stagger: the band
+    /// empties from one end, or the formatting row is still going when the
+    /// file buttons have gone. The page's half is a CSS transition in
+    /// `mac/Resources/index.html`, and `macRestingChrome.test.ts` is what
+    /// holds the two spellings of this number together.
+    static let chromeFadeSeconds: TimeInterval = 0.12
     /// What this view takes from the accessory, drawn or not.
     ///
     /// Derived from the buttons it was given rather than from a count written
@@ -150,8 +162,24 @@ final class TitlebarActionsView: NSView {
     /// ceiling and the drag strip's origin together. A constant here is the
     /// version of this that goes wrong silently: the extra button draws fine
     /// and the strip lies over it.
+    ///
+    /// Zero for a row that cannot be offered at all, which is the one case
+    /// where "drawn or not" stops applying. The reservation is there so hover
+    /// does not move the title, and hover is a thing that happens to a row
+    /// that EXISTS; a window with no file explorer has no sidebar toggle in
+    /// any state, so the room it held was a blank stretch of titlebar beside
+    /// the traffic lights, present in exactly the windows that had nothing to
+    /// put in it. Two windows side by side then disagreed about where their
+    /// names started, which is the misalignment the reservation was meant to
+    /// prevent, reached from the other side.
+    ///
+    /// `isAvailable` is a fact about the WINDOW and is settled before it opens
+    /// (`Coordinator.explorerRoot` is let-bound), so this number does not move
+    /// while a window is on screen and no gesture can shift a title by
+    /// changing it.
     var room: CGFloat {
-        Self.nameGap
+        guard isAvailable else { return 0 }
+        return Self.nameGap
             + Self.buttonWidth * CGFloat(buttons.count)
             + Self.buttonGap * CGFloat(max(0, buttons.count - 1))
     }
@@ -200,18 +228,22 @@ final class TitlebarActionsView: NSView {
     /// `filesToggleInHostChrome` (shared/hostProfile.ts), so the bar draws
     /// none and this is the only one.
     ///
-    /// `sidebar.leading` is the picture macOS uses for exactly this: a pane
-    /// split off the leading edge, filled to say which half is the sidebar.
-    /// `folder` is what the page drew and is the wrong mark here, because the
-    /// button beside the name already IS a folder and opens one; two folders
-    /// in one band doing different things is worse than either. `list.bullet`
-    /// and `square.grid.2x2` name a listing and a layout rather than the pane
-    /// the click moves.
+    /// The MARK is the page's own (`PaneGlyph`), which is the one thing here
+    /// that is not a choice between SF Symbols. The band has a pane toggle at
+    /// each end, this one and the outline's, and they have to be one mark and
+    /// its mirror or the strip reads as two toolbars that met in the middle.
+    /// `sidebar.leading` is the picture macOS uses for exactly this and was
+    /// what this drew: correct in meaning, and a filled pane at a weight of
+    /// its own beside the page's outline, so one end of the band was solid and
+    /// the other was a frame. `folder` is what the page drew before the button
+    /// moved and is wrong here, because the button beside the name already IS
+    /// a folder and opens one; `list.bullet` and `square.grid.2x2` name a
+    /// listing and a layout rather than the pane the click moves.
     ///
-    /// It draws only in a window that HAS an explorer, and holds its room in
-    /// every window regardless (`setAvailable`).
+    /// It draws only in a window that HAS an explorer, and takes no room in a
+    /// window that has none (`setAvailable`, `room`).
     static let leadingShipped: [Action] = [
-        .init(selector: #selector(AppDelegate.menuToggleExplorer), symbol: "sidebar.leading"),
+        .init(selector: #selector(AppDelegate.menuToggleExplorer), glyph: .pane),
     ]
 
     /// One entry per button: the menu row it repeats, and the symbol it draws.
@@ -234,13 +266,61 @@ final class TitlebarActionsView: NSView {
     /// where the row sent and the row named are the same row.
     struct Action {
         let selector: Selector
-        let symbol: String
+        let glyph: Glyph
         var namedBy: Selector?
 
-        init(selector: Selector, symbol: String, namedBy: Selector? = nil) {
+        init(selector: Selector, glyph: Glyph, namedBy: Selector? = nil) {
             self.selector = selector
-            self.symbol = symbol
+            self.glyph = glyph
             self.namedBy = namedBy
+        }
+
+        init(selector: Selector, symbol: String, namedBy: Selector? = nil) {
+            self.init(selector: selector, glyph: .symbol(symbol), namedBy: namedBy)
+        }
+    }
+
+    /// What a button draws: an SF Symbol by name, or the page's pane mark.
+    ///
+    /// Two cases rather than one image, so the symbol configuration that sizes
+    /// and weights the SF Symbols stays where it belongs and a drawn mark is
+    /// not silently re-weighted by it. `image` is the one place either becomes
+    /// a picture, so the button and every check that measures one ask the same
+    /// question.
+    enum Glyph {
+        case symbol(String)
+        case pane
+
+        /// The mark as a template image, or nil for a symbol this macOS does
+        /// not have. Nil is worth surfacing rather than substituting: a button
+        /// with no image is visible, and a stand-in is not.
+        @MainActor
+        func image(named: String?) -> NSImage? {
+            switch self {
+            case let .symbol(name):
+                let image = NSImage(systemSymbolName: name, accessibilityDescription: named)
+                image?.isTemplate = true
+                return image
+            case .pane:
+                let image = PaneGlyph.image()
+                image.accessibilityDescription = named
+                return image
+            }
+        }
+
+        /// The configuration an SF Symbol takes, and none for a drawn mark,
+        /// which is already at the size it is drawn at.
+        ///
+        /// `@MainActor` because it reads one: a nested type does not inherit
+        /// the enclosing class's isolation, and without this the reference to
+        /// `symbolPointSize` is a Swift 6 error rather than the warning it
+        /// currently compiles as.
+        @MainActor
+        var symbolConfiguration: NSImage.SymbolConfiguration? {
+            switch self {
+            case .symbol: return .init(pointSize: TitlebarActionsView.symbolPointSize, weight: .medium)
+            case .pane: return nil
+            }
         }
     }
 
@@ -339,12 +419,14 @@ final class TitlebarActionsView: NSView {
     /// standing for the other. `shown` is the hover chrome coming and going,
     /// which the title decides for the whole band; this is a fact about the
     /// window that does not change while it is open (`Coordinator.explorerRoot`
-    /// is let-bound). A view that is unavailable keeps its ROOM, which is the
-    /// whole point: the title starts at the same x in a directory window and
-    /// in a single-file one, so opening one after the other does not slide
-    /// the name sideways.
+    /// is let-bound). A view that is unavailable takes no room either: `room`
+    /// says why that is the opposite case from a view that is merely not
+    /// drawn right now.
     private(set) var isAvailable = true
 
+    /// Answered once per window, before it is on screen. The caller relays
+    /// the change to whoever lays this view out, because `room` moves with it
+    /// (`TitleBarView.setSidebarAvailable`).
     func setAvailable(_ available: Bool) {
         guard available != isAvailable else { return }
         isAvailable = available
@@ -392,7 +474,7 @@ final class TitlebarActionsView: NSView {
             return
         }
         NSAnimationContext.runAnimationGroup({ context in
-            context.duration = 0.12
+            context.duration = Self.chromeFadeSeconds
             buttons.forEach { $0.animator().alphaValue = alpha }
         }, completionHandler: { [weak self] in
             MainActor.assumeIsolated {
@@ -488,12 +570,12 @@ final class TitlebarActionButton: NSButton {
     init(action: TitlebarActionsView.Action) {
         row = AppMenu.row(for: action.namedBy ?? action.selector)
         super.init(frame: .zero)
-        // Template, so the symbol inks itself from `contentTintColor` and
+        // Template, so the mark inks itself from `contentTintColor` and
         // follows the appearance rather than carrying a colour this file would
-        // have to keep in step with the title's.
-        image = NSImage(systemSymbolName: action.symbol, accessibilityDescription: row?.title)
-        image?.isTemplate = true
-        symbolConfiguration = .init(pointSize: TitlebarActionsView.symbolPointSize, weight: .medium)
+        // have to keep in step with the title's. Both kinds of glyph are, and
+        // `Glyph.image` is what makes that true of either.
+        image = action.glyph.image(named: row?.title)
+        symbolConfiguration = action.glyph.symbolConfiguration
         imagePosition = .imageOnly
         isBordered = false
         bezelStyle = .shadowlessSquare

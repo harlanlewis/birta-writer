@@ -91,6 +91,11 @@ public enum WebviewMessage: Equatable {
     case setFontPreset(String)
     case setFontSize(Int)
     case setContentWidth(String)
+    /// The gear menu's formatting-row switch. A request, not a flip: the app
+    /// stores the answer and sends it to every window
+    /// (`WindowSet.setFormattingRowExpanded`), which is the same path the
+    /// Settings window's switch takes.
+    case setFormattingRowExpanded(Bool)
     /// The three things the table-of-contents panel remembers: whether it is
     /// out, which edge it is docked to, and how wide it was dragged. The page
     /// reports each as the user settles it, and a fresh page is booted back
@@ -255,6 +260,8 @@ public enum WebviewMessage: Equatable {
         case "setFontPreset": return str("preset").map { .setFontPreset($0) } ?? .other(type: type)
         case "setFontSize": return int("size").map { .setFontSize($0) } ?? .other(type: type)
         case "setContentWidth": return str("mode").map { .setContentWidth($0) } ?? .other(type: type)
+        case "setFormattingRowExpanded":
+            return bool("expanded").map { .setFormattingRowExpanded($0) } ?? .other(type: type)
         case "lintBlocks":
             // A block the page could not describe is skipped rather than
             // failing the batch: the rest of the document is still worth

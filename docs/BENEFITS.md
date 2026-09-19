@@ -16,7 +16,7 @@ Birta Writer replaces VS Code's split-pane Markdown preview with a modern visual
 
 - It helps me write better:
     - Offline proofreading of spelling, grammar, prose, and common "AI tells" in sentence construction, sentence rhythm, punctuation, and vocabulary; a lens on your own habits, never a verdict on who wrote the text, with a protect-list for the phrases that are yours.
-    - Customizable draft-management tools for `[TK]` notes, `TODOs`, and inline comments. Each marker is highlighted where it sits, so unresolved bits are visible while writing, and the review sidebar lists them all for jumping between. The in-text highlighting is a switch under Checks in the toolbar's settings menu and on the sidebar's Notes tab, independent of the proofreading switches, because your own notes are content, not findings.
+    - Customizable draft-management tools for `[TK]` notes, `TODOs`, and inline comments. Each marker is highlighted where it sits, so unresolved bits are visible while writing, and the review sidebar lists them all for jumping between. The in-text highlighting is a switch under Proofreading in the toolbar's settings menu and on the sidebar's Notes tab, independent of the proofreading switches, because your own notes are content, not findings.
 
 - It's better than me at math:
     - Basic equations compute in text. `6^2+(8*3/4)= 42` prints the answer after the `=`. It updates when you change the equation, too.

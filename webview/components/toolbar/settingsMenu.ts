@@ -6,11 +6,12 @@
  */
 import { IconSettings, IconChevronDown } from "@/ui/icons";
 import { t, productName } from "@/i18n";
-import { notifyOpenSettings, notifyOpenKeybindings, notifyOpenUrl, notifyWhatsNewSeen, notifyOpenHostPreferences } from "@/messaging";
+import { notifyOpenSettings, notifyOpenKeybindings, notifyOpenUrl, notifyWhatsNewSeen, notifyOpenHostPreferences, notifySetFormattingRowExpanded } from "@/messaging";
 import { openShortcutsHelpLazy } from "../shortcutsHelp/loader";
-import { appendRowChord, createMenuTrigger, makeSep } from "./menuPrimitives";
+import { appendRowChord, createMenuTrigger, createSwitchItem, makeSep } from "./menuPrimitives";
 import type { EditorCommandId } from "../../../shared/editorCommands";
 import { wireHoverMenu } from "./hoverMenu";
+import { hostArranges } from "../../../shared/hostProfile";
 import { TOOLBAR_MENU_COMMANDS, settingsMenuTitle } from "../../../shared/editorCommands";
 import { commandAvailable } from "../../../shared/commandAvailability";
 import { RELEASES_URL } from "../../../shared/product";
@@ -30,12 +31,21 @@ export interface SettingsMenuDeps {
      */
     typographyRows?: (closeHolder: () => void) => HTMLElement[];
     /**
-     * The Checks submenu's row (`checksMenu.ts`), which the gear holds on every
+     * The Proofreading submenu's row (`checksMenu.ts`), which the gear holds on every
      * surface rather than the bar. Optional for the same reason the typography
      * rows are: a host whose syntax target withdraws every check it could offer
      * hands nothing, and the menu appends what it is given.
      */
     checksRow?: HTMLElement;
+    /**
+     * Whether the formatting row is open, asked at the moment the menu opens.
+     *
+     * A getter rather than a value, because the row's state is the host's and
+     * changes from the host's own Settings window while this menu sits built.
+     * Absent on a surface with no such row (`formattingInSecondRow`), and the
+     * switch is not offered there.
+     */
+    isFormattingRowExpanded?: () => boolean;
 }
 
 /**
@@ -47,6 +57,25 @@ export interface SettingsMenuDeps {
 let gearTrigger: HTMLElement | undefined;
 
 /**
+ * The formatting-row switch, held for the same reason and reached the same
+ * way. Undefined on every surface that has no such row.
+ */
+let formattingRowSwitch: { setChecked: (on: boolean) => void } | undefined;
+
+/**
+ * The host has opened or shut the formatting row, so the switch that asked
+ * draws the answer.
+ *
+ * Driven by the ANNOUNCEMENT rather than by the menu opening, which is the
+ * rule docs/DESIGN_PRINCIPLES.md states for every mirrored control here: a
+ * repaint on open would make this surface look right while the row itself
+ * went quietly stale, and that failure is the hard one to notice.
+ */
+export function setFormattingRowChecked(expanded: boolean): void {
+    formattingRowSwitch?.setChecked(expanded);
+}
+
+/**
  * Light or clear the unread dot. Advisory chrome: it appears, waits, and does
  * nothing on its own, so an unread verdict arriving after the toolbar is built
  * is the normal case rather than a race to guard.
@@ -55,9 +84,18 @@ export function setWhatsNewUnread(unread: boolean): void {
     gearTrigger?.classList.toggle("tb-gear--unread", unread);
 }
 
-export function createSettingsMenu({ startCustomize, setToolbarVisible, typographyRows, checksRow }: SettingsMenuDeps): HTMLElement {
+export function createSettingsMenu(
+    { startCustomize, setToolbarVisible, typographyRows, checksRow, isFormattingRowExpanded }: SettingsMenuDeps,
+): HTMLElement {
         const wrapEl = document.createElement("div");
         wrapEl.className = "tb-fmt-wrap";
+        // Cleared rather than left to the assignment below, which is the one
+        // difference from `gearTrigger` above: that one is written on every
+        // build and cannot go stale, and this one is written only where the
+        // switch is offered. A second build on a surface without it would
+        // otherwise leave this pointing at the first build's detached row, and
+        // every repaint would land on a node nobody can see.
+        formattingRowSwitch = undefined;
 
         const gearBtn = createMenuTrigger({
             // The chevron is unconditional, as it is on every other trigger in
@@ -116,7 +154,7 @@ export function createSettingsMenu({ startCustomize, setToolbarVisible, typograp
             openHostPreferences: () => notifyOpenHostPreferences(),
         };
         // The EDITOR rows go after the LAYOUT group and before everything else:
-        // the typography (where a surface keeps it here) and then Checks. They
+        // the typography (where a surface keeps it here) and then Proofreading. They
         // are what somebody opens this menu to change, and a reader scanning
         // for "make the text bigger" or "stop underlining my adverbs" should
         // not have to pass a keyboard cheatsheet to reach either.
@@ -129,12 +167,40 @@ export function createSettingsMenu({ startCustomize, setToolbarVisible, typograp
         //
         // One list rather than two insertion points, so the two cannot end up
         // on opposite sides of the plumbing on a surface that carries only one
-        // of them. VS Code carries Checks alone, since its typography is a
+        // of them. VS Code carries Proofreading alone, since its typography is a
         // toolbar item of its own.
         const rows: HTMLElement[] = [...(typographyRows?.(() => closeSettingsMenu()) ?? [])];
+        // The formatting row's own switch, on the one surface that has such a
+        // row to switch (`formattingInSecondRow`). It is offered here as well
+        // as in the host's Settings window because the two questions are asked
+        // at different moments: Settings is where somebody decides what they
+        // want in general, and this is where somebody mid-document wants the
+        // controls out of the way, or back, without leaving the window.
+        //
+        // Named as the host's own Settings row names it
+        // (`SettingsForm.Row.formattingRow`), so one thing has one name across
+        // the two places it can be flipped.
+        //
+        // The switch ASKS and never applies: the state belongs to the host,
+        // which stores it and sends it to every window, and this page learns
+        // the answer on the way back like any other (dock.ts). So the press
+        // paints nothing, the menu stays open, and the switch moves when the
+        // answer lands (`setFormattingRowChecked`). A switch that painted
+        // itself would be right in this window and a guess about every other.
+        if (isFormattingRowExpanded && hostArranges("formattingInSecondRow")) {
+            const item = createSwitchItem(t("Formatting toolbar"));
+            formattingRowSwitch = item;
+            item.el.addEventListener("mousedown", (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                notifySetFormattingRowExpanded(!isFormattingRowExpanded());
+            });
+            if (rows.length > 0) { rows.push(makeSep()); }
+            rows.push(item.el);
+        }
         if (checksRow) {
-            // Typography is how the text LOOKS and Checks is what the editor
-            // SAYS about it: two subjects, so a rule between them.
+            // Typography is how the text LOOKS and Proofreading is what the
+            // editor SAYS about it: two subjects, so a rule between them.
             if (rows.length > 0) { rows.push(makeSep()); }
             rows.push(checksRow);
         }

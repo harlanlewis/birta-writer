@@ -161,48 +161,74 @@
      parked elsewhere on the screen, is not resting, and taking its controls
      away mid-sentence is how a good idea gets switched off.
 
-     What fades is the top row's utility block: the checks, find, settings and
-     sidebar buttons that sit in the titlebar band. They cost NOTHING to fade,
-     which is the constraint this whole treatment runs under. `opacity` and
-     `visibility` both leave the box where it is, so the zone keeps its width
-     and the bar keeps its height, and nothing under either moves. The width in
-     particular is load-bearing off the page: the shell measures this block and
-     the title's ceiling is computed against it (`TitlebarBand`), so a fade that
-     collapsed it would pull the file's name wider every time you looked away.
-     The native buttons on the other half of
-     that band follow the same rule for the same reason, in Swift
-     (`TitleBarView.syncHoverChrome`), and the pair reading as one strip is
-     most of the point: a titlebar that empties from one end only reads as a
-     rendering fault rather than as a window at rest.
+     Everything the window draws over the document goes at once: the top row's
+     utility block (checks, find, settings, the outline's toggle), the
+     formatting row under it, and the floating palette over a selection. The
+     native half of the band follows the same rule in Swift
+     (`TitleBarView.syncHoverChrome`), and IN LOCKSTEP is most of the point. A
+     titlebar that empties from one end reads as a rendering fault rather than
+     as a window at rest, and so does a bar that has gone while the row under
+     it is still fading. That is why the duration here is
+     `TitlebarActionsView.chromeFadeSeconds` rather than a number chosen for
+     this file; `macRestingChrome.test.ts` holds the two spellings together.
 
-     `visibility` rides along with the opacity so a faded button is not a click
-     target sitting invisibly over the band, and the transition is on opacity
-     alone with visibility stepped at the end, or the button would vanish
-     before the fade it is meant to be doing.
+     They cost NOTHING to fade, which is the constraint the whole treatment
+     runs under. `opacity` and `visibility` both leave the box where it is, so
+     every zone keeps its width, the bar keeps its height, and nothing under
+     any of them moves. The width in particular is load-bearing off the page:
+     the shell measures the trailing block and the title's ceiling is computed
+     against it (`TitlebarBand`), so a fade that collapsed it would pull the
+     file's name wider every time you looked away. The formatting row is the
+     same argument one axis over: it is a row of the bar, so removing it would
+     reflow the document every time attention left the window, which is the
+     thing opacity was chosen to avoid. What is left at rest is a taller quiet
+     band, which is a band with nothing in it rather than a hole in the page.
 
-     The formatting row is NOT what settles down, and the move is what changed
-     the answer. It used to be a strip fixed to the window's bottom edge,
-     outside the layout entirely, so fading it to `opacity: 0` cost nothing and
-     left nothing: the page below was never displaced by it. It is a row of the
-     bar now, and its height is part of the bar's, so fading it leaves the text
-     pushed down around a strip with nothing drawn in it, which is a worse
-     resting state than the one this rule was written to reach. Removing the
-     row instead reflows the document every time attention leaves the window,
-     which is the thing the original rule chose opacity to avoid.
+     `visibility` rides along with the opacity so a faded control is not a
+     click target sitting invisibly over the band, and the transition is on
+     opacity alone with visibility stepped at the end, or a control would
+     vanish before the fade it is meant to be doing.
 
-     Whether that row is open is also the one piece of this chrome the reader
-     has said something about, and taking it away when they look elsewhere
-     answers a question they have already answered. The window's own title
-     stays too: it is native chrome, and macOS does not fade a title when you
-     look away from it. */
-  body.mac-resting .editor-topbar .tb-zone--right {
+     The window's own title stays: it is native chrome, and macOS does not fade
+     a title when you look away from it.
+
+     The formatting row's own quiet-at-rest look (dock.css) is a different
+     thing and is exempted for more contrast and for forced colours, which this
+     rule deliberately overrides: that one draws the row back WHILE you are
+     working, and somebody who asked for more contrast has said no to it. This
+     one is about a window nobody is looking at, where the answer is the same
+     for everybody and is the same as the trailing zone's beside it. */
+  body.mac-resting .editor-topbar .tb-zone--right,
+  body.mac-resting .editor-topbar .tb-dock,
+  body.mac-resting .sel-toolbar {
     opacity: 0;
     visibility: hidden;
-    transition: opacity 0.18s ease, visibility 0s linear 0.18s;
+    transition: opacity 0.12s ease, visibility 0s linear 0.12s;
   }
 
-  .editor-topbar .tb-zone--right {
+  .editor-topbar .tb-zone--right,
+  .editor-topbar .tb-dock,
+  .sel-toolbar {
     transition: opacity 0.12s ease, visibility 0s;
+  }
+
+  /* Somebody who asked the system for less movement still gets the resting
+     state; what goes is the fade to it.
+
+     Restated here rather than inherited. The formatting row carries its own
+     reduced-motion rule (dock.css), and the selector above is more specific
+     than it, so without this the rule that file wrote would be overridden by
+     this file and the row would go on fading for a reader who asked it not
+     to. The two zones beside it never had one, and want the same answer. */
+  @media (prefers-reduced-motion: reduce) {
+    .editor-topbar .tb-zone--right,
+    .editor-topbar .tb-dock,
+    .sel-toolbar,
+    body.mac-resting .editor-topbar .tb-zone--right,
+    body.mac-resting .editor-topbar .tb-dock,
+    body.mac-resting .sel-toolbar {
+      transition: none;
+    }
   }
 
   /* The bound file is gone: the band keeps the gear and nothing else.

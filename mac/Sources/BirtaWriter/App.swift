@@ -386,7 +386,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding, 
         // decorated after the clear. Rows that never change do not exempt a
         // menu from that; whether the ROWS change and whether the CLEAR holds
         // are different questions.
-        AppDelegate.suppressAutomaticIcons(in: built.menu)
+        //
+        // The Window menu is spared, and it is spared for the reason the sweep
+        // exists. Half that menu is the system's (Fill, Center, Move & Resize),
+        // inserted by the assignment above and decorated by AppKit after any
+        // clear this app can make; the clear does hold on Minimize and Zoom,
+        // which are ours. So sweeping it produces exactly the mixed menu the
+        // sweep is for, with our two rows bare among the system's decorated
+        // ones. Left alone, every row in it carries the symbol macOS gives it,
+        // which is what TextEdit's Window menu looks like.
+        AppDelegate.suppressAutomaticIcons(in: built.menu, except: built.windows)
         NSApp.mainMenu = built.menu
     }
 
@@ -591,15 +600,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding, 
     /// 27 hides symbol images by default and adds `preferredImageVisibility`,
     /// so this covers the versions in between and is harmless on both sides.
     ///
-    /// EVERY row ends with no image, with no exception for any of them, and
-    /// the exception this used to carry is why the rule is worth stating.
-    /// About was given a zero-size image of its own and this sweep put it
-    /// back, because the clear was thought not to hold for that row. An image
-    /// is an image to AppKit however big it is: the row reserved the icon
-    /// column and drew its title a glyph's width right of every other row in
-    /// the menu, on both surfaces, which is the same "one row unlike its
-    /// neighbours" the sweep exists to prevent, arrived at from the other
-    /// side.
+    /// Within a menu this sweeps, EVERY row ends with no image, with no
+    /// exception for any of them, and the exception this used to carry is why
+    /// the rule is worth stating. About was given a zero-size image of its own
+    /// and this sweep put it back, because the clear was thought not to hold
+    /// for that row. An image is an image to AppKit however big it is: the row
+    /// reserved the icon column and drew its title a glyph's width right of
+    /// every other row in the menu, on both surfaces, which is the same "one
+    /// row unlike its neighbours" the sweep exists to prevent, arrived at from
+    /// the other side.
+    ///
+    /// `spared` is a whole MENU rather than a row, and that is the shape the
+    /// exception has to take: a menu is either all plain or all decorated, and
+    /// the Window menu cannot be all plain because AppKit redecorates the rows
+    /// it inserted there itself. `buildMainMenu` names it and says why.
     ///
     /// What replaced the exception is WHEN this runs rather than what it
     /// spares. The app menu was swept once, at build, on the grounds that its
@@ -607,13 +621,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding, 
     /// holds are different questions, and macOS decorates when it pleases. It
     /// now carries the delegate the status menu always had, so both surfaces
     /// of this one menu are swept on every opening.
-    static func suppressAutomaticIcons(in menu: NSMenu) {
+    static func suppressAutomaticIcons(in menu: NSMenu, except spared: NSMenu? = nil) {
+        guard menu !== spared else { return }
         for item in menu.items {
             // Giving an item an image and taking it away again is what clears
             // the automatic one; nothing else does.
             item.image = NSImage(size: NSSize(width: 1, height: 1))
             item.image = nil
-            if let submenu = item.submenu { suppressAutomaticIcons(in: submenu) }
+            if let submenu = item.submenu { suppressAutomaticIcons(in: submenu, except: spared) }
         }
     }
 

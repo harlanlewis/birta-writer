@@ -30,18 +30,25 @@ final class TitlebarSymbolsTests: XCTestCase {
         let mass: Double
     }
 
-    /// Render one shipped symbol the way the button does, and weigh it.
+    /// Render one shipped mark the way the button does, and weigh it.
     ///
     /// Drawn into the button's OWN cell rather than into the glyph's bounds,
-    /// which is the only comparison that means anything: the three images are
+    /// which is the only comparison that means anything: the images are
     /// different sizes and AppKit centres each of them in the same box, so a
-    /// measurement in each glyph's own bounds compares three boxes instead of
-    /// what is drawn in them.
-    private func ink(of symbol: String) -> Ink? {
-        let config = NSImage.SymbolConfiguration(pointSize: TitlebarActionsView.symbolPointSize,
-                                                 weight: .medium)
-        guard let image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?
-            .withSymbolConfiguration(config) else { return nil }
+    /// measurement in each glyph's own bounds compares boxes instead of what
+    /// is drawn in them.
+    ///
+    /// Through `Glyph` rather than through `NSImage(systemSymbolName:)`, which
+    /// is what lets this measure the drawn pane mark on the same axis as the
+    /// symbols. A check that could only see SF Symbols would have gone on
+    /// passing while the one mark this band does not get from the system sat
+    /// off the line.
+    private func ink(of glyph: TitlebarActionsView.Glyph) -> Ink? {
+        guard var image = glyph.image(named: nil) else { return nil }
+        if let config = glyph.symbolConfiguration,
+           let configured = image.withSymbolConfiguration(config) {
+            image = configured
+        }
         let width = Int(TitlebarActionsView.buttonWidth)
         let height = Int(TitlebarActionsView.buttonHeight)
         guard let rep = NSBitmapImageRep(bitmapDataPlanes: nil,
@@ -79,13 +86,19 @@ final class TitlebarSymbolsTests: XCTestCase {
     private static let allShipped = TitlebarActionsView.leadingShipped + TitlebarActionsView.shipped
 
     func testEveryShippedSymbolShouldBalanceOnTheSameLineAsTheOthers() {
-        let measured = Self.allShipped.map { ($0.symbol, ink(of: $0.symbol)) }
+        let measured = Self.allShipped.map { (String(describing: $0.glyph), ink(of: $0.glyph)) }
         // The instrument's own arm, twice over. A symbol name the system does
         // not have renders nothing, and a set that measured nothing agrees
         // with itself perfectly; so does a set of one.
         for (symbol, ink) in measured {
             XCTAssertNotNil(ink, "\(symbol) drew no ink, so nothing below measured it")
         }
+        // And the set really holds both kinds, or the sentence above about
+        // measuring the drawn mark on the symbols' axis is describing a run
+        // that never drew one.
+        XCTAssertTrue(Self.allShipped.contains { if case .pane = $0.glyph { return true } else { return false } },
+                      "no drawn mark in the set, so only SF Symbols were compared")
+        XCTAssertTrue(Self.allShipped.contains { if case .symbol = $0.glyph { return true } else { return false } })
         let centres = measured.compactMap { $0.1?.centre }
         XCTAssertEqual(centres.count, Self.allShipped.count)
         XCTAssertGreaterThan(centres.count, 1, "one symbol cannot disagree with anything")
@@ -103,6 +116,55 @@ final class TitlebarSymbolsTests: XCTestCase {
             """)
     }
 
+    /// The pane mark's divider is on the LEADING side, which is the whole
+    /// claim the glyph exists to make.
+    ///
+    /// `paneGlyphParity.test.ts` holds the numbers against the page's SVG and
+    /// cannot see this: every number can be right and the mark still drawn
+    /// mirrored, which is the one defect that would make the two ends of the
+    /// band point the same way. So this reads the pixels.
+    func testThePaneMarkShouldPutItsDividerOnTheLeadingSide() {
+        let image = PaneGlyph.image()
+        let size = image.size
+        XCTAssertGreaterThan(size.width, 0, "the mark drew nothing to measure")
+        guard let rep = NSBitmapImageRep(bitmapDataPlanes: nil,
+                                         pixelsWide: Int(size.width), pixelsHigh: Int(size.height),
+                                         bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true,
+                                         isPlanar: false, colorSpaceName: .deviceRGB,
+                                         bytesPerRow: 0, bitsPerPixel: 0) else {
+            return XCTFail("no bitmap to draw into")
+        }
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
+        NSColor.black.set()
+        image.draw(in: NSRect(origin: .zero, size: size))
+        NSGraphicsContext.restoreGraphicsState()
+
+        // Ink per column, measured across the middle band only, so the
+        // frame's own top and bottom edges (which are ink in every column)
+        // cannot drown the divider out.
+        let width = Int(size.width), height = Int(size.height)
+        var columns = [Double](repeating: 0, count: width)
+        for y in (height / 3)..<(height * 2 / 3) {
+            for x in 0..<width {
+                columns[x] += Double(rep.colorAt(x: x, y: y)?.alphaComponent ?? 0)
+            }
+        }
+        XCTAssertGreaterThan(columns.reduce(0, +), 0, "the band measured no ink at all")
+
+        // The page's own x, and its reflection. Asked as a pair rather than as
+        // a peak: a mark drawn mirrored has ink at the reflection and none
+        // here, a centred one has ink at neither, and each fails on its own
+        // line. Both columns are clear of the frame's two sides, so what is
+        // being read is the divider and nothing else.
+        let here = Int((PaneGlyph.dividerX / PaneGlyph.viewBox * size.width).rounded())
+        let mirrored = width - here
+        XCTAssertGreaterThan(columns[here], 0,
+                             "no divider at the page's x: the mark is centred, mirrored, or not drawn")
+        XCTAssertEqual(columns[mirrored], 0, accuracy: 0.01,
+                       "ink at the reflection: the mark is drawn the wrong way round")
+    }
+
     func testTheMeasurementShouldSeeAGlyphThatHangsLow() {
         // The arm that says the check above can fail at all. `square.and.pencil`
         // is the mark this row used to carry and the reason the measurement
@@ -112,9 +174,9 @@ final class TitlebarSymbolsTests: XCTestCase {
         // Without this, a measurement that returned the same number for
         // everything would pass the set silently, and it did: the bounding-box
         // version put this glyph within half a pixel of the others.
-        guard let low = ink(of: "square.and.pencil"),
-              let folder = ink(of: "folder"),
-              let command = ink(of: "command") else {
+        guard let low = ink(of: .symbol("square.and.pencil")),
+              let folder = ink(of: .symbol("folder")),
+              let command = ink(of: .symbol("command")) else {
             return XCTFail("a symbol used as a reference did not resolve")
         }
         XCTAssertGreaterThan(low.centre - folder.centre, 0.5,

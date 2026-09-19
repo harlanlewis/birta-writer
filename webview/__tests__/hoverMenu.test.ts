@@ -371,6 +371,52 @@ describe("wireHoverMenu under barMenusOnClick", () => {
         expect(closeTopmostLayer()).toBe(false);
     });
 
+    /**
+     * A SUBMENU is the exception, and it is the whole of the exception.
+     *
+     * The arrangement is about the bar: a pointer sweeping across a row of
+     * triggers must not throw menus open. A submenu's row is inside a menu
+     * somebody already opened deliberately, so that sweep cannot reach it, and
+     * requiring a second click there is the behaviour no macOS menu has.
+     *
+     * Wired as the real one is (`createSubmenuRow`): the row swallows its own
+     * mousedown, so a build that had gone on wiring `click` here would open
+     * nothing at all and this would fail rather than merely being slower.
+     */
+    it("a submenu's row should open on hover, though the bar's triggers do not", () => {
+        const parts = build();
+        parts.button.addEventListener("mousedown", (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+        });
+        wireHoverMenu(parts.wrap, parts.button, parts.menu, { placement: "beside" });
+        fire(parts.wrap, "mouseenter");
+        vi.advanceTimersByTime(OPEN_DELAY_MS);
+        expect(parts.menu.style.display).toBe("flex");
+        // And leaving closes it, which is the half a click surface does not
+        // have: a submenu that only closed on an outside press would be left
+        // standing beside a row the pointer had moved off.
+        fire(parts.wrap, "mouseleave");
+        vi.advanceTimersByTime(OPEN_DELAY_MS * 3);
+        expect(parts.menu.style.display).toBe("none");
+    });
+
+    it("a submenu should not register the outside-press watcher a bar menu does", () => {
+        // Its parent holds one for the pair. A second watcher on the submenu
+        // fires on the same press, and the two closes unregister one Escape
+        // layer each, which is one more than there was.
+        const parts = build();
+        wireHoverMenu(parts.wrap, parts.button, parts.menu, { placement: "beside" });
+        fire(parts.wrap, "mouseenter");
+        vi.advanceTimersByTime(OPEN_DELAY_MS);
+        expect(parts.menu.style.display).toBe("flex");
+        const elsewhere = document.createElement("div");
+        document.body.appendChild(elsewhere);
+        press(elsewhere);
+        // Still open: only the pointer leaving the wrap closes this one.
+        expect(parts.menu.style.display).toBe("flex");
+    });
+
     it("dispose() should remove the outside-press listener too", () => {
         const parts = build();
         const { dispose } = wireHoverMenu(parts.wrap, parts.button, parts.menu);

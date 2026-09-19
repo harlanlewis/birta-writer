@@ -422,6 +422,7 @@ final class Coordinator {
     /// same shape as the hidden-files setting, for the same reason: one
     /// answer for the app, stored and fanned out by `WindowSet.setFormattingRowExpanded`,
     /// so every other tab and window follows at once.
+    var onFormattingRowChanged: ((Bool) -> Void)?
 
     /// Open a folder as a directory window, under BIRTA_MAC_MEASURE only.
     var onOpenDirectoryRequest: ((URL) -> Void)?
@@ -941,6 +942,10 @@ final class Coordinator {
                                                   constant: 14),
         ])
         contentView.onHoverChange = { [weak self] _ in self?.applyChromeVisibility() }
+        // The title's own hover, and the popover it opens, which is a window
+        // of its own and therefore in neither of the two sources above
+        // (`TitleBarView.isPointedAt`).
+        titleBar.titleView.onPointedAtChange = { [weak self] in self?.applyChromeVisibility() }
         watcher.onMoved = { [weak self] url in self?.noteMovedOnDisk(to: url) }
         watcher.onDeleted = { [weak self] trashed in self?.noteDeletedOnDisk(trashedTo: trashed) }
         startWatching()
@@ -1026,6 +1031,15 @@ final class Coordinator {
             ) { [weak self] _ in
                 MainActor.assumeIsolated {
                     guard let self else { return }
+                    // The page FIRST, and the native fade after it. Both are
+                    // one gesture and have to look like one, and only one of
+                    // them crosses a process boundary: `setChromeResting` is
+                    // JavaScript posted into a live web view, so starting it
+                    // second would put the whole band's page half a frame
+                    // behind its native half every time. The window's key
+                    // state is already the new one here, which is what this
+                    // reads.
+                    self.applyChromeVisibility()
                     self.titleBar.titleView.setWindowKey(key)
                     if key {
                         self.onBecameKey?()
@@ -1034,7 +1048,6 @@ final class Coordinator {
                         // Merge All Windows), so the band is measured again.
                         self.layoutTitlebarDrag()
                     }
-                    self.applyChromeVisibility()
                 }
             })
         }
@@ -1842,6 +1855,9 @@ final class Coordinator {
         case let .setFontPreset(p): Prefs.fontPreset = p
         case let .setFontSize(s): Prefs.fontSize = s
         case let .setContentWidth(m): Prefs.contentWidth = m
+        // Handed up rather than stored here: this one answer belongs to every
+        // window, and the app is what can reach them.
+        case let .setFormattingRowExpanded(expanded): onFormattingRowChanged?(expanded)
         // The outline panel's three memories. Recorded as the page settles
         // each, and handed back at the next page load, which the window does
         // on every file it opens: without this the sidebar would shut itself
@@ -4197,9 +4213,11 @@ final class Coordinator {
 
     /// Chrome follows attention: everything on while the window has the
     /// pointer OR the keyboard, and a page with a caret in it when it has
-    /// neither. Wholly the page's, as a body class its own stylesheet reads;
-    /// the window's own title is not part of it, because macOS titles a window
-    /// whether or not you are looking at it.
+    /// neither. What the page puts away is its trailing controls, its
+    /// formatting row and the palette over a selection, as a body class its
+    /// own stylesheet reads (`mac/Resources/index.html`); the window's own
+    /// title is not part of it, because macOS titles a window whether or not
+    /// you are looking at it.
     ///
     /// BOTH, and the pointer alone was the bug. A window you are typing in,
     /// with the pointer parked somewhere else on the screen, is not at rest,
@@ -4207,7 +4225,16 @@ final class Coordinator {
     /// makes people turn it off. What is left is the case it was for: a window
     /// in the background that nobody is pointing at.
     ///
-    /// Takes NOTHING and reads both inputs itself, which is the whole reason it
+    /// The title is a THIRD input beside those two, and the case that proves
+    /// it is the popover the name opens: that is a window of its own, so a
+    /// pointer using it is in neither of the two above, and this window may
+    /// have given up key to it as well. The native half has held its chrome
+    /// through that since it was written and the page's had no term for it, so
+    /// the band went half-lit under an open popup.
+    /// `TitleBarView.isPointedAt` carries that, and the title's own hover with
+    /// it.
+    ///
+    /// Takes NOTHING and reads every input itself, which is the whole reason it
     /// can be called from anywhere. `NoteContentView.isHovering` is assigned
     /// before `onHoverChange` fires, so a caller holding the new value has
     /// nothing the callee cannot read, and a parameter would only offer each
@@ -4217,15 +4244,17 @@ final class Coordinator {
     /// covered. The native half's rule is a property of `TitleBarView` and
     /// `TitlebarActionsTests` asks it directly, both ways. The page half is
     /// this line, and the thing most likely to break it is the WIRING: it has
-    /// to be called from the pointer's tracking area, from BOTH key
-    /// notifications, and once at boot, and a missing one of those is silent.
+    /// to be called from both pointer sources, from BOTH key notifications,
+    /// and once at boot, and a missing one of those is silent.
     /// Nothing checks that, because what it writes is JavaScript into a live
     /// WKWebView. If this file grows a spy for the host, that is the check to
     /// add. Until then, every call site being the same bare call is the cheap
     /// half of the protection: what is left to get wrong is whether a site
-    /// calls it, not what it passes.
+    /// calls it, not what it passes. The page's own stylesheet is checked
+    /// separately, by `macRestingChrome.test.ts`, which holds what it hides
+    /// and how long it takes against the Swift beside it.
     private func applyChromeVisibility() {
-        let awake = contentView.isHovering || panel.isKeyWindow
+        let awake = contentView.isHovering || panel.isKeyWindow || titleBar.titleView.isPointedAt
         host.setChromeResting(!awake)
         // The native half of the same band takes the same answer. It has its
         // own two hover sources, the title view's tracking area and the drag

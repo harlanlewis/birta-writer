@@ -168,8 +168,8 @@ export async function run({ page, check, baseUrl }) {
         JSON.stringify(gearShape.kinds) ===
             JSON.stringify(["item", "item", "sep", "submenu", "sep", "item", "item", "sep", "item", "item"]),
         JSON.stringify(gearShape.kinds));
-    check("gear menu offers Checks as one row that opens a panel of its own",
-        JSON.stringify(gearShape.submenus) === JSON.stringify(["Checks"]),
+    check("gear menu offers Proofreading as one row that opens a panel of its own",
+        JSON.stringify(gearShape.submenus) === JSON.stringify(["Proofreading"]),
         JSON.stringify(gearShape.submenus));
     check("gear menu separators carry role=separator",
         JSON.stringify(gearShape.sepRoles) === JSON.stringify(["separator", "separator", "separator"]),

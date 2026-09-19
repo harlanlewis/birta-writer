@@ -523,29 +523,37 @@ final class TitlebarActionsTests: XCTestCase {
                        "the toggle is off the file buttons' axis")
     }
 
-    func testAWindowWithNoExplorerShouldHoldTheRoomAndDrawNothing() {
+    func testAWindowWithNoExplorerShouldReserveNoRoomForAToggleItCannotDraw() {
         let withOne = boundTitle()
         withOne.setSidebarAvailable(true)
         _ = withOne.actionsForMeasurement(hovered: true)
         let withNone = boundTitle()
         withNone.setSidebarAvailable(false)
         _ = withNone.actionsForMeasurement(hovered: true)
-        // The name starts at the same x and the accessory is the same width in
-        // both, which is the whole reason the room is held: opening a folder
-        // window beside a file window must not slide the titlebar about.
-        XCTAssertEqual(withNone.labelFrameInWindow().minX, withOne.labelFrameInWindow().minX)
-        XCTAssertEqual(withNone.frame.width, withOne.frame.width)
-        XCTAssertEqual(withNone.chromeWidth, withOne.chromeWidth)
-        // Drawn in one and not the other, or the pair above agrees about two
-        // windows that look the same because neither has the button.
+        // Drawn in one and not the other, or the comparison below is between
+        // two windows that agree because neither has the button.
         XCTAssertTrue(withOne.sidebarView.isOffered)
         XCTAssertFalse(withNone.sidebarView.isOffered)
         XCTAssertTrue(withNone.sidebarView.buttons.allSatisfy { $0.isHidden })
+
+        // No button, no reservation: the name starts against the traffic
+        // lights instead of after a blank stretch of titlebar, and the
+        // accessory is exactly one button's room narrower.
+        XCTAssertEqual(withNone.sidebarView.room, 0)
+        XCTAssertLessThan(withNone.labelFrameInWindow().minX, withOne.labelFrameInWindow().minX)
+        XCTAssertEqual(withOne.chromeWidth - withNone.chromeWidth, withOne.sidebarView.room,
+                       accuracy: 0.5)
+        XCTAssertEqual(withOne.frame.width - withNone.frame.width, withOne.sidebarView.room,
+                       accuracy: 0.5)
     }
 
-    func testAWindowWithNoExplorerShouldLeaveThatStripToTheWindowDrag() {
+    func testAToggleThatIsMerelyRestingShouldStillLeaveItsRoomToTheWindowDrag() {
+        // The case the reservation is FOR, which is a different case from the
+        // one above: this window has an explorer, so the button exists and is
+        // simply not drawn right now. Its room has to hold, or the name would
+        // slide sideways every time the pointer arrived.
         let view = boundTitle()
-        view.setSidebarAvailable(false)
+        view.setSidebarAvailable(true)
         let host = NSView(frame: NSRect(x: 0, y: 0, width: 400, height: TitleBarView.height))
         host.addSubview(view)
         _ = view.actionsForMeasurement(hovered: true)
@@ -555,12 +563,15 @@ final class TitlebarActionsTests: XCTestCase {
         }
         let box = button.convert(button.bounds, to: view)
         let point = view.convert(NSPoint(x: box.midX, y: box.midY), to: host)
-        // Nothing is drawn there, so a click must fall through to the band
-        // rather than opening the document popover the name owns.
-        XCTAssertNil(view.hitTest(point))
-        view.setSidebarAvailable(true)
-        _ = view.actionsForMeasurement(hovered: true)
         XCTAssertTrue(view.hitTest(point) === button, "the toggle does not take its own click")
+
+        let awakeLabel = view.labelFrameInWindow()
+        _ = view.actionsForMeasurement(hovered: false)
+        view.layoutSubtreeIfNeeded()
+        // Not drawn, so the click falls through to the band, and the name has
+        // not moved to fill the space.
+        XCTAssertNil(view.hitTest(point))
+        XCTAssertEqual(view.labelFrameInWindow(), awakeLabel)
     }
 
     func testTheSidebarToggleShouldNameWhatPressingItWillDo() {

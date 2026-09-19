@@ -804,6 +804,14 @@ enum AppMenu {
     /// Targets stay nil so each row travels the responder chain to whichever
     /// window is in front, which is what makes them work for the Settings and
     /// About windows as well as the panel.
+    ///
+    /// This is the one menu in the app that keeps the symbols macOS draws
+    /// beside its rows. Everywhere else they are swept
+    /// (`AppDelegate.suppressAutomaticIcons`) because one decorated row among
+    /// plain ones reads as a mistake; here the system's own inserted rows are
+    /// decorated whatever this app does, so the sweep produced that mistake
+    /// rather than preventing it, with Minimize and Zoom bare beside Fill and
+    /// Center.
     @MainActor
     static func windowMenu() -> NSMenu {
         let menu = NSMenu(title: "Window")
