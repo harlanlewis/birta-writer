@@ -252,6 +252,13 @@ final class RecentsMenu: NSMenu, NSMenuDelegate {
     /// that looked odd. The rows that open NOTHING (the heading, More, Clear
     /// Recents, the empty state) carry none, so the one distinction the
     /// column draws is between a place to go and a thing to do.
+    ///
+    /// It asks the disk once per row, on every opening, which is a cost worth
+    /// naming rather than hiding: a path on a volume that has gone away can
+    /// hold up the answer. It is not a new hazard, because the rows were
+    /// already filtered by `exists` a few lines above and that asks the same
+    /// disk the same number of times; what a slow volume costs here it was
+    /// already costing before any of this was drawn.
     private static func drawKinds(in menu: NSMenu) {
         for item in menu.items {
             if let submenu = item.submenu { drawKinds(in: submenu) }
