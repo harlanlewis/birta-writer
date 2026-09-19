@@ -465,13 +465,6 @@ export type ToExtensionMessage =
     // move; the host persists it and injects it back as `--files-width` on
     // `:root`, the way `tocWidth` comes back as `--toc-width`.
     | { type: "fileExplorerWidth"; width: number }
-    // ── The formatting row, under `formattingInSecondRow` ──
-    // The reader opened or shut the row on THIS page. The fact is the host's
-    // (one answer for every window and tab), so the host stores it, seeds it
-    // back as `__i18n.formattingRowExpanded`, and pushes it to its other
-    // pages as `setFormattingRowExpanded`. Never posted on a surface without
-    // the row, and never posted in answer to that push.
-    | { type: "formattingRowExpanded"; expanded: boolean }
     // ── A tooltip the page cannot draw, under `stripTooltip` ──
     // The chip belongs against its control, and for a control in the bar's
     // first row that is inside the strip the host paints over the page (the
@@ -938,9 +931,12 @@ export type ToWebviewMessage =
     // Enabling loads the gutter's module on demand; disabling removes it from
     // the DOM entirely, so a webview that never enables it never pays for it.
     | { type: "setLineNumbers"; enabled: boolean }
-    // The formatting row was opened or shut on ANOTHER of the host's pages
-    // (`formattingRowExpanded` going the other way): show or hide it here to
-    // match, without posting the flip back. Only a host with the row sends it.
+    // Whether this page carries the formatting row, under
+    // `formattingInSecondRow`. One-way, and that is the whole shape of it: the
+    // row is a SETTING of the host's, changed in its own Settings window and
+    // seeded into every page as `__i18n.formattingRowExpanded`, so the page
+    // has no control that flips it and posts nothing back. Sent on a change to
+    // every open page, the one whose window made the change included.
     | { type: "setFormattingRowExpanded"; expanded: boolean }
     // Live read-only update, after `birta.readOnly` changes (MAR-53). The
     // setting is the DEFAULT, so this re-seeds the mode wholesale: a user who

@@ -159,7 +159,10 @@ export async function run({ page, check, baseUrl, browserName }) {
         toc: !!document.querySelector(".toc-panel"),
     }));
     /** The gear menu's rows, opened and read, then closed. */
-    const GEAR_ROW = '[data-item-id="settings"] .tb-settings-menu .ui-menu-row';
+    // Direct children: the gear holds the Checks submenu, whose own panel is a
+    // descendant of it, and those rows belong to that panel's list rather than
+    // to this one.
+    const GEAR_ROW = '[data-item-id="settings"] .tb-settings-menu > .ui-menu-row';
     async function gearRows() {
         await frame.locator('[data-item-id="settings"] .tb-fmt-btn').click();
         // The menu having rows is the condition; a clock here would read an

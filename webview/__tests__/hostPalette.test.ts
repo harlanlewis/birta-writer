@@ -125,8 +125,18 @@ describe("hostPalette.css", () => {
     });
 
     it("the palette must stay out of the eager bundle: no shipping module imports it", () => {
+        // A quoted module specifier, not a mention. What this guards is an
+        // IMPORT, and a bare filename match also catches prose: a comment in
+        // `ui/anchoredPlacement.ts` naming the palette as where a surface's
+        // colours come from read as a shipping module importing it, and the
+        // only way past a failure like that is to stop writing the file's name
+        // down, which costs a reader more than the guard was buying.
+        //
+        // Still crude on purpose. A CSS `@import` inside a `.ts` template
+        // literal is quoted too, so the one shape that could smuggle the
+        // palette into the eager graph is still caught.
         const importers = collectShippingFiles(webviewRoot).filter((f) =>
-            /hostPalette\.css/.test(readFileSync(f, "utf8")) && f.endsWith(".ts"),
+            /["'][^"']*hostPalette\.css["']/.test(readFileSync(f, "utf8")) && f.endsWith(".ts"),
         );
         expect(importers).toEqual([]);
     });

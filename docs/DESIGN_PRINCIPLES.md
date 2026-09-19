@@ -52,7 +52,7 @@ A finding offers a fix, a dictionary add, or Ignore. Suggestions apply on click,
 
 ### The user can always go quiet
 
-All checks ship on. A single master Proofreading switch (the Checks menu's gate row, and the `birta.toggleProofreading` command) silences spelling, grammar, and style in one step. Defaulting loud is only acceptable because going quiet is one action away. Name the domain in the control, "Proofreading" rather than "all checks". The toolbar button is icon-only, so a bare "all" has no referent.
+All checks ship on. A single master Proofreading switch (the Checks menu's gate row, and the `birta.toggleProofreading` command) silences spelling, grammar, and style in one step. Defaulting loud is only acceptable because going quiet is one action away. Name the domain in the control, "Proofreading" rather than "all checks". The row sits inside a menu already called Checks, so a bare "all" has nothing to scope it against.
 
 ### A master gates its children; it never overwrites them
 

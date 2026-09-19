@@ -288,18 +288,23 @@ export type HostArrangement =
      */
     | "fixedToolbarLayout"
     /**
-     * The bar's dropdowns open on CLICK rather than on hover, and their
-     * triggers are drawn without a disclosure chevron.
-     *
-     * One arrangement rather than two, because the chevron is the hover
-     * affordance: it exists to tell you that resting there will open
-     * something. Where the menu waits for a click, the click is the
-     * affordance and the chevron is a mark that promises nothing extra.
-     * Separating them would let a surface declare a hover menu with no hint
-     * that it opens, which is the state neither is worth having on its own.
+     * The bar's dropdowns open on CLICK rather than on hover.
      *
      * A layout fact, not a capability: both surfaces can do either, and the
      * same commands run from the same menus whichever way they are opened.
+     *
+     * What this does NOT govern is the disclosure chevron. It used to be
+     * argued that the chevron was the hover affordance and could go where the
+     * click was the affordance instead, and that reading was wrong in two
+     * ways. A chevron says a control opens SOMETHING, which a click surface
+     * needs told as much as a hover surface does; and the rule was only ever
+     * applied to the gear, so what it actually produced was one trigger in a
+     * bar of chevroned ones that looked like a plain button. Every trigger
+     * draws one now, on every surface, and nothing here decides it.
+     *
+     * The tooltip is the half that genuinely does turn on the gesture, and it
+     * still does (`createMenuTrigger`): where a menu opens on hover, a tooltip
+     * would appear in the spot the menu is about to cover.
      */
     | "barMenusOnClick"
     /**

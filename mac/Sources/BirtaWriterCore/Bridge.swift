@@ -132,13 +132,6 @@ public enum WebviewMessage: Equatable {
     /// A row was right-clicked at a point in the page, for the host to put its
     /// own menu at (`ExplorerMenu`). `kind` is the row's, `dir` or `file`.
     case projectFileMenu(path: String, kind: String, x: Double, y: Double)
-    /// The reader opened or shut the page's formatting row. One answer for
-    /// the whole app rather than one per window or tab (`Prefs.formattingRowExpanded`):
-    /// the app stores it, seeds it back at the next boot, and pushes it to
-    /// every other page as `HostMessage.setFormattingRowExpanded`, so a row
-    /// open in one tab and shut in the next cannot happen. Posted only by a
-    /// page under `formattingInSecondRow`, and never in answer to that push.
-    case formattingRowExpanded(Bool)
     /// The three things the explorer remembers, as the outline panel's are
     /// remembered: its width and whether it is out, per app, and whether
     /// dotfiles are listed, which is the host's setting because the host's
@@ -300,7 +293,6 @@ public enum WebviewMessage: Equatable {
                   let x = dict["x"] as? NSNumber, let y = dict["y"] as? NSNumber else { return .other(type: type) }
             return .projectFileMenu(path: path, kind: kind, x: x.doubleValue, y: y.doubleValue)
         case "stripTooltip": return .stripTooltip(StripTooltip.parse(dict))
-        case "formattingRowExpanded": return bool("expanded").map { .formattingRowExpanded($0) } ?? .other(type: type)
         case "fileExplorerWidth": return int("width").map { .fileExplorerWidth($0) } ?? .other(type: type)
         case "fileExplorerVisibility": return bool("visible").map { .fileExplorerVisibility($0) } ?? .other(type: type)
         case "setFileExplorerShowHidden": return bool("value").map { .setFileExplorerShowHidden($0) } ?? .other(type: type)
@@ -453,8 +445,10 @@ public enum HostMessage: Equatable {
     case directoryChanged(paths: [String])
     /// The hidden-files setting moved, from this window's row or another's.
     case fileExplorerConfig(showHidden: Bool)
-    /// The formatting row was opened or shut on another page
-    /// (`WebviewMessage.formattingRowExpanded`); this page follows.
+    /// Whether this page carries the formatting row. The app's setting
+    /// (`Prefs.formattingRowExpanded`, Settings > Appearance), sent to every
+    /// page when it changes and on every load. One-way: the page has no
+    /// control that flips it and posts nothing back.
     case setFormattingRowExpanded(Bool)
     /// The line-number gutter, on or off, after View > Line Numbers: the
     /// extension's `setLineNumbers`, which the page already answers by
@@ -717,10 +711,10 @@ public struct BootConfig: Equatable {
     /// is told it has no root and draws no explorer whatever these say.
     public var fileExplorerVisibility: String
     public var fileExplorerWidth: Int?
-    /// Whether the page's formatting row is open, for every window and tab at
-    /// once (`WebviewMessage.formattingRowExpanded` is how it changes). Shut
-    /// on a first launch: the quiet answer is the first one, and the T in the
-    /// bar is where the row is found.
+    /// Whether the page carries its formatting row, for every window and tab
+    /// at once (Settings > Appearance > Formatting toolbar is how it changes).
+    /// Off on a first launch: the quiet answer is the first one, and the row
+    /// holds nothing the Format menu, the slash menu and the palette do not.
     public var formattingRowExpanded: Bool
     /// Whether the page draws its source line numbers (View > Line Numbers;
     /// the extension's `birta.lineNumbers`). Off until asked for, as there:

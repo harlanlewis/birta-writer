@@ -422,7 +422,6 @@ final class Coordinator {
     /// same shape as the hidden-files setting, for the same reason: one
     /// answer for the app, stored and fanned out by `WindowSet.setFormattingRowExpanded`,
     /// so every other tab and window follows at once.
-    var onFormattingRowChanged: ((Bool) -> Void)?
 
     /// Open a folder as a directory window, under BIRTA_MAC_MEASURE only.
     var onOpenDirectoryRequest: ((URL) -> Void)?
@@ -1921,8 +1920,6 @@ final class Coordinator {
             openProjectFile(relative: path, newTab: newTab)
         case let .projectFileMenu(path, kind, x, y):
             showProjectFileMenu(relative: path, kind: kind, x: x, y: y)
-        case let .formattingRowExpanded(expanded):
-            onFormattingRowChanged?(expanded)
         case let .stripTooltip(tooltip):
             stripTooltipWindow.show(tooltip, over: panel)
         case let .fileExplorerWidth(w): Prefs.explorerWidth = w

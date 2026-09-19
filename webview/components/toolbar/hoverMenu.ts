@@ -12,7 +12,7 @@
  * anywhere else, INCLUDING another menu's trigger; nothing about a pointer
  * leaving does it, so `ui/outsidePress.ts` stands in for the mouseleave.
  */
-import { placeMenu, MENU_CLIP_ATTR, MENU_GAP } from "@/ui/anchoredPlacement";
+import { placeMenu, placeSubmenu, MENU_CLIP_ATTR, MENU_GAP } from "@/ui/anchoredPlacement";
 import { hideTooltip } from "@/ui/tooltip";
 import { registerEscapeLayer } from "@/ui/escapeLayers";
 import { claimExclusiveChrome, releaseExclusiveChrome } from "@/ui/exclusiveChrome";
@@ -37,6 +37,17 @@ export interface HoverMenuOptions {
      * merely sweeps across the bar. Leaving before it elapses cancels the open.
      */
     openDelayMs?: number;
+    /**
+     * Where the panel opens relative to its trigger. `"below"` (the default)
+     * is a dropdown hanging off a toolbar button; `"beside"` is a SUBMENU,
+     * running out to the side of a row inside another menu.
+     *
+     * The gesture is unchanged either way, which is why this is a placement
+     * and not a second wiring: a submenu registers the same Escape layer,
+     * claims the same exclusive-chrome slot (and is spared by its parent
+     * through the DOM containment test) and roves the same rows.
+     */
+    placement?: "below" | "beside";
 }
 
 export interface HoverMenuHandle {
@@ -134,7 +145,7 @@ export function wireHoverMenu(
         cancelOpen();
         options.onOpen?.();
         menu.style.display = "flex";
-        placeMenu(button, menu);
+        if (options.placement === "beside") { placeSubmenu(button, menu); } else { placeMenu(button, menu); }
         // A trigger that carries a tooltip (`createMenuTrigger` under
         // `barMenusOnClick`) has already shown it by the time the press
         // arrives, and the label sits exactly where the first row is about to
@@ -188,6 +199,10 @@ export function wireHoverMenu(
 
     button.setAttribute("aria-haspopup", "menu");
     button.setAttribute("aria-expanded", "false");
+    // This panel's mark, so `rows()` below can tell its OWN rows from the rows
+    // of a menu nested inside it. Stamped here rather than by each factory, so
+    // every menu wired through this function participates by construction.
+    menu.dataset["tbMenu"] = "";
     // Publish the JS gap constant to CSS so the ::after bridge sizes itself from
     // the single source of truth (MENU_GAP), never a hardcoded duplicate.
     wrap.style.setProperty("--tb-menu-gap", `${MENU_GAP}px`);
@@ -196,6 +211,15 @@ export function wireHoverMenu(
     // buttons a menu embeds (e.g. the font-size stepper, overflowed tb-btns).
     const rows = (): HTMLElement[] =>
         Array.from(menu.querySelectorAll<HTMLElement>(".tb-fmt-item, button"))
+            // A row of a menu nested inside this one belongs to that menu's
+            // walk, not to this one. The obvious test, whether the nested
+            // PANEL is displayed, does not work: the filter below reads each
+            // row's own inline display, and a row inside a hidden panel has
+            // none of its own, so the overflow menu's dropdowns and every
+            // submenu would rove here whether open or shut. Asked of the
+            // nearest wired panel instead, which is exact and needs no
+            // cooperation from the nested menu.
+            .filter((el) => el.closest("[data-tb-menu]") === menu)
             .filter((el) => !el.hidden && el.style.display !== "none");
     const focusRow = (el: HTMLElement | undefined): void => {
         if (el) {

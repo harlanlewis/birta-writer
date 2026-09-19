@@ -61,12 +61,27 @@ export async function run({ page, check, baseUrl }) {
     check("control: the editing controls are in the top bar's left zone",
         ctl.leftZone.includes("bold") && ctl.leftZone.includes("format"),
         JSON.stringify(ctl.leftZone));
-    check("control: viewSource, styleCheck and image are on the bar when hostCapabilities is absent",
-        ["viewSource", "styleCheck", "image"].every((id) => ctl.items.includes(id)),
+    check("control: viewSource and image are on the bar when hostCapabilities is absent",
+        ["viewSource", "image"].every((id) => ctl.items.includes(id)),
         JSON.stringify(ctl.items));
+    // Checks is not among them on ANY surface: it is a submenu of the gear
+    // (checksMenu.ts), so a build that put it back on the bar fails here as
+    // well as on the mac page below.
+    check("control: Checks is not a bar item, on this surface either",
+        !ctl.items.includes("styleCheck"), JSON.stringify(ctl.items));
 
     // ── The mac profile ────────────────────────────────────────────────
     await mount("index.html");
+    /**
+     * Turn the formatting row on or off the only way anything can: the host's
+     * setting arriving. There is no control on the page, so every check below
+     * that wants the row open asks for it the way the Settings window does.
+     */
+    const setFormattingRow = async (on) => {
+        await page.evaluate(
+            (v) => { window.postMessage({ type: "setFormattingRowExpanded", expanded: v }, "*"); }, on);
+        await page.waitForTimeout(250);
+    };
     const mac = await page.evaluate(() => ({
         toc: !!document.querySelector(".toc-panel"),
         tocOpen: document.body.classList.contains("toc-open")
@@ -103,33 +118,95 @@ export async function run({ page, check, baseUrl }) {
     check("mac: the style check the page computes for itself draws its underlines",
         styleHits > 0, JSON.stringify({ hits: styleHits }));
 
-    // ── The Checks menu, which mixes gated and unconditional rows ──────
+    // ── The Checks submenu, which mixes gated and unconditional rows ───
     //
-    // The item is NOT gated (MAR-414's neighbour): the style check is computed
-    // in the page, so a host without a lint engine keeps it and loses only the
-    // two rows that post out. Gating the whole item took the menu away from a
-    // surface that could run half of it. This shell answers lints now, so all
+    // Its rows are NOT gated as a set (MAR-414's neighbour): the style check is
+    // computed in the page, so a host without a lint engine keeps it and loses
+    // only the two rows that post out. Gating the whole menu took it away from
+    // a surface that could run half of it. This shell answers lints now, so all
     // four rows are here, and what the check still discriminates is that they
-    // are built from the capability rather than hardcoded. Driven by opening
-    // the menu rather than read off the registry, because the filtering happens
-    // where the rows are built and a unit test of the table cannot see it.
-    const checksTrigger = await page.$('.tb-item[data-item-id="styleCheck"] .tb-fmt-trigger, .tb-checks-wrap .ui-btn');
-    check("mac: the Checks item is on the bar", !!checksTrigger);
-    if (checksTrigger) {
-        await checksTrigger.hover();
+    // are built from the capability rather than hardcoded.
+    //
+    // Driven by opening the menu rather than read off a table, and that is
+    // worth MORE now than when Checks was a bar button: the rows are two
+    // surfaces deep, inside a panel that has to escape the gear's
+    // `overflow: hidden` to be seen at all, and a panel clipped to nothing
+    // leaves every structural assertion true.
+    // The gear's own trigger, by path: the menu it opens holds buttons too
+    // (the font stepper), so a descendant selector resolves to four elements.
+    const gearSel = '.tb-item[data-item-id="settings"] > .tb-fmt-wrap > .ui-btn';
+    await page.locator(gearSel).click();
+    await page.waitForTimeout(OPEN_WAIT);
+    const checksRow = await page.$(".tb-settings-menu .tb-submenu-row");
+    check("mac: Checks is a row of the gear, not a button on the bar", !!checksRow);
+    if (checksRow) {
+        await checksRow.click();
         await page.waitForTimeout(OPEN_WAIT);
         const rows = await page.$$eval(".tb-checks-menu .tb-fmt-item, .tb-checks-menu .ui-menu-row",
             (els) => els.map((el) => el.textContent.trim()).filter(Boolean));
-        check("mac: the Checks menu offers the style check the page computes itself",
+        check("mac: the Checks panel offers the style check the page computes itself",
             rows.some((r) => /Check style/i.test(r)), JSON.stringify(rows));
         check("mac: and the note-marker highlight beside it",
             rows.some((r) => /note markers/i.test(r)), JSON.stringify(rows));
         check("mac: and both lint rows, because this shell answers lints now",
             rows.some((r) => /Check spelling/i.test(r)) && rows.some((r) => /Check grammar/i.test(r)),
             JSON.stringify(rows));
-        await page.mouse.move(5, 400);
+
+        // The panel is ON SCREEN, beside its row rather than clipped inside
+        // the gear. This is the assertion the structural ones cannot make: the
+        // gear's panel is `overflow: hidden`, so a submenu that failed to take
+        // viewport coordinates would have every row above, with a box of zero
+        // width sitting behind its parent.
+        const panel = await page.evaluate(() => {
+            const el = document.querySelector(".tb-checks-menu");
+            const gear = document.querySelector(".tb-settings-menu");
+            if (!el || !gear) return null;
+            const r = el.getBoundingClientRect();
+            const g = gear.getBoundingClientRect();
+            return {
+                w: Math.round(r.width), h: Math.round(r.height),
+                fixed: getComputedStyle(el).position === "fixed",
+                // Beside, not on top of: the panel starts past one of the
+                // gear's vertical edges whichever side it chose.
+                beside: r.left >= g.right - 1 || r.right <= g.left + 1,
+                onScreen: r.left >= 0 && r.right <= window.innerWidth
+                    && r.top >= 0 && r.bottom <= window.innerHeight + 1,
+                // Still a DOM child of the gear, which is what keeps
+                // `ui/exclusiveChrome.ts` from closing the gear under it.
+                insideGear: gear.contains(el),
+                gearStillOpen: getComputedStyle(gear).display !== "none",
+            };
+        });
+        check("mac: the Checks panel is drawn, not clipped away inside the gear",
+            panel && panel.w > 0 && panel.h > 0 && panel.fixed, JSON.stringify(panel));
+        check("mac: it opens BESIDE the gear and stays on screen",
+            panel && panel.beside && panel.onScreen, JSON.stringify(panel));
+        check("mac: and the gear it came out of is still open under it",
+            panel && panel.insideGear && panel.gearStillOpen, JSON.stringify(panel));
+        // The gear's own rows are still PRESSABLE with the panel out. Every
+        // dropdown wrap in this toolbar carries a transparent gap bridge under
+        // it so the pointer can cross to a menu below; on a wrap nested inside
+        // a positioned menu that strip resolves against the MENU, which lays a
+        // full-width band over whichever row is last and eats its clicks. It is
+        // invisible, so only hit-testing finds it.
+        const lastRowHit = await page.evaluate(() => {
+            const rows = [...document.querySelectorAll(".tb-settings-menu > .tb-fmt-item")];
+            const last = rows[rows.length - 1];
+            if (!last) return null;
+            const r = last.getBoundingClientRect();
+            const hit = document.elementFromPoint(
+                Math.round(r.left + r.width / 2), Math.round(r.top + r.height / 2));
+            return { label: last.textContent, hitIsRow: last.contains(hit) || hit === last };
+        });
+        check("mac: the gear's own last row is still hittable with the panel open",
+            lastRowHit?.hitIsRow === true, JSON.stringify(lastRowHit));
+        await page.keyboard.press("Escape");
+        await page.waitForTimeout(OPEN_WAIT);
+        await page.keyboard.press("Escape");
         await page.waitForTimeout(OPEN_WAIT);
     }
+    await page.mouse.move(5, 400);
+    await page.waitForTimeout(OPEN_WAIT);
 
     // ── The sidebar's toolbar button ───────────────────────────────────
     //
@@ -459,12 +536,16 @@ export async function run({ page, check, baseUrl }) {
     // a real page can answer is whether the two holders actually received it.
     check("mac: the top bar's left zone is empty, leaving the titlebar row to the window",
         mac.leftZone.length === 0, JSON.stringify(mac.leftZone));
-    // No `files` item, though the profile declares `projectFiles`: this
-    // surface carries the explorer's control in its own window frame
-    // (`filesToggleInHostChrome`), so the bar withdraws the button while the
-    // command it ran stays live everywhere else.
+    // Two absences here, and they are not the same kind. No `files` item,
+    // though the profile declares `projectFiles`: this surface carries the
+    // explorer's control in its own window frame (`filesToggleInHostChrome`),
+    // so the bar withdraws the button while the command it ran stays live
+    // everywhere else, and VS Code still draws one. No `styleCheck` either,
+    // and that one is not this surface's doing: Checks is a submenu of the
+    // gear on every surface now, so the item is gone from the registry rather
+    // than withdrawn from this bar.
     check("mac: the top bar keeps only the controls that read the document",
-        JSON.stringify(mac.rightZone) === JSON.stringify(["styleCheck", "find", "settings", "toc"]),
+        JSON.stringify(mac.rightZone) === JSON.stringify(["find", "settings", "toc"]),
         JSON.stringify(mac.rightZone));
     check("mac: every editing control is in the dock instead",
         ["format", "bold", "italic", "link", "listMenu", "quote", "codeBlock", "table", "image"]
@@ -496,40 +577,25 @@ export async function run({ page, check, baseUrl }) {
     const barShape = () => page.evaluate(() => {
         const bar = document.querySelector(".editor-topbar");
         const row = document.querySelector(".tb-dock");
-        const toggle = document.querySelector(".tb-dock-toggle");
-        const zone = document.querySelector(".tb-zone--right");
-        const placed = [...zone?.querySelectorAll(".tb-item") ?? []]
-            .find((el) => !["syncConflict", "logseq", "debug"].includes(el.dataset.itemId));
         return {
             rowInBar: row?.parentElement === bar,
-            toggleInBar: !!toggle?.closest(".editor-topbar") && !toggle?.closest(".tb-dock"),
-            // Ahead of every PLACEABLE item. The two status badges are pinned
-            // to the front of the zone by the layout controller and are not
-            // the partition's, so the first `.tb-item` is not what this asks
-            // about: the first one the partition put there is.
-            toggleLeadsTopBar: !!toggle && !!placed
-                && (toggle.compareDocumentPosition(placed) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0,
+            // Nothing of the row's own is in the bar. Whether the row exists is
+            // the host's setting, so there is no toggle to place, and a build
+            // that brought one back fails here.
+            noToggleInBar: !bar?.querySelector(".tb-dock-toggle"),
             barHeight: bar?.getBoundingClientRect().height ?? 0,
         };
     });
-    // Driven through the page's own click rather than a synthesized event.
-    // `bindActivate` answers the FIRST of mousedown or click, so a probe that
-    // sends both toggles twice and measures the state it started in, which
-    // reads exactly like a row that does not move the bar.
     const beforeOpen = await barShape();
-    await page.locator(".tb-dock-toggle").click();
-    await page.waitForTimeout(200);
+    await setFormattingRow(true);
     const afterOpen = await barShape();
-    const rowGeometry = { ...beforeOpen, collapsed: beforeOpen.barHeight, expanded: afterOpen.barHeight };
+    const rowGeometry = { ...afterOpen, collapsed: beforeOpen.barHeight, expanded: afterOpen.barHeight };
     // Put it back, so the checks after this one meet the page as they expect it.
-    await page.locator(".tb-dock-toggle").click();
-    await page.waitForTimeout(200);
+    await setFormattingRow(false);
     check("mac: the formatting row is a row of the top bar, not a strip of its own",
         rowGeometry.rowInBar, JSON.stringify(rowGeometry));
-    check("mac: its toggle is in the bar itself, not in the row it opens",
-        rowGeometry.toggleInBar, JSON.stringify(rowGeometry));
-    check("mac: the toggle leads the top bar, ahead of the items the partition placed",
-        rowGeometry.toggleLeadsTopBar, JSON.stringify(rowGeometry));
+    check("mac: the bar carries no control of the row's own",
+        rowGeometry.noToggleInBar, JSON.stringify(rowGeometry));
     check("mac: opening the row makes the bar taller, so everything that measures it follows",
         rowGeometry.expanded > rowGeometry.collapsed, JSON.stringify(rowGeometry));
 
@@ -555,12 +621,19 @@ export async function run({ page, check, baseUrl }) {
     const gearMenu = '[data-item-id="settings"] .tb-settings-menu';
     await page.locator(gearBtn).click();
     await page.waitForTimeout(OPEN_WAIT);
+    // DIRECT children throughout. The Checks submenu's panel is a descendant
+    // of this menu, so `querySelectorAll` reaches its twenty switches and its
+    // section headings and reports them as rows of the gear.
     const gear = await page.$eval(gearMenu, (menu) => ({
-        labels: [...menu.querySelectorAll(".tb-fmt-item")].map((el) => el.textContent),
+        labels: [...menu.querySelectorAll(":scope > .tb-fmt-item")].map((el) => el.textContent),
+        submenus: [...menu.querySelectorAll(":scope > .tb-submenu-wrap > .tb-submenu-row")]
+            .map((el) => el.textContent),
         kinds: [...menu.children].map((el) =>
-            el.classList.contains("tb-menu-sep") ? "sep" : el.classList.contains("tb-fmt-item") ? "item" : el.className),
+            el.classList.contains("tb-menu-sep") ? "sep"
+                : el.classList.contains("tb-submenu-wrap") ? "submenu"
+                    : el.classList.contains("tb-fmt-item") ? "item" : el.className),
         hasSizeRow: !!menu.querySelector(".tb-font-size-row"),
-        hasWidthRow: !!menu.querySelector(".tb-seg-btn"),
+        hasWidthRow: !!menu.querySelector(":scope > .tb-seg-btn, :scope > * > .tb-seg-btn"),
     }));
     // The shell has a Settings window (`appPreferences`), so its row belongs;
     // VS Code's own settings and keybindings rows do not, and neither does the
@@ -570,6 +643,11 @@ export async function run({ page, check, baseUrl }) {
             ["Sans serif", "Serif", "Monospace",
              "Show Keyboard Shortcuts", "Birta Writer Settings"]),
         JSON.stringify(gear.labels));
+    // Checks is one row here and not twenty: it is a submenu, so the panel it
+    // opens is not part of this menu's own list.
+    check("mac: and Checks, as a single row that opens a panel of its own",
+        JSON.stringify(gear.submenus) === JSON.stringify(["Checks"]),
+        JSON.stringify(gear.submenus));
     // The typography rows stay at the TOP with the layout rows withdrawn. They
     // are what a reader opens this menu for, and the rule that placed them
     // ("after the layout rows") has to survive there being none.
@@ -612,7 +690,7 @@ export async function run({ page, check, baseUrl }) {
     await page.locator(gearBtn).click();
     await page.waitForTimeout(OPEN_WAIT);
     const checked = await page.$eval(gearMenu, (menu) =>
-        [...menu.querySelectorAll(".tb-fmt-item")]
+        [...menu.querySelectorAll(":scope > .tb-fmt-item")]
             .filter((el) => el.getAttribute("aria-checked") === "true")
             .map((el) => el.textContent));
     check("mac: …and the gear's checkmark moved with it",
@@ -845,8 +923,6 @@ export async function run({ page, check, baseUrl }) {
     // and whether a dropdown escapes the box that scrolls it.
     const dockSel = ".tb-dock";
     const rowSel = ".tb-dock-row";
-    const toggleSel = ".tb-dock-toggle";
-
     const dockState = () => page.evaluate(() => {
         const dock = document.querySelector(".tb-dock");
         const row = document.querySelector(".tb-dock-row");
@@ -855,100 +931,127 @@ export async function run({ page, check, baseUrl }) {
         return {
             expanded: dock?.dataset.expanded,
             rowShown: shown(row),
-            toggleShown: shown(document.querySelector(".tb-dock-toggle")),
-            glyph: document.querySelector(".tb-dock-glyph")?.textContent,
             overflows: row ? row.scrollWidth > row.clientWidth + 1 : null,
-            // Every flip the page posted, in order: the host keeps the answer.
-            posted: window.__posted.filter((m) => m.type === "formattingRowExpanded").map((m) => m.expanded),
+            // Nothing the page posts. The row is a SETTING of the host's now,
+            // changed in its Settings window, so a page that posted anything
+            // here would be a page that had grown a control of its own.
+            posted: window.__posted.filter((m) => m.type === "formattingRowExpanded").length,
             barHeight: bar?.getBoundingClientRect().height ?? null,
         };
     });
 
     const collapsed = await dockState();
-    check("mac: the row starts collapsed, with only the T in the bar",
-        collapsed.expanded === "false" && collapsed.toggleShown && !collapsed.rowShown
-            && collapsed.glyph === "T",
-        JSON.stringify(collapsed));
+    check("mac: the row starts off, and the bar carries no control for it",
+        collapsed.expanded === "false" && !collapsed.rowShown, JSON.stringify(collapsed));
+    // Stated as the absence of the control rather than of one class name, so a
+    // build that merely renamed the old toggle does not pass.
+    const barControls = await page.$$eval(".tb-zone--right .ui-btn, .tb-zone--left .ui-btn",
+        (els) => els.map((el) => el.closest("[data-item-id]")?.dataset.itemId ?? el.className));
+    check("mac: no formatting-row toggle among the bar's controls",
+        barControls.every((c) => !/dock-toggle/.test(c)), JSON.stringify(barControls));
 
-    await page.locator(toggleSel).click();
-    await page.waitForTimeout(200);
+    // The host's setting arriving is the ONLY way the row comes on now.
+    await page.evaluate(() => { window.postMessage({ type: "setFormattingRowExpanded", expanded: true }, "*"); });
+    await page.waitForTimeout(250);
     const expanded = await dockState();
-    check("mac: clicking the T opens the row",
-        expanded.expanded === "true" && expanded.rowShown,
-        JSON.stringify(expanded));
-    // And the bar is what grew. Collapsed the row must not merely be invisible
-    // but absent from the bar's box, or the content below stays pushed down
-    // around a row nobody can see.
-    check("mac: opening it grows the bar, closing it gives the height back",
+    check("mac: the host's setting opens the row",
+        expanded.expanded === "true" && expanded.rowShown, JSON.stringify(expanded));
+    // And the bar is what grew. Off, the row must not merely be invisible but
+    // absent from the bar's box, or the content below stays pushed down around
+    // a row nobody can see.
+    check("mac: turning it on grows the bar, so everything that measures the bar follows",
         expanded.barHeight > collapsed.barHeight,
         JSON.stringify({ collapsed: collapsed.barHeight, expanded: expanded.barHeight }));
+    check("mac: and the page posts nothing, because it originates no flip",
+        expanded.posted === 0, JSON.stringify(expanded));
 
-    // The four checks that stood here measured the toggle's chevron: that it
-    // was drawn at rest, that hovering did not change its width, and that the
-    // row therefore did not shift sideways under the pointer. The chevron is
-    // gone, so they are gone with it rather than repointed at something else.
-    //
-    // What replaces the geometry half is cheaper and holds the same property:
-    // the toggle's box does not change when the pointer arrives on it. That is
-    // still worth asserting, because it is a button whose contents could grow
-    // again, and a control that resizes under the pointer is one you can miss
-    // by arriving at it.
-    const hoverShift = await (async () => {
-        const boxOf = () => page.evaluate(() => {
-            const t = document.querySelector(".tb-dock-toggle");
-            const first = document.querySelector(".tb-dock-row .tb-item");
-            return {
-                toggle: Math.round(t.getBoundingClientRect().width),
-                firstItemLeft: first ? Math.round(first.getBoundingClientRect().left) : null,
-            };
-        });
-        await page.mouse.move(5, 5);
-        await page.waitForTimeout(250);
-        const away = await boxOf();
-        await page.locator(toggleSel).hover();
-        await page.waitForTimeout(300);
-        const over = await boxOf();
-        return { away, over };
-    })();
-    check("mac: the row it could push is really there to be pushed",
-        hoverShift.away.firstItemLeft !== null, JSON.stringify(hoverShift));
-    check("mac: hovering the toggle moves nothing in the row",
-        hoverShift.over.toggle === hoverShift.away.toggle
-            && hoverShift.over.firstItemLeft === hoverShift.away.firstItemLeft,
-        JSON.stringify(hoverShift));
-    check("mac: and the toggle carries no chevron beside the letter",
-        (await page.evaluate(() => !document.querySelector(".tb-dock-chevron"))),
-        "a chevron is present");
-    check("mac: and the choice was posted to the host, which keeps one answer for every window",
-        collapsed.posted.length === 0 && expanded.posted.length === 1 && expanded.posted[0] === true,
-        JSON.stringify({ collapsed: collapsed.posted, expanded: expanded.posted }));
+    // ── Grouping ───────────────────────────────────────────────────────
+    // The runs are unit-tested (`toolbarRegistry.test.ts`, `formattingDock.test.ts`);
+    // what only a laid-out page answers is whether a rule is DRAWN. A
+    // zero-width hairline is a rule nobody can see, and it is exactly what a
+    // missing stylesheet rule produces while every structural assertion holds.
+    const rules = await page.evaluate(() => {
+        const seps = [...document.querySelectorAll(".tb-dock-row .tb-dock-sep")];
+        const kids = [...(document.querySelector(".tb-dock-row")?.children ?? [])];
+        const isSep = (el) => el.classList.contains("tb-dock-sep");
+        return {
+            count: seps.length,
+            boxes: seps.map((el) => {
+                const r = el.getBoundingClientRect();
+                return { w: Math.round(r.width * 100) / 100, h: Math.round(r.height) };
+            }),
+            leading: kids.length > 0 && isSep(kids[0]),
+            trailing: kids.length > 0 && isSep(kids[kids.length - 1]),
+            adjacent: kids.some((el, i) => i > 0 && isSep(el) && isSep(kids[i - 1])),
+        };
+    });
+    check("mac: the row is broken into runs by drawn rules",
+        rules.count >= 4, JSON.stringify(rules));
+    check("mac: each rule has a real box, so it is visible rather than merely present",
+        rules.boxes.every((b) => b.w > 0 && b.h > 0), JSON.stringify(rules.boxes));
+    check("mac: and no rule sits at either end or beside another",
+        !rules.leading && !rules.trailing && !rules.adjacent, JSON.stringify(rules));
 
-    // The tip that hover just raised, which is still on screen: it names the
-    // toggle, so it has to be UNDER the toggle.
+    // ── Quiet at rest, up on approach ──────────────────────────────────
+    // The one behaviour here that no unit test can reach: jsdom computes no
+    // opacity, so the module's class is testable there and the FADE is not.
+    // Both halves are asserted, because a stylesheet that set the resting
+    // opacity and never lifted it, and one that lifted it and never set it,
+    // are each half-right and each unusable.
+    const dockOpacity = () => page.evaluate(() =>
+        Number.parseFloat(getComputedStyle(document.querySelector(".tb-dock")).opacity));
+    // Well clear of the band and of the bar's own hover.
+    await page.mouse.move(400, 600);
+    await page.waitForTimeout(300);
+    const atRest = await dockOpacity();
+    check("mac: the row is drawn back at rest", atRest < 0.9, String(atRest));
+    // Into the band BELOW the row, not onto the row: the claim is that it
+    // comes up on approach, and arriving would be answered by `:hover` alone.
+    const band = await page.evaluate(() => {
+        const r = document.querySelector(".tb-dock").getBoundingClientRect();
+        return { x: Math.round(r.left + r.width / 2), y: Math.round(r.bottom + 24) };
+    });
+    await page.mouse.move(band.x, band.y);
+    await page.waitForTimeout(300);
+    const nearby = await dockOpacity();
+    const onRow = await page.evaluate(() => {
+        const r = document.querySelector(".tb-dock").getBoundingClientRect();
+        return document.elementFromPoint(Math.round(r.left + r.width / 2), Math.round(r.bottom + 24))
+            ?.closest(".tb-dock") !== null;
+    });
+    check("mac: approaching from below brings it up to full ink",
+        nearby === 1, JSON.stringify({ atRest, nearby, band }));
+    check("mac: …and the pointer really was off the row, so that was an approach and not a hover",
+        onRow === false, JSON.stringify(band));
+
+    // ── A tooltip on a control in the bar's FIRST row ──────────────────
+    // The pull this guards: `position()` has a floor that keeps a tip out of
+    // the bar's box, because the bar paints over it. That floor is right for
+    // an anchor in the document and backwards for one in the bar, and a second
+    // row is what makes the difference visible — a tip that cleared both rows
+    // would land over the text, pointing at nothing.
     //
-    // The pull the other way is the reason `position()` has a floor at all:
-    // the bar paints over the tooltip, so a tip anywhere in the bar's box
-    // would be invisible. That floor is right for an anchor in the document
-    // and backwards for one in the bar, and a second row is what made the
-    // difference visible: the tip cleared both rows and landed over the text,
-    // pointing at nothing.
+    // Three assertions, because two of them are only sound together. "Near its
+    // anchor" and "inside the bar's box" would be satisfied by a tip nobody can
+    // see; the z-order is what says the overlap is legible. z-index IS paint
+    // order for this pair, and the last assertion checks that premise rather
+    // than assuming it: both are `position: fixed` children of <body>, so they
+    // share the root stacking context with nothing between them.
     //
-    // Three assertions, because two of them are only sound together. "Near
-    // its anchor" and "inside the bar's box" would be satisfied by a tip
-    // nobody can see; the z-order is what says the overlap is legible.
-    //
-    // z-index IS paint order for this pair, and the last assertion checks the
-    // premise rather than assuming it: both are `position: fixed` children of
-    // <body>, so they share the root stacking context with nothing between
-    // them. Either one acquiring a positioned ancestor breaks that, and the
-    // check is what will say so.
-    const tipBox = await page.evaluate(() => {
+    // Anchored on Find rather than on the row's old toggle, which is gone. Any
+    // first-row control with a tooltip asks the same question of `position()`.
+    const findSel = '.tb-item[data-item-id="find"] button';
+    await page.mouse.move(5, 5);
+    await page.waitForTimeout(150);
+    await page.locator(findSel).hover();
+    await page.waitForTimeout(400);
+    const tipBox = await page.evaluate((sel) => {
         const tip = document.querySelector(".custom-tooltip");
-        const toggle = document.querySelector(".tb-dock-toggle");
+        const anchor = document.querySelector(sel);
         const bar = document.querySelector(".editor-topbar");
-        if (!tip || !toggle || !bar) return null;
+        if (!tip || !anchor || !bar) return null;
         const t = tip.getBoundingClientRect();
-        const b = toggle.getBoundingClientRect();
+        const b = anchor.getBoundingClientRect();
         const bar_ = bar.getBoundingClientRect();
         return {
             shown: getComputedStyle(tip).display !== "none" && t.height > 0,
@@ -963,10 +1066,10 @@ export async function run({ page, check, baseUrl }) {
             barFixed: getComputedStyle(bar).position === "fixed",
             barInBody: bar.parentElement === document.body,
         };
-    });
-    check("mac: hovering the toggle raises its tooltip", !!tipBox?.shown,
+    }, findSel);
+    check("mac: hovering a first-row control raises its tooltip", !!tipBox?.shown,
         JSON.stringify(tipBox));
-    check("mac: the tooltip hangs off the toggle, not off the whole two-row bar",
+    check("mac: the tooltip hangs off the control, not off the whole two-row bar",
         tipBox && tipBox.gap >= 0 && tipBox.gap <= 12 && tipBox.belowBar < 0,
         JSON.stringify(tipBox));
     check("mac: and it paints over the bar it now overlaps",
@@ -1283,8 +1386,7 @@ export async function run({ page, check, baseUrl }) {
     // day that stops being true this check has to be rewritten, and the
     // assertion is what will say so.
     await mount("index.html");
-    await page.locator(".tb-dock-toggle").click();
-    await page.waitForTimeout(200);
+    await setFormattingRow(true);
     const stack = await page.evaluate(() => {
         const dock = document.querySelector(".tb-dock");
         const z = (el) => Number.parseInt(getComputedStyle(el).zIndex, 10);
@@ -1530,8 +1632,7 @@ export async function run({ page, check, baseUrl }) {
             const isOpen = await page.evaluate(
                 () => document.querySelector(".tb-dock")?.dataset.expanded === "true");
             if (isOpen === want) return;
-            await page.locator(".tb-dock-toggle").click();
-            await page.waitForTimeout(250);
+            await setFormattingRow(want);
         }
     };
     const isTransparent = (c) => c.includes("rgba(0, 0, 0, 0)") || c.includes("transparent");
@@ -1862,7 +1963,11 @@ export async function run({ page, check, baseUrl }) {
     // the bar's bottom as captured above, with no row in it.
     await hlDrive(false);
     // Asked for again: the page has been rebuilt since the handle above was taken.
-    const checksTriggerNow = await page.$('.tb-item[data-item-id="styleCheck"] .tb-fmt-trigger, .tb-checks-wrap .ui-btn');
+    // Find rather than Checks, which is no longer on the bar. What this arm
+    // needs is any first-row control that raises a tooltip; which one is not
+    // the subject.
+    const stripTipSel = '.tb-item[data-item-id="find"] button';
+    const checksTriggerNow = await page.$(stripTipSel);
     check("mac: there is a bar button to ask the strip's tooltip of", !!checksTriggerNow);
     if (checksTriggerNow) {
         await page.evaluate(() => { window.__posted.length = 0; });
@@ -1870,7 +1975,7 @@ export async function run({ page, check, baseUrl }) {
         await page.waitForTimeout(OPEN_WAIT);
         const handed = await page.evaluate(() => {
             const tipEl = document.querySelector(".custom-tooltip");
-            const trigger = document.querySelector('.tb-item[data-item-id="styleCheck"] .tb-fmt-trigger, .tb-checks-wrap .ui-btn').getBoundingClientRect();
+            const trigger = document.querySelector('.tb-item[data-item-id="find"] button').getBoundingClientRect();
             const asked = window.__posted.filter((m) => m.type === "stripTooltip");
             const last = asked[asked.length - 1] ?? null;
             return {

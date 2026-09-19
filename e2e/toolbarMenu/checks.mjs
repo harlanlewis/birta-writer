@@ -136,13 +136,19 @@ export async function run({ page, check, baseUrl }) {
     await page.waitForTimeout(OPEN_WAIT);
     check("hovering the gear opens the settings menu", (await disp(gearMenu)) === "flex");
     const gearShape = await page.$eval(gearMenu, (menu) => ({
-        header: !!menu.querySelector(".tb-fmt-header"),
+        header: !!menu.querySelector(":scope > .tb-fmt-header"),
         // Child sequence: row/sep kinds in DOM order.
         kinds: [...menu.children].map((el) =>
             el.classList.contains("tb-menu-sep") ? "sep"
-                : el.classList.contains("tb-fmt-item") ? "item" : el.className),
-        labels: [...menu.querySelectorAll(".tb-fmt-item")].map((el) => el.textContent),
-        sepRoles: [...menu.querySelectorAll(".tb-menu-sep")]
+                : el.classList.contains("tb-submenu-wrap") ? "submenu"
+                    : el.classList.contains("tb-fmt-item") ? "item" : el.className),
+        // DIRECT children. The Checks submenu's panel is a descendant of this
+        // menu (it has to be, or opening it would close the menu it came out
+        // of), so a loose query reports its twenty switches as gear rows.
+        labels: [...menu.querySelectorAll(":scope > .tb-fmt-item")].map((el) => el.textContent),
+        submenus: [...menu.querySelectorAll(":scope > .tb-submenu-wrap > .tb-submenu-row")]
+            .map((el) => el.textContent),
+        sepRoles: [...menu.querySelectorAll(":scope > .tb-menu-sep")]
             .map((el) => el.getAttribute("role")),
     }));
     check("gear menu has no .tb-fmt-header title row", !gearShape.header);
@@ -155,12 +161,18 @@ export async function run({ page, check, baseUrl }) {
             "Birta Writer Settings",
             "What's New",
         ]), JSON.stringify(gearShape.labels));
-    check("gear menu groups split by two separators (item,item,sep,item,item,sep,item,item)",
+    // Layout rows, then the editor block (Checks, which on this surface is the
+    // whole of it, since the typography is a toolbar item here), then the
+    // shortcuts, then the settings group. A rule on each group change.
+    check("gear menu groups split by rules, with Checks fenced between the layout rows and the plumbing",
         JSON.stringify(gearShape.kinds) ===
-            JSON.stringify(["item", "item", "sep", "item", "item", "sep", "item", "item"]),
+            JSON.stringify(["item", "item", "sep", "submenu", "sep", "item", "item", "sep", "item", "item"]),
         JSON.stringify(gearShape.kinds));
+    check("gear menu offers Checks as one row that opens a panel of its own",
+        JSON.stringify(gearShape.submenus) === JSON.stringify(["Checks"]),
+        JSON.stringify(gearShape.submenus));
     check("gear menu separators carry role=separator",
-        JSON.stringify(gearShape.sepRoles) === JSON.stringify(["separator", "separator"]),
+        JSON.stringify(gearShape.sepRoles) === JSON.stringify(["separator", "separator", "separator"]),
         JSON.stringify(gearShape.sepRoles));
 
     // ── 6b. What's New is REACHABLE: a real click on the real row, at its real
@@ -170,7 +182,7 @@ export async function run({ page, check, baseUrl }) {
     // here and nowhere else. Nothing is fetched — rung 0b of NETWORK_POSTURE.
     const RELEASES_URL = "https://github.com/harlanlewis/birta-writer/releases";
     const whatsNewBox = await page.evaluate(() => {
-        const row = [...document.querySelectorAll('[data-item-id="settings"] .tb-settings-menu .tb-fmt-item')]
+        const row = [...document.querySelectorAll('[data-item-id="settings"] .tb-settings-menu > .tb-fmt-item')]
             .find((el) => el.textContent === "What's New");
         if (!row) { return null; }
         const r = row.getBoundingClientRect();

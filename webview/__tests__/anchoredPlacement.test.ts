@@ -3,8 +3,10 @@ import {
     computeMenuPlacement,
     placeMenu,
     computeAnchoredPosition,
+    computeSubmenuPosition,
     clampLeft,
     pinIntoView,
+    type Rect,
 } from "../ui/anchoredPlacement";
 
 const VIEWPORT = { width: 1000, height: 800 };
@@ -347,5 +349,68 @@ describe("pinIntoView", () => {
         // is above `start`, and the start must win rather than invert the range.
         const block = { start: 300, end: 305 };
         expect(pinIntoView(300, SIZE, block, VIEW)).toBe(300);
+    });
+});
+
+describe("computeSubmenuPosition (a submenu opens BESIDE its row)", () => {
+    // A 1000x800 window with nothing fixed above it, so each case below is
+    // about the one edge it names rather than about the topbar band.
+    const viewport = { width: 1000, height: 800, top: 0 };
+    const row = (left: number, top: number): Rect =>
+        ({ left, right: left + 200, top, bottom: top + 24 });
+
+    it("room on the trailing side should open there, level with the row", () => {
+        const pos = computeSubmenuPosition(row(100, 200), { width: 180, height: 300 }, viewport);
+        expect(pos.openLeft).toBe(false);
+        // Hard against the row's trailing edge: a submenu shares its parent's
+        // frame rather than floating off it, so there is no gap by default.
+        expect(pos.left).toBe(300);
+        expect(pos.top).toBe(200);
+    });
+
+    it("a row near the right edge should flip the panel to the leading side", () => {
+        // 780 + 200 = 980, so a 180-wide panel at 980 runs past 1000 - 8.
+        const pos = computeSubmenuPosition(row(780, 200), { width: 180, height: 300 }, viewport);
+        expect(pos.openLeft).toBe(true);
+        expect(pos.left).toBe(600);
+    });
+
+    it("a panel that fits on NEITHER side should stay on screen rather than flip into less room", () => {
+        // Wider than the room on either side of a centred row. Flipping would
+        // clip the other edge instead, which is the trap `computeMenuPlacement`
+        // records on its own axis; the clamp is what actually answers.
+        const pos = computeSubmenuPosition(row(400, 200), { width: 900, height: 100 }, viewport);
+        expect(pos.openLeft).toBe(false);
+        expect(pos.left).toBeGreaterThanOrEqual(8);
+        expect(pos.left + 900).toBeLessThanOrEqual(1000);
+    });
+
+    it("a panel that would overrun the bottom should SLIDE up, never flip above its row", () => {
+        // A flip would put the panel's bottom at the row's top, which is a
+        // submenu that has left the row it belongs to. It slides instead, so
+        // the row stays inside the panel's vertical run.
+        const pos = computeSubmenuPosition(row(100, 700), { width: 180, height: 400 }, viewport);
+        expect(pos.top).toBe(800 - 8 - 400);
+        expect(pos.top).toBeLessThan(700);
+        expect(pos.top + 400).toBeLessThanOrEqual(800);
+    });
+
+    it("a panel taller than the band should start at the band's top and report a max-height", () => {
+        // Floored at the usable top rather than slid above it: a panel that
+        // began off screen would be unreachable at its first rows, and the
+        // caller scrolls it at the height reported here instead.
+        const band = { width: 1000, height: 400, top: 120 };
+        const pos = computeSubmenuPosition(row(100, 300), { width: 180, height: 2000 }, band);
+        expect(pos.top).toBe(120);
+        expect(pos.maxHeight).toBe(400 - 8 - 120);
+    });
+
+    it("the fixed chrome's band should be respected, not just the window", () => {
+        // The same row under a 200px topbar cannot start at 150 any more.
+        const open = computeSubmenuPosition(row(100, 150), { width: 180, height: 100 }, viewport);
+        expect(open.top).toBe(150);
+        const under = computeSubmenuPosition(
+            row(100, 150), { width: 180, height: 100 }, { ...viewport, top: 200 });
+        expect(under.top).toBe(200);
     });
 });

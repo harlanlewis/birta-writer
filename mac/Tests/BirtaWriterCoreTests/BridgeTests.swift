@@ -294,10 +294,10 @@ final class BridgeTests: XCTestCase {
                        .projectFileMenu(path: "a", kind: "dir", x: 12, y: 40.5))
         XCTAssertEqual(WebviewMessage.parse(#"{"type":"projectFileMenu","path":"a","kind":"dir"}"#),
                        .other(type: "projectFileMenu"), "a menu with nowhere to open is not a request")
+        // The page posts no such message: the formatting row is a setting of
+        // the app's, changed in Settings, so nothing parses one.
         XCTAssertEqual(WebviewMessage.parse(#"{"type":"formattingRowExpanded","expanded":true}"#),
-                       .formattingRowExpanded(true))
-        XCTAssertEqual(WebviewMessage.parse(#"{"type":"formattingRowExpanded"}"#),
-                       .other(type: "formattingRowExpanded"), "a flip with no direction is not a flip")
+                       .other(type: "formattingRowExpanded"))
         XCTAssertEqual(WebviewMessage.parse(#"{"type":"fileExplorerWidth","width":300}"#), .fileExplorerWidth(300))
         XCTAssertEqual(WebviewMessage.parse(#"{"type":"fileExplorerVisibility","visible":false}"#),
                        .fileExplorerVisibility(false))

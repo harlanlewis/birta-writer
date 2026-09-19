@@ -212,6 +212,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     private let tintRow = SwatchRow(colors: AppearanceOverlay.tints, noneTitle: "None")
     private let sidebarSwitch = NSSwitch()
     private let tocSidebarSwitch = NSSwitch()
+    private let formattingRowSwitch = NSSwitch()
     private let fontControl = NSSegmentedControl(labels: SettingsWindowController.fontChoices.map(\.title), trackingMode: .selectOne,
                                                  target: nil, action: nil)
     private let fontSizeStepper = FontSizeStepper()
@@ -338,6 +339,14 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     /// Run an editor command in every window: the typography rows are the
     /// toolbar's own commands, which apply live and post the setting back.
     private let onEditorCommand: (String) -> Void
+    /// Show or hide the formatting row in every window.
+    ///
+    /// The app's setting rather than a command, which is why this is not
+    /// `onEditorCommand`: the page has no control that flips it and posts
+    /// nothing back, so the store and every open page are this closure's to
+    /// move (`WindowSet.setFormattingRowExpanded`). Defaulted so a test
+    /// building this window need not wire an app behind it.
+    private let onFormattingRowChange: (Bool) -> Void
 
     /// Every setting has just gone back to its default, and the window in
     /// front should land on the default note. A third closure rather than a
@@ -359,12 +368,14 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
          themeStore: ThemeStore = .installed,
          onAppearanceChange: @escaping (AppearanceSettings) -> Void = { _ in },
          onThemesChanged: @escaping () -> Void = {},
-         onEditorCommand: @escaping (String) -> Void = { _ in }) {
+         onEditorCommand: @escaping (String) -> Void = { _ in },
+         onFormattingRowChange: @escaping (Bool) -> Void = { _ in }) {
         self.flavour = flavour
         self.themeStore = themeStore
         self.onAppearanceChange = onAppearanceChange
         self.onThemesChanged = onThemesChanged
         self.onEditorCommand = onEditorCommand
+        self.onFormattingRowChange = onFormattingRowChange
         self.onHotkeyChange = onHotkeyChange
         self.refusedSummonCombo = refusedSummonCombo
         self.onChange = onChange
@@ -1139,6 +1150,11 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
             return (addThemeButton, [Self.inset(themeCards())], nil)
         case .accent: return (accentRow, [], nil)
         case .tint: return (tintRow, [], nil)
+        // No caption. What the row turns on is a row of formatting controls,
+        // which is what the label says and what appears the moment it is
+        // flipped; a sentence under it would be describing something already
+        // on screen.
+        case .formattingRow: return (formattingRowSwitch, [], nil)
         case .transparentSidebar: return (sidebarSwitch, [], nil)
         case .transparentToc: return (tocSidebarSwitch, [], nil)
         case .font: return (fontControl, [], nil)
@@ -2161,6 +2177,8 @@ extension SettingsWindowController {
         sidebarSwitch.action = #selector(toggleTransparentSidebar)
         tocSidebarSwitch.target = self
         tocSidebarSwitch.action = #selector(toggleTransparentToc)
+        formattingRowSwitch.target = self
+        formattingRowSwitch.action = #selector(toggleFormattingRow)
 
         // Item 0 is the button's own title under `pullsDown`, as the agent
         // preset pull-down does it; the ways in start at 1.
@@ -2280,6 +2298,10 @@ extension SettingsWindowController {
         tintRow.select(settings.tint)
         sidebarSwitch.state = settings.transparentSidebar ? .on : .off
         tocSidebarSwitch.state = settings.transparentToc ? .on : .off
+        // Not part of `AppearanceSettings`: it is a defaults key of its own
+        // (`Prefs.formattingRowExpanded`), read here because this is the
+        // Appearance pane's own redraw and Reset comes through it.
+        formattingRowSwitch.state = Prefs.formattingRowExpanded ? .on : .off
         fontControl.selectedSegment = Self.fontChoices.firstIndex { $0.preset == Prefs.fontPreset } ?? 1
         fontSizeStepper.show(percent: Prefs.fontSize)
         // Falling back to the first segment rather than to an index: full is
@@ -2379,6 +2401,13 @@ extension SettingsWindowController {
         var settings = Prefs.appearance
         settings.transparentSidebar = sidebarSwitch.state == .on
         apply(settings)
+    }
+
+    /// The row is the app's, not this window's: the store and every open page
+    /// move together, so a second window does not go on showing the answer
+    /// this one just changed.
+    @objc private func toggleFormattingRow() {
+        onFormattingRowChange(formattingRowSwitch.state == .on)
     }
 
     @objc private func toggleTransparentToc() {

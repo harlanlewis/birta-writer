@@ -292,3 +292,79 @@ body.toc-open.toc-right .tb-dock {
         box-shadow: 0 1px 0 var(--vscode-panel-border);
     }
 }
+
+/* ─── Group separators ───
+   A vertical hairline between runs of one kind of control (`ITEM_GROUP` in
+   registry.ts). The row is horizontal, so the rule is too; `makeSep` draws the
+   menu's horizontal one and is not this.
+
+   Shorter than the buttons beside it, on purpose: a full-height rule reads as
+   a boundary between two toolbars rather than as a comma inside one. */
+.tb-dock-sep {
+    flex: 0 0 auto;
+    align-self: center;
+    width: 1px;
+    height: 16px;
+    margin: 0 var(--ui-space-1);
+    background: var(--ui-card-border);
+}
+
+/* ─── Quiet at rest ───
+   The row is drawn at reduced ink until somebody reaches for it. A row of
+   controls nobody is using is not information, and the document is what the
+   window is for (docs/DESIGN_PRINCIPLES.md, "Chrome mirrors the block and
+   stays out of the way").
+
+   Four ways back to full ink, and each covers a case the others do not:
+
+     .tb-dock--near   the pointer is in the band below the bar, which is the
+                      approach. Written by ui/proximityReveal.ts, and the only
+                      one of the four that needs JavaScript.
+     :hover           arrival, and the fallback that keeps the row reachable
+                      with the module above disposed.
+     :focus-within    the keyboard, which never produces a pointer at all.
+     :has(.tb-menu-open)
+                      a dropdown is open OUT of the row. Opacity applies to a
+                      subtree as a group, and a menu escaping this box with
+                      `position: fixed` is still in that subtree, so without
+                      this a menu left open while the pointer wandered off
+                      would fade with the row it came from.
+
+   The topbar's own hover counts as arrival too: the row is the bar's second
+   row, so a pointer in the first one is already at the bar. */
+.tb-dock {
+    /* Recessive, not unreadable. The row is opt-in, so somebody looking at a
+       faded one asked for it to be there; what this buys is that it stops
+       competing with the text, not that it becomes a puzzle. A keyboard
+       reader who never produces a pointer sees it at this weight until they
+       focus into it, which is the case that sets the floor. */
+    opacity: 0.55;
+    transition: opacity 140ms ease-out;
+}
+
+.tb-dock--near,
+.tb-dock:hover,
+.tb-dock:focus-within,
+.tb-dock:has(.tb-menu-open),
+.editor-topbar:hover > .tb-dock {
+    opacity: 1;
+}
+
+/* The fade is the affordance, not decoration, so it is the MOTION that goes
+   and never the reveal: without this the row would sit at reduced ink for a
+   reader who asked the system for less movement. */
+@media (prefers-reduced-motion: reduce) {
+    .tb-dock {
+        transition: none;
+    }
+}
+
+/* Somebody who asked the system for more contrast, or who is in a forced-colour
+   mode, has already said that quiet chrome is not serving them. The reveal is
+   an aesthetic preference and theirs outranks it, so the row simply stays at
+   full ink and the approach changes nothing. */
+@media (prefers-contrast: more), (forced-colors: active) {
+    .tb-dock {
+        opacity: 1;
+    }
+}

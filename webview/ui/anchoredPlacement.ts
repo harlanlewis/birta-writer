@@ -337,3 +337,101 @@ export function pinIntoView(
 export function viewportSpan(margin: number = EDGE_MARGIN): Span {
     return { start: safeAreaTop(), end: window.innerHeight - margin };
 }
+
+/** Where a submenu panel landed, in viewport coordinates. */
+export interface SubmenuPosition {
+    left: number;
+    top: number;
+    /** Space on the chosen vertical run, for the caller to apply as a max-height. */
+    maxHeight: number;
+    /** True when the panel opened to the anchor's LEADING side instead. */
+    openLeft: boolean;
+}
+
+/**
+ * Where a SUBMENU opens: beside its row rather than under it.
+ *
+ * The horizontal twin of `computeMenuPlacement`, and a separate function
+ * rather than an option on it, because the two axes trade places. A dropdown
+ * hangs below its trigger and flips up; a submenu runs out to the trailing
+ * side of its row and flips to the leading one, and its vertical answer is a
+ * SLIDE (the panel is pinned into the usable band) rather than a flip, because
+ * a submenu that jumped above its own row would leave the row it belongs to.
+ *
+ * Trailing-first rather than direction-aware: every surface this editor draws
+ * is left-to-right, and `hostPalette.css` carries no writing-mode. A right-to-
+ * left surface would want the default mirrored, and that is the line to change.
+ *
+ * The result is in VIEWPORT coordinates because a submenu has to escape its
+ * parent panel's `overflow: hidden` (toolbar.css), which it does by taking
+ * `position: fixed` while staying a DOM child of its wrap. That is the same
+ * mechanism `MENU_CLIP_ATTR` already uses, and keeping the DOM parentage is
+ * what lets `ui/exclusiveChrome.ts` see the parent menu as an ancestor and
+ * leave it open.
+ */
+export function computeSubmenuPosition(
+    anchor: Rect,
+    menu: Size,
+    viewport: Viewport,
+    gap: number = 0,
+    margin: number = EDGE_MARGIN,
+): SubmenuPosition {
+    const top = viewport.top ?? 0;
+    const overflowsRight = anchor.right + gap + menu.width > viewport.width - margin;
+    const leftFits = anchor.left - gap - menu.width >= margin;
+    const openLeft = overflowsRight && leftFits;
+    // When neither side fits the clamp decides, and it keeps the panel on
+    // screen at the trailing edge rather than off it.
+    const rawLeft = openLeft ? anchor.left - gap - menu.width : anchor.right + gap;
+
+    // Vertical: aligned with the row, then slid up until it fits. Floored at
+    // the band's own top, so a panel taller than the band starts at the top of
+    // it and scrolls rather than starting above it and being unreachable.
+    const maxHeight = Math.max(MIN_POPUP_HEIGHT, viewport.height - margin - top);
+    const height = Math.min(menu.height, maxHeight);
+    const slid = Math.min(anchor.top, viewport.height - margin - height);
+
+    return {
+        left: clampLeft(rawLeft, menu.width, viewport, margin),
+        top: Math.max(top, slid),
+        maxHeight,
+        openLeft,
+    };
+}
+
+/**
+ * Measure a live submenu row and its panel, and pin the panel beside the row.
+ *
+ * The `placeMenu` of the horizontal axis, and the same division of labour: the
+ * decision is `computeSubmenuPosition`, which is pure and tested without a DOM,
+ * and this is the measuring and the writing.
+ */
+export function placeSubmenu(anchor: HTMLElement, menu: HTMLElement): void {
+    // Drop any cap a previous open imposed BEFORE measuring. Two things go
+    // wrong without this, and the second is the one that is hard to see. The
+    // measurement would be of whatever the last viewport allowed rather than
+    // of the panel's own height; and a panel whose stylesheet caps it (the
+    // Checks panel scrolls at `min(70vh, 520px)`) would be measured at that
+    // cap, placed for it, and then grow past it when the wider inline value
+    // landed, leaving it positioned for a box it no longer has.
+    menu.style.maxHeight = "";
+    const r = anchor.getBoundingClientRect();
+    const width = menu.offsetWidth || parseFloat(getComputedStyle(menu).minWidth) || 160;
+    const height = menu.offsetHeight || 0;
+    const pos = computeSubmenuPosition(
+        { left: r.left, right: r.right, top: r.top, bottom: r.bottom },
+        { width, height },
+        viewportSize(),
+    );
+    menu.style.position = "fixed";
+    menu.style.left = `${pos.left}px`;
+    menu.style.right = "auto";
+    menu.style.top = `${pos.top}px`;
+    menu.style.bottom = "auto";
+    // Only where the BAND is tighter than the panel already is. This function
+    // is here to keep a panel on screen, not to decide how tall a panel wants
+    // to be, and a cap written unconditionally is a cap that RAISES a
+    // component's own: it is inline, so it beats the stylesheet, and a menu
+    // that was scrolling at 520px stopped scrolling at all.
+    if (pos.maxHeight < height) { menu.style.maxHeight = `${pos.maxHeight}px`; }
+}

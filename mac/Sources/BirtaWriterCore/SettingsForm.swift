@@ -49,6 +49,12 @@ public enum SettingsRow: String, CaseIterable, Sendable {
     case font = "Font"
     case fontSize = "Font Size"
     case contentWidth = "Content Width"
+    // Whether the window carries a row of formatting controls under its
+    // titlebar. A setting rather than a button on the bar because of how
+    // often it is asked: somebody decides once and then writes, and every
+    // control it holds is reachable from the Format menu, the slash menu and
+    // the palette whether the row is there or not.
+    case formattingRow = "Formatting toolbar"
     case followSystemAppearance = "Auto light/dark mode"
     case theme = "Theme"
     case accent = "Accent"
@@ -317,9 +323,17 @@ public enum SettingsForm {
     /// in the card further up, whichever of them is in force. In one card
     /// with the switches they read as two more properties of a sidebar, which
     /// is what they were taken for.
+    ///
+    /// The formatting row sits directly under the typography and in a card of
+    /// its own. Under, because somebody who came here to change the text is
+    /// the same person who would wonder where the formatting controls went;
+    /// its own, because it is the only row on the pane that adds or takes away
+    /// a piece of the window rather than restyling what is already drawn, and
+    /// in the typography card it would read as a third property of the text.
     public static let appearance = SettingsPane(
         groups: [
             SettingsGroup(rows: [.font, .fontSize, .contentWidth]),
+            SettingsGroup(rows: [.formattingRow]),
             SettingsGroup(rows: [.followSystemAppearance]),
             SettingsGroup(rows: [.theme]),
             SettingsGroup(rows: [.transparentSidebar, .transparentToc]),

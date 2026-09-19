@@ -12,7 +12,6 @@ import { appendRowChord, createMenuTrigger, makeSep } from "./menuPrimitives";
 import type { EditorCommandId } from "../../../shared/editorCommands";
 import { wireHoverMenu } from "./hoverMenu";
 import { TOOLBAR_MENU_COMMANDS, settingsMenuTitle } from "../../../shared/editorCommands";
-import { hostArranges } from "../../../shared/hostProfile";
 import { commandAvailable } from "../../../shared/commandAvailability";
 import { RELEASES_URL } from "../../../shared/product";
 
@@ -30,6 +29,13 @@ export interface SettingsMenuDeps {
      * built the same way in both cases: it appends what it is given.
      */
     typographyRows?: (closeHolder: () => void) => HTMLElement[];
+    /**
+     * The Checks submenu's row (`checksMenu.ts`), which the gear holds on every
+     * surface rather than the bar. Optional for the same reason the typography
+     * rows are: a host whose syntax target withdraws every check it could offer
+     * hands nothing, and the menu appends what it is given.
+     */
+    checksRow?: HTMLElement;
 }
 
 /**
@@ -49,15 +55,18 @@ export function setWhatsNewUnread(unread: boolean): void {
     gearTrigger?.classList.toggle("tb-gear--unread", unread);
 }
 
-export function createSettingsMenu({ startCustomize, setToolbarVisible, typographyRows }: SettingsMenuDeps): HTMLElement {
+export function createSettingsMenu({ startCustomize, setToolbarVisible, typographyRows, checksRow }: SettingsMenuDeps): HTMLElement {
         const wrapEl = document.createElement("div");
         wrapEl.className = "tb-fmt-wrap";
 
         const gearBtn = createMenuTrigger({
-            // The chevron is the hover affordance: it says resting here will
-            // open something. Where the menu waits for a click, the click is
-            // the affordance and the mark promises nothing extra.
-            html: IconSettings + (hostArranges("barMenusOnClick") ? "" : IconChevronDown),
+            // The chevron is unconditional, as it is on every other trigger in
+            // this bar. It says the control opens SOMETHING, which is as true
+            // of a menu that waits for a click as of one that waits for a
+            // rest; withholding it on a click surface left this one glyph
+            // looking like a plain button among chevroned neighbours, because
+            // the rule was only ever applied here.
+            html: IconSettings + IconChevronDown,
             ariaLabel: t("Settings"),
         });
         gearTrigger = gearBtn;
@@ -106,17 +115,29 @@ export function createSettingsMenu({ startCustomize, setToolbarVisible, typograp
             // window, which is every host but that one.
             openHostPreferences: () => notifyOpenHostPreferences(),
         };
-        // The typography rows go after the LAYOUT group and before everything
-        // else. They are the frequently-changed ones, and a reader scanning for
-        // "make the text bigger" should not have to pass a keyboard cheatsheet
-        // to reach it.
+        // The EDITOR rows go after the LAYOUT group and before everything else:
+        // the typography (where a surface keeps it here) and then Checks. They
+        // are what somebody opens this menu to change, and a reader scanning
+        // for "make the text bigger" or "stop underlining my adverbs" should
+        // not have to pass a keyboard cheatsheet to reach either.
         //
         // Anchored to the first row that is NOT a layout row, rather than to
         // the first group boundary: a surface whose layout is fixed
         // (`fixedToolbarLayout`) has no layout rows and therefore no such
         // boundary, and anchoring to one put the typography rows at the bottom
         // of that menu instead of the top.
-        const rows = typographyRows?.(() => closeSettingsMenu()) ?? [];
+        //
+        // One list rather than two insertion points, so the two cannot end up
+        // on opposite sides of the plumbing on a surface that carries only one
+        // of them. VS Code carries Checks alone, since its typography is a
+        // toolbar item of its own.
+        const rows: HTMLElement[] = [...(typographyRows?.(() => closeSettingsMenu()) ?? [])];
+        if (checksRow) {
+            // Typography is how the text LOOKS and Checks is what the editor
+            // SAYS about it: two subjects, so a rule between them.
+            if (rows.length > 0) { rows.push(makeSep()); }
+            rows.push(checksRow);
+        }
         let typographyInserted = rows.length === 0;
 
         let prevGroup: string | undefined;

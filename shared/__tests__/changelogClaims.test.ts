@@ -53,8 +53,11 @@ const CHANGELOG = [
  * words, so a key cannot be parked here to silence a typo.
  */
 const RETIRED_SETTINGS: Record<string, string> = {
-    // (empty today: the pre-rename `markdownWysiwyg.*` keys are not `birta.*`
-    // and so never reach this check. Add here only with the entry's wording.)
+    // (the pre-rename `markdownWysiwyg.*` keys are not `birta.*` and so never
+    // reach this check. Add here only with the entry's wording.)
+    "birta.toolbar.items.styleCheck":
+        "The `birta.toolbar.items.styleCheck` setting, which placed or hid the Checks button. "
+        + "There is no such button to place now.",
 };
 
 /**

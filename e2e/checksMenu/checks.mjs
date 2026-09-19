@@ -1,5 +1,10 @@
 /**
- * Checks-dropdown end-to-end checks against the real built bundle.
+ * Checks-submenu end-to-end checks against the real built bundle.
+ *
+ * Checks is a submenu of the gear rather than a button on the bar, so every
+ * case here is two surfaces deep. That is worth driving rather than stubbing:
+ * the panel has to escape the gear's `overflow: hidden` to be seen at all, and
+ * a panel clipped to nothing still answers every query about its rows.
  *
  * The style sub-checks now live in a container nested under the "Check style"
  * master and are shown only while it's on: toggling Check Style off collapses
@@ -16,16 +21,26 @@
 export async function run({ page, check, baseUrl }) {
     const MENU = ".tb-checks-menu";
 
+    const GEAR = 'button[aria-label="Settings"]';
+    const CHECKS_ROW = ".tb-settings-menu > .tb-submenu-wrap > .tb-submenu-row";
+
     async function load() {
         await page.goto(`${baseUrl}/index.html`);
         await page.waitForSelector(".milkdown .ProseMirror", { timeout: 10000 });
-        await page.waitForSelector('button[aria-label="Checks"]', { timeout: 10000 });
+        await page.waitForSelector(GEAR, { timeout: 10000 });
         await page.waitForTimeout(150);
     }
 
-    /** Open the Checks menu via keyboard (hover is flaky headless). */
+    /**
+     * Open the gear, then the Checks submenu inside it, by keyboard (hover is
+     * flaky headless). ArrowDown on a trigger opens it and focuses its first
+     * row, which is the same gesture at both levels.
+     */
     async function openMenu() {
-        await page.locator('button[aria-label="Checks"]').focus();
+        await page.locator(GEAR).focus();
+        await page.keyboard.press("ArrowDown");
+        await page.waitForSelector(".tb-settings-menu", { state: "visible", timeout: 5000 });
+        await page.locator(CHECKS_ROW).focus();
         await page.keyboard.press("ArrowDown");
         await page.waitForSelector(`${MENU}`, { state: "visible", timeout: 5000 });
         await page.waitForTimeout(100);

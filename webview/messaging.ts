@@ -437,11 +437,6 @@ export function notifyStripTooltip(
     vscode.postMessage(text === null ? { type: "stripTooltip", text } : { type: "stripTooltip", text, anchor, gap, style });
 }
 
-/** The formatting row was opened or shut here, for the host to remember and push to its other pages. */
-export function notifyFormattingRowExpanded(expanded: boolean): void {
-    vscode.postMessage({ type: "formattingRowExpanded", expanded });
-}
-
 /** The settled panel width (mouseup or reset), for the host to persist. */
 export function notifyFileExplorerWidth(width: number): void {
     vscode.postMessage({ type: "fileExplorerWidth", width });

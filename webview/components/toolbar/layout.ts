@@ -352,12 +352,9 @@ export function createToolbarLayout(deps: ToolbarLayoutDeps): ToolbarLayout {
             rightZone.replaceChildren();
             moreMenu.replaceChildren();
             dock.render(docked);
-            // The row's toggle leads the top bar, ahead of every item the
-            // partition placed. It is not one of them: it belongs to the row
-            // below rather than to the set of controls that read the document,
-            // so it sits at the head of the group instead of somewhere inside
-            // an order that is the partition's to decide.
-            rightZone.appendChild(dock.toggle);
+            // Nothing of the row's own goes in the bar. Whether the row exists
+            // at all is the host's setting (dock.ts), so the bar carries no
+            // control for it and the top row is the partition's alone.
             for (const id of topBar) {
                 const el = items[id];
                 if (el) { rightZone.appendChild(el); }

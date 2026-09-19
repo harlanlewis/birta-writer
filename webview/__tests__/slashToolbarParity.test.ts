@@ -11,8 +11,8 @@ import { SLASH_MENU_ITEMS } from "../components/slashMenu/registry";
 /**
  * Toolbar item → covering slash item ids. Dropdown-style toolbar items map to
  * every choice they contain (format → all heading levels; fontPreset → the
- * four presets plus the size stepper; styleCheck → the three master toggles;
- * settings → the gear-menu entries).
+ * four presets plus the size stepper; settings → the gear-menu entries and the
+ * Checks submenu's three master toggles).
  */
 const SLASH_COVERAGE: Record<ToolbarItemId, readonly string[]> = {
     format: ["paragraph", "heading1", "heading2", "heading3", "heading4", "heading5", "heading6"],
@@ -37,9 +37,12 @@ const SLASH_COVERAGE: Record<ToolbarItemId, readonly string[]> = {
     readOnly: ["readOnly"],
     viewSource: ["viewSource"],
     find: ["find"],
-    styleCheck: ["spellCheck", "grammarCheck", "styleCheck"],
     fontPreset: ["fontEditor", "fontSans", "fontSerif", "fontMono", "fontSizeIncrease", "fontSizeDecrease"],
-    settings: ["customizeToolbar", "toolbarToggle", "keyboardShortcuts", "settings"],
+    // The Checks rows ride here because the gear is what holds them
+    // (checksMenu.ts): Checks is a submenu of this item rather than a bar item
+    // of its own, so this is where the parity guard has to look for them.
+    settings: ["customizeToolbar", "toolbarToggle", "keyboardShortcuts", "settings",
+               "spellCheck", "grammarCheck", "styleCheck"],
     toc: ["tocToggle"],
 };
 
