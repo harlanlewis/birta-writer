@@ -946,7 +946,11 @@ final class TitleBarView: NSView {
             icon.size = NSSize(width: 16, height: 16)
             item.image = icon
         }
-        menu.popUp(positioning: nil, at: NSPoint(x: 0, y: bounds.minY), in: self)
+        // Under the NAME, not under this view's leading edge: the strip in
+        // front of the name belongs to the sidebar toggle, and a path popup
+        // that opened there would be a menu about the file hanging off a
+        // control about the window.
+        menu.popUp(positioning: nil, at: NSPoint(x: label.frame.minX, y: bounds.minY), in: self)
     }
 
     @objc private func revealMenuItem(_ sender: NSMenuItem) {

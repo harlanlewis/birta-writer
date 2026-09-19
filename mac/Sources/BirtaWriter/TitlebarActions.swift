@@ -4,8 +4,8 @@ import BirtaWriterCore
 /// The buttons the titlebar draws around the window's title.
 ///
 ///     ◉ ◉ ◉   ▤   Note 2026-08-25.md ⌄   ✎  📁  ⌘
-///             └┘                        └ this view ┘
-///              └ and this one, leading
+///             │                         └ this view ┘
+///             └ and this one, before the name
 ///
 /// Two instances of one view: the file actions after the name, and the file
 /// explorer's toggle before it. The same view because they are the same kind

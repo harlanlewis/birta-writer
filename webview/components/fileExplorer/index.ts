@@ -133,8 +133,12 @@ export function createFileExplorer(host: FileExplorerHost): FileExplorerControll
         narrow: { kind: "hold" },
         neighborReserve: host.neighborReserve,
         onReserveChange: host.onReserveChange,
-        // The bar carries the button that shows this panel; it registers
-        // itself through `setFlyoutTrigger`. No reveal tab of its own.
+        // What shows this panel is a control elsewhere, never a reveal tab of
+        // its own: the bar's button, which registers itself through
+        // `setFlyoutTrigger` and inherits the hover preview, or, where the
+        // host carries the control in its own window chrome
+        // (`filesToggleInHostChrome`), something outside the page, which
+        // cannot register anything and leaves the panel with no preview.
         trigger: { kind: "external" },
         openOnDock: () => !userCollapsed,
         renderBody: render,

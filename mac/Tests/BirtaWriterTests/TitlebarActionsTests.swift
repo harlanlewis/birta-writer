@@ -513,6 +513,14 @@ final class TitlebarActionsTests: XCTestCase {
         // And the symbol resolved, or everything above is describing a button
         // that draws nothing.
         XCTAssertNotNil(button.image, "the sidebar symbol did not resolve")
+        // On the file buttons' axis. The band is one strip across the window,
+        // so a toggle sitting a point above the three buttons at the other end
+        // of the name is the misalignment this file's ink check exists for,
+        // arrived at from the other side.
+        let trailing = view.actionsForMeasurement(hovered: true).frames
+        XCTAssertFalse(trailing.isEmpty, "no file buttons to compare the axis against")
+        XCTAssertEqual(box.midY, trailing[0].midY, accuracy: 0.5,
+                       "the toggle is off the file buttons' axis")
     }
 
     func testAWindowWithNoExplorerShouldHoldTheRoomAndDrawNothing() {

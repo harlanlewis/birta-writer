@@ -374,10 +374,13 @@ export type HostArrangement =
      * Showing and hiding the file explorer is the HOST's own chrome, so the
      * bar carries no button for it.
      *
-     * The mirror image of `tocToggleInBar`, which moves a control INTO the
-     * bar because the surface has nowhere better; a host with a window frame
-     * of its own has somewhere better, beside the file's name, where every
-     * other application on the platform puts it.
+     * A sibling of `tocToggleInBar` rather than its opposite: both settle
+     * WHO shows a drawer, and they answer differently because the drawers
+     * are in different places. That one keeps the control on the bar rather
+     * than on the panel, at the corner the panel's own would sit in; this one
+     * takes it off the bar entirely, because a host with a window frame has
+     * somewhere better for it, beside the file's name, where every other
+     * application on the platform puts a sidebar toggle.
      *
      * Not a capability: `toggleFileExplorer` still runs, from the palette,
      * the slash menu and the host's own key, and it is what the host's
