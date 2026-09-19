@@ -191,19 +191,55 @@ enum AppMenu {
     /// other treatment needs a second repaint path, and the two go out of step
     /// where nobody looks. `AppDelegate.menuNeedsUpdate` repaints every one of
     /// them from one `MenuState`, on every opening.
+    /// What a toggle row is called where a checkmark cannot be drawn: what
+    /// picking it DOES, in each of the two states.
+    ///
+    /// The command palette is the surface that needs it. A palette row is a
+    /// title and nothing else, so a checkmark row arrives there with its state
+    /// invisible: "Line Numbers" is the same five rows whether they are on or
+    /// off, and picking it is a coin toss. The menu keeps the tick, which is
+    /// the native idiom and readable in place.
+    struct ToggleAction {
+        /// What it says while the thing is OFF, which is what picking it turns
+        /// on, and what it says while it is on.
+        let whenOff: String
+        let whenOn: String
+
+        init(_ whenOff: String, _ whenOn: String) {
+            self.whenOff = whenOff
+            self.whenOn = whenOn
+        }
+    }
+
     enum RowState {
-        /// A checkmark saying whether the thing is on.
-        case checkmark(MenuToggle)
+        /// A checkmark saying whether the thing is on, and what the row is
+        /// called where one cannot be drawn.
+        ///
+        /// `action` is REQUIRED rather than optional, and that is the whole of
+        /// what keeps this honest: the failure it prevents is silent, since a
+        /// row added without one would read correctly in the menu and say
+        /// nothing at all in the palette, which is the state it replaces.
+        case checkmark(MenuToggle, action: ToggleAction)
         /// A title naming what picking the row will DO, which is the opposite
         /// of what is on screen. `Row.title` is what it says while the thing is
-        /// off; this is what it says while it is on.
+        /// off; this is what it says while it is on. Every surface draws it,
+        /// so it needs no second pair of words.
         case title(MenuToggle, whenOn: String)
 
         /// The fact this row draws, whichever way it draws it.
         var toggle: MenuToggle {
             switch self {
-            case let .checkmark(toggle): return toggle
+            case let .checkmark(toggle, _): return toggle
             case let .title(toggle, _): return toggle
+            }
+        }
+
+        /// What the row is called on a surface with no checkmark, given the
+        /// title it carries while the thing is off and whether it is on now.
+        func title(offTitle: String, isOn: Bool) -> String {
+            switch self {
+            case let .checkmark(_, action): return isOn ? action.whenOn : action.whenOff
+            case let .title(_, whenOn): return isOn ? whenOn : offTitle
             }
         }
     }
@@ -620,14 +656,14 @@ enum AppMenu {
               state: .title(.explorerShown, whenOn: "Hide Files")),
         .init(title: "Show Hidden Files", key: ".", modifiers: [.command, .shift],
               action: .app(#selector(AppDelegate.menuToggleHiddenFiles)), menu: .view, group: 3,
-              state: .checkmark(.hiddenFilesShown)),
+              state: .title(.hiddenFilesShown, whenOn: "Hide Hidden Files")),
         // The source line-number gutter, the extension's `birta.lineNumbers`
         // as a row. An `.app` row for the reason Show Hidden Files is one: the
         // setting is the app's and every window's page follows it
         // (`WindowSet.setLineNumbers`). Keyless, as the setting is in VS Code.
-        .init(title: "Line Numbers",
+        .init(title: "Show Line Numbers",
               action: .app(#selector(AppDelegate.menuToggleLineNumbers)), menu: .view, group: 3,
-              state: .checkmark(.lineNumbers)),
+              state: .title(.lineNumbers, whenOn: "Hide Line Numbers")),
 
         .init(title: "Proofreading", action: .submenu, menu: .view, group: 4,
               // Not gated on itself: the disclosure that holds the gate has to
@@ -641,16 +677,27 @@ enum AppMenu {
         // `needs:` on each of them (see `applyState` and `tidyRules`).
         .init(title: "Proofreading",
               action: .command("toggleProofreading"), menu: .view, submenu: "Proofreading", group: 0,
-              state: .checkmark(.proofread("proofreading"))),
+              state: .checkmark(.proofread("proofreading"),
+                                action: .init("Turn On Proofreading", "Turn Off Proofreading"))),
+        // The three checks are named as imperatives already, so the palette
+        // says what stopping them is called rather than wrapping the name in
+        // Turn On: "Stop Checking Spelling" is the sentence, and "Turn Off
+        // Check Spelling" is a name inside a verb.
         .init(title: "Check Spelling",
               action: .command("toggleSpellCheck"), menu: .view, submenu: "Proofreading", group: 1,
-              state: .checkmark(.proofread("spellCheck")), needs: [gate]),
+              state: .checkmark(.proofread("spellCheck"),
+                                action: .init("Check Spelling", "Stop Checking Spelling")),
+              needs: [gate]),
         .init(title: "Check Grammar",
               action: .command("toggleGrammarCheck"), menu: .view, submenu: "Proofreading", group: 1,
-              state: .checkmark(.proofread("grammarCheck")), needs: [gate]),
+              state: .checkmark(.proofread("grammarCheck"),
+                                action: .init("Check Grammar", "Stop Checking Grammar")),
+              needs: [gate]),
         .init(title: "Check Style",
               action: .command("toggleStyleCheck"), menu: .view, submenu: "Proofreading", group: 1,
-              state: .checkmark(.proofread("styleCheck")), needs: [gate]),
+              state: .checkmark(.proofread("styleCheck"),
+                                action: .init("Check Style", "Stop Checking Style")),
+              needs: [gate]),
         // Two gates, because the style options are two levels down: the
         // master silences everything, and Check Style silences these. Declaring
         // both is what keeps the repaint from growing a branch per gate.
@@ -664,7 +711,9 @@ enum AppMenu {
         // content, so one must not take away the other.
         .init(title: "Highlight Note Markers",
               action: .command("toggleNoteHighlights"), menu: .view, submenu: "Proofreading", group: 2,
-              state: .checkmark(.noteHighlight)),
+              state: .checkmark(.noteHighlight,
+                                action: .init("Highlight Note Markers",
+                                              "Stop Highlighting Note Markers"))),
     ] + styleOptionRows
 
     /// One row per style-check category, derived from `StyleCategory` rather
@@ -680,7 +729,14 @@ enum AppMenu {
             action: .command("toggleStyleOption", arg: category.rawValue),
             menu: .view, submenu: "Style Options",
             group: StyleCategory.Section.allCases.firstIndex(of: category.section) ?? 0,
-            state: .checkmark(.proofread(category.rawValue)))
+            // A category's label names the thing it FLAGS, not the check, so
+            // the palette has to supply the verb: "Turn On Passive voice"
+            // reads as an instruction to write in it. Derived once here rather
+            // than written out fourteen times, which is the rule the rows
+            // themselves follow.
+            state: .checkmark(.proofread(category.rawValue),
+                              action: .init("Check for \(category.label)",
+                                            "Stop Checking for \(category.label)")))
     }
 
     // MARK: help

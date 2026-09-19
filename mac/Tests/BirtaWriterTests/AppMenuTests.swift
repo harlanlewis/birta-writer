@@ -173,7 +173,7 @@ final class AppMenuTests: XCTestCase {
             "Command Palette…",
             "-", "Zoom In", "Zoom Out", "Actual Size",
             "-", "Font", "Theme", "Folding",
-            "-", "Show Table of Contents", "Show Files", "Show Hidden Files", "Line Numbers",
+            "-", "Show Table of Contents", "Show Files", "Show Hidden Files", "Show Line Numbers",
             "-", "Proofreading",
             // The bracket macOS's own Enter Full Screen lands under; see
             // `AppMenu.Menu.takesSystemRows`.

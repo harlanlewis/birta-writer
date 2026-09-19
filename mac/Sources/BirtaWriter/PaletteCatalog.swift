@@ -223,12 +223,19 @@ enum PaletteSources {
         return SyntaxScope.allows(command: command, in: context.syntaxSets)
     }
 
-    /// The title as the menu draws it now: a row that renames itself when
-    /// its thing is on ("Hide Files") is offered under the name that says
-    /// what picking it will do.
+    /// What a row is called HERE, which for a toggle is what picking it will
+    /// do rather than what it is called on the menu.
+    ///
+    /// A palette row is a title and nothing else. The menu can say a row's
+    /// state in a second channel, and for half of these it does, with a
+    /// checkmark; there is no such channel here, so a row carrying one
+    /// ("Line Numbers") arrives with its state invisible and picking it is a
+    /// coin toss. `RowState.title(offTitle:isOn:)` is the one place that
+    /// decides, so the rows that retitle themselves and the rows that tick
+    /// cannot come to answer differently.
     private static func title(of row: AppMenu.Row, _ context: Context) -> String {
-        if case let .title(toggle, whenOn)? = row.state, context.menuState.isOn(toggle) { return whenOn }
-        return row.title
+        guard let state = row.state else { return row.title }
+        return state.title(offTitle: row.title, isOn: context.menuState.isOn(state.toggle))
     }
 
     // MARK: page commands
@@ -312,8 +319,14 @@ enum PaletteSources {
     // MARK: settings
 
     /// One group per pane, holding the pane's rows top to bottom, so a query
-    /// reaches a row as "General › Show in Dock" and picking it opens the pane
-    /// with the row in view.
+    /// reaches a row as "Settings › General › Show in Dock" and picking it
+    /// opens the pane with the row in view.
+    ///
+    /// The word Settings is the pane group's `crumb` rather than part of its
+    /// title, because the two surfaces need different things. Unfiltered, the
+    /// panes sit under a SETTINGS heading and a row reading "Settings ›
+    /// General" would say it twice; matched on a query there is no heading,
+    /// and "General › Show in Dock" reads as a command called General.
     private static func addSettings(to catalog: inout PaletteCatalog, _ context: Context) {
         for pane in settingsPanes {
             let children = SettingsForm.rows(of: pane.pane).map { row -> PaletteItem in
@@ -323,7 +336,8 @@ enum PaletteSources {
                 return item
             }
             catalog.add(PaletteItem(id: "settings:" + pane.name, title: pane.title,
-                                    section: settingsSection, kind: .group, children: children),
+                                    section: settingsSection, kind: .group,
+                                    crumb: settingsSection, children: children),
                         does: nil)
         }
     }

@@ -40,15 +40,26 @@ public struct PaletteItem: Equatable, Sendable {
     public let detail: String?
     public let section: String
     public let kind: Kind
+    /// What a query draws in FRONT of this item's own title, for a group whose
+    /// name does not say what kind of thing it holds.
+    ///
+    /// A menu group needs none: `Paragraph Style › Heading 2` reads as itself.
+    /// A Settings pane does, because its name is only a name: matched on a
+    /// query the row came back as `General › Show in Dock`, which reads as a
+    /// command called General rather than as a setting. Unfiltered there is a
+    /// SETTINGS heading over the panes and the question does not arise, which
+    /// is why this is about the flattened title alone.
+    public let crumb: String?
     public let children: [PaletteItem]
 
     public init(id: String, title: String, detail: String? = nil, section: String, kind: Kind,
-                children: [PaletteItem] = []) {
+                crumb: String? = nil, children: [PaletteItem] = []) {
         self.id = id
         self.title = title
         self.detail = detail
         self.section = section
         self.kind = kind
+        self.crumb = crumb
         self.children = children
     }
 }
@@ -154,7 +165,11 @@ public enum PaletteModel {
     /// Heading 2`.
     private static func flattened(_ items: [PaletteItem], prefix: String = "") -> [Flat] {
         items.flatMap { item -> [Flat] in
-            let title = prefix.isEmpty ? item.title : "\(prefix) › \(item.title)"
+            // The item's own crumb goes in front of its title before the
+            // group's prefix goes in front of both, so a pane reads
+            // `Settings › General` and its rows `Settings › General › …`.
+            let own = item.crumb.map { "\($0) › \(item.title)" } ?? item.title
+            let title = prefix.isEmpty ? own : "\(prefix) › \(own)"
             guard item.kind == .group else { return [Flat(item: item, title: title)] }
             return flattened(item.children, prefix: title)
         }
