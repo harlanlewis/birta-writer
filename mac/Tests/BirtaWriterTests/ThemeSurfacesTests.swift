@@ -23,10 +23,25 @@ final class ThemeSurfacesTests: XCTestCase {
     private var root: URL!
     private var store: ThemeStore!
     private var savedAppearance = AppearanceSettings()
+    private var savedSystemAppearance: NSAppearance?
 
     override func setUpWithError() throws {
         try super.setUpWithError()
         _ = NSApplication.shared
+        // The machine's own light or dark, pinned for the length of the file
+        // and put back after.
+        //
+        // `WindowSet.systemIsDark` reads `NSApp.effectiveAppearance`, and
+        // while the system is FOLLOWED that answer decides which slot a pick
+        // lands in. Left to the machine, an assertion about a slot passes on
+        // a Mac in dark and fails on a CI runner in light, and it fails
+        // naming a theme rather than the appearance it actually depended on:
+        // that is how this file first went red, on a check that had run green
+        // on the machine it was written on. Which of the two is pinned does
+        // not matter and dark is this app's own default; what matters is that
+        // it is the same one everywhere.
+        savedSystemAppearance = NSApp.appearance
+        NSApp.appearance = NSAppearance(named: .darkAqua)
         root = FileManager.default.temporaryDirectory.appendingPathComponent("themesurfaces-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         store = ThemeStore(directory: root.appendingPathComponent("Themes", isDirectory: true))
@@ -37,6 +52,7 @@ final class ThemeSurfacesTests: XCTestCase {
 
     override func tearDownWithError() throws {
         Prefs.appearance = savedAppearance
+        NSApp.appearance = savedSystemAppearance
         try? FileManager.default.removeItem(at: root)
         try super.tearDownWithError()
     }
@@ -288,9 +304,19 @@ final class ThemeSurfacesTests: XCTestCase {
         // promises cards that are not there. The dark strip still has both
         // kinds and still draws one, which is what says the absence above is
         // a decision rather than the feature having stopped working.
+        //
+        // Both slot strips are only on screen while the system is followed,
+        // so the switch goes on for the look and STRAIGHT BACK to the held
+        // mode. Leaving it on hands the rest of this test to whatever
+        // appearance the machine is in: "the mode in force" below becomes the
+        // system's, which is dark on the Mac this was written on and light on
+        // a CI runner, and the failure names a theme slot rather than the
+        // switch that was left flipped.
         controller.setFollowSystemForTesting(true)
         XCTAssertEqual(controller.themeDividersForTesting.map(\.drawn), [0, 1])
         XCTAssertEqual(controller.themeDividersForTesting.map(\.titleAfter), [nil, "Paper"])
+        controller.chooseModeForTesting(.dark)
+        XCTAssertEqual(controller.themeCardShapeForTesting, "held", "the mode is back in hand")
 
         // The installed-themes picker: a sheet over a list this test
         // controls, whose Add adds exactly the ticked ones. Held while it is
