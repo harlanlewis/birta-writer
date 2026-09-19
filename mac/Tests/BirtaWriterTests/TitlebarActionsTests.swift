@@ -328,7 +328,12 @@ final class TitlebarActionsTests: XCTestCase {
         let view = boundTitle()
         let host = NSView(frame: NSRect(x: 0, y: 0, width: 400, height: TitleBarView.height))
         host.addSubview(view)
-        let onTheName = view.convert(NSPoint(x: 12, y: view.bounds.midY), to: host)
+        // On the NAME, taken from where the label actually is rather than from
+        // a point near the leading edge: that strip is the sidebar toggle's
+        // room now, and a click there is deliberately not the title's.
+        view.layoutSubtreeIfNeeded()
+        let label = view.labelFrameInWindow()
+        let onTheName = view.convert(NSPoint(x: label.midX, y: view.bounds.midY), to: host)
         _ = view.actionsForMeasurement(hovered: true)
         XCTAssertTrue(view.hitTest(onTheName) === view)
     }
@@ -490,6 +495,94 @@ final class TitlebarActionsTests: XCTestCase {
         XCTAssertNil(button.hoverFillForMeasurement(true),
                      "a background window drew a fill for a pointer it does not have")
     }
+
+    // MARK: the sidebar toggle, before the name
+
+    func testTheSidebarToggleShouldSitBetweenTheTrafficLightsAndTheName() {
+        let view = boundTitle()
+        view.setSidebarAvailable(true)
+        _ = view.actionsForMeasurement(hovered: true)
+        view.layoutSubtreeIfNeeded()
+        guard let button = view.sidebarView.buttons.first else {
+            return XCTFail("the leading row has no button")
+        }
+        let box = button.convert(button.bounds, to: view)
+        let label = view.labelFrameInWindow()
+        XCTAssertGreaterThan(box.minX, 0, "the toggle is against the traffic lights")
+        XCTAssertLessThanOrEqual(box.maxX, label.minX + 0.5, "the toggle overlaps the name")
+        // And the symbol resolved, or everything above is describing a button
+        // that draws nothing.
+        XCTAssertNotNil(button.image, "the sidebar symbol did not resolve")
+    }
+
+    func testAWindowWithNoExplorerShouldHoldTheRoomAndDrawNothing() {
+        let withOne = boundTitle()
+        withOne.setSidebarAvailable(true)
+        _ = withOne.actionsForMeasurement(hovered: true)
+        let withNone = boundTitle()
+        withNone.setSidebarAvailable(false)
+        _ = withNone.actionsForMeasurement(hovered: true)
+        // The name starts at the same x and the accessory is the same width in
+        // both, which is the whole reason the room is held: opening a folder
+        // window beside a file window must not slide the titlebar about.
+        XCTAssertEqual(withNone.labelFrameInWindow().minX, withOne.labelFrameInWindow().minX)
+        XCTAssertEqual(withNone.frame.width, withOne.frame.width)
+        XCTAssertEqual(withNone.chromeWidth, withOne.chromeWidth)
+        // Drawn in one and not the other, or the pair above agrees about two
+        // windows that look the same because neither has the button.
+        XCTAssertTrue(withOne.sidebarView.isOffered)
+        XCTAssertFalse(withNone.sidebarView.isOffered)
+        XCTAssertTrue(withNone.sidebarView.buttons.allSatisfy { $0.isHidden })
+    }
+
+    func testAWindowWithNoExplorerShouldLeaveThatStripToTheWindowDrag() {
+        let view = boundTitle()
+        view.setSidebarAvailable(false)
+        let host = NSView(frame: NSRect(x: 0, y: 0, width: 400, height: TitleBarView.height))
+        host.addSubview(view)
+        _ = view.actionsForMeasurement(hovered: true)
+        view.layoutSubtreeIfNeeded()
+        guard let button = view.sidebarView.buttons.first else {
+            return XCTFail("the leading row has no button")
+        }
+        let box = button.convert(button.bounds, to: view)
+        let point = view.convert(NSPoint(x: box.midX, y: box.midY), to: host)
+        // Nothing is drawn there, so a click must fall through to the band
+        // rather than opening the document popover the name owns.
+        XCTAssertNil(view.hitTest(point))
+        view.setSidebarAvailable(true)
+        _ = view.actionsForMeasurement(hovered: true)
+        XCTAssertTrue(view.hitTest(point) === button, "the toggle does not take its own click")
+    }
+
+    func testTheSidebarToggleShouldNameWhatPressingItWillDo() {
+        let view = boundTitle()
+        guard let button = view.sidebarView.buttons.first else {
+            return XCTFail("the leading row has no button")
+        }
+        view.setSidebarShown(false)
+        XCTAssertEqual(button.accessibilityLabel(), "Show Files")
+        XCTAssertEqual(button.label, "Show Files  ⇧⌘E", "the chord is the menu row's, not a literal")
+        view.setSidebarShown(true)
+        XCTAssertEqual(button.accessibilityLabel(), "Hide Files",
+                       "the toggle goes on offering to show an explorer that is showing")
+        XCTAssertEqual(button.label, "Hide Files  ⇧⌘E")
+    }
+
+    func testTheSidebarToggleShouldSendTheMenusOwnSelector() {
+        let spy = ActionSpy()
+        let previous = NSApp.delegate
+        NSApp.delegate = spy
+        defer { NSApp.delegate = previous }
+
+        let view = boundTitle()
+        guard let button = view.sidebarView.buttons.first else {
+            return XCTFail("the leading row has no button")
+        }
+        XCTAssertNil(button.target, "a target pins the click to one object and leaves the chain")
+        button.performClick(nil)
+        XCTAssertEqual(spy.received, ["menuToggleExplorer"])
+    }
 }
 
 /// Stands in for the application's delegate, so a click that leaves the button
@@ -501,4 +594,5 @@ private final class ActionSpy: NSObject, NSApplicationDelegate {
     @objc func menuNewNote() { received.append("menuNewNote") }
     @objc func menuOpenMenu(_ sender: Any?) { received.append("menuOpenMenu") }
     @objc func menuOpenPalette() { received.append("menuOpenPalette") }
+    @objc func menuToggleExplorer() { received.append("menuToggleExplorer") }
 }

@@ -437,7 +437,7 @@ final class BridgeTests: XCTestCase {
         XCTAssertEqual(host?["arrangements"] as? [String],
                        ["typographyInGearMenu", "formattingInSecondRow", "fixedToolbarLayout",
                         "barMenusOnClick", "nativeFindBar", "nativeDatePicker",
-                        "fixedTocSide", "tocToggleInBar"])
+                        "fixedTocSide", "tocToggleInBar", "filesToggleInHostChrome"])
         XCTAssertNotNil(host?["shortcuts"] as? [[String: String]])
         XCTAssertEqual((i18n["toolbar"] as? [String: Any])?["placements"] as? [String: String], ["bold": "hidden"])
 

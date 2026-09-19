@@ -5,9 +5,10 @@
  * as a tree in a left sidebar, on a host that declares `projectFiles`.
  *
  * The drawer, its flyout, the resize sash and the docked/overlay decision are
- * the side-panel shell's (components/sidePanel/shell.ts), composed exactly as
- * the table of contents composes it; this module fills it with rows and
- * answers the shell's policy questions. What the TOC reads out of the
+ * the side-panel shell's (components/sidePanel/shell.ts), composed as the
+ * table of contents composes it but for one answer: this drawer holds its
+ * dock at every window width (see the policy below). This module fills it
+ * with rows and answers the shell's policy questions. What the TOC reads out of the
  * document, this asks the host for: every listing crosses the wire
  * (`listDirectory` / `directoryListing`), because the page cannot read a
  * directory, and every open is a request (`openProjectFile`), because the
@@ -54,11 +55,11 @@ export type DirectoryListingMessage = Extract<ToWebviewMessage, { type: "directo
 const FILES_DEFAULT_WIDTH = 220;
 const FILES_MIN_WIDTH = 160;
 const FILES_MAX_WIDTH = 600;
-// The content column a docked explorer must leave beside itself. Lower than
-// the TOC's 720 because a directory window is often the narrow kind, and an
-// explorer that floats over the document on every such window is one that
-// closes on every click into the document.
-const DOCKED_MIN_CONTENT_WIDTH = 600;
+// The explorer holds its dock at every width rather than floating over the
+// document on a narrow one (`SidePanelNarrowPolicy`). It is the drawer a
+// reader navigates with, so the file they want next is in it; a window that
+// took it away for being small is one they have to open it in again, and a
+// directory window is often the small kind.
 /** How long a `listDirectory` waits before its folder draws an error row. */
 export const LISTING_TIMEOUT_MS = 10_000;
 
@@ -129,7 +130,7 @@ export function createFileExplorer(host: FileExplorerHost): FileExplorerControll
             max: FILES_MAX_WIDTH,
             onCommit: notifyFileExplorerWidth,
         },
-        dockedMinContentWidth: DOCKED_MIN_CONTENT_WIDTH,
+        narrow: { kind: "hold" },
         neighborReserve: host.neighborReserve,
         onReserveChange: host.onReserveChange,
         // The bar carries the button that shows this panel; it registers

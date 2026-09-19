@@ -12,6 +12,19 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ## [Unreleased]
 
+### Added
+
+- Content Width, on the Appearance pane beside the font and its size: Full fills the window, and Fixed caps the text at a reading measure and centres it, for every window at once. The measure is in character widths, so it follows the font size rather than needing one of its own. The same control is in the toolbar's gear menu, for the window it is opened from, and Full Width and Fixed Width are rows in the command palette.
+
+### Changed
+
+- Showing and hiding the file list is now a button in the titlebar, just after the traffic lights and before the file's name, drawn as a sidebar rather than as a folder. The toolbar no longer carries one, and with it goes the preview that flew the list out while the pointer rested on that button: the titlebar button shows and hides the list, and ⇧⌘E and View > Show Files still do. A window on a single file has no file list and draws no button, and holds the room it would have taken, so the name sits in the same place in both kinds of window.
+- The file list no longer closes itself when the window is narrow. It stays docked at whatever width the window is and the text gives up the room, so a window dragged smaller is not a window the list has to be opened in again; hiding it stays the reader's to ask for.
+
+### Fixed
+
+- In the command palette, a long file name was drawn on two lines and had its tail cut away with nothing to say so, and a deep folder path could take enough of the row to leave the name it belongs to undrawn. A name is now one line, ending in an ellipsis where it does not fit; the folder takes at most part of the row and is cut from its start, so what is left is the folders that tell one row from another.
+
 ---
 
 ## [2026.919.0] - 2026, September 19

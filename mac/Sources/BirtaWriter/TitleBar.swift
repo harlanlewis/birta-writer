@@ -47,10 +47,13 @@ final class TitleBarView: NSView {
     var onRelocate: ((URL) -> Void)?
     /// A file button was pointed at, or stopped being: its label and its box
     /// in WINDOW coordinates, or nil to take the label away. Forwarded from
-    /// the actions view so the coordinator has one thing to set.
+    /// both button rows so the coordinator has one thing to set.
     var onTooltip: ((String?, NSRect) -> Void)? {
         get { actions.onTooltip }
-        set { actions.onTooltip = newValue }
+        set {
+            actions.onTooltip = newValue
+            sidebar.onTooltip = newValue
+        }
     }
 
     /// Built once and refilled on every open, never per click: a popover whose
@@ -98,6 +101,19 @@ final class TitleBarView: NSView {
     /// still reserves the room, which is what keeps every measurement in this
     /// file the same whether or not the app got round to wiring them.
     private var actions = TitlebarActionsView(actions: [])
+    /// The file explorer's toggle, BEFORE the name, next to the traffic
+    /// lights, where macOS puts a sidebar toggle
+    /// (`TitlebarActionsView.leadingShipped` has the argument for the place
+    /// and the mark).
+    ///
+    /// Built here rather than handed in like the file actions, because there
+    /// is nothing to decide: it is one button, running the menu row the
+    /// window's own ⇧⌘E runs. What the coordinator says about it is whether
+    /// this window HAS an explorer (`setSidebarAvailable`), and the room is
+    /// held either way, so the name starts at the same x in both kinds of
+    /// window.
+    private let sidebar = TitlebarActionsView(actions: TitlebarActionsView.leadingShipped,
+                                              edge: .leading)
     /// Hover over the title itself, and hover over the drag strip beside it.
     ///
     /// Two sources rather than one because the affordance is meant to be found:
@@ -177,12 +193,14 @@ final class TitleBarView: NSView {
     ///
     /// The buttons' room is in here for the same reason the chevron's is: it is
     /// held whether or not they are drawn, so the ceiling must be net of it at
-    /// every window width and not only while the pointer is on the band.
+    /// every window width and not only while the pointer is on the band. The
+    /// sidebar toggle's room is in it on the same terms and one step further:
+    /// it is held in a window that cannot draw that button at all.
     ///
     /// An instance property rather than a static one, because the buttons'
     /// room is theirs to report: the actions arrive after this view is built
     /// (`setActions`), so how many there are is not something a type can know.
-    var chromeWidth: CGFloat { Self.leadingGap + Self.chevronRoom + actions.room }
+    var chromeWidth: CGFloat { Self.leadingGap + sidebar.room + Self.chevronRoom + actions.room }
     /// The height this view is BUILT at, and nothing else.
     ///
     /// AppKit stretches a titlebar accessory to the titlebar's own height, so
@@ -293,6 +311,7 @@ final class TitleBarView: NSView {
         chevron.setAccessibilityElement(false)
         addSubview(chevron)
         addSubview(actions)
+        addSubview(sidebar)
         resize()
     }
 
@@ -321,6 +340,7 @@ final class TitleBarView: NSView {
         if plainTitle != nil {
             chevron.alphaValue = 0
             actions.setShown(false, animated: animated)
+            sidebar.setShown(false, animated: animated)
             return
         }
         // No file, no affordance: an empty title has nothing to open.
@@ -338,6 +358,11 @@ final class TitleBarView: NSView {
         // the drag strip's origin are the same numbers they were.
         let offered = url != nil && (isKey || isHovered || isBandHovered || popover?.isShown == true)
         actions.setShown(offered, animated: animated)
+        // One decision for both rows: the band is one strip, so its chrome
+        // arrives and leaves together. Whether the sidebar toggle can be
+        // offered AT ALL is a separate question the window answers once
+        // (`setSidebarAvailable`), and the view multiplies the two.
+        sidebar.setShown(offered, animated: animated)
         let wanted: CGFloat = offered ? 1 : 0
         guard chevron.alphaValue != wanted else { return }
         guard animated else {
@@ -353,12 +378,34 @@ final class TitleBarView: NSView {
     /// Give the buttons their actions. Called once, when the coordinator has
     /// something for them to run.
     func setActions(_ list: [TitlebarActionsView.Action]) {
+        let tooltip = actions.onTooltip
         actions.removeFromSuperview()
         actions = TitlebarActionsView(actions: list)
+        actions.onTooltip = tooltip
         actions.setWindowKey(isKey)
         addSubview(actions)
         needsLayout = true
     }
+
+    /// Whether this window has a file explorer for the sidebar toggle to
+    /// toggle. A window on a loose file has none, and the button is not drawn
+    /// there; its room is held either way, so the name does not move between
+    /// the two kinds of window.
+    func setSidebarAvailable(_ available: Bool) {
+        sidebar.setAvailable(available)
+    }
+
+    /// Whether the file explorer is out, so the toggle names what pressing it
+    /// will do. The window's own mirror of what the page reported; nothing is
+    /// drawn differently (`TitlebarActionButton.setToggleOn`).
+    func setSidebarShown(_ shown: Bool) {
+        sidebar.setToggleOn(shown)
+    }
+
+    /// The sidebar toggle's row, for `mac/scripts/measure.sh` and the app
+    /// tests. The view rather than a summary, for the reason `actionsView`
+    /// is one.
+    var sidebarView: TitlebarActionsView { sidebar }
 
     /// Hover anywhere on the draggable stretch of the band, forwarded by the
     /// coordinator. See `isBandHovered`.
@@ -425,8 +472,13 @@ final class TitleBarView: NSView {
         // Nothing to open, nothing to point at: an empty title reserves no
         // room, which is also what keeps `hitTest` from claiming a strip of
         // window beside the traffic lights that answers a click with nothing.
+        // The sidebar toggle's room goes with it, for the same reason and not
+        // for a second one: a window with no name is a window with no file,
+        // and a file explorer's toggle in front of nothing is a control for a
+        // window that is not showing anything yet.
+        let leading = text > 0 ? sidebar.room : 0
         let trailing = text > 0 ? Self.chevronRoom + actions.room : 0
-        setFrameSize(NSSize(width: Self.leadingGap + text + trailing, height: bounds.height))
+        setFrameSize(NSSize(width: Self.leadingGap + leading + text + trailing, height: bounds.height))
         invalidateIntrinsicContentSize()
         needsLayout = true
     }
@@ -457,7 +509,12 @@ final class TitleBarView: NSView {
         // did.
         let room = max(0, bounds.width - chromeWidth)
         let textWidth = min(drawnTextWidth(), textCeiling, room)
-        label.frame = NSRect(x: Self.leadingGap,
+        // The sidebar toggle first, then the name: the full band height, like
+        // the file buttons, because the strip above and below the symbol
+        // belongs to nothing else.
+        sidebar.frame = NSRect(x: Self.leadingGap, y: 0, width: sidebar.room, height: bounds.height)
+        sidebar.layoutSubtreeIfNeeded()
+        label.frame = NSRect(x: sidebar.frame.maxX,
                              y: ((bounds.height - size.height) / 2).rounded(),
                              width: textWidth,
                              height: size.height)
@@ -715,6 +772,7 @@ final class TitleBarView: NSView {
         // quietly too.
         chevron.contentTintColor = key ? .secondaryLabelColor : .tertiaryLabelColor
         actions.setWindowKey(key)
+        sidebar.setWindowKey(key)
         // Key state is one of the two things that offer the buttons at all, so
         // it settles the chrome as well as inking it. Without this the ink
         // followed the window and the buttons did not, which is the shape of a
@@ -816,14 +874,19 @@ final class TitleBarView: NSView {
         let local = convert(point, from: superview)
         guard bounds.contains(local) else { return nil }
         if let button = actions.button(at: convert(local, to: actions)) { return button }
+        // The sidebar toggle takes its own click the same way, and its
+        // reserved room falls through to the band exactly as the file
+        // buttons' does: in a window with no explorer that strip is empty
+        // titlebar, and empty titlebar drags the window.
+        if let button = sidebar.button(at: convert(local, to: sidebar)) { return button }
         // The title's own click area is the NAME and the chevron that points at
-        // it, and stops there. The buttons' room is deliberately outside it:
-        // while they are not drawn it is a strip of empty titlebar, and a strip
-        // of empty titlebar that opened the document popover would be a click
-        // target nothing on screen accounts for. Falling through leaves it to
-        // the titlebar, which drags the window, which is what that strip looks
-        // like it should do.
-        return local.x <= chevron.frame.maxX ? self : nil
+        // it, and stops at both ends. Either row's room is deliberately
+        // outside it: while its buttons are not drawn it is a strip of empty
+        // titlebar, and a strip of empty titlebar that opened the document
+        // popover would be a click target nothing on screen accounts for.
+        // Falling through leaves it to the titlebar, which drags the window,
+        // which is what that strip looks like it should do.
+        return local.x >= label.frame.minX && local.x <= chevron.frame.maxX ? self : nil
     }
 
     // MARK: gestures

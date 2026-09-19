@@ -1,10 +1,17 @@
 import AppKit
 import BirtaWriterCore
 
-/// The file actions the titlebar draws, after the window's title.
+/// The buttons the titlebar draws around the window's title.
 ///
-///     ◉ ◉ ◉   Note 2026-08-25.md ⌄   ✎  📁  ⌘
-///                                    └ this view ┘
+///     ◉ ◉ ◉   ▤   Note 2026-08-25.md ⌄   ✎  📁  ⌘
+///             └┘                        └ this view ┘
+///              └ and this one, leading
+///
+/// Two instances of one view: the file actions after the name, and the file
+/// explorer's toggle before it. The same view because they are the same kind
+/// of control (a bare symbol repeating a menu row) held to the same box, the
+/// same axis and the same rule about geometry; what differs is which side of
+/// the row the air sits on (`Edge`).
 ///
 /// New Note and Open (with the recent files under it) are what a person does to the DOCUMENT as a
 /// whole rather than to its text, and they are the ones this app's menu bar is
@@ -82,9 +89,22 @@ import BirtaWriterCore
 /// alternative is not a cheaper version of it.
 @MainActor
 final class TitlebarActionsView: NSView {
+    /// Which side of the row the air sits on, which is the only thing that
+    /// differs between the two instances.
+    ///
+    /// The air is always between the buttons and the NAME, because that is
+    /// what it is for: it makes the buttons read as their own group rather
+    /// than as more title. So a row after the name holds it first and a row
+    /// before the name holds it last, and the room either takes is the same
+    /// number.
+    enum Edge {
+        case leading
+        case trailing
+    }
+
     /// Air between the title's chevron and the first button, which is what
     /// makes the pair read as its own group rather than as more title.
-    private static let leadingGap: CGFloat = 6
+    private static let nameGap: CGFloat = 6
     /// The box one button holds, and the air between two of them.
     ///
     /// All three are the PAGE'S, and that is the whole of why they are these
@@ -131,10 +151,13 @@ final class TitlebarActionsView: NSView {
     /// version of this that goes wrong silently: the extra button draws fine
     /// and the strip lies over it.
     var room: CGFloat {
-        Self.leadingGap
+        Self.nameGap
             + Self.buttonWidth * CGFloat(buttons.count)
             + Self.buttonGap * CGFloat(max(0, buttons.count - 1))
     }
+
+    /// Which side of this row the air sits on. See `Edge`.
+    let edge: Edge
 
     /// The buttons, in the order they are drawn. Published so a check can walk
     /// them rather than reach for them by index.
@@ -162,6 +185,33 @@ final class TitlebarActionsView: NSView {
         .init(selector: #selector(AppDelegate.menuOpenMenu(_:)), symbol: "folder",
               namedBy: #selector(AppDelegate.menuOpenDocument)),
         .init(selector: #selector(AppDelegate.menuOpenPalette), symbol: "command"),
+    ]
+
+    /// The set drawn BEFORE the name, which is one button: the file
+    /// explorer's.
+    ///
+    /// Where it is, is the whole argument. A sidebar toggle belongs at the
+    /// leading edge of the window, on the side the sidebar is on, next to the
+    /// traffic lights: that is where Finder, Mail, Notes and Xcode put
+    /// theirs, and it is the one piece of titlebar furniture a reader already
+    /// knows the position of. The page's own bar carried it at the far end
+    /// beside the outline's, where it was a control for a panel at the other
+    /// side of the window; the arrangement that moved it is
+    /// `filesToggleInHostChrome` (shared/hostProfile.ts), so the bar draws
+    /// none and this is the only one.
+    ///
+    /// `sidebar.leading` is the picture macOS uses for exactly this: a pane
+    /// split off the leading edge, filled to say which half is the sidebar.
+    /// `folder` is what the page drew and is the wrong mark here, because the
+    /// button beside the name already IS a folder and opens one; two folders
+    /// in one band doing different things is worse than either. `list.bullet`
+    /// and `square.grid.2x2` name a listing and a layout rather than the pane
+    /// the click moves.
+    ///
+    /// It draws only in a window that HAS an explorer, and holds its room in
+    /// every window regardless (`setAvailable`).
+    static let leadingShipped: [Action] = [
+        .init(selector: #selector(AppDelegate.menuToggleExplorer), symbol: "sidebar.leading"),
     ]
 
     /// One entry per button: the menu row it repeats, and the symbol it draws.
@@ -199,7 +249,8 @@ final class TitlebarActionsView: NSView {
     /// can turn a view's frame into the page's coordinates.
     var onTooltip: ((String?, NSRect) -> Void)?
 
-    init(actions: [Action]) {
+    init(actions: [Action], edge: Edge = .trailing) {
+        self.edge = edge
         super.init(frame: .zero)
         for action in actions {
             let button = TitlebarActionButton(action: action)
@@ -268,14 +319,40 @@ final class TitlebarActionsView: NSView {
     override func layout() {
         super.layout()
         let y = ((bounds.height - Self.buttonHeight) / 2).rounded()
+        // The air is between the buttons and the name, so it leads a trailing
+        // row and follows a leading one (`Edge`). Taken off this view's own
+        // origin either way, never off the room, which is the same number on
+        // both sides.
+        let x = edge == .trailing ? Self.nameGap : 0
         for (index, button) in buttons.enumerated() {
-            button.frame = NSRect(x: Self.leadingGap
-                                     + CGFloat(index) * (Self.buttonWidth + Self.buttonGap),
+            button.frame = NSRect(x: x + CGFloat(index) * (Self.buttonWidth + Self.buttonGap),
                                   y: y,
                                   width: Self.buttonWidth,
                                   height: Self.buttonHeight)
         }
     }
+
+    /// Whether this row's buttons can be offered at all: a window with no
+    /// file explorer has nothing for the sidebar toggle to toggle.
+    ///
+    /// Separate from `shown`, and the two are multiplied rather than one
+    /// standing for the other. `shown` is the hover chrome coming and going,
+    /// which the title decides for the whole band; this is a fact about the
+    /// window that does not change while it is open (`Coordinator.explorerRoot`
+    /// is let-bound). A view that is unavailable keeps its ROOM, which is the
+    /// whole point: the title starts at the same x in a directory window and
+    /// in a single-file one, so opening one after the other does not slide
+    /// the name sideways.
+    private(set) var isAvailable = true
+
+    func setAvailable(_ available: Bool) {
+        guard available != isAvailable else { return }
+        isAvailable = available
+        applyOffered(animated: false)
+    }
+
+    /// What is actually on screen: wanted AND possible.
+    var isOffered: Bool { shown && isAvailable }
 
     /// Offer the buttons, or take them away.
     ///
@@ -285,6 +362,13 @@ final class TitlebarActionsView: NSView {
     func setShown(_ wanted: Bool, animated: Bool = true) {
         guard wanted != shown else { return }
         shown = wanted
+        applyOffered(animated: animated)
+    }
+
+    /// Draw the decision `isOffered` holds. Both writers come through here, so
+    /// a row that cannot be offered stays withdrawn however the hover moves.
+    private func applyOffered(animated: Bool) {
+        let wanted = isOffered
         let alpha: CGFloat = wanted ? 1 : 0
         // `isHidden`, not opacity alone, and the difference is not visual.
         // A view at zero alpha is still a control: it keeps its place in the
@@ -312,7 +396,7 @@ final class TitlebarActionsView: NSView {
             buttons.forEach { $0.animator().alphaValue = alpha }
         }, completionHandler: { [weak self] in
             MainActor.assumeIsolated {
-                guard let self, !self.shown else { return }
+                guard let self, !self.isOffered else { return }
                 self.buttons.forEach { $0.isHidden = true }
             }
         })
@@ -325,7 +409,7 @@ final class TitlebarActionsView: NSView {
     /// empty titlebar beside the name would swallow a window drag and answer
     /// with nothing.
     func button(at point: NSPoint) -> NSView? {
-        guard shown else { return nil }
+        guard isOffered else { return nil }
         return buttons.first { $0.frame.contains(point) }
     }
 
@@ -333,6 +417,13 @@ final class TitlebarActionsView: NSView {
     /// background window draws its chrome quietly.
     func setWindowKey(_ key: Bool) {
         buttons.forEach { $0.setWindowKey(key) }
+    }
+
+    /// Say whether the thing this row's buttons toggle is on, so each names
+    /// what pressing it will do. Ignored by a button whose row is not a
+    /// toggle, which is every button but the sidebar's.
+    func setToggleOn(_ on: Bool) {
+        buttons.forEach { $0.setToggleOn(on) }
     }
 
     /// What the page's buttons wear on hover, so these can wear the same.
@@ -419,20 +510,53 @@ final class TitlebarActionButton: NSButton {
         // the focus ring.
         wantsLayer = true
         syncInk()
-        if let row {
-            // Label AND chord from the row. The button is an element in its own
-            // right, unlike the chevron beside it, because it DOES something
-            // rather than pointing at something the title already does.
-            //
-            // No chord on a button named by a row it does not send
-            // (`namedBy`): the chord is that row's, so printing it would
-            // promise the key does what the click does, and the key does
-            // what the row does instead. For the Open button that is the
-            // file panel, skipping the menu the click opens.
-            setAccessibilityLabel(row.title)
-            let opensMenu = action.namedBy != nil
-            label = row.symbols.isEmpty || opensMenu ? row.title : "\(row.title)  \(row.symbols)"
-        }
+        // Label AND chord from the row. The button is an element in its own
+        // right, unlike the chevron beside it, because it DOES something
+        // rather than pointing at something the title already does.
+        //
+        // No chord on a button named by a row it does not send (`namedBy`):
+        // the chord is that row's, so printing it would promise the key does
+        // what the click does, and the key does what the row does instead. For
+        // the Open button that is the file panel, skipping the menu the click
+        // opens.
+        opensMenu = action.namedBy != nil
+        nameSelf(offTitle: row?.title)
+    }
+
+    /// Whether this button's selector raises a menu rather than doing the
+    /// thing, which is what decides if a chord may be printed beside it.
+    private var opensMenu = false
+
+    /// Take the name and the chord from the row, given what the row is called
+    /// right now.
+    ///
+    /// Split out from the initializer because one of these buttons names a
+    /// TOGGLE, and a toggle's row is called different things in its two
+    /// states (`AppMenu.RowState.title`). A label fixed at build would say
+    /// Show Files over an explorer that is already showing.
+    private func nameSelf(offTitle: String?) {
+        guard let row, let offTitle else { return }
+        let title = row.state?.actionTitle(offTitle: offTitle, isOn: isToggleOn) ?? offTitle
+        setAccessibilityLabel(title)
+        label = row.symbols.isEmpty || opensMenu ? title : "\(title)  \(row.symbols)"
+    }
+
+    /// Whether the thing this button toggles is on now. False for the buttons
+    /// that toggle nothing, where the row carries no state and nothing reads
+    /// it.
+    private var isToggleOn = false
+
+    /// Say whether the thing this button toggles is on, so the name follows
+    /// the menu row's: what a press will DO, never what is on screen.
+    ///
+    /// Nothing else changes. The button draws no pressed state, because the
+    /// state is already on screen at full size: the sidebar it toggles is
+    /// either there or it is not, and a second, smaller picture of the same
+    /// fact is a visual channel spent saying what the window already says.
+    func setToggleOn(_ on: Bool) {
+        guard on != isToggleOn else { return }
+        isToggleOn = on
+        nameSelf(offTitle: row?.title)
     }
 
     required init?(coder: NSCoder) { fatalError("not used") }

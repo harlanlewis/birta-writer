@@ -50,6 +50,28 @@ import { createFlyout } from "./flyout";
 
 export type SidePanelMode = "docked" | "overlay";
 
+/**
+ * What a viewport too narrow to hold the drawer AND a comfortable column
+ * beside it does to the drawer.
+ *
+ * `float` is the responsive rule: the drawer becomes an overlay over the
+ * content and closes, and comes back docked (if `openOnDock` says so) when the
+ * room returns. It is right for a drawer the document's own shape opens, where
+ * a window too narrow for both means the document wins.
+ *
+ * `hold` keeps the drawer docked at every width, and the content column gives
+ * up the room instead. It is right for a drawer the reader opened on purpose
+ * and navigates with: a file list that closes itself when the window narrows
+ * is one they have to open again after every resize, and an overlay that
+ * dismisses on the next click into the document is the same cost per file.
+ * There is no floor under it, deliberately: a window narrow enough for the
+ * content column to be uncomfortable is a window whose reader can hide the
+ * drawer, and a drawer that decided that for them is what this exists to stop.
+ */
+export type SidePanelNarrowPolicy =
+    | { kind: "float"; minContentWidth: number }
+    | { kind: "hold" };
+
 export interface SidePanelWidth {
     /** The `:root` custom property the width is read from at mount and
      *  written to on every change; the composer's host injects the persisted
@@ -111,9 +133,9 @@ export interface SidePanelShellOptions {
     /** The docked edge at mount; `setSide` moves it. */
     initialRight: boolean;
     width: SidePanelWidth;
-    /** The content column that must fit beside the docked drawer, or the
-     *  panel floats instead. */
-    dockedMinContentWidth: number;
+    /** What a viewport with no room for both does to this drawer, and the
+     *  content column "room" is measured against (`SidePanelNarrowPolicy`). */
+    narrow: SidePanelNarrowPolicy;
     /** Pixels another docked panel already takes on the viewport (a second
      *  side panel on the same surface). Read at every mode decision. */
     neighborReserve?: () => number;
@@ -394,8 +416,15 @@ export function createSidePanelShell(opts: SidePanelShellOptions): SidePanelShel
     // pure viewport measure, identical in fixed and full-width mode. Measuring
     // the content's own position instead would be circular, since the content
     // recenters into the space beside a docked drawer.
+    //
+    // A drawer that holds the dock asks nothing: its answer is yes at every
+    // width, which is also why it has no content column to be measured against
+    // (`SidePanelNarrowPolicy`).
     function hasEnoughSpace(): boolean {
-        return window.innerWidth - neighborReserve() >= width + opts.dockedMinContentWidth;
+        if (opts.narrow.kind === "hold") {
+            return true;
+        }
+        return window.innerWidth - neighborReserve() >= width + opts.narrow.minContentWidth;
     }
 
     function resolveMode(): SidePanelMode {

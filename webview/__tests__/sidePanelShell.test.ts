@@ -31,7 +31,7 @@ function filesOptions(overrides: Partial<SidePanelShellOptions> = {}): SidePanel
         eventManager: fakeEventManager,
         initialRight: false,
         width: { cssVar: "--files-width", default: 220, min: 180, max: 480, onCommit: vi.fn() },
-        dockedMinContentWidth: 600,
+        narrow: { kind: "float", minContentWidth: 600 },
         trigger: { kind: "tab", tooltip: "Show files" },
         openOnDock: () => true,
         renderBody: vi.fn(),
@@ -217,6 +217,44 @@ describe("side-panel shell: docked vs overlay from the viewport", () => {
         expect(openOnDock).toHaveBeenCalledTimes(1);
         expect(shell.isOpen()).toBe(true);
         expect(document.body.classList.contains("files-open")).toBe(true);
+    });
+
+    it("a drawer that holds the dock should stay docked at a width that would float a floating one", () => {
+        setViewportWidth(300); // narrower than the drawer plus any content at all
+        const float = createSidePanelShell(filesOptions());
+        const hold = createSidePanelShell(filesOptions({ narrow: { kind: "hold" } }));
+        // Both arms, so a viewport that floated nothing cannot pass this by
+        // agreeing with itself: the pair is the measurement.
+        expect(float.settleMode()).toBe("overlay");
+        expect(hold.settleMode()).toBe("docked");
+    });
+
+    it("a drawer that holds the dock should not close itself when the viewport narrows", () => {
+        setViewportWidth(1200);
+        const openOnDock = vi.fn(() => true);
+        const shell = createSidePanelShell(filesOptions({ narrow: { kind: "hold" }, openOnDock }));
+        document.body.appendChild(shell.panel);
+        shell.settleMode();
+        shell.open();
+
+        setViewportWidth(400);
+        shell.checkResponsiveMode();
+
+        expect(shell.mode()).toBe("docked");
+        expect(shell.isOpen()).toBe(true);
+        expect(document.body.classList.contains("files-open")).toBe(true);
+        // Never asked, because the mode never moved: nothing reopened it, so
+        // what is on screen is the state the reader left.
+        expect(openOnDock).not.toHaveBeenCalled();
+    });
+
+    it("a neighbour's reserve should not float a drawer that holds the dock either", () => {
+        setViewportWidth(900);
+        const shell = createSidePanelShell(filesOptions({
+            narrow: { kind: "hold" },
+            neighborReserve: () => 800,
+        }));
+        expect(shell.settleMode()).toBe("docked");
     });
 
     it("a responsive flip to overlay should close the panel and hand focus back", () => {
@@ -432,7 +470,7 @@ describe("side-panel shell: the table of contents' own numbers", () => {
             eventManager: fakeEventManager,
             initialRight: false,
             width: { cssVar: "--toc-width", default: 260, min: 240, max: 600, onCommit: vi.fn() },
-            dockedMinContentWidth: 720,
+            narrow: { kind: "float", minContentWidth: 720 },
             trigger: { kind: "tab", tooltip: "Show table of contents" },
             openOnDock: () => false,
             renderBody: vi.fn(),
