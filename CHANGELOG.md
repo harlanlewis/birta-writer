@@ -6,6 +6,12 @@
 
 ---
 
+## [2026.919.0] - 2026, September 19
+
+_No user-visible changes; internal work only._
+
+---
+
 ## [2026.918.0] - 2026, September 18
 
 ### Changed

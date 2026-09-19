@@ -12,6 +12,10 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ## [Unreleased]
 
+---
+
+## [2026.919.0] - 2026, September 19
+
 ### Added
 
 - Open Recent now remembers folders as well as files. A folder opened as a directory window joins the same list, in the same recency order, and picking its row brings that window back or opens it again; the row carries the Finder's own icon, so a folder and a file are told apart at a glance without reading the extension. The folder the window you are in is rooted at is left out of that window's own menu, as the file it is on already was. Go to File… in the command palette still lists files only.
