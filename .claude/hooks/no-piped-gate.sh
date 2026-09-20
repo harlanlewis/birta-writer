@@ -57,6 +57,12 @@ except Exception:
 
 cmd = (payload.get("tool_input") or {}).get("command") or ""
 
+# A runner asked for its usage is not a gate: `node e2e/run.mjs --help |
+# head` has no verdict to mask. The gate pattern matches the runner's
+# path, not what it was asked to do, so this is the one exception it needs.
+if re.search(r"(?:^|\s)(?:--help|-h)(?:\s|$)", cmd):
+    sys.exit(0)
+
 # A gate invocation, then a pipe before that segment ends. SEG keeps the
 # match inside one command segment — it stops at ; and at && separators so
 # `ls | grep x && pnpm test` passes — while still crossing the & inside
