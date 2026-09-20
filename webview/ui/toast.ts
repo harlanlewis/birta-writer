@@ -86,7 +86,10 @@ const live = new Map<string, LiveToast>();
 export function toastShowing(surface: string, tone?: ToastTone): boolean {
     const entry = live.get(surface);
     if (!entry || !entry.el.isConnected || !entry.el.classList.contains(`${surface}--visible`)) { return false; }
-    return tone === undefined || entry.el.classList.contains(`ui-notice--${tone}`);
+    // The node carries one tone class, `ui-notice--error`, and its absence
+    // IS the info tone; asking for either reads that one class.
+    const isError = entry.el.classList.contains("ui-notice--error");
+    return tone === undefined || (tone === "error") === isError;
 }
 
 function build(surface: string): LiveToast {

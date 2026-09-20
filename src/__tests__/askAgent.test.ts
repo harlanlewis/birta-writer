@@ -1051,7 +1051,6 @@ describe("the progress throttle's dedupe (MAR-464)", () => {
             // would have dropped the second A and shown B here.
             await vi.advanceTimersByTimeAsync(500);
             expect(lines()).toEqual(["A"]);
-            expect(lines().at(-1)).toBe("A");
         } finally {
             vi.useRealTimers();
         }

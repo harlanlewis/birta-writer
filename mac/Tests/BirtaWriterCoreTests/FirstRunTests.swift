@@ -4,8 +4,9 @@ import XCTest
 final class FirstRunTests: XCTestCase {
 
     /// Every combination, so a fifth arm cannot be added without this matrix
-    /// having something to say about it, and the count is asserted because a
-    /// sweep that enumerated nothing passes every assertion inside it.
+    /// having something to say about it. The reach is the `allCases` floor
+    /// below: every answer has to have come up, so a sweep that enumerated
+    /// nothing cannot pass.
     func testTheWholeSpaceShouldBeCoveredAndOnlyAFirstOrdinaryLaunchShouldInvite() {
         var seen: [FirstRun.Opening: Int] = [:]
         for forced in [true, false] {

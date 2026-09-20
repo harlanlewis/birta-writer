@@ -72,8 +72,10 @@ FILTER = r"\|\s*" + FILTER_WORD + r"\b"
 # not what it was asked to do, so this is the one exception it needs, and it
 # is scoped to the GATE'S OWN stage: `--help` must sit between the runner and
 # the pipe. Matched anywhere in the command it would let `pnpm test | grep -h
-# FAIL` through, which is the headline case walking past the guard.
-if re.search(GATE + r"[^|;&]*?\s--help(?:\s|$)", cmd):
+# FAIL` through, which is the headline case walking past the guard. The
+# stage is walked with SEG, so a `2>&1` between the runner and its flag does
+# not hide the flag, the same blindness SEG exists to avoid above.
+if re.search(GATE + SEG.replace("*", "*?", 1) + r"\s--help(?:\s|$)", cmd):
     sys.exit(0)
 
 ALTERNATIVES = (

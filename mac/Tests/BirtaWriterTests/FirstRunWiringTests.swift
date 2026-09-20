@@ -35,12 +35,17 @@ final class FirstRunWiringTests: XCTestCase {
     /// Every hop from the launch to the three things a first run does, named.
     ///
     /// Each is a place the chain can be cut, and cutting any of them is
-    /// silent. Enumerated rather than written as separate checks so the count
-    /// is asserted: a sweep that reached nothing passes.
+    /// silent. Enumerated so each names what its absence would cost, and the
+    /// reach is `source`'s own guard: a file it cannot read fails, so a sweep
+    /// over nothing cannot pass.
     func testEveryHopFromTheLaunchToTheFirstRunShouldBeWired() {
         let hops: [(file: String, needle: String, what: String)] = [
-            ("App.swift", "if opening == .invitation { Self.seedFirstRunNote() }",
+            ("App.swift", "if opening == .invitation { Self.seedFirstRunNote(isFirstRun: firstLaunch) }",
              "a fresh install opens on an empty panel with no tour in it"),
+            ("App.swift", "Prefs.applyOnboardingDefaults(firstLaunch: launchWasFirst)",
+             "the login item gates on a reading taken after the launch stored keys, and never registers"),
+            ("App.swift", "guard let button = statusItem?.button else {",
+             "with no menu bar item the invitation has no surface and the wait waits on nothing"),
             ("App.swift", "case .invitation: beginFirstRun(on: firstWindow)",
              "nothing acts on the decision, so the menu bar says nothing"),
             ("App.swift", "coordinator.onDidShow = { [weak self] in self?.finishFirstRun() }",
@@ -54,6 +59,7 @@ final class FirstRunWiringTests: XCTestCase {
              "the panel never reports that it came up"),
         ]
 
+        XCTAssertGreaterThan(hops.count, 5, "the list of hops is the subject; a shorter one dropped a hop")
         for hop in hops {
             XCTAssertTrue(source(hop.file).contains(hop.needle),
                           "\(hop.file) no longer carries `\(hop.needle)`, so \(hop.what)")
@@ -69,12 +75,30 @@ final class FirstRunWiringTests: XCTestCase {
     /// above still passes.
     func testTheTourShouldBeWrittenBeforeTheWindowsAreMade() {
         let text = source("App.swift")
-        guard let seed = text.range(of: "Self.seedFirstRunNote()"),
+        guard let seed = text.range(of: "Self.seedFirstRunNote(isFirstRun:"),
               let open = text.range(of: "windows.openAtLaunch(") else {
             return XCTFail("the launch path no longer seeds or no longer opens windows")
         }
         XCTAssertLessThan(seed.lowerBound, open.lowerBound,
                           "the tour is written after the panel has already mounted the note")
+    }
+
+    /// Whether this is a first launch is read before the launch stores
+    /// anything. The notes-folder offer records its derivation on every arm,
+    /// and `Prefs.isFirstLaunch` is the absence of every key, so a reading
+    /// taken after the offer calls every first launch an existing install:
+    /// no login item, no tour, and nothing red anywhere, because the only
+    /// runs that can reach the path are refused it by `isUserStore`.
+    func testFirstLaunchShouldBeReadBeforeTheNotesOfferStoresAnything() {
+        let text = source("App.swift")
+        guard let read = text.range(of: "let firstLaunch = Prefs.isFirstLaunch"),
+              let offer = text.range(of: "NotesMoveOffer.offerAtLaunch()") else {
+            return XCTFail("the launch no longer reads first-launch into a local, or no longer offers the move")
+        }
+        XCTAssertLessThan(read.lowerBound, offer.lowerBound,
+                          "first-launch is read after the notes offer has stored keys, so it is never true")
+        XCTAssertFalse(text.contains("isFirstRun: Prefs.isFirstLaunch"),
+                       "the seed reads first-launch live, after the launch has stored keys")
     }
 
     /// `hasSeenWelcome` is spent when the panel comes up, never at launch.

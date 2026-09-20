@@ -193,6 +193,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding, 
         // nothing is bound to a file: the binding is the new folder's
         // scratchpad, and a note carried in afterwards can land on the path
         // the panel is already editing. `StrandedNotes` holds the decision.
+        //
+        // Whether this is the FIRST launch is read before that offer, and
+        // has to be: the offer records the notes derivation on every arm,
+        // the ones that ask nothing included, and `Prefs.isFirstLaunch` is
+        // the absence of every stored key. Read after it, a first launch is
+        // an existing install, the login item is never registered and the
+        // tour is never written. `FirstRunWiringTests` holds the order.
+        let firstLaunch = Prefs.isFirstLaunch
+        launchWasFirst = firstLaunch
         NotesMoveOffer.offerAtLaunch()
         // Before any Coordinator exists, so a launch that came from Open With
         // mounts against the file it was asked for rather than mounting the
@@ -215,7 +224,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding, 
             hasSeenWelcome: Prefs.hasSeenWelcome,
             documentBound: Prefs.documentURL != nil || launchedWith != nil)
         // BEFORE the windows, so the ordinary mount is what opens the tour.
-        if opening == .invitation { Self.seedFirstRunNote() }
+        if opening == .invitation { Self.seedFirstRunNote(isFirstRun: firstLaunch) }
         windows.openPreferences = { [weak self] in self?.menuOpenSettings() }
         windows.hidePreferences = { [weak self] in self?.settingsWindow?.close() }
         windows.paletteProbe = { [weak self] query, mode in
@@ -926,21 +935,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding, 
     /// one thing `onDidShow` cannot say and the only thing that changes what
     /// happens to the popover.
     private var firstRunOpenedByWait = false
+    /// Whether this launch found no stored key at all, read before the launch
+    /// stored any (see `applicationDidFinishLaunching`). The two things a
+    /// first run does on its own authority, register the login item and write
+    /// the tour, both gate on this and on nothing read later.
+    private var launchWasFirst = false
 
     /// Teach the summon by having it made.
     ///
-    /// Nothing opens here. The menu bar says where the app is and which keys
-    /// to press, and the chord is the only route to the panel, which is what
-    /// makes the gesture teach itself rather than be described. The note
-    /// behind it already holds the tour: `seedFirstRunNote` wrote it before
-    /// the window was made.
+    /// With a menu bar item, nothing opens here: the menu bar says where the
+    /// app is and which keys to press, and the chord is the only route to the
+    /// panel, which is what makes the gesture teach itself rather than be
+    /// described. On a first launch the note behind it already holds the
+    /// tour, written by `seedFirstRunNote` before the window was made; an
+    /// install that predates the welcome key is invited over its own note.
     ///
     /// `applyOnboardingDefaults` still runs, and what it does is now done with
     /// no switch drawn beside it, so the tour is what says so. Its own header
     /// carries the constraint that follows: nothing it writes may turn the
     /// network on.
     private func beginFirstRun(on coordinator: Coordinator) {
-        Prefs.applyOnboardingDefaults()
+        Prefs.applyOnboardingDefaults(firstLaunch: launchWasFirst)
         let invitation = FirstRunInvitation.of(name: AppFlavor.current.displayName,
                                                combo: Prefs.hotkey,
                                                refused: windows.refusedSummonCombo)
@@ -952,8 +967,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding, 
         coordinator.onDidShow = { [weak self] in self?.finishFirstRun() }
         // No menu bar item, no invitation: the sentence has nowhere to hang
         // and a wait with nothing to wait for is a blank screen for the
-        // duration. The panel comes up now, on the tour, which teaches the
-        // chord in its own words.
+        // duration. The panel comes up now, on whatever note is bound. The
+        // item is only absent where Show in menu bar was stored off, which
+        // is an existing install, so this arm never has a tour to open on.
         guard let button = statusItem?.button else {
             firstRunOpenedByWait = true
             windows.summonAll()
@@ -1032,17 +1048,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding, 
     /// the panel opens empty, and an error the first time somebody sees this
     /// app would be worse than the absence it is reporting.
     ///
-    /// `isFirstRun` is `Prefs.isFirstLaunch`, the same gate
-    /// `applyOnboardingDefaults` acts on, and it has to be the same one: the
-    /// tour's opening says the app starts with the Mac, which is only true of
-    /// an install whose first launch registered it. An install that predates
-    /// the welcome key is invited and gets its panel, and is not told a thing
-    /// that was never done to it.
-    private static func seedFirstRunNote() {
+    /// `isFirstRun` is the launch's own first-launch reading, taken before
+    /// anything was stored and the same value `applyOnboardingDefaults` acts
+    /// on, and it has to be the same one: the tour's opening says the app
+    /// starts with the Mac, which is only true of an install whose first
+    /// launch registered it. An install that predates the welcome key is
+    /// invited and gets its panel, and is not told a thing that was never
+    /// done to it. Not read here, because by now the launch has stored keys.
+    private static func seedFirstRunNote(isFirstRun: Bool) {
         let url = Prefs.activeURL
         guard FirstRunNote.shouldWrite(existing: FirstRunNote.existing(at: url),
                                        bufferIsEmpty: true,
-                                       isFirstRun: Prefs.isFirstLaunch,
+                                       isFirstRun: isFirstRun,
                                        slot: Prefs.activeSlot) else { return }
         do {
             try FileManager.default.createDirectory(
