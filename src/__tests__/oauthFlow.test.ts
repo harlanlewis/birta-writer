@@ -189,3 +189,131 @@ describe("the OAuth callback", () => {
         expect(init.headers.authorization).toBeUndefined();
     });
 });
+
+/**
+ * The refresh grant.
+ *
+ * This code had no test of any kind until now, and it had never run in
+ * production either: `readRecord` dropped the `refreshToken` and `expiresAt`
+ * that `connectViaOAuth` stored, so `oauthCredential` could never reach it.
+ * Carrying those fields back switches the path on, which is why it is pinned
+ * here first rather than trusted.
+ *
+ * The refresh token is a credential, so the assertions are mostly about where
+ * it does NOT go: off the pinned host, into an authorization header, or into a
+ * request for a spec whose strategy is not OAuth at all.
+ */
+describe("the refresh grant", () => {
+    let flow: OAuthFlow;
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+        _setDnsLookupForTests(async () => [{ address: "93.184.216.34" }]);
+        flow = new OAuthFlow();
+    });
+
+    it("should post a refresh_token grant to the pinned token host", async () => {
+        const fetchMock = stubToken({ access_token: "fresh", expires_in: 3600 });
+        const before = Date.now();
+        const outcome = await flow.refresh(SPEC, "the-refresh-token");
+
+        // The verdict is read only after the call is proven to have happened.
+        // This path has never run, so "no fetch" is the failure mode to rule
+        // out before believing anything about what was sent.
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+        const [url, init] = fetchMock.mock.calls[0];
+        expect(String(url)).toBe(SPEC.oauth!.tokenUrl);
+        expect(SPEC.apiHosts).toContain(new URL(String(url)).hostname);
+        expect(init.method).toBe("POST");
+        expect(init.headers["content-type"]).toBe("application/x-www-form-urlencoded");
+
+        const body = new URLSearchParams(String(init.body));
+        expect(body.get("grant_type")).toBe("refresh_token");
+        expect(body.get("refresh_token")).toBe("the-refresh-token");
+        expect(body.get("client_id")).toBe(SPEC.oauth!.clientId);
+        // A public client has none, on this grant as on the other.
+        expect(body.has("client_secret")).toBe(false);
+        // The refresh token travels in the body, which is what RFC 6749 says.
+        // An authorization header here would be a second place a credential
+        // lives, and this one is not a bearer.
+        expect(init.headers.authorization).toBeUndefined();
+
+        expect(outcome.ok).toBe(true);
+        const tokens = (outcome as { ok: true; tokens: { accessToken: string; expiresAt?: number } }).tokens;
+        expect(tokens.accessToken).toBe("fresh");
+        expect(tokens.expiresAt).toBeGreaterThanOrEqual(before + 3600 * 1000);
+    });
+
+    it("should carry a rotated refresh token back, and omit one that did not come", async () => {
+        stubToken({ access_token: "fresh", refresh_token: "rotated", expires_in: 60 });
+        const rotated = await flow.refresh(SPEC, "old");
+        expect(rotated).toMatchObject({ ok: true, tokens: { refreshToken: "rotated" } });
+
+        stubToken({ access_token: "fresh" });
+        const kept = await flow.refresh(SPEC, "old");
+        expect(kept.ok).toBe(true);
+        // Absent rather than undefined-valued: the caller decides what to keep,
+        // and it can only do that if it can tell "none came back" apart from
+        // "one came back empty".
+        expect((kept as { tokens: object }).tokens).not.toHaveProperty("refreshToken");
+        expect((kept as { tokens: object }).tokens).not.toHaveProperty("expiresAt");
+    });
+
+    it("should call a 400 a refusal and a 500 a network failure", async () => {
+        // Same reading as the exchange: RFC 6749 answers 400 for a refresh
+        // token the provider will not honour, which is the user reconnecting,
+        // and anything else is a request that did not complete.
+        stubToken({ error: "invalid_grant" }, 400);
+        expect(await flow.refresh(SPEC, "old")).toEqual({ ok: false, reason: "refused" });
+        stubToken({}, 500);
+        expect(await flow.refresh(SPEC, "old")).toEqual({ ok: false, reason: "network" });
+        stubToken({}, 401);
+        expect(await flow.refresh(SPEC, "old")).toEqual({ ok: false, reason: "refused" });
+    });
+
+    it("should refuse a response with no usable access token rather than returning one", async () => {
+        // The failure this rules out is a TokenSet carrying `undefined`, which
+        // reaches the fetch path as `Bearer undefined` and comes back 401,
+        // reading as an expired grant rather than as the malformed response it
+        // was.
+        for (const payload of [{}, { access_token: "" }, { access_token: 7 }, "not json at all"]) {
+            const fetchMock = stubToken(payload);
+            const outcome = await flow.refresh(SPEC, "old");
+            expect(fetchMock).toHaveBeenCalledTimes(1);
+            expect(outcome).toEqual({ ok: false, reason: "refused" });
+        }
+    });
+
+    it("should send the refresh token NOWHERE when the token host is not pinned", async () => {
+        // The guarded fetch is the one site a credential goes on the wire, and
+        // it refuses before connecting rather than after. Doctoring the spec
+        // is the only way to reach that branch, because the shipped rows are
+        // held to their own pinned hosts by oauthHosts.test.ts.
+        const offHost = {
+            ...SPEC,
+            oauth: { ...SPEC.oauth!, tokenUrl: "https://tokens.evil.example/oauth/token" },
+        };
+        const fetchMock = stubToken({ access_token: "fresh" });
+        const outcome = await flow.refresh(offHost, "the-refresh-token");
+        expect(fetchMock).not.toHaveBeenCalled();
+        expect(outcome).toEqual({ ok: false, reason: "network" });
+    });
+
+    it("should refuse to refresh a connector that is not on the OAuth rung", async () => {
+        // Asana holds a pasted token with no refresh grant behind it, and
+        // GitHub's credential is VS Code's. Asking either to refresh is a
+        // programming error, and it must cost no request.
+        //
+        // The third case is the one that makes this a test of the STRATEGY
+        // rather than of the oauth field: a spec carrying OAuth endpoints
+        // while declaring another rung. Without it, deleting the
+        // `auth !== "oauth-pkce"` clause changed nothing here, because the two
+        // shipped rows above have no `oauth` for the second clause to miss.
+        const mislabelled = { ...CONNECTORS.asana, oauth: CONNECTORS.linear.oauth };
+        const fetchMock = stubToken({ access_token: "fresh" });
+        for (const spec of [CONNECTORS.asana, CONNECTORS.github, mislabelled]) {
+            expect(await flow.refresh(spec, "old"), spec.id).toEqual({ ok: false, reason: "refused" });
+        }
+        expect(fetchMock).not.toHaveBeenCalled();
+    });
+});
