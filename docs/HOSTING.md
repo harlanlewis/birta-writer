@@ -61,6 +61,8 @@ What a host sends, when it wants to:
 | `scrollToLine { line, column? }` | Places the caret at a source line |
 | `editorCommand { command }` | Runs an editor command by id (`shared/editorCommands.ts`), which is how a host's own menu or key reaches the editor |
 | `setFontSize`, `setFontFamily`, `setContentWidth`, `setTocVisibility`, `toolbarConfig`, and the other `set*` and `*Changed` messages | A setting changed under the editor while it is open. Each corresponds to one field of the boot blob, and a host that never changes a setting never sends one |
+| `agentRun { requestId, status, harness? }` | The life of an `/ai` request the host is running for the editor: `running` puts a stop marker in the gutter beside it, and `done`, `failed` and `cancelled` take it away. A host that runs no agent sends none of it, and `docs/AGENT_BRIDGE.md` has the rest, including what a `done` may carry |
+| `agentProgress { requestId, line }` | One short line of what that run is doing, drawn in the corner and replaced in place. Advisory and transient: nothing is persisted, and a host that cannot read its harness sends none, leaving the editor's own clock to say the run is alive |
 
 Ordering holds across all of it. Every content message the editor posts carries a monotonic `seq`, and a host must drop an `update` whose `seq` is below the last `flushResult` it applied, or a slow sync can revert a fresher save. `shared/saveFlushController.ts` is the host-agnostic implementation of that guard, with the stale check and an injectable timeout, and is what the extension runs; a second host is meant to reuse it rather than rewrite it.
 

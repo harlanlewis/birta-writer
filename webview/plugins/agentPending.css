@@ -124,19 +124,24 @@
 
 
 
-/* The failure toast (ui/toast.ts, surface "agent-toast"): what a run that
-   could not finish says instead of leaving a marker behind.
+/* The agent corner (ui/toast.ts, surface "agent-toast"): one pill carrying
+   both of the things a run says here. While it runs, the live line
+   (plugins/agentPending.ts, the corner notice). When it could not finish, the
+   reason, instead of leaving a marker behind.
 
-   Composes .ui-notice for the pill and .ui-notice--error for the ink; local
-   here are the corner it sits in and how it leaves. Bottom TRAILING, which is
-   where a host without its own notifications already puts transient news.
-   Viewport-fixed rather than anchored to the block, because the block a
-   request was typed in is usually gone by the time a run fails.
+   Composes .ui-notice for the pill and .ui-notice--error for the failure's
+   ink; local here are the corner it sits in and how it leaves. Bottom
+   TRAILING, which is where a host without its own notifications already puts
+   transient news. Viewport-fixed rather than anchored to the block, because
+   the block a request was typed in is usually gone by the time a run ends.
 
-   It takes the pointer, unlike the content guard's notice, because a click on
-   it takes it away. The cost is that a click meant for the document under this
-   corner reaches the message instead; that click is what dismisses it, so the
-   second attempt lands where it was aimed. */
+   It takes the pointer WHILE IT IS SHOWING, unlike the content guard's notice,
+   because a click on it takes it away. The cost is that a click meant for the
+   document under this corner reaches the message instead; that click is what
+   dismisses it, so the second attempt lands where it was aimed. The node
+   outlives the message, and .ui-notice leaves it laid out at zero opacity, so
+   without the rule below every click in that corner for the rest of the
+   session would land on a pill that is not there. */
 .agent-toast {
     position: fixed;
     right: 16px;
@@ -151,6 +156,10 @@
     padding: 6px 12px;
     cursor: pointer;
     transition: opacity 200ms ease-out;
+}
+
+.agent-toast:not(.agent-toast--visible) {
+    pointer-events: none;
 }
 
 .agent-toast--visible {

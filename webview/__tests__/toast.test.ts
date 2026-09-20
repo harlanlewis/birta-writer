@@ -117,6 +117,50 @@ describe("showToast", () => {
         expect(nodes()[0].classList.contains(`${SURFACE}--visible`)).toBe(true);
     });
 
+    it("a persisting message should stay until its owner takes it away", () => {
+        showToast("still going", { surface: SURFACE, persist: true });
+
+        // Well past any dwell it could have inherited. What it reports is
+        // still happening, so nothing but its owner may end it.
+        vi.advanceTimersByTime(60_000);
+        expect(nodes()[0].classList.contains(`${SURFACE}--visible`)).toBe(true);
+
+        hide(SURFACE);
+        expect(nodes()[0].classList.contains(`${SURFACE}--visible`)).toBe(false);
+    });
+
+    it("a message after a persisting one should go back to fading", () => {
+        showToast("still going", { surface: SURFACE, persist: true });
+        showToast("news", { surface: SURFACE, dwellMs: 1000 });
+
+        vi.advanceTimersByTime(1001);
+
+        // The node outlives the message, so persist has to be read per call
+        // or the surface's first message decides for every one after it.
+        expect(nodes()[0].classList.contains(`${SURFACE}--visible`)).toBe(false);
+    });
+
+    it("a message should announce unless its caller says otherwise", () => {
+        showToast("quiet", { surface: SURFACE, announce: false });
+        expect(nodes()[0].getAttribute("aria-live")).toBe("off");
+
+        showToast("out loud", { surface: SURFACE });
+
+        expect(nodes()[0].getAttribute("aria-live")).toBe("polite");
+    });
+
+    it("a message a click cannot take away should not take the click", () => {
+        showToast("read me", { surface: SURFACE });
+        expect(nodes()[0].classList.contains("ui-notice--static")).toBe(true);
+
+        showToast("click me", { surface: SURFACE, dismissible: true });
+
+        // Whether the corner under it belongs to the message or to the page
+        // is the same question as whether a click does anything, so the two
+        // are read off one option rather than set independently.
+        expect(nodes()[0].classList.contains("ui-notice--static")).toBe(false);
+    });
+
     it("a surface whose element was removed should be rebuilt rather than lost", () => {
         showToast("first", { surface: SURFACE });
         nodes()[0].remove();

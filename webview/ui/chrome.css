@@ -482,6 +482,15 @@
     color: var(--vscode-inputValidation-errorForeground);
 }
 
+/* A pill a click cannot take away, which therefore must not take the click:
+   the document under that corner stays the document's for as long as the
+   message is up. Applied by ui/toast.ts from a caller's `dismissible`, and
+   here for the same reason the error tone is: what a message CAN be done with
+   should not be spelled differently in each corner it can appear in. */
+.ui-notice--static {
+    pointer-events: none;
+}
+
 /* The pill's icon-only × dismiss (compose with .ui-btn .ui-btn--icon). */
 .ui-notice__dismiss {
     --ui-btn-size: 18px;

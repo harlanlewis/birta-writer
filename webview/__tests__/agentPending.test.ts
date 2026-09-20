@@ -16,6 +16,7 @@ import { $prose } from "@milkdown/utils";
 import { HOST_PROFILES } from "../../shared/hostProfile";
 import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
 import {
+    agentNoticeText,
     agentPendingPlugin,
     agentRun,
     applyAgentResult,
@@ -24,8 +25,10 @@ import {
     AGENT_TOAST_SURFACE,
     markAgentRunning,
     recordsExternalInHistory,
+    reportAgentProgress,
     settleAgentRun,
 } from "../plugins/agentPending";
+import type { AgentRun } from "../plugins/agentPending";
 import { applyExternalSync } from "../externalSync";
 import { mockVscodeApi } from "./setup";
 import { editorView, loadCorpusFixtures, makeCorpusEditor } from "./helpers/moveFuzz";
@@ -269,6 +272,159 @@ describe("agent run marker", () => {
         expect(toast?.textContent?.trim().endsWith(":")).toBe(false);
     });
 
+    /**
+     * The corner notice (MAR-464). One node, rewritten in place, gone with
+     * the run. Every arm below reads the SAME surface the failure toast uses,
+     * which is what makes "never stacks" checkable at all: two pills would
+     * mean two nodes, and there is only ever one.
+     */
+    const corner = (): HTMLElement | null =>
+        document.querySelector(`.${AGENT_TOAST_SURFACE}`);
+    const cornerShowing = (): boolean =>
+        corner()?.classList.contains(`${AGENT_TOAST_SURFACE}--visible`) ?? false;
+
+    it("a confirmed run should put a line in the corner naming its harness", () => {
+        placeCaret(v, endOfBlock(v, 1));
+        const id = beginAgentRun(v);
+        // An armed run has not been confirmed, so there is nothing true to
+        // say about it yet.
+        expect(cornerShowing()).toBe(false);
+
+        markAgentRunning(v, id, "claude");
+
+        expect(cornerShowing()).toBe(true);
+        expect(corner()?.textContent).toContain("claude");
+        expect(document.querySelectorAll(`.${AGENT_TOAST_SURFACE}`)).toHaveLength(1);
+    });
+
+    it("a progress line should replace the corner's own words in place", () => {
+        placeCaret(v, endOfBlock(v, 1));
+        const id = beginAgentRun(v);
+        markAgentRunning(v, id, "claude");
+        expect(corner()?.textContent).toContain("working");
+
+        reportAgentProgress(v, id, "Read note.md");
+
+        expect(corner()?.textContent).toContain("Read note.md");
+        expect(corner()?.textContent).not.toContain("working");
+        reportAgentProgress(v, id, "Thinking");
+        expect(corner()?.textContent).toContain("Thinking");
+        expect(corner()?.textContent).not.toContain("Read note.md");
+        // Still the one node: a stream of lines must never become a stack.
+        expect(document.querySelectorAll(`.${AGENT_TOAST_SURFACE}`)).toHaveLength(1);
+    });
+
+    it("the notice should not be announced, while a failure on the same surface is", () => {
+        asMac();
+        placeCaret(v, endOfBlock(v, 1));
+        const id = beginAgentRun(v);
+        markAgentRunning(v, id, "claude");
+        reportAgentProgress(v, id, "Read note.md");
+        // A line that rewrites itself on a clock would otherwise be read out
+        // on every rewrite. The pair is what discriminates: a node left at
+        // one setting forever would pass one of these two.
+        expect(corner()?.getAttribute("aria-live")).toBe("off");
+
+        failAgentRun(v, id, "exit 1", "claude");
+
+        expect(corner()?.getAttribute("aria-live")).toBe("polite");
+    });
+
+    it("the notice should outlast an ordinary message and pick up its own clock", () => {
+        vi.useFakeTimers();
+        try {
+            placeCaret(v, endOfBlock(v, 1));
+            const id = beginAgentRun(v);
+            markAgentRunning(v, id, "claude");
+            expect(corner()?.textContent).toBe("claude · working");
+
+            // Past the dwell an ordinary message on this surface would have
+            // had, while the sentence is still word for word the same one. A
+            // notice that merely got REWRITTEN often enough to look permanent
+            // would already be gone here.
+            vi.advanceTimersByTime(6_000);
+            expect(cornerShowing()).toBe(true);
+            expect(corner()?.textContent).toBe("claude · working");
+
+            // And on past the point where how long it has been going is worth
+            // saying. Nothing dispatches here: the notice's own tick is the
+            // only thing that could have redrawn it.
+            vi.advanceTimersByTime(14_000);
+
+            expect(cornerShowing()).toBe(true);
+            expect(corner()?.textContent).toBe("claude · working · 0:20");
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it("a settled run should take the corner away with it", () => {
+        placeCaret(v, endOfBlock(v, 1));
+        const id = beginAgentRun(v);
+        markAgentRunning(v, id, "claude");
+        reportAgentProgress(v, id, "Read note.md");
+        expect(cornerShowing()).toBe(true);
+
+        settleAgentRun(v, id);
+
+        expect(cornerShowing()).toBe(false);
+    });
+
+    it("a line for a run that has already settled should change nothing", () => {
+        placeCaret(v, endOfBlock(v, 1));
+        const id = beginAgentRun(v);
+        markAgentRunning(v, id, "claude");
+        settleAgentRun(v, id);
+
+        reportAgentProgress(v, id, "Read note.md");
+
+        expect(cornerShowing()).toBe(false);
+        expect(corner()?.textContent ?? "").not.toContain("Read note.md");
+    });
+
+    it("a failure should hold the corner, then give it back to the run still going", () => {
+        asMac();
+        vi.useFakeTimers();
+        try {
+            placeCaret(v, endOfBlock(v, 0));
+            const first = beginAgentRun(v);
+            markAgentRunning(v, first, "claude");
+            placeCaret(v, endOfBlock(v, 1));
+            const second = beginAgentRun(v);
+            markAgentRunning(v, second, "codex");
+            expect(corner()?.textContent).toContain("2 agents working");
+
+            failAgentRun(v, second, "exit 1", "codex");
+
+            // The reason, not the surviving run's line: one surface, and what
+            // is read once wins over what is redrawn on a clock.
+            expect(corner()?.textContent).toContain("exit 1");
+            // The other run is still live, so its marker stays.
+            expect(markers()).toHaveLength(1);
+            // The surviving run goes on reporting, and none of it reaches the
+            // corner while the reason is up. This is the arm that discriminates:
+            // without the stand-down the next line simply overwrites it.
+            reportAgentProgress(v, first, "Read note.md");
+            expect(corner()?.textContent).toContain("exit 1");
+            vi.advanceTimersByTime(6_000);
+            expect(corner()?.textContent).toContain("exit 1");
+
+            // Once it has had its dwell, the corner goes back to the run that
+            // is still going. Standing down permanently would leave a live run
+            // with nothing saying so for the rest of its life.
+            vi.advanceTimersByTime(9_000);
+
+            expect(cornerShowing()).toBe(true);
+            expect(corner()?.textContent).toContain("claude");
+            // The line it reported while it was standing down was kept, not
+            // dropped: what comes back is the run's own latest word.
+            expect(corner()?.textContent).toContain("Read note.md");
+            expect(corner()?.textContent).not.toContain("exit 1");
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
     it("deleting the marker's block should drop the marker", () => {
         placeCaret(v, endOfBlock(v, 1));
         const id = beginAgentRun(v);
@@ -280,6 +436,50 @@ describe("agent run marker", () => {
 
         expect(v.state.doc.childCount).toBe(2);
         expect(markers().filter((m) => m.closest("p")?.textContent === "Second paragraph.")).toHaveLength(0);
+    });
+});
+
+/**
+ * What the corner SAYS, asked without a document, a view or a clock. Every
+ * rule about the sentence lives in one function so it can be asked at times
+ * a test would otherwise have to wait for.
+ */
+describe("agentNoticeText", () => {
+    const run = (over: Partial<AgentRun> = {}): AgentRun => ({
+        id: "ai1", pos: 0, base: null as unknown as ProseNode, mapping: null as unknown as never,
+        status: "running", harness: "claude", startedAt: 1000, ...over,
+    } as AgentRun);
+
+    it("no live run should say nothing", () => {
+        expect(agentNoticeText([], 1000)).toBeNull();
+        expect(agentNoticeText([run({ status: "armed" })], 1000)).toBeNull();
+    });
+
+    it("a run the host says nothing about should still name the harness", () => {
+        expect(agentNoticeText([run()], 1000)).toBe("claude · working");
+    });
+
+    it("a harness the host never named should still be somebody", () => {
+        expect(agentNoticeText([run({ harness: undefined })], 1000))
+            .toBe("Your agent · working");
+    });
+
+    it("a young run should not say how long it has been going", () => {
+        // Under the threshold the elapsed time answers a question nobody has
+        // asked; the pair below is what tells a rule that waits from one that
+        // never shows a clock at all.
+        expect(agentNoticeText([run()], 1000 + 9_000)).toBe("claude · working");
+        expect(agentNoticeText([run()], 1000 + 10_000)).toBe("claude · working · 0:10");
+    });
+
+    it("an older run should count in minutes and seconds", () => {
+        expect(agentNoticeText([run({ line: "Read note.md" })], 1000 + 125_000))
+            .toBe("claude · Read note.md · 2:05");
+    });
+
+    it("more than one live run should be counted, on the oldest one's clock", () => {
+        const runs = [run({ id: "a", startedAt: 1000 }), run({ id: "b", startedAt: 60_000 })];
+        expect(agentNoticeText(runs, 1000 + 125_000)).toBe("2 agents working · 2:05");
     });
 });
 

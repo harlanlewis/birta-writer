@@ -57,7 +57,10 @@ import { EFFORT_FLAGS, harnessName, MODEL_FLAGS } from "./harnessCapabilities";
 /** Re-exported: the dispatcher is where callers and tests expect to find it. */
 export { harnessName };
 import { cachedCapabilities } from "./harnessProbe";
-import type { AgentRouteSummary, AgentRunMessage } from "../../shared/messages";
+import { AgentProgressReader } from "./agentProgress";
+import type {
+    AgentProgressMessage, AgentRouteSummary, AgentRunMessage,
+} from "../../shared/messages";
 
 /** Internal command the webview's `askAgent` message runs (not contributed). */
 export const ASK_AGENT_COMMAND = "birta.askAgent";
@@ -81,6 +84,26 @@ export const CHAT_OPEN_COMMAND = "workbench.action.chat.open";
 export const TERMINAL_NAME = "Birta AI";
 /** Stderr tail carried into a failure report; stdout tail shown when a run changes nothing. */
 const OUTPUT_TAIL = 400;
+/**
+ * No more than one progress line per run per window. The corner is a glance,
+ * not a stream: a structured harness emits events far faster than anyone
+ * reads them, and every one of them costs an IPC hop and a transaction in the
+ * page. Leading edge then trailing, so the first line of a run is immediate
+ * and the last line of a burst is never the one that got dropped.
+ */
+const PROGRESS_THROTTLE_MS = 400;
+/**
+ * The two background templates the first-use picker offers, each asking its
+ * own CLI for the structured events the corner notice relays. Constants
+ * because the picker names each one twice, as the value and as the line the
+ * user reads before choosing it, and the two drifting apart would show one
+ * command and store another. `pickRoute`'s header has the rest of the
+ * reasoning; verified against Claude Code 2.1.278 and Codex 0.149.0.
+ */
+export const CLAUDE_BACKGROUND_TEMPLATE =
+    "claude -p {prompt} --permission-mode acceptEdits --output-format stream-json --verbose";
+export const CODEX_BACKGROUND_TEMPLATE =
+    "codex exec --json --sandbox workspace-write --skip-git-repo-check {prompt}";
 /** Largest attachment written to disk. Mirrors the panel's own pre-read cap. */
 const MAX_ATTACHMENT_BYTES = 16 * 1024 * 1024;
 
@@ -259,12 +282,26 @@ interface RoutePick extends vscode.QuickPickItem {
  * it is asked once. The background templates are the CLIs' own
  * non-interactive forms; a template that would open an interactive session
  * hangs in the background with no terminal to answer it.
+ *
+ * Each BACKGROUND template asks its CLI for structured events, which is what
+ * the corner notice relays while the run is live (`agentProgress.ts`). It is
+ * written here rather than added to whatever the user has configured: adding
+ * a flag to somebody else's command line is how a request fails instead of
+ * differing, which is the rule `harnessCapabilities.ts` exists to keep. A
+ * template that asks for none still runs, and its notice is the page's own
+ * clock. The terminal templates ask for none on purpose: the user is reading
+ * that output, and events are worse to read than prose.
+ *
+ * Claude Code's two flags travel together. Its help states the first's
+ * prerequisite (`--print`) and its error states the second (`--verbose`), so
+ * removing either from a stored template is a command that fails; the failure
+ * quotes the CLI's own sentence, which says which one.
  */
 async function pickRoute(): Promise<{ command: string; mode: AgentMode } | undefined> {
     const picks: RoutePick[] = [
-        { label: "Claude Code, in the background", description: "claude -p {prompt} --permission-mode acceptEdits", detail: vscode.l10n.t("No terminal; a marker in the gutter while it runs, the edit arrives when it finishes"), value: "claude -p {prompt} --permission-mode acceptEdits", mode: "background" },
+        { label: "Claude Code, in the background", description: CLAUDE_BACKGROUND_TEMPLATE, detail: vscode.l10n.t("No terminal; a marker in the gutter and a line in the corner while it runs, the edit arrives when it finishes"), value: CLAUDE_BACKGROUND_TEMPLATE, mode: "background" },
         { label: "Claude Code, in a terminal", description: "claude {prompt}", detail: vscode.l10n.t("One reused Birta AI terminal you can watch and answer"), value: "claude {prompt}", mode: "terminal" },
-        { label: "Codex CLI, in the background", description: "codex exec --sandbox workspace-write --skip-git-repo-check {prompt}", detail: vscode.l10n.t("No terminal; a marker in the gutter while it runs"), value: "codex exec --sandbox workspace-write --skip-git-repo-check {prompt}", mode: "background" },
+        { label: "Codex CLI, in the background", description: CODEX_BACKGROUND_TEMPLATE, detail: vscode.l10n.t("No terminal; a marker in the gutter and a line in the corner while it runs"), value: CODEX_BACKGROUND_TEMPLATE, mode: "background" },
         { label: "Codex CLI, in a terminal", description: "codex {prompt}", detail: vscode.l10n.t("One reused Birta AI terminal you can watch and answer"), value: "codex {prompt}", mode: "terminal" },
         { label: vscode.l10n.t("VS Code Chat view"), description: AGENT_ROUTE_CHAT, detail: vscode.l10n.t("Copilot Chat or any chat participant, with the request filled in"), value: AGENT_ROUTE_CHAT },
         { label: vscode.l10n.t("Copy to clipboard"), description: AGENT_ROUTE_CLIPBOARD, detail: vscode.l10n.t("Paste the request into any agent yourself"), value: AGENT_ROUTE_CLIPBOARD },
@@ -284,7 +321,7 @@ async function pickRoute(): Promise<{ command: string; mode: AgentMode } | undef
         value = await vscode.window.showInputBox({
             title: vscode.l10n.t("Agent command"),
             prompt: vscode.l10n.t("A shell command with {prompt} where the quoted request goes"),
-            value: "claude -p {prompt} --permission-mode acceptEdits",
+            value: CLAUDE_BACKGROUND_TEMPLATE,
             ignoreFocusOut: true,
         });
         if (!value?.trim()) { return undefined; }
@@ -298,8 +335,13 @@ async function pickRoute(): Promise<{ command: string; mode: AgentMode } | undef
     return { command: value, mode };
 }
 
-/** Where run-state reports go: the provider posts them to the document's webview. */
-export type AgentRunReporter = (uri: vscode.Uri, message: AgentRunMessage) => void;
+/**
+ * Where a run's reports go: the provider posts them to the document's webview.
+ * Its life (`agentRun`) and, while it is live, what it is doing
+ * (`agentProgress`).
+ */
+export type AgentRunReporter =
+    (uri: vscode.Uri, message: AgentRunMessage | AgentProgressMessage) => void;
 
 interface BackgroundRun {
     readonly requestId: string;
@@ -469,10 +511,34 @@ function startBackground(
     let stderr = "";
     let stdout = "";
     let transcript = "";
+    // What the run is doing, for the corner notice. Reads what the harness is
+    // already printing and adds nothing to the user's template: see
+    // `agentProgress.ts` and the progress section of docs/AGENT_BRIDGE.md.
+    const progress = new AgentProgressReader();
+    let progressTimer: ReturnType<typeof setTimeout> | undefined;
+    let queuedLine: string | undefined;
+    let sentLine: string | undefined;
+    const sendProgress = (line: string): void => {
+        // A run saying the same thing again is not news. A harness reports
+        // thinking as a stream of events, all of which reduce to one word, and
+        // repeating it costs a hop and a transaction to change nothing.
+        if (line === sentLine) { return; }
+        if (progressTimer) { queuedLine = line; return; }
+        sentLine = line;
+        report(uri, { type: "agentProgress", requestId, line });
+        progressTimer = setTimeout(() => {
+            progressTimer = undefined;
+            const next = queuedLine;
+            queuedLine = undefined;
+            if (next !== undefined) { sendProgress(next); }
+        }, PROGRESS_THROTTLE_MS);
+    };
     const record = (chunk: Buffer, isErr: boolean): void => {
         const text = chunk.toString("utf8");
         transcript = (transcript + text).slice(-OUTPUT_CAP);
         if (isErr) { stderr = (stderr + text).slice(-OUTPUT_TAIL); } else { stdout = (stdout + text).slice(-OUTPUT_TAIL); }
+        const line = progress.read(text, isErr ? "stderr" : "stdout");
+        if (line !== undefined) { sendProgress(line); }
     };
     child.stderr?.on("data", (chunk: Buffer) => record(chunk, true));
     child.stdout?.on("data", (chunk: Buffer) => record(chunk, false));
@@ -496,6 +562,12 @@ function startBackground(
         runs.delete(requestId);
         run.watch.dispose();
         refreshRunsItem();
+        // Nothing more is said about a run that has ended. A queued line
+        // posting after `done` would put a working notice back in the corner
+        // of a document whose run is over.
+        clearTimeout(progressTimer);
+        progressTimer = undefined;
+        queuedLine = undefined;
     };
     child.on("error", (err) => {
         finish();
@@ -514,7 +586,14 @@ function startBackground(
                 return;
             }
             if (code !== 0) {
-                failed(vscode.l10n.t("exit code {0}. {1}", String(code), (stderr.trim() || stdout.trim())));
+                // A structured run prints its events on stdout, so a tail of
+                // that is JSON rather than a reason. What the harness SAID is
+                // the reason there; stderr still leads, because a run that
+                // failed before it emitted an event has its cause only there.
+                const tail = progress.isStructured
+                    ? (stderr.trim() || progress.lastSaid || "")
+                    : (stderr.trim() || stdout.trim());
+                failed(vscode.l10n.t("exit code {0}. {1}", String(code), tail));
                 return;
             }
             // Every run ends with something the user can see. A run that
@@ -526,7 +605,11 @@ function startBackground(
             if (!changed) {
                 logRun("finished, no change to the file");
                 report(uri, { type: "agentRun", requestId, status: "done", harness });
-                const said = stdout.trim().split(/\r?\n/).filter((l) => l.trim() !== "").slice(-3).join(" ");
+                // Same reason as the failure tail above: a structured run's
+                // last words are in its events, not in the tail of its stdout.
+                const said = progress.isStructured
+                    ? (progress.lastSaid ?? "")
+                    : stdout.trim().split(/\r?\n/).filter((l) => l.trim() !== "").slice(-3).join(" ");
                 void Promise.resolve(vscode.window.showInformationMessage(
                     said
                         ? vscode.l10n.t("{0} finished without changing {1}. It said: {2}", harness, relPath, said)

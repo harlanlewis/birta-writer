@@ -117,10 +117,17 @@ export async function run({ page, check, baseUrl }) {
           message: "command not found" }, "*"), id);
     await page.waitForTimeout(300);
 
-    const failure = await page.evaluate(() => ({
-        markers: document.querySelectorAll(".ProseMirror .agent-pending").length,
-        toast: document.querySelector(".agent-toast") !== null,
-    }));
+    const failure = await page.evaluate(() => {
+        const el = document.querySelector(".agent-toast");
+        return {
+            markers: document.querySelectorAll(".ProseMirror .agent-pending").length,
+            // SHOWING, not present. The node is the one surface the live-run
+            // notice also draws on (MAR-464), so a run that has been live has
+            // left it in the page whatever it now says; what the corner is
+            // saying is the visible class.
+            toast: el?.classList.contains("agent-toast--visible") ?? false,
+        };
+    });
     check("the failure takes the marker out of the gutter",
         failure.markers === 0, JSON.stringify(failure));
     check("and says nothing in the corner, because this host says it itself",

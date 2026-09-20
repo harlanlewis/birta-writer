@@ -32,7 +32,7 @@ import {
 } from "../agentBridge/askAgent";
 import type { ActiveEditorContext } from "../agentBridge/api";
 import type { EditorSelectionContext } from "../../shared/agentContext";
-import type { AgentRunMessage } from "../../shared/messages";
+import type { AgentProgressMessage, AgentRunMessage } from "../../shared/messages";
 import { makeFakeTextDocument, resetTextDocumentMocks, Range, Uri } from "../../__mocks__/vscode";
 
 /** A spawn stand-in: an emitter with a stderr stream and a kill the test can drive. */
@@ -72,9 +72,30 @@ function configureRoute(command: string, mode = "background"): { update: ReturnT
     return { update };
 }
 
-function reporter(): { report: (uri: vscode.Uri, m: AgentRunMessage) => void; messages: AgentRunMessage[] } {
-    const messages: AgentRunMessage[] = [];
-    return { report: (_uri, m) => { messages.push(m); }, messages };
+type ReportedMessage = AgentRunMessage | AgentProgressMessage;
+
+/**
+ * Everything a run reported, and the run reports on their own.
+ *
+ * `messages` carries both kinds, because a live run also relays what it is
+ * doing, so it is no longer indexable by run step. `runs` is what an
+ * assertion about the run's LIFE reads; `messages` is for the relay itself.
+ */
+function reporter(): {
+    report: (uri: vscode.Uri, m: ReportedMessage) => void;
+    messages: ReportedMessage[];
+    runs: AgentRunMessage[];
+} {
+    const messages: ReportedMessage[] = [];
+    const runs: AgentRunMessage[] = [];
+    return {
+        report: (_uri, m) => {
+            messages.push(m);
+            if (m.type === "agentRun") { runs.push(m); }
+        },
+        messages,
+        runs,
+    };
 }
 
 const flush = () => new Promise((r) => setTimeout(r, 0));
@@ -557,6 +578,134 @@ describe("askAgent", () => {
         expect(vscode.window.showInformationMessage).not.toHaveBeenCalled();
     });
 
+    /**
+     * What a live run relays (MAR-464). The reduction itself is
+     * `agentProgress.test.ts`, over captured harness output; these are about
+     * the wiring: that a chunk reaches the page as a line, that a burst is
+     * throttled rather than posted event by event, and that nothing is said
+     * about a run once it has ended.
+     */
+    it("a chunk from a live run should reach the page as one progress line", async () => {
+        configureRoute("claude -p {prompt}", "background");
+        makeFakeTextDocument("# Plan\n", noteUri);
+        const child = new FakeChild();
+        spawnMock.mockImplementation(() => child);
+        const { report, messages } = reporter();
+        await askAgent(() => Promise.resolve(activeAt(1)), report, "do x", "ai20");
+
+        child.stdout.emit("data", Buffer.from(
+            `{"type":"assistant","session_id":"s","message":{"content":[{"type":"tool_use","name":"Read","input":{"file_path":"/notes/plan.md"}}]}}\n`));
+
+        expect(messages[1]).toEqual({ type: "agentProgress", requestId: "ai20", line: "Read plan.md" });
+        child.emit("close", 0);
+        await flush();
+    });
+
+    it("a burst of events should be throttled to the newest line", async () => {
+        vi.useFakeTimers();
+        try {
+            configureRoute("claude -p {prompt}", "background");
+            makeFakeTextDocument("# Plan\n", noteUri);
+            const child = new FakeChild();
+            spawnMock.mockImplementation(() => child);
+            const { report, messages } = reporter();
+            const started = askAgent(() => Promise.resolve(activeAt(1)), report, "do x", "ai21");
+            await vi.advanceTimersByTimeAsync(0);
+            await started;
+
+            for (const step of ["one", "two", "three"]) {
+                child.stdout.emit("data", Buffer.from(`${step}\n`));
+            }
+
+            // The first is immediate, so a run says something the moment it
+            // has something to say; the rest collapse into one.
+            const lines = () => messages.filter((m) => m.type === "agentProgress");
+            expect(lines()).toHaveLength(1);
+            await vi.advanceTimersByTimeAsync(500);
+            expect(lines()).toHaveLength(2);
+            expect(lines().at(-1)).toMatchObject({ line: "three" });
+
+            // The same line again is not news. A harness reports thinking as
+            // a stream of events that all reduce to one word, and this is
+            // where that stops being a message per event.
+            child.stdout.emit("data", Buffer.from("three\n"));
+            await vi.advanceTimersByTimeAsync(500);
+            expect(lines()).toHaveLength(2);
+
+            // And a run that has ended says nothing more. The first of these
+            // opens a window and the second sits behind it, which is the only
+            // state in which a line can still be owed when a run exits.
+            child.stdout.emit("data", Buffer.from("four\n"));
+            child.stdout.emit("data", Buffer.from("five\n"));
+            child.emit("close", 0);
+            await vi.advanceTimersByTimeAsync(2000);
+            expect(lines().some((m) => (m as { line: string }).line === "four")).toBe(true);
+            expect(lines().some((m) => (m as { line: string }).line === "five")).toBe(false);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    /**
+     * A structured run prints its events on stdout, so every report that used
+     * to quote a tail of that would quote JSON. Both of the reports that do
+     * are held here, each against the prose arm that still reads the tail:
+     * without the pair, a version that always quoted the events and a version
+     * that never did would each pass one of them.
+     */
+    const SAID_EVENT = `{"type":"assistant","session_id":"s","message":{"content":[{"type":"text","text":"Nothing to change here."}]}}`;
+
+    it("a structured run that changed nothing should quote what it said, not its events", async () => {
+        configureRoute("claude -p {prompt}", "background");
+        makeFakeTextDocument("# Plan\n", noteUri);
+        const child = new FakeChild();
+        spawnMock.mockImplementation(() => child);
+        await askAgent(() => Promise.resolve(activeAt(1)), reporter().report, "say hello", "ai22");
+
+        child.stdout.emit("data", Buffer.from(`${SAID_EVENT}\n`));
+        vi.mocked(vscode.workspace.fs.readFile).mockResolvedValueOnce(Buffer.from("# Plan\n"));
+        child.emit("close", 0);
+        await flush();
+
+        const said = vi.mocked(vscode.window.showInformationMessage).mock.calls[0]![0] as string;
+        expect(said).toContain("Nothing to change here.");
+        expect(said).not.toContain("session_id");
+    });
+
+    it("a structured run that failed silently should say what it said, not its events", async () => {
+        configureRoute("claude -p {prompt}", "background");
+        makeFakeTextDocument("# Plan\n", noteUri);
+        const child = new FakeChild();
+        spawnMock.mockImplementation(() => child);
+        await askAgent(() => Promise.resolve(activeAt(1)), reporter().report, "do x", "ai23");
+
+        // Nothing on stderr, which is the case a tail of stdout used to cover.
+        child.stdout.emit("data", Buffer.from(`${SAID_EVENT}\n`));
+        child.emit("close", 3);
+        await flush();
+        await flush();
+
+        const shown = vi.mocked(vscode.window.showErrorMessage).mock.calls[0]![0] as string;
+        expect(shown).toContain("Nothing to change here.");
+        expect(shown).not.toContain("session_id");
+    });
+
+    it("a prose run should still be quoted from its own output", async () => {
+        configureRoute("claude -p {prompt}", "background");
+        makeFakeTextDocument("# Plan\n", noteUri);
+        const child = new FakeChild();
+        spawnMock.mockImplementation(() => child);
+        await askAgent(() => Promise.resolve(activeAt(1)), reporter().report, "do x", "ai24");
+
+        child.stdout.emit("data", Buffer.from("plain last words\n"));
+        child.emit("close", 3);
+        await flush();
+        await flush();
+
+        expect(vi.mocked(vscode.window.showErrorMessage).mock.calls[0]![0] as string)
+            .toContain("plain last words");
+    });
+
     it("done should not be reported until the clean document shows the agent's write, within a bound", async () => {
         configureRoute("claude -p {prompt}", "background");
         makeFakeTextDocument("# Plan\n", noteUri);
@@ -598,7 +747,7 @@ describe("askAgent", () => {
         makeFakeTextDocument("# Plan\n", noteUri);
         const child = new FakeChild();
         spawnMock.mockImplementation(() => child);
-        const { report, messages } = reporter();
+        const { report, runs } = reporter();
         await askAgent(() => Promise.resolve(activeAt(1)), report, "say hello", "ai12");
 
         child.stdout.emit("data", Buffer.from("Hello! Nothing to change here.\n"));
@@ -606,7 +755,7 @@ describe("askAgent", () => {
         child.emit("close", 0);
         await flush();
 
-        expect(messages[1]).toEqual({ type: "agentRun", requestId: "ai12", status: "done", harness: "claude" });
+        expect(runs[1]).toEqual({ type: "agentRun", requestId: "ai12", status: "done", harness: "claude" });
         expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
             expect.stringMatching(/claude finished without changing notes\/plan\.md\. It said: Hello! Nothing to change here\./),
             "Show Output",
