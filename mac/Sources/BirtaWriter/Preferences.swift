@@ -968,24 +968,18 @@ enum Prefs {
         set { d.set(newValue ?? "", forKey: Key.updateDeclinedTag.rawValue) }
     }
 
-    /// The release the app swapped itself to without asking, until the person
-    /// has been told.
+    /// The release the app swapped itself to without asking, until the next
+    /// launch has read it back.
     ///
-    /// One key doing two jobs in sequence, and the sequence is what makes it
-    /// one key rather than two. It is written just before the app quits into a
-    /// staged swap, where it means "this is the version being put in, and it
-    /// is unverified". On the next launch the running version answers whether
-    /// the swap actually happened: a swap that failed leaves this ahead of the
-    /// build, and the key is cleared with nothing said, because announcing an
-    /// update that did not happen is worse than announcing nothing. A swap
-    /// that worked leaves it as the version to announce, and it stays until
-    /// the notice is dismissed.
+    /// It is written just before the app quits into a staged swap, where it
+    /// means "this is the version being put in, and it is unverified". The
+    /// process that writes it cannot know whether the swap worked, because
+    /// the swap is what happens after it is gone; only the next launch's own
+    /// version can answer that, which is why the key survives a quit at all.
     ///
-    /// That last part is why it survives a quit at all. The panel is hidden
-    /// most of the time, so an announcement cleared on being SHOWN can be
-    /// spent on a window that was up for a second while somebody was reaching
-    /// for something else. The dismiss button is the only evidence anybody
-    /// read it.
+    /// Nobody is told either way. `recordSilentUpdate` in `App.swift` reads
+    /// it, clears it and writes the answer to the log, where a swap that did
+    /// not go in is the line worth having.
     static var updateInstalledTag: String? {
         get {
             let tag = d.string(forKey: Key.updateInstalledTag.rawValue) ?? ""

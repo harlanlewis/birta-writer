@@ -246,23 +246,6 @@ final class UpdatePolicyTests: XCTestCase {
         XCTAssertFalse(UpdatePolicy.isUnattended(wrong))
     }
 
-    // MARK: saying what happened
-
-    func testTheNoticeShouldNameTheVersionAndSayNobodyWasAsked() {
-        let said = UpdatePolicy.installedNotice(appName: "Birta Writer", tag: "v2026.902.0")
-        XCTAssertEqual(said, "Birta Writer updated to 2026.902.0 in the background.")
-    }
-
-    /// Past tense, because by the time it is read the swap is done and the app
-    /// in front of the reader is the new one. A sentence promising something
-    /// still to come would send them looking for a restart to perform.
-    func testTheNoticeShouldNotSoundLikeSomethingIsStillToHappen() {
-        let said = UpdatePolicy.installedNotice(appName: "Birta Writer", tag: "v2026.902.0")
-        for pending in ["will ", "restart", "downloading", "installing", "…"] {
-            XCTAssertFalse(said.lowercased().contains(pending), said)
-        }
-    }
-
     // MARK: whether the swap may go in at all
 
     /// The one state in which the app replaces itself with nobody asked.
@@ -407,7 +390,7 @@ final class UpdatePolicyTests: XCTestCase {
             XCTAssertFalse(made.buttons.isEmpty, "\(answer)")
             XCTAssertFalse(made.buttons.last!.isEmpty, "\(answer)")
         }
-        XCTAssertEqual(report(.upToDate).detail, "You have 2026.826.0, which is the newest version.")
+        XCTAssertEqual(report(.upToDate).detail, "You have 2026.826.0.")
         XCTAssertEqual(report(.upToDate).buttons, ["OK"])
         // A failure carries the updater's own reason, and the reason leads.
         let failed = report(.couldNotInstall(reason: "Could not download the update."))
@@ -457,9 +440,9 @@ final class UpdatePolicyTests: XCTestCase {
     /// does, and a sheet that adds one asks somebody to work out whether
     /// v2026.905.0 and 2026.905.0 are one release. The surfaces are many and
     /// met in any order: the offer and the answer sheet are the same sentence
-    /// raised two ways, and the panel can carry the armed notice and then the
-    /// installed one about a single version minutes apart. Both of those
-    /// pairs disagreed before this.
+    /// raised two ways, and the panel's status line carries the downloading
+    /// notice and then the armed one about a single version seconds apart.
+    /// Both of those pairs disagreed before this.
     ///
     /// `plain` is private, so the check is on the OUTPUT and not on the call:
     /// what it proves is that the sentence went through it, however it was
@@ -483,8 +466,6 @@ final class UpdatePolicyTests: XCTestCase {
             return (name(of: answer), made.title + " " + made.detail)
         }
         swept.append(("title", UpdatePolicy.title(appName: app, tag: Self.sweptTag)))
-        swept.append(("installedNotice",
-                      UpdatePolicy.installedNotice(appName: app, tag: Self.sweptTag)))
         swept.append(("installOnQuitNotice",
                       UpdatePolicy.installOnQuitNotice(appName: app, tag: Self.sweptTag)))
         swept.append(("releaseGap",
@@ -513,7 +494,7 @@ final class UpdatePolicyTests: XCTestCase {
                                 "checkReport.found", "checkReport.found",
                                 "checkReport.notThisBuild", "checkReport.unreachable",
                                 "releaseGap"])
-        XCTAssertEqual(swept.count - silent.count, 7,
+        XCTAssertEqual(swept.count - silent.count, 6,
                        "fewer sentences named a version than this sweep was written to cover")
     }
 

@@ -337,11 +337,7 @@ final class Coordinator {
         appearanceMode = mode
         applyTheme()
     }
-    /// The one message in the panel that does not go on its own: what the app
-    /// did to itself while nobody was watching. `UpdateNotice` holds the
-    /// argument for why it is a card beside the status line rather than a mode
-    /// of it.
-    private let updateNotice = UpdateNotice()
+
     private let titleBar = TitleBarAccessory()
     private let host: WebHost
     private let writer: CoalescingWriter
@@ -880,7 +876,6 @@ final class Coordinator {
         contentView.onAppearanceChange = { [weak self] in self?.applyTheme() }
         contentView.addSubview(host.webView)
         contentView.addSubview(statusOverlay)
-        contentView.addSubview(updateNotice)
         // ABOVE the web view in z-order, which is the whole of why it works:
         // the web view covers the band, so a sibling below it would never see
         // a mouse event. Laid out by frame rather than by constraints because
@@ -914,7 +909,6 @@ final class Coordinator {
         }
         host.webView.translatesAutoresizingMaskIntoConstraints = false
         statusOverlay.translatesAutoresizingMaskIntoConstraints = false
-        updateNotice.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
             // The web view fills the window: the status line floats over its
             // bottom trailing corner rather than taking a row from it.
@@ -930,16 +924,6 @@ final class Coordinator {
             statusOverlay.bottomAnchor.constraint(equalTo: contentView.bottomAnchor,
                                                   constant: -Coordinator.statusBaseline),
             statusOverlay.heightAnchor.constraint(equalToConstant: StatusOverlay.height),
-            // The same trailing edge as the status line, and ABOVE it rather
-            // than in its place: the notice can be up for hours, and a save
-            // during those hours still has its corner to appear in.
-            updateNotice.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -14),
-            updateNotice.bottomAnchor.constraint(equalTo: statusOverlay.topAnchor, constant: -10),
-            // Free to be wider than the status line, which is held to half the
-            // window because the formatting dock shares its row. Nothing
-            // shares this one.
-            updateNotice.leadingAnchor.constraint(greaterThanOrEqualTo: contentView.leadingAnchor,
-                                                  constant: 14),
         ])
         contentView.onHoverChange = { [weak self] _ in self?.applyChromeVisibility() }
         // The title's own hover, and the popover it opens, which is a window
@@ -3091,17 +3075,6 @@ final class Coordinator {
     /// message is: it says what just happened and goes.
     func flashStatus(_ message: String) {
         statusOverlay.flash(message)
-    }
-
-    /// Put a message in the panel that stays until it is dismissed.
-    ///
-    /// Not `flashStatus`, and the difference is the whole of why this exists:
-    /// a flash answers something the person just did and they are looking at
-    /// the window when it lands. This reports what the app did while they were
-    /// elsewhere, so it has to still be there when they come back.
-    func showUpdateNotice(_ message: String, onDismiss: @escaping () -> Void) {
-        updateNotice.onDismiss = onDismiss
-        updateNotice.show(message)
     }
 
     /// The window an offer about this app should be attached to.

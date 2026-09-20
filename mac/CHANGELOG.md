@@ -12,6 +12,10 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ## [Unreleased]
 
+### Removed
+
+- Birta Writer for Mac no longer says it updated itself. The card that sat in the panel after the app had replaced itself with a newer version is gone, and nothing takes its place. With automatic updates on, the app still replaces itself while nobody is using it, and it is now silent about having done so; the switch in Settings is what stops it, and an update offered while you are at the keyboard still asks first. The swap is written to the system log instead, as is a swap that was armed and did not go in.
+
 ---
 
 ## [2026.920.0] - 2026, September 20
