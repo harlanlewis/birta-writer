@@ -44,6 +44,7 @@ import {
     type EmbedCardResult,
 } from "../../shared/connectors";
 import { fetchConnectorCard } from "./fetchCard";
+import { asanaCard } from "./asana";
 import { githubCard } from "./github";
 import { linearCard } from "./linear";
 import { OAuthFlow } from "./oauthFlow";
@@ -103,12 +104,19 @@ interface ConnectorRecord {
 const CARD_BUILDERS: Record<ConnectorId, (match: EmbedMatch, body: unknown) => EmbedCardData | null> = {
     github: githubCard,
     linear: linearCard,
+    asana: asanaCard,
 };
 
 export class ConnectorService {
     private cache = new Map<string, Promise<EmbedCardResult | null>>();
     /** Connected-state mirror, so the hot path avoids a keychain read per card. */
     private connected = new Map<ConnectorId, boolean>();
+    /**
+     * Token renewals in flight, one per connector, so concurrent resolves of
+     * different cards share a renewal instead of racing each other into
+     * spending the same refresh token twice. Holds promises, never credentials.
+     */
+    private renewing = new Map<ConnectorId, Promise<string | null>>();
 
     /**
      * The browser round trip, injectable so a test drives connect and refresh
@@ -182,10 +190,8 @@ export class ConnectorService {
         if (spec.auth === "oauth-pkce") {
             return this.connectViaOAuth(spec, scopes);
         }
-        if (spec.auth !== "builtin") {
-            // `token` has no provider behind it. Refusing loudly beats a
-            // half-path.
-            return { ok: false, message: vscode.l10n.t("{0} cannot be connected yet.", spec.label) };
+        if (spec.auth === "token") {
+            return this.connectViaToken(spec);
         }
         let session: vscode.AuthenticationSession | undefined;
         try {
@@ -318,6 +324,78 @@ export class ConnectorService {
     }
 
     /**
+     * Connect by paste: open the provider's own instructions, take a token,
+     * verify it, record it.
+     *
+     * The browser is opened BEFORE the box is shown, not after and not
+     * instead. Opening it afterwards would steal focus from a box the user is
+     * standing in, and not opening it at all would ask for a credential
+     * without saying where one comes from. It is the same gesture the OAuth
+     * rung makes one rung up, and it carries nothing: the page is the
+     * provider's public documentation, reached on the user's own browser,
+     * which is rung 0b of the posture rather than rung 2.
+     *
+     * `ignoreFocusOut` is load-bearing rather than a nicety. Minting a token
+     * means leaving VS Code, and the default box closes the moment focus does,
+     * so without it the flow cannot be completed by anyone who did not already
+     * have a token on the clipboard.
+     *
+     * Nothing is written before the verify passes, so a refused token leaves
+     * no record behind, and the paste never reaches a setting or a log.
+     */
+    private async connectViaToken(
+        spec: ConnectorSpec,
+    ): Promise<{ ok: boolean; message?: string } | null> {
+        if (spec.tokenHelpUrl) {
+            await vscode.env.openExternal(vscode.Uri.parse(spec.tokenHelpUrl));
+        }
+        const pasted = await vscode.window.showInputBox({
+            title: vscode.l10n.t("Connect {0}", spec.label),
+            // The full cost of the credential, at the moment the user is
+            // deciding to hand it over. This is the token rung's equivalent of
+            // the tier picker's disclosure, and it is the only place it can go:
+            // there is no consent screen of ours after this, and the
+            // provider's own page does not know what Birta will do.
+            prompt: vscode.l10n.t(
+                "Paste a personal access token. Birta keeps it in your keychain, never in settings.",
+            ) + (spec.scopeNote ? ` ${spec.scopeNote}` : ""),
+            placeHolder: vscode.l10n.t("Personal access token"),
+            password: true,
+            ignoreFocusOut: true,
+            validateInput: (value) =>
+                value.trim().length > 0
+                    ? null
+                    : vscode.l10n.t("Paste a token, or press Escape to cancel."),
+        });
+        // Dismissed, or submitted empty against the validator. Either way the
+        // user did not offer a credential, and a deliberate no gets silence.
+        const token = pasted?.trim();
+        if (!token) {
+            return null;
+        }
+        // One real call before the connection is recorded, the same as the
+        // other two rungs: a token the provider will not honour must never
+        // present itself as a working connection, and this is the one moment
+        // the user is waiting on us and can be told plainly that it did not
+        // work.
+        const check = await fetchConnectorCard(spec, spec.verifyUrl, token);
+        if (check.state !== "ok") {
+            return {
+                ok: false,
+                message: check.state === "expired"
+                    // Named for what the user can act on. The token was pasted
+                    // a moment ago, so "expired" would send them to renew
+                    // something that was never accepted; what happened is that
+                    // the provider does not honour this string.
+                    ? vscode.l10n.t("{0} rejected that token.", spec.label)
+                    : vscode.l10n.t("Could not reach {0} to confirm the connection.", spec.label),
+            };
+        }
+        await this.writeRecord(spec.id, { auth: spec.auth, token });
+        return { ok: true };
+    }
+
+    /**
      * Connect through the browser: consent, callback, exchange, verify, record.
      *
      * The verify is the same one `builtin` does and for the same reason: a
@@ -430,20 +508,63 @@ export class ConnectorService {
         if (!record.refreshToken) {
             return null;
         }
-        const refreshed = await this.flow.refresh(spec, record.refreshToken);
+        // One renewal per connector at a time, and every concurrent resolve
+        // waits on the same one.
+        //
+        // The resolve cache dedupes by CARD, so two different issue links in a
+        // document are two independent resolves that read the same lapsed
+        // record in the same turn. Renewing once each is not merely wasteful:
+        // against a provider that rotates its refresh token, the second spends
+        // one the first already invalidated, so a card reads `expired` while
+        // the connection is fine, and the two writes race over which record
+        // survives. Measured at two calls before this existed.
+        //
+        // Keyed by connector rather than by the refresh token, which would be
+        // a second place a credential lives. The renewal writes its record
+        // before it settles, so a resolve arriving after the entry is dropped
+        // reads the fresh record and asks for nothing.
+        const inFlight = this.renewing.get(spec.id);
+        if (inFlight) {
+            return inFlight;
+        }
+        const pending = this.renew(spec, record.refreshToken);
+        this.renewing.set(spec.id, pending);
+        try {
+            return await pending;
+        } finally {
+            this.renewing.delete(spec.id);
+        }
+    }
+
+    /**
+     * Spend a refresh token and record what came back, or null when the
+     * provider would not renew.
+     *
+     * Nothing is written on a failure. A record carrying a fresh access token
+     * beside a spent refresh token, or one whose refresh token was cleared, is
+     * unrecoverable without reconnecting and would not say so, which is worse
+     * than the `expired` card a null produces.
+     */
+    private async renew(spec: ConnectorSpec, refreshToken: string): Promise<string | null> {
+        const refreshed = await this.flow.refresh(spec, refreshToken);
         if (!refreshed.ok) {
             return null;
         }
-        // The provider may or may not rotate the refresh token. Keeping the old
-        // one when none comes back is what makes a non-rotating provider work;
-        // overwriting with undefined would end the connection at the next
-        // expiry for no reason.
+        // A disconnect may have landed while the provider was answering.
+        // Writing now would resurrect a credential the user just deleted, and
+        // "disconnecting deletes it" is a promise rather than a tendency.
+        if (await this.readRecord(spec.id) === null) {
+            return null;
+        }
         await this.writeRecord(spec.id, {
             auth: spec.auth,
             token: refreshed.tokens.accessToken,
-            ...(refreshed.tokens.refreshToken ?? record.refreshToken
-                ? { refreshToken: refreshed.tokens.refreshToken ?? record.refreshToken }
-                : {}),
+            // The provider may or may not rotate. Keeping the one just spent
+            // when none comes back is what makes a non-rotating provider work;
+            // overwriting with undefined would end the connection at the next
+            // expiry for no reason. One of the two always exists, because a
+            // renewal is only attempted while holding a refresh token.
+            refreshToken: refreshed.tokens.refreshToken ?? refreshToken,
             ...(refreshed.tokens.expiresAt !== undefined
                 ? { expiresAt: refreshed.tokens.expiresAt }
                 : {}),
@@ -471,10 +592,27 @@ export class ConnectorService {
                 return null;
             }
             const token = (parsed as { token?: unknown }).token;
+            const refreshToken = (parsed as { refreshToken?: unknown }).refreshToken;
+            const expiresAt = (parsed as { expiresAt?: unknown }).expiresAt;
             const privateAccess = (parsed as { privateAccess?: unknown }).privateAccess;
+            // Every field `writeRecord` stores is read back here. A field
+            // written and not read is not a smaller record, it is a silently
+            // disabled feature: `refreshToken` and `expiresAt` were stored by
+            // the OAuth connect and dropped here, which left `expiresAt`
+            // permanently undefined, so `oauthCredential` always took its
+            // still-good branch and no refresh could ever run.
+            //
+            // `expiresAt` is typed rather than taken on trust: a keychain value
+            // is JSON somebody else could have written, and a non-number there
+            // would make the comparison against `Date.now()` answer false and
+            // refresh on every single resolve.
             return {
                 auth,
                 ...(typeof token === "string" ? { token } : {}),
+                ...(typeof refreshToken === "string" ? { refreshToken } : {}),
+                ...(typeof expiresAt === "number" && Number.isFinite(expiresAt)
+                    ? { expiresAt }
+                    : {}),
                 ...(privateAccess === true ? { privateAccess: true } : {}),
             };
         } catch {

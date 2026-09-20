@@ -121,9 +121,64 @@ describe("the connector card states", () => {
     });
 
     it("a provider with no connector should show no connector chrome", () => {
-        const card = renderEmbedCard({ kind: "linear", id: "acme/issue/MAR-1/a-slug" }, "https://linear.app/acme/issue/MAR-1/a-slug");
+        // `googlefile`, which `connectorForEmbedKind` maps to nothing, so this
+        // card can never gain chrome. It used to be a Linear card, which is a
+        // provider that HAS had a connector since MAR-198: that card was bare
+        // only because its answer had not arrived yet, so the check was
+        // passing for a reason with nothing to do with its name.
+        const id = "document/1AbCdEfGhIjKlMnOpQrStUvWxYz01234";
+        const card = renderEmbedCard(
+            { kind: "googlefile", id },
+            "https://docs.google.com/document/d/1AbCdEfGhIjKlMnOpQrStUvWxYz01234/edit",
+        );
         expect(card.querySelector(".embed-card__connect")).toBeNull();
         expect(card.querySelector(".embed-card__status")).toBeNull();
+        // Nothing was even asked, which is the free case the chrome rests on.
+        expect(
+            mockVscodeApi.postMessage.mock.calls
+                .map((c) => c[0] as { type: string })
+                .filter((m) => m.type === "resolveEmbedCard"),
+        ).toHaveLength(0);
+    });
+
+    describe("a token-rung provider", () => {
+        const TASK = {
+            kind: "asana" as const,
+            id: "0/1201234567890123/1207654321098765",
+        };
+        const TASK_HREF = "https://app.asana.com/0/1201234567890123/1207654321098765";
+        const resolve = (result: Parameters<typeof handleEmbedCardResult>[1]): void =>
+            resolveFor(TASK as unknown as typeof REPO, result);
+
+        it("an unresolved task should still name what the link is and which task", () => {
+            // The URL discloses numbers and nothing else, so the rung-0 card
+            // is thin by necessity. It must still not be blank, and two Asana
+            // links in one document must not render identically.
+            const card = renderEmbedCard(TASK, TASK_HREF);
+            expect(text(card, ".embed-card__title")).toBe("Asana task");
+            expect(text(card, ".embed-card__detail")).toBe("1207654321098765");
+        });
+
+        it("a task nobody has connected for should offer to connect Asana by name", () => {
+            resolve({ state: "locked", connector: "asana" });
+            const card = renderEmbedCard(TASK, TASK_HREF);
+            expect(text(card, ".embed-card__connect-btn")).toBe("Connect");
+            expect(card.querySelector(".embed-card__connect-btn")?.getAttribute("title"))
+                .toContain("Asana");
+        });
+
+        it("a resolved task should show its name, its people and whether it is done", () => {
+            resolve({
+                state: "ready",
+                connector: "asana",
+                card: { title: "Ship the token rung", subtitle: "Jane Doe · Due 2026-09-30", status: "Open" },
+            });
+            const card = renderEmbedCard(TASK, TASK_HREF);
+            expect(text(card, ".embed-card__title")).toBe("Ship the token rung");
+            expect(text(card, ".embed-card__detail")).toContain("Jane Doe · Due 2026-09-30");
+            expect(text(card, ".embed-card__status")).toBe("Open");
+            expect(card.querySelector(".embed-card__connect")).toBeNull();
+        });
     });
 
     describe("connected", () => {

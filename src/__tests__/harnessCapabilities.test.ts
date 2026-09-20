@@ -2,11 +2,16 @@
  * Reading a harness's own `--help` for what it accepts
  * (src/agentBridge/harnessCapabilities.ts).
  *
- * The fixture is captured VERBATIM from Claude Code, wrapping and all,
- * because the thing under test is a parse of real help text and a fixture
- * written by hand would only prove the parser agrees with its author. The
- * neighbouring flags are kept for the same reason: paragraph boundaries are
- * where this parse fails, so the test has to contain some.
+ * Every fixture but one is captured VERBATIM from a real binary, wrapping
+ * and all, because the thing under test is a parse of real help text and a
+ * fixture written by hand would only prove the parser agrees with its
+ * author. The neighbouring flags are kept for the same reason: paragraph
+ * boundaries are where this parse fails, so the test has to contain some.
+ *
+ * Each capture carries the binary's VERSION and the date it was taken,
+ * because a CLI's help is not a stable target. It changes when its vendor
+ * ships, and a fixture with no provenance later reads as "we regressed"
+ * when it means "they changed".
  *
  * The invariant that matters most is negative. `--fallback-model` sits next
  * to `--model` and means something else entirely, and an effort scale
@@ -17,6 +22,7 @@ import { describe, it, expect } from "vitest";
 import {
     allFlags,
     EFFORT_FLAGS,
+    effortFlagFromValues,
     enumeratedValues,
     helpParagraph,
     parseHarnessHelp,
@@ -24,7 +30,11 @@ import {
 } from "../agentBridge/harnessCapabilities";
 import { agentEffortName, agentModelName, setTemplateFlag } from "../agentBridge/askAgent";
 
-/** Captured from `claude --help`. */
+/**
+ * Captured from `claude --help`. Its `--effort`, `--fallback-model` and
+ * `--model` paragraphs were re-read unchanged against Claude Code 2.1.278 on
+ * 2026-09-19.
+ */
 const CLAUDE_HELP = `Usage: claude [options] [command] [prompt]
 
 Options:
@@ -55,6 +65,11 @@ Commands:
  * preceded by its short alias, and the description sits on the FOLLOWING
  * indented line rather than the flag's own. Codex reported no model support
  * at all while documenting `--model`.
+ *
+ * Re-read unchanged against codex-cli 0.149.0 on 2026-09-19, root help and
+ * `codex exec --help` alike: still `-m, --model <MODEL>`, still no effort
+ * flag on either, so reporting none remains the right answer rather than a
+ * gap.
  */
 const CODEX_HELP = `Usage: codex [OPTIONS] [PROMPT]
 
@@ -98,7 +113,9 @@ Options:
  * in Python.
  *
  * Synthetic rather than captured: it is argparse's documented output shape,
- * not a claim about any particular tool's flags.
+ * not a claim about any particular tool's flags. `AIDER_HELP` below is the
+ * captured one, and the two disagree about exactly the thing a synthetic
+ * fixture is bad at, which is worth reading before writing another.
  */
 const ARGPARSE_HELP = `usage: agent [-h] [--model MODEL] [--reasoning-effort REASONING_EFFORT]
 
@@ -125,6 +142,138 @@ const PLAIN_HELP = `Usage: someagent [options] <prompt>
 Options:
   -h, --help                            Show help
   --verbose                             Chatty output
+`;
+
+/**
+ * Captured from `aider --help`, aider 0.86.2, observed 2026-09-19.
+ *
+ * Real argparse, against which the synthetic `ARGPARSE_HELP` above turns out
+ * to be optimistic in the one place it matters: aider DOES document
+ * `--reasoning-effort`, and documents no values for it at all. So the shape
+ * rule cannot see it and the name in `EFFORT_FLAGS` is what finds it, which
+ * makes aider the one harness on the survey reaching the panel with a flag
+ * and no scale, and therefore the one the composer's free-text effort row
+ * exists for.
+ *
+ * The neighbours are kept because they are the traps: `-m` is `--message`
+ * here rather than the model, `--list-models` puts a second long flag where
+ * an alias goes, and three flags end in words that contain `model`.
+ */
+const AIDER_HELP = `usage: aider [-h] [--model MODEL] [--reasoning-effort REASONING_EFFORT]
+             [--message COMMAND]
+
+Main model:
+  FILE                  files to edit with an LLM (optional)
+  --model MODEL         Specify the model to use for the main chat [env var:
+                        AIDER_MODEL]
+
+Model settings:
+  --list-models MODEL, --models MODEL
+                        List known models which match the (partial) MODEL name
+                        [env var: AIDER_LIST_MODELS]
+  --alias ALIAS:MODEL   Add a model alias (can be used multiple times) [env
+                        var: AIDER_ALIAS]
+  --reasoning-effort REASONING_EFFORT
+                        Set the reasoning_effort API parameter (default: not
+                        set) [env var: AIDER_REASONING_EFFORT]
+  --thinking-tokens THINKING_TOKENS
+                        Set the thinking token budget for models that support
+                        it. Use 0 to disable. (default: not set) [env var:
+                        AIDER_THINKING_TOKENS]
+
+Modes:
+  --message COMMAND, --msg COMMAND, -m COMMAND
+                        Specify a single message to send the LLM, process
+                        reply then exit (disables chat mode) [env var:
+                        AIDER_MESSAGE]
+`;
+
+/**
+ * Captured from `cline --help`, Cline 3.0.62, observed 2026-09-19.
+ *
+ * Plain commander, so every flag parsed from the first day, and yet this is
+ * the harness that proved the `EFFORT_FLAGS` fallback can land somewhere
+ * worse than nowhere. Cline spells its rungs with PIPES, which no value
+ * shape read, so `--thinking` was found by name with an empty scale behind
+ * it: `supportsEffort` true, `efforts` empty, and a picker in the composer
+ * whose only row is the default it already had.
+ *
+ * `--compaction` is kept because it is piped too and is not the scale.
+ */
+const CLINE_HELP = `Usage: cline [options] [command] [prompt]
+
+Cline CLI - AI coding assistant in your terminal
+
+Options:
+  -p, --plan                    Run in plan mode
+  --auto-approve <boolean>      Set tool auto-approval for all tools (default:
+                                true)
+  --thinking <level>            Set reasoning effort:
+                                none|low|medium|high|xhigh. Bare --thinking uses
+                                medium; omitted leaves provider default.
+  --compaction <mode>           Context compaction mode: agentic|basic|off
+                                (default: agentic)
+  -m, --model <model-id>        Model to use for the session with the selected
+                                provider
+  -h, --help                    display help for command
+`;
+
+/**
+ * Captured from `gemini --help`, Gemini CLI 0.60.0, observed 2026-09-19.
+ *
+ * yargs, and a fourth formatter shape: there is NO metavar anywhere. A flag
+ * that takes a value and a flag that does not are printed identically, and
+ * what tells them apart is the type yargs annotates at the end of the
+ * paragraph. Requiring a metavar therefore found not one flag in the whole
+ * of this file, so no model picker was offered and nothing said why.
+ *
+ * The booleans are kept because they are what the second pass must refuse:
+ * `-y, --yolo` and `-m, --model` are the same shape up to the annotation.
+ */
+const GEMINI_HELP = `Usage: gemini [options] [command]
+
+Options:
+  -d, --debug                     Run in debug mode (open debug console with F12)  [boolean] [default: false]
+  -m, --model                     Model  [string]
+  -p, --prompt                    Run in non-interactive (headless) mode with the given prompt. Appended to input on stdin (if any).  [string]
+  -s, --sandbox                   Run in sandbox?  [boolean]
+  -y, --yolo                      Automatically accept all actions (aka YOLO mode)?  [boolean] [default: false]
+      --approval-mode             Set the approval mode: default (prompt for approval), auto_edit (auto-approve edit tools), yolo (auto-approve all tools), plan (read-only mode)  [string] [choices: "default", "auto_edit", "yolo", "plan"]
+      --acp                       Starts the agent in ACP mode  [boolean]
+  -o, --output-format             The format of the CLI output.  [string] [choices: "text", "json", "stream-json"]
+  -v, --version                   Show version number  [boolean]
+  -h, --help                      Show help  [boolean]
+`;
+
+/**
+ * Captured from `copilot --help`, GitHub Copilot CLI 1.0.86, observed
+ * 2026-09-19.
+ *
+ * clap again, so the flag lines parsed from the first day. What did not is
+ * the value list: clap writes an enumeration as `[possible values: ...]`,
+ * and the colon shape cannot reach past the closing bracket, so a
+ * seven-rung effort scale documented in plain sight read as no scale and
+ * the flag naming itself `--reasoning-effort` was never reached either.
+ *
+ * Three bracketed lists are kept, because only one of them is the scale.
+ */
+const COPILOT_HELP = `Usage: copilot [OPTIONS] [COMMAND]
+
+Options:
+  -v, --version
+          show version information
+  -p, --prompt <text>
+          Execute a prompt in non-interactive mode (exits after
+          completion)
+      --model <model>
+          Set the AI model to use (use 'auto' to let Copilot pick
+          automatically)
+      --reasoning-effort <level>
+          Set the reasoning effort level [possible values: none, minimal, low, medium, high, xhigh, max]
+      --context <tier>
+          Set the context window tier (overrides persisted setting) [possible values: default, long_context]
+      --auto-tier <preference>
+          Set the Auto routing profile [possible values: efficiency, balance, intelligence]
 `;
 
 describe("helpParagraph", () => {
@@ -400,14 +549,16 @@ Options:
     });
 
     it("an argparse effort flag should be found by its values, not by its name", () => {
-        // `--reasoning-effort` is deliberately NOT in EFFORT_FLAGS; it was
-        // removed as an unverified guess. Finding it here is the shape rule
-        // doing the work the name list used to be asked for.
+        // `--reasoning-effort` IS in EFFORT_FLAGS now, so "the name did not
+        // find it" can no longer be asserted by its absence from that list.
+        // The scale is what discriminates: the name path yields a flag with
+        // no values at all, so a non-empty `efforts` here can only have come
+        // from the shape rule reading the paragraph.
         const caps = parseHarnessHelp("agent", "1.0", ARGPARSE_HELP);
 
         expect(caps.effortFlag).toBe("--reasoning-effort");
         expect(caps.efforts).toEqual(["low", "medium", "high"]);
-        expect(EFFORT_FLAGS).not.toContain("--reasoning-effort");
+        expect(EFFORT_FLAGS).toContain("--reasoning-effort");
     });
 
     it("an alias carrying its own metavar should not swallow the long flag", () => {
@@ -431,6 +582,151 @@ Options:
         expect(caps.supportsModel).toBe(true);
         expect(caps.effortFlag).toBe("--effort");
         expect(caps.efforts).toEqual(["low", "medium", "high"]);
+    });
+
+    it("a yargs harness printing no metavar at all should still yield a model flag", () => {
+        // The regression this pins is the biggest one the survey found, and
+        // it was silent in the same way Codex's was: gemini-cli, opencode and
+        // qwen are all yargs, and the parse reached NOT ONE flag in any of
+        // them. `supportsModel` was false for a CLI whose second documented
+        // option is the model.
+        const caps = parseHarnessHelp("gemini", "0.60.0", GEMINI_HELP);
+
+        expect(caps.supportsModel).toBe(true);
+        expect(caps.modelFlag).toBe("--model");
+        // No reasoning control, which is the right answer: Gemini CLI
+        // documents none, so an absent picker is correct rather than a gap.
+        expect(caps.supportsEffort).toBe(false);
+    });
+
+    it("a yargs switch should not be read as a flag that takes a value", () => {
+        // The discriminating half, and the reason the second pass reads the
+        // type annotation instead of dropping the metavar requirement. Every
+        // flag below is shaped exactly like `--model` up to `[boolean]`, and
+        // a picker writing `--yolo <something>` is a command that fails.
+        const found = allFlags(GEMINI_HELP).map((f) => f.flag);
+
+        expect(found).toEqual([
+            "--model", "--prompt", "--approval-mode", "--output-format",
+        ]);
+        for (const sw of ["--debug", "--sandbox", "--yolo", "--acp", "--version", "--help"]) {
+            expect(helpParagraph(GEMINI_HELP, sw)).toBeNull();
+        }
+    });
+
+    it("clap's possible-values block should be read as the effort scale", () => {
+        // GitHub Copilot CLI documents seven rungs in plain sight and got no
+        // effort control, because the colon shape has to end the paragraph
+        // and clap closes the list with a bracket.
+        const caps = parseHarnessHelp("copilot", "1.0.86", COPILOT_HELP);
+
+        expect(caps.supportsModel).toBe(true);
+        expect(caps.effortFlag).toBe("--reasoning-effort");
+        expect(caps.efforts)
+            .toEqual(["none", "minimal", "low", "medium", "high", "xhigh", "max"]);
+    });
+
+    it("the other possible-values blocks in the same help should not be the scale", () => {
+        // `--context` and `--auto-tier` enumerate too, and picking either as
+        // the reasoning control would write a real flag with a real value and
+        // change something nobody asked to change.
+        const bearing = allFlags(COPILOT_HELP)
+            .filter((f) => /\b(low|medium|high)\b/.test(f.paragraph))
+            .map((f) => f.flag);
+
+        expect(bearing).toEqual(["--reasoning-effort"]);
+        expect(enumeratedValues(helpParagraph(COPILOT_HELP, "--auto-tier")!))
+            .toEqual(["efficiency", "balance", "intelligence"]);
+    });
+
+    it("a pipe-separated scale should be read, so the name fallback is never the answer", () => {
+        // The outcome that matters is not `supportsEffort`, which was already
+        // true here: it is `efforts`. Found by NAME with nothing behind it,
+        // `--thinking` rendered a picker whose only row was the default the
+        // user already had, which is worse than the absent picker a harness
+        // with no such flag gets. Found by SHAPE it carries its rungs.
+        const caps = parseHarnessHelp("cline", "3.0.62", CLINE_HELP);
+
+        expect(caps.effortFlag).toBe("--thinking");
+        expect(caps.efforts).toEqual(["none", "low", "medium", "high", "xhigh"]);
+        expect(caps.modelFlag).toBe("--model");
+    });
+
+    it("a piped list that is not a scale should not become one", () => {
+        // `--compaction` is spelled the same way and is a different control.
+        expect(enumeratedValues(helpParagraph(CLINE_HELP, "--compaction")!))
+            .toEqual(["agentic", "basic", "off"]);
+        expect(effortFlagFromValues(CLINE_HELP)?.flag).toBe("--thinking");
+    });
+
+    it("a wrapped paragraph naming its own flag should not end at that mention", () => {
+        // `Bare --thinking uses medium` sits mid-paragraph, and a paragraph
+        // that ended at every mention of a flag would have kept the rungs and
+        // lost nothing visible, which is the kind of near miss a captured
+        // fixture catches and a hand-written one does not.
+        expect(helpParagraph(CLINE_HELP, "--thinking"))
+            .toBe("Set reasoning effort: none|low|medium|high|xhigh. Bare --thinking uses medium; omitted leaves provider default.");
+    });
+
+    it("real argparse should give a model flag and an effort flag with no scale", () => {
+        // aider is the case the name list exists for, and the only one on
+        // the survey: it documents `--reasoning-effort` and documents no
+        // values, so the shape rule cannot see it and the name is what finds
+        // it. `efforts` staying empty is the load-bearing half, because that
+        // is what the composer's free-text row keys off; a scale invented
+        // here would be rungs aider never published.
+        const caps = parseHarnessHelp("aider", "0.86.2", AIDER_HELP);
+
+        expect(caps.supportsModel).toBe(true);
+        expect(caps.modelFlag).toBe("--model");
+        expect(caps.supportsEffort).toBe(true);
+        expect(caps.effortFlag).toBe("--reasoning-effort");
+        expect(caps.efforts).toEqual([]);
+        // The fixture has to be able to express the case, so assert the
+        // sweep REACHED the flag and found it empty, rather than inferring
+        // that from the empty scale: a fixture missing the flag entirely
+        // would satisfy the line above having tested nothing.
+        const reasoning = allFlags(AIDER_HELP).find((f) => f.flag === "--reasoning-effort");
+        expect(reasoning?.paragraph).toContain("Set the reasoning_effort API parameter");
+        expect(enumeratedValues(reasoning!.paragraph)).toEqual([]);
+    });
+
+    it("aider's neighbours should not be read as the model flag", () => {
+        // Three traps in one help: `-m` is the message, `--list-models` puts
+        // a second long flag where an alias goes, and `--alias ALIAS:MODEL`
+        // ends in the word.
+        expect(helpParagraph(AIDER_HELP, "--model"))
+            .toBe("Specify the model to use for the main chat [env var: AIDER_MODEL]");
+        expect(helpParagraph(AIDER_HELP, "--message"))
+            .toContain("Specify a single message to send the LLM");
+        expect(parseHarnessHelp("aider", "1", AIDER_HELP).modelExamples).toEqual([]);
+    });
+
+    it("every surveyed harness should be answered, and the answers should differ", () => {
+        // The whole survey in one table, and the assertion that matters is
+        // that the answers are not all the same: a parser that had quietly
+        // stopped finding anything would give a uniform column of false and
+        // each individual test above would still be a separate thing to
+        // notice. Floors rather than a sum, so a sweep reaching nothing
+        // fails rather than passing vacuously.
+        const surveyed = [
+            { help: CLAUDE_HELP, model: "--model", effort: "--effort", rungs: 5, floor: 3 },
+            { help: CODEX_HELP, model: "--model", effort: undefined, rungs: 0, floor: 3 },
+            { help: PI_HELP, model: "--model", effort: "--thinking", rungs: 7, floor: 3 },
+            { help: AIDER_HELP, model: "--model", effort: "--reasoning-effort", rungs: 0, floor: 5 },
+            { help: CLINE_HELP, model: "--model", effort: "--thinking", rungs: 5, floor: 4 },
+            { help: GEMINI_HELP, model: "--model", effort: undefined, rungs: 0, floor: 4 },
+            { help: COPILOT_HELP, model: "--model", effort: "--reasoning-effort", rungs: 7, floor: 4 },
+        ];
+
+        for (const { help, model, effort, rungs, floor } of surveyed) {
+            const caps = parseHarnessHelp("h", "1", help);
+            expect(allFlags(help).length).toBeGreaterThanOrEqual(floor);
+            expect(caps.modelFlag).toBe(model);
+            expect(caps.effortFlag).toBe(effort);
+            expect(caps.efforts).toHaveLength(rungs);
+        }
+        expect(new Set(surveyed.map((s) => s.effort)).size).toBeGreaterThan(1);
     });
 
     it("the examples should never be treated as the set of what exists", () => {

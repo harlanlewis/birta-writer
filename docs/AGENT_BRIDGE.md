@@ -52,19 +52,39 @@ The composer (`/ai-advanced`) offers a model and an effort, which are flags on s
 
 The probe spawns the binary twice, with `--version` and `--help` and no shell, so it is kicked off when a document opens and nothing waits on it. Time it with `time claude --help` rather than trusting a figure here; it is fast enough to cache and too slow to sit in front of a panel.
 
-What the parse can and cannot learn is the part to re-derive rather than trust, and the fixtures in `harnessCapabilities.test.ts` are captured from three real binaries because a parser written against one CLI was correct for one CLI. The three differ in every way that matters:
+What the parse can and cannot learn is the part to re-derive rather than trust, and the fixtures in `harnessCapabilities.test.ts` are captured from real binaries because a parser written against one CLI was correct for one CLI. Each capture carries the version it was taken from and the date, because a CLI's help changes when its vendor ships and a fixture with no provenance later reads as a regression of ours.
 
-| Harness | Flag line | Description | Effort flag | Values |
+The surveyed harnesses, each run through the parser and then checked by hand against its own help text:
+
+| Harness | Version, date read | Flag line | Effort flag | Values |
 |---|---|---|---|---|
-| Claude Code | `--model <model>` | same line | `--effort` | `(low, medium, …)` |
-| Codex | `-m, --model <MODEL>` | next line | none | none |
-| pi | `--model <pattern>` | same line | `--thinking` | `: off, minimal, …` |
+| Claude Code | 2.1.278, 2026-09-19 | `--model <model>`, same line | `--effort` | `(low, medium, …)` |
+| Codex | 0.149.0, 2026-09-19 | `-m, --model <MODEL>`, next line | none | none |
+| pi | see the fixture | `--model <pattern>`, same line | `--thinking` | `: off, minimal, …` |
+| GitHub Copilot CLI | 1.0.86, 2026-09-19 | `--model <model>`, next line | `--reasoning-effort` | `[possible values: none, minimal, …]` |
+| Cline | 3.0.62, 2026-09-19 | `-m, --model <model-id>`, same line | `--thinking` | `none\|low\|medium\|high\|xhigh` |
+| Gemini CLI | 0.60.0, 2026-09-19 | `-m, --model`, no metavar | none | none |
+| opencode | 1.18.31, 2026-09-19 | `-m, --model`, no metavar | none | none |
+| Qwen Code | 0.24.1, 2026-09-19 | `-m, --model`, no metavar | none | none |
+| Continue | 1.5.47, 2026-09-19 | `--model <slug>`, same line | none | none |
+| aider | 0.86.2, 2026-09-19 | `--model MODEL`, same line | `--reasoning-effort`, by name | none published |
+| Crush | 0.95.0, 2026-09-19 | not read, see below | not read | not read |
 
-Three consequences worth keeping. A short alias may precede the long flag and the description may sit on the following indented line, both clap conventions, and missing them made Codex report no model support at all while documenting one. The reasoning control has no single name, so `EFFORT_FLAGS` holds the spellings and the discovered one travels in `effortFlag`: writing `--effort` at a harness that says `--thinking` is a command that fails rather than a request that differs. And a harness may genuinely have no such flag, which Codex does not, so no effort control is the right answer there rather than a guessed one.
+Five consequences worth keeping. A short alias may precede the long flag and the description may sit on the following indented line, both clap conventions, and missing them made Codex report no model support at all while documenting one. Some formatters print no metavar at all: yargs writes `-m, --model  Model  [string]`, so a flag that takes a value and a switch are the same shape and only the trailing type annotation tells them apart, and requiring a metavar found not one flag in the whole of Gemini CLI, opencode or Qwen Code. A value list has four spellings, of which two were missing: clap's own bracketed `[possible values: …]`, where GitHub Copilot CLI publishes a seven-rung scale that read as no scale at all, and a piped run of alternatives, which is how Cline spells its rungs. The reasoning control has no single name, so `EFFORT_FLAGS` holds the spellings and the discovered one travels in `effortFlag`: writing `--effort` at a harness that says `--thinking` is a command that fails rather than a request that differs. And a harness may genuinely have no such flag, which Codex does not, so no effort control is the right answer there rather than a guessed one.
+
+The value shapes matter more than the name list, and a flag found only by NAME should be read as a warning that its values were not understood. Such a flag reaches the panel with an empty scale, and the two halves are coupled: the composer's effort menu offers a free-text row exactly when `efforts` is empty, so a spelling added to `EFFORT_FLAGS` without that row is a button opening onto nothing. aider is the one harness on the survey that arrives this way, documenting `--reasoning-effort` and publishing no values for it.
+
+Free text is offered for effort ONLY in that case, and always for the model, which is the one asymmetry between the two pickers and is deliberate. A model list is examples, so a name missing from it may work; an effort list is an enumeration read off the flag's own documented values, and the formatters that print one (clap's `possible values`, yargs' `choices`) reject anything outside it, so a typed rung beside a published scale is a command that fails rather than a request that differs. Making the two pickers uniform in either direction is the bug.
+
+One harness is still read incompletely, and it is recorded rather than papered over.
+
+The survey reached what npm and PyPI publish. A harness distributed only by its own `curl | bash` installer (Cursor CLI and Hermes are the two that came up) cannot be read without putting a binary on the machine, so none is claimed either way here: adding one is a capture, a fixture and a row, and nothing else has to change unless its help breaks a shape.
+
+Crush needs three things this parser does not do. It separates an alias from its long flag with a space rather than a comma (`-m --model`), which a looser pattern would accept at the cost of reading one long flag as another's alias; it prints no metavar and no type annotation, so nothing distinguishes a switch; and its `--model` is on the `run` subcommand rather than the root, which the probe never asks about because it executes only the template's first word.
 
 Those spellings are the only vendor knowledge in the module, and they are the stable half: what a CLI calls its reasoning knob changes far more slowly than which models it offers, and a name missing from the list costs one absent control rather than a wrong flag.
 
-Models remain the weak case. The model paragraph goes through the same two passes, an enumeration first and quoted examples second, and of the three, Claude Code gives examples, Codex gives nothing, and pi gives nothing in the flag's own paragraph while offering `--list-models` elsewhere. So a catalog can exist, and `modelExamples` is named for the weaker case because the weaker case is what is usually there. A model absent from it may work perfectly well, which is why free entry is always reachable in the panel. Anything that renders `modelExamples` as "the models", or that drops free entry because the list looks complete, is a bug.
+Models remain the weak case, and the survey strengthened rather than weakened that. The model paragraph goes through the same two passes, an enumeration first and quoted examples second, and of the ten harnesses above not one publishes its catalog in help: Claude Code gives prose examples and GitHub Copilot CLI gives the single alias `auto`, while the rest give nothing in the flag's own paragraph and several offer a separate `--list-models` or `models` command instead. So a catalog can exist, and `modelExamples` is named for the weaker case because the weaker case is what is always there so far. A model absent from it may work perfectly well, which is why free entry is always reachable in the panel. Anything that renders `modelExamples` as "the models", or that drops free entry because the list looks complete, is a bug.
 
 A probe that finds nothing is the graceful floor rather than a failure to paper over: the control is not offered, and the user's template runs as it always did. Never a wrong flag, at worst an absent picker.
 
