@@ -4,8 +4,17 @@
 
 ## [Unreleased]
 
+### Added
+
+- While an `/ai` request runs in the background, a line in the corner says what your agent is doing: the tool it called, the file it read, or that it is thinking. It replaces itself in place and goes when the run does. Where your agent prints nothing Birta can read, the line names the agent and, after a few seconds, counts, so you can see the run is still there and how long it has been. The gutter marker is still what stops a run.
+
+### Changed
+
+- The commands Birta offers the first time you use `/ai` now ask Claude Code and Codex for their structured output, which is what the corner line reads. A `birta.agent.command` you already have is never rewritten; add `--output-format stream-json --verbose` (Claude Code) or `--json` (`codex exec`) to yours for the same. With those flags the run's transcript in the Birta AI output channel is the agent's event stream rather than prose.
+
 ### Fixed
 
+- After an `/ai` run failed, clicks near the bottom right corner of the editor stopped reaching the document for the rest of the session, swallowed by the dismissed message's own invisible pill.
 - Escape from a block selection the keyboard made puts the caret back where it was. Pressing Cmd+A three times selects every block, and Escape then left the caret at the top of the file, however far down you had been; it now returns to the position you started from. The same holds for Escape on a single block, a range grown with Shift+arrows, and a range moved with Alt+arrows. A range made with the mouse still collapses to its first block, since there is no earlier caret to go back to.
 
 ---
