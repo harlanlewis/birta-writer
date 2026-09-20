@@ -89,8 +89,17 @@ public enum FirstRunNote {
     /// Deliberately short, and ordered by what a first run has to establish
     /// rather than by feature. It opens on the summon, because that gesture IS
     /// the product: somebody who does not learn it has installed a thing that
-    /// opened once. The reader has just performed it to get here, so the first
-    /// line names what they did rather than instructing them.
+    /// opened once.
+    ///
+    /// The opening names no chord and asserts no gesture, and both are
+    /// constraints rather than style. This text is one string for every build
+    /// and every person, so it cannot spell a chord that a flavour and a
+    /// setting both decide; `FirstRunInvitation` is the surface that can, and
+    /// the menu bar is where it draws it. And the reader has USUALLY pressed
+    /// the keys to get here and has not always: the invitation puts a floor
+    /// under a first run and the panel comes up on its own when the chord
+    /// never does, so a first line congratulating them on a gesture they did
+    /// not make would be the first thing this product said to them and wrong.
     ///
     /// The first thing it ASKS for is typing, not reading. A pre-rendered
     /// heading could be a picture of an editor; a heading that appears under
@@ -156,18 +165,29 @@ public enum FirstRunNote {
     /// true, and is what the section is about, is that nothing in a document
     /// reaches out until the network switch is on.
     ///
-    /// The opening says where the app lives and says nothing about the Dock.
-    /// `Prefs.showInDock` ships off, but the first-run screen offers it one
-    /// screen before this note is written, so a reader who took it would find
-    /// the note's first paragraph contradicting the switch they just moved.
-    /// Nothing here may assert a setting the welcome screen has just let
-    /// somebody change.
+    /// The opening is the only disclosure there is, and that is what changed
+    /// when the questions stopped being asked. Nothing is shown before this
+    /// note, so two facts have nowhere else to land and are stated here: that
+    /// the app registers itself to start with the Mac
+    /// (`Prefs.applyOnboardingDefaults`), and where the notes are kept,
+    /// including that they are in iCloud Drive when it is available.
+    /// `docs/NETWORK_POSTURE.md` argues that default partly on the grounds
+    /// that somebody is told, and this paragraph is where they are told.
+    ///
+    /// The Dock is an offer rather than a fact, so it sits in the closing list
+    /// with the other things to go and do. `Prefs.showInDock` ships off and
+    /// nothing asks: the menu bar is the identity, and a question about it
+    /// implies a fork that is not really there.
     public static let markdown = """
     # You're in
 
-    Press the same keys again and this panel goes away. Press them once more
-    and it is back, exactly as you left it. That is Birta Writer: it lives in
-    your menu bar, so it is always one keystroke away.
+    Birta Writer lives in your menu bar, so it is always one keystroke away.
+    Press that keystroke and this panel goes away; press it again and it is
+    back, exactly as you left it.
+
+    It starts up with your Mac and waits there, so those keys work after a
+    restart. Your notes are kept in a folder of their own: in iCloud Drive if
+    you use it, on this Mac if you do not.
 
     What you are typing into is a real Markdown file on your Mac. Plain text,
     yours, and readable by anything.
@@ -241,7 +261,9 @@ public enum FirstRunNote {
 
     ## When you are ready
 
-    - [ ] Press Cmd+, to see where these notes are kept, and to change it.
+    - [ ] Press Cmd+, for Settings: the folder your notes are kept in, the keys
+      that summon this panel, whether it starts with your Mac, and whether it
+      also appears in your Dock.
     - [ ] Press Cmd+N to start a note of your own.
     - [ ] Select all and delete to clear this one. It will not come back.
 

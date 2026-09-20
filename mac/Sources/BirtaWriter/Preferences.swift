@@ -807,25 +807,35 @@ enum Prefs {
         Key.allCases.allSatisfy { d.object(forKey: $0.rawValue) == nil }
     }
 
-    /// Make true what the first-run screen is about to SHOW, before it draws.
+    /// Make true what a first run is about to act as though it had settled.
     ///
-    /// The screen presents live settings, so anything it displays as on has to
-    /// be on. Almost nothing is left to do here, and that is the point rather
-    /// than an omission: every switch it shows now agrees with the accessor
-    /// default beside it, so the two cannot disagree by construction. Only the
-    /// login item is not a preference, and a system registration has no
-    /// default to agree with.
+    /// Almost nothing is left to do here, and that is the point rather than an
+    /// omission: every setting a first run touches now agrees with the
+    /// accessor default beside it, so the two cannot disagree by construction.
+    /// Only the login item is not a preference, and a system registration has
+    /// no default to agree with.
+    ///
+    /// The registration is what this function IS, and what it costs is a
+    /// disclosure rather than a switch. `FirstRun.opening` sends an ordinary
+    /// first run to the invitation, which asks nothing, so nobody sees a row
+    /// saying this happened: `FirstRunNote.markdown` says it in the note's
+    /// opening paragraph instead, and Settings is where it is undone. Keeping
+    /// it is deliberate. This is a menu-bar app whose whole promise is one
+    /// keystroke, and a copy that does not come back after a restart answers
+    /// that keystroke with nothing, which is the failure the summon surfaces
+    /// exist to prevent.
     ///
     /// Link previews and embeds is the row this function must never grow back.
-    /// It
-    /// is the only setting that reaches the network, it ships off, and the
-    /// first-run screen does not ask about it, so nothing here may switch it
-    /// on. That is the whole of the claim in `docs/NETWORK_POSTURE.md`.
+    /// It is the only setting that reaches the network, it ships off, and
+    /// nothing on a first run asks about it, so nothing here may switch it on.
+    /// That is the whole of the claim in `docs/NETWORK_POSTURE.md`, and it
+    /// binds harder now that no screen would show what had been done.
     ///
-    /// FIRST LAUNCH ONLY. An existing install reaches this screen too, because
-    /// `hasSeenWelcome` is absent for everybody who had the app before it existed,
-    /// and registering a login item for them would be reaching into something
-    /// they have been living with.
+    /// FIRST LAUNCH ONLY, and `isFirstLaunch` is a stricter question than the
+    /// one that decided to call this. `hasSeenWelcome` is absent for everybody
+    /// who had the app before that key existed, so an existing install is
+    /// offered the invitation too, and registering a login item for them would
+    /// be reaching into something they have been living with.
     ///
     /// AND THE PERSON'S OWN STORE ONLY, which is the same gate `Updater`
     /// keeps and for the same reason: `mac/scripts/measure.sh` launches a
