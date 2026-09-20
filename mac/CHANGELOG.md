@@ -12,6 +12,10 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ## [Unreleased]
 
+### Changed
+
+- The first launch introduces Birta Writer for Mac from the menu bar instead of a setup form. It says where the app lives and which keys to press, and pressing them is what opens the panel, onto a short tour with a table, a diagram, math and links already rendered. If the keys are not pressed the panel opens on its own shortly after, and sooner when another app has taken the chord. The questions the form used to ask now take their defaults; the tour says where your notes are kept and that Birta Writer for Mac starts with your Mac, and points at Cmd+, for the settings that change either.
+
 ### Removed
 
 - Birta Writer for Mac no longer says it updated itself. The card that sat in the panel after the app had replaced itself with a newer version is gone, and nothing takes its place. With automatic updates on, the app still replaces itself while nobody is using it, and it is now silent about having done so; the switch in Settings is what stops it, and an update offered while you are at the keyboard still asks first. The swap is written to the system log instead, as is a swap that was armed and did not go in.
