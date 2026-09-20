@@ -22,6 +22,7 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ### Fixed
 
+- Clicking a file in the file list when that file is already open in another window now brings that window forward instead of opening the file a second time. Two windows on one file each held their own copy, and whichever wrote last silently took the other's edits with it; opening from the Finder, Open Recent or `bwr` already refused that, and the file list now does too. A file already open as a tab of the window you clicked in still fronts that tab, as before.
 - Adding themes from an installed editor reads a theme from the newest copy of its extension. Where an editor held two versions of one theme extension and the version numbers compared differently as text than as numbers (`2.1.9` beside `2.1.10`), the older copy was read. This reaches you only if you add themes from the installed list and an extension there has been updated across such a boundary; a theme added from a file or a VSIX is unaffected.
 
 ---
