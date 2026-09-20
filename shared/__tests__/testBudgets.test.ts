@@ -39,7 +39,7 @@
  * This file is itself the tree's widest scan, so its suites carry a budget.
  */
 import { describe, it, expect } from "vitest";
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join, dirname, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { budget } from "../../webview/__tests__/helpers/testBudget";
@@ -49,8 +49,17 @@ const SCAN_BUDGET_MS = budget(30_000);
 const repo = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const SELF = "shared/__tests__/testBudgets.test.ts";
 
-/** Where the two Vitest projects collect their files (vitest.config.ts). */
-const TEST_ROOTS = ["webview/__tests__", "shared/__tests__", "src/__tests__", "packages/minimal-diff/src/__tests__", "e2e"];
+/**
+ * Where the two Vitest projects collect their files (vitest.config.ts). The
+ * packages half is enumerated rather than named, as the config globs it, so
+ * a second workspace package's tests are swept the day they exist.
+ */
+const TEST_ROOTS = [
+    "webview/__tests__", "shared/__tests__", "src/__tests__", "e2e",
+    ...readdirSync(join(repo, "packages"))
+        .map((name) => `packages/${name}/src/__tests__`)
+        .filter((dir) => existsSync(join(repo, dir))),
+];
 
 function testFiles(dir: string, out: string[] = []): string[] {
     for (const name of readdirSync(dir)) {
@@ -64,7 +73,9 @@ function testFiles(dir: string, out: string[] = []): string[] {
 
 const relPath = (file: string): string => relative(repo, file).split(/[\\/]/).join("/");
 const NUMERIC = /^[0-9][0-9_]*$/;
-const HAS_NUMBER = /\b[0-9][0-9_]*\b/;
+/** A numeric literal anywhere in an expression, `6e4` and `1.5` included. */
+const HAS_NUMBER = /\b[0-9][0-9_]*(?:\.[0-9]+)?(?:e[0-9]+)?\b/i;
+const TEST_CALL = "(?:it|test|describe|beforeAll|beforeEach|afterAll|afterEach)";
 const EXEMPT = /budget-ok:\s*\S/;
 const IDENTIFIER = /^[A-Za-z_$][\w$]*$/;
 
@@ -74,28 +85,43 @@ interface Site {
     expression: string;
 }
 
-/** Every place a budget is written in `text`, in the three shapes. */
+/**
+ * Every place a budget is written in `text`, in the three shapes: an option
+ * (`timeout: X`, `testTimeout: X`, `hookTimeout: X`, the quoted key, and the
+ * shorthand `{ timeout }`), the last argument of a test or hook call (on a
+ * one-line call, or on the `}, X);` line that closes a multi-line callback),
+ * and that argument alone on its own line inside a multi-line call. An
+ * expression is taken whole, so `60 * 1000` and `(60000)` are seen as
+ * readily as `60_000`.
+ *
+ * The `}, X);` close is judged wherever it appears, not only under a test
+ * call: the tracker here is a flag rather than a paren depth, so a timer's
+ * multi-line callback closed with a number is a site too and says
+ * `budget-ok:` if it is not a budget. That is the cheaper error: a site
+ * judged and exempted costs one comment, a budget unseen costs the guard.
+ */
 function sitesIn(text: string, file: string): Site[] {
     const sites: Site[] = [];
     let inTestCall = false;
     text.split("\n").forEach((line, i) => {
         if (EXEMPT.test(line)) return;
-        for (const m of line.matchAll(/\b(?:test|hook)?[tT]imeout"?:\s*([^,}\s]+)/g)) {
+        for (const m of line.matchAll(/\b(?:test|hook)?[tT]imeout"?:\s*([^,}]+?)\s*(?=[,}]|$)/g)) {
             sites.push({ file, line: i + 1, expression: m[1] });
         }
-        // The last argument of a test call: on the line that closes a
-        // multi-line callback, or on a one-line `it(...)`. Not any call that
-        // happens to take an object and then a number.
-        const positional = /^\s*\},\s*(\S+?)\);?\s*$/.exec(line)
-            ?? /^\s*(?:it|test|describe)(?:\.\w+)*\(.*\}\s*,\s*(\S+?)\);?\s*$/.exec(line);
+        for (const m of line.matchAll(/[{,]\s*((?:test|hook)?[tT]imeout)\s*(?=[,}])/g)) {
+            sites.push({ file, line: i + 1, expression: m[1] });
+        }
+        const positional = /^\s*\},\s*([^{}=]+?)\);?\s*$/.exec(line)
+            ?? new RegExp(`^\\s*${TEST_CALL}(?:\\.\\w+)*\\(.*\\}\\s*,\\s*([^{}=]+?)\\);?\\s*$`).exec(line);
         if (positional) sites.push({ file, line: i + 1, expression: positional[1] });
-        if (/^\s*(?:it|test|describe)(?:\.\w+)*\(\s*$/.test(line)) inTestCall = true;
+        if (new RegExp(`^\\s*${TEST_CALL}(?:\\.\\w+)*\\(\\s*$`).test(line)) inTestCall = true;
         else if (/^\s*\);?\s*$/.test(line)) inTestCall = false;
         else if (inTestCall) {
-            // A number or a budget alone on its line inside the call. Not a
-            // name: the call's body has its own multi-line calls, and a name
-            // alone on a line there is an ordinary argument.
-            const own = /^\s*([^\s,]+),\s*$/.exec(line);
+            // A number or a budget alone on its line inside the call, with or
+            // without the trailing comma. Not a name: the call's body has its
+            // own multi-line calls, and a name alone on a line there is an
+            // ordinary argument.
+            const own = /^\s*([^\s,]+),?\s*$/.exec(line);
             if (own && (NUMERIC.test(own[1]) || own[1].startsWith("budget("))) {
                 sites.push({ file, line: i + 1, expression: own[1] });
             }
@@ -117,16 +143,17 @@ function budgetSites(): Site[] {
 }
 
 /**
- * A site is fixed when its value is a number, directly or through a name
- * `text` binds to an expression that carries a number and no `budget(`. A
- * name bound any other way (a type, a settle delay imported from elsewhere)
- * is not a budget and is not judged; a computed one that carries a number is
- * judged fixed, and says `budget-ok:` if it is not a budget.
+ * A site is fixed when its value carries a number and no `budget(`: a
+ * literal, an arithmetic or parenthesised expression, or a name `text` binds
+ * to such an expression. A name bound any other way (a type, a settle delay
+ * imported from elsewhere) is not a budget and is not judged; a computed one
+ * that carries a number is judged fixed, and says `budget-ok:` if it is not
+ * a budget.
  */
 function isFixedIn(text: string, expression: string): boolean {
-    if (expression.startsWith("budget(")) return false;
+    if (expression.includes("budget(")) return false;
     if (NUMERIC.test(expression)) return true;
-    if (!IDENTIFIER.test(expression)) return false;
+    if (!IDENTIFIER.test(expression)) return HAS_NUMBER.test(expression);
     const definition = new RegExp(`(?:const|let|var) ${expression.replace(/\$/g, "\\$")}\\s*=\\s*([^;]+);`).exec(text);
     if (!definition) return false;
     return HAS_NUMBER.test(definition[1]) && !definition[1].includes("budget(");
@@ -180,21 +207,43 @@ describe("the sweep's three shapes, witnessed on text of known shape", { timeout
         "    async () => { await sweep(); },",
         "    60_000,",
         ");",
+        "test(",
+        '    "own line, no trailing comma",',
+        "    () => {},",
+        "    45_000",
+        ");",
         "expect(idleCallbacks[0].opts).toEqual({ timeout: IDLE_MS }); // budget-ok: the callback's own deadline",
         "const OWN_LINE_BUDGET = 60 * 1000;",
         "const IDLE_MS = 1000;",
+        // The shapes the first sweep could not see, each the natural way to
+        // write a budget by hand.
+        "}, 60 * 1000);",
+        "}, (60000));",
+        "describe('shorthand', { timeout }, () => {});",
+        "vi.setConfig({ testTimeout });",
+        "beforeAll(async () => { await warm(); }, 20_000);",
+        "afterEach(() => { reset(); }, budget(4));",
+        "const timeout = 6e4;",
     ].join("\n");
 
-    it("should see the option, positional and own-line shapes, quoted keys and one-line tests included", () => {
+    it("should see the option, positional and own-line shapes, quoted keys, shorthand keys, hooks and one-line tests included", () => {
         const found = sitesIn(witness, "witness").map((s) => s.expression);
-        expect(found).toEqual(["budget(1)", "30_000", "budget(2)", "5000", "30_000", "budget(3)", "60_000"]);
+        expect(found).toEqual([
+            "budget(1)", "30_000", "budget(2)", "5000", "30_000", "budget(3)", "60_000", "45_000",
+            "60 * 1000", "(60000)", "timeout", "testTimeout", "20_000", "budget(4)",
+        ]);
     });
 
-    it("should judge a number, and a name bound to a computation carrying one, as fixed, and a budget as not", () => {
+    it("should judge a number, an expression carrying one, and a name bound to either, as fixed, and a budget as not", () => {
         expect(isFixedIn(witness, "30_000")).toBe(true);
         expect(isFixedIn(witness, "OWN_LINE_BUDGET")).toBe(true);
         expect(isFixedIn(witness, "budget(2)")).toBe(false);
         expect(isFixedIn(witness, "IDLE_MS")).toBe(true);
+        expect(isFixedIn(witness, "60 * 1000")).toBe(true);
+        expect(isFixedIn(witness, "(60000)")).toBe(true);
+        expect(isFixedIn(witness, "timeout"), "shorthand bound to 6e4").toBe(true);
+        expect(isFixedIn(witness, "testTimeout"), "shorthand bound to nothing in this text").toBe(false);
+        expect(isFixedIn(witness, "budget(4)")).toBe(false);
     });
 
     it("should find an annotation on the last line of a multi-line import, by the module it imports from", () => {

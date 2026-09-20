@@ -200,10 +200,10 @@ final class TitlebarActionsView: NSView {
     /// The set the titlebar ships, in the order it draws them.
     ///
     /// Here rather than at the one call site, so the app and every check read
-    /// ONE declaration. The mirror this replaces was a copy in the test file:
-    /// it kept the count honest by accident, because a separate scrape
-    /// compared the counts, and said nothing at all about the symbols, which
-    /// is the half that decides what these buttons look like.
+    /// ONE declaration. A test must never carry its own copy of this list: a
+    /// copy keeps the count honest only while something else compares the
+    /// counts, and says nothing about the symbols, which is the half that
+    /// decides what these buttons look like.
     ///
     /// The command palette comes last, after the two file verbs: it is a
     /// different kind of thing (a way to reach every row, not a row), and the
@@ -232,10 +232,10 @@ final class TitlebarActionsView: NSView {
     /// that is not a choice between SF Symbols. The band has a pane toggle at
     /// each end, this one and the outline's, and they have to be one mark and
     /// its mirror or the strip reads as two toolbars that met in the middle.
-    /// `sidebar.leading` is the picture macOS uses for exactly this and was
-    /// what this drew: correct in meaning, and a filled pane at a weight of
-    /// its own beside the page's outline, so one end of the band was solid and
-    /// the other was a frame. `folder` is what the page drew before the button
+    /// `sidebar.leading` is the picture macOS uses for exactly this and is
+    /// still wrong here: correct in meaning, and a filled pane at a weight of
+    /// its own beside the page's outline, so one end of the band would be
+    /// solid and the other a frame. `folder` is what the page drew before the button
     /// moved and is wrong here, because the button beside the name already IS
     /// a folder and opens one; `list.bullet` and `square.grid.2x2` name a
     /// listing and a layout rather than the pane the click moves.

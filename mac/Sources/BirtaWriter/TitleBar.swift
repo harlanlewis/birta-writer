@@ -194,8 +194,10 @@ final class TitleBarView: NSView {
     /// The buttons' room is in here for the same reason the chevron's is: it is
     /// held whether or not they are drawn, so the ceiling must be net of it at
     /// every window width and not only while the pointer is on the band. The
-    /// sidebar toggle's room is in it on the same terms and one step further:
-    /// it is held in a window that cannot draw that button at all.
+    /// sidebar toggle's room is in it on the same terms, and only while the
+    /// button is merely not drawn: a window that cannot offer the button at
+    /// all reserves nothing for it (`TitlebarActionsView.room` is zero
+    /// there), so its name starts against the traffic lights.
     ///
     /// An instance property rather than a static one, because the buttons'
     /// room is theirs to report: the actions arrive after this view is built

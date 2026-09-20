@@ -494,4 +494,17 @@ describe("the file explorer gate", () => {
         gate.toggle();
         expect(gate.dockedReserve()).toBe(0);
     });
+
+    it("the panel, its tree model and its styles should stay off the webview entry's eager import graph, reached only through the loader", async () => {
+        // The CHANGELOG's claim that VS Code never fetches the explorer rests
+        // on the loader's dynamic import; a static import added anywhere on
+        // the launch path would ship it to every launch with the byte budget
+        // able to absorb it. This is the same guard Go to Line carries.
+        const { eagerModulesOf } = await import("./helpers/eagerGraph");
+        const eager = new Set(eagerModulesOf());
+        expect(eager.has("utils/fileExplorerLoader.ts")).toBe(true);
+        expect(eager.has("components/fileExplorer/index.ts")).toBe(false);
+        expect(eager.has("components/fileExplorer/treeModel.ts")).toBe(false);
+        expect(eager.has("components/fileExplorer/styles.ts")).toBe(false);
+    });
 });

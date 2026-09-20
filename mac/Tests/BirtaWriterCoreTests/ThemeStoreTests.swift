@@ -168,6 +168,10 @@ final class ThemeStoreTests: XCTestCase {
         let home = root.appendingPathComponent("home", isDirectory: true)
         _ = try writeExtension(at: "home/.vscode/extensions/pub.themes-1.0.0", label: "Slate 1")
         _ = try writeExtension(at: "home/.vscode/extensions/pub.themes-1.2.0", label: "Slate 1")
+        // A two-digit patch beside a one-digit one: the later version by
+        // number, the earlier by string, which is the case a lexical sort
+        // gets wrong.
+        _ = try writeExtension(at: "home/.vscode/extensions/pub.themes-1.10.0", label: "Slate 1")
         _ = try writeExtension(at: "home/.cursor/extensions/other.set-0.1.0", label: "Cursor Slate")
         try FileManager.default.createDirectory(at: home.appendingPathComponent(".vscode-insiders/extensions"),
                                                 withIntermediateDirectories: true)
@@ -200,7 +204,7 @@ final class ThemeStoreTests: XCTestCase {
         XCTAssertEqual(found.map(\.label), ["Cursor Slate", "Dark Modern (Default)", "Light Modern", "Linked Slate", "Paper", "Slate 1"],
                        "by label, one per label; the linked extension's themes among them, the nls key resolved and the missing one falling back to the id")
         let slate = try XCTUnwrap(found.first { $0.label == "Slate 1" })
-        XCTAssertTrue(slate.url.path.contains("pub.themes-1.2.0"), "the later version, not the first folder")
+        XCTAssertTrue(slate.url.path.contains("pub.themes-1.10.0"), "the latest version by number, not the first folder and not the latest by string: \(slate.url.path)")
         let linked = try XCTUnwrap(found.first { $0.label == "Linked Slate" })
         XCTAssertTrue(FileManager.default.fileExists(atPath: linked.url.path), "resolved inside the linked folder")
         XCTAssertEqual(try store.importThemes(found).count, 6)

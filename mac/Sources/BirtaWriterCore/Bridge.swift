@@ -454,8 +454,10 @@ public enum HostMessage: Equatable {
     case fileExplorerConfig(showHidden: Bool)
     /// Whether this page carries the formatting row. The app's setting
     /// (`Prefs.formattingRowExpanded`, Settings > Appearance), sent to every
-    /// page when it changes and on every load. One-way: the page has no
-    /// control that flips it and posts nothing back.
+    /// page when it changes and on every load. A page's gear switch may ask
+    /// for a change under the same name (`Coordinator` hands it to
+    /// `WindowSet.setFormattingRowExpanded`), and learns the answer the way
+    /// every other page does, through this; no page flips the row itself.
     case setFormattingRowExpanded(Bool)
     /// The line-number gutter, on or off, after View > Line Numbers: the
     /// extension's `setLineNumbers`, which the page already answers by

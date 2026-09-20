@@ -52,7 +52,7 @@ The composer (`/ai-advanced`) offers a model and an effort, which are flags on s
 
 The probe spawns the binary twice, with `--version` and `--help` and no shell, so it is kicked off when a document opens and nothing waits on it. Time it with `time claude --help` rather than trusting a figure here; it is fast enough to cache and too slow to sit in front of a panel.
 
-What the parse can and cannot learn is the part to re-derive rather than trust, and the fixtures in `harnessCapabilities.test.ts` are captured from real binaries because a parser written against one CLI was correct for one CLI. Each capture carries the version it was taken from and the date, because a CLI's help changes when its vendor ships and a fixture with no provenance later reads as a regression of ours.
+What the parse can and cannot learn is the part to re-derive rather than trust, and the fixtures in `harnessCapabilities.test.ts` are captured from real binaries because a parser written against one CLI was correct for one CLI. Each capture carries the version it was taken from and the date, because a CLI's help changes when its vendor ships and a fixture with no provenance later reads as a regression of ours. Two rows of the table have no fixture: Continue and Crush were read by hand on the date shown, and nothing in the suite pins what the parser makes of either.
 
 The surveyed harnesses, each run through the parser and then checked by hand against its own help text:
 
@@ -64,8 +64,8 @@ The surveyed harnesses, each run through the parser and then checked by hand aga
 | GitHub Copilot CLI | 1.0.86, 2026-09-19 | `--model <model>`, next line | `--reasoning-effort` | `[possible values: none, minimal, …]` |
 | Cline | 3.0.62, 2026-09-19 | `-m, --model <model-id>`, same line | `--thinking` | `none\|low\|medium\|high\|xhigh` |
 | Gemini CLI | 0.60.0, 2026-09-19 | `-m, --model`, no metavar | none | none |
-| opencode | 1.18.31, 2026-09-19 | `-m, --model`, no metavar | none | none |
-| Qwen Code | 0.24.1, 2026-09-19 | `-m, --model`, no metavar | none | none |
+| opencode | 1.18.31, 2026-09-20 | `-m, --model`, no metavar | none | none |
+| Qwen Code | 0.24.2, 2026-09-20 | `-m, --model`, no metavar | none | none |
 | Continue | 1.5.47, 2026-09-19 | `--model <slug>`, same line | none | none |
 | aider | 0.86.2, 2026-09-19 | `--model MODEL`, same line | `--reasoning-effort`, by name | none published |
 | Crush | 0.95.0, 2026-09-19 | not read, see below | not read | not read |

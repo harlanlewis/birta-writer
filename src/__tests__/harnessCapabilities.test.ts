@@ -276,6 +276,161 @@ Options:
           Set the Auto routing profile [possible values: efficiency, balance, intelligence]
 `;
 
+/**
+ * opencode 1.18.31, `opencode --help` on 2026-09-20, whole. yargs, like
+ * Gemini CLI: `-m, --model` with no metavar and a trailing `[string]`, so
+ * the same second pass that reads Gemini reads this, and the banner and the
+ * subcommand table above the options are what the pass has to walk past.
+ * Kept whole because the claim it pins is about THIS binary, not about yargs
+ * in general: one Gemini fixture said nothing about whether opencode's
+ * padding or tags differ.
+ */
+const OPENCODE_HELP = `⠀                                ▄     
+█▀▀█ █▀▀█ █▀▀█ █▀▀▄ █▀▀▀ █▀▀█ █▀▀█ █▀▀█
+█  █ █  █ █▀▀▀ █  █ █    █  █ █  █ █▀▀▀
+▀▀▀▀ █▀▀▀ ▀▀▀▀ ▀  ▀ ▀▀▀▀ ▀▀▀▀ ▀▀▀▀ ▀▀▀▀
+
+Commands:
+  opencode completion          generate shell completion script
+  opencode acp                 start ACP (Agent Client Protocol) server
+  opencode mcp                 manage MCP (Model Context Protocol) servers
+  opencode [project]           start opencode tui                                          [default]
+  opencode attach <url>        attach to a running opencode server
+  opencode run [message..]     run opencode with a message
+  opencode debug               debugging and troubleshooting tools
+  opencode providers           manage AI providers and credentials                   [aliases: auth]
+  opencode agent               manage agents
+  opencode upgrade [target]    upgrade opencode to the latest or a specific version
+  opencode uninstall           uninstall opencode and remove all related files
+  opencode serve               starts a headless opencode server
+  opencode web                 start opencode server and open web interface
+  opencode models [provider]   list all available models
+  opencode stats               show token usage and cost statistics
+  opencode export [sessionID]  export session data as JSON
+  opencode import <file>       import session data from JSON file or URL
+  opencode github              manage GitHub agent
+  opencode pr <number>         fetch and checkout a GitHub PR branch, then run opencode
+  opencode session             manage sessions
+  opencode plugin <module>     install plugin and update config                      [aliases: plug]
+  opencode db                  database tools
+
+Positionals:
+  project  path to start opencode in                                                        [string]
+
+Options:
+  -h, --help          show help                                                            [boolean]
+  -v, --version       show version number                                                  [boolean]
+      --print-logs    print logs to stderr                                                 [boolean]
+      --log-level     log level                 [string] [choices: "DEBUG", "INFO", "WARN", "ERROR"]
+      --pure          run without external plugins                                         [boolean]
+      --port          port to listen on                                        [number] [default: 0]
+      --hostname      hostname to listen on                          [string] [default: "127.0.0.1"]
+      --mdns          enable mDNS service discovery (defaults hostname to 0.0.0.0)
+                                                                          [boolean] [default: false]
+      --mdns-domain   custom domain name for mDNS service (default: opencode.local)
+                                                                [string] [default: "opencode.local"]
+      --cors          additional domains to allow for CORS                     [array] [default: []]
+  -m, --model         model to use in the format of provider/model                          [string]
+  -c, --continue      continue the last session                                            [boolean]
+  -s, --session       session id to continue                                                [string]
+      --fork          fork the session when continuing (use with --continue or --session)  [boolean]
+      --prompt        prompt to use                                                         [string]
+      --agent         agent to use                                                          [string]
+      --auto          auto-approve permissions that are not explicitly denied (dangerous!)
+                                                                          [boolean] [default: false]
+      --mini          start the minimal interactive interface             [boolean] [default: false]
+      --no-replay     disable mini session history replay on resume and after resize       [boolean]
+      --replay-limit  cap visible mini replay to the newest N messages                      [number]`;
+
+/**
+ * Qwen Code 0.24.2, `qwen --help` on 2026-09-20, whole. yargs again, with
+ * the description on the same line as the flag and the annotations run
+ * together at its end (`[deprecated: ...] [string] [choices: ...]`), which
+ * is the shape the type annotation has to be found through.
+ */
+const QWEN_HELP = `Usage: qwen [options] [command]
+
+Qwen Code - Launch an interactive CLI, use -p/--prompt for non-interactive mode
+
+Commands:
+  qwen [query..]             Launch Qwen Code CLI  [default]
+  qwen auth                  Configure authentication (removed)
+  qwen board <command>       Share work with other agents through a board
+  qwen channel <command>     Manage messaging channels (Telegram, Discord, etc.)
+  qwen extensions <command>  Manage Qwen Code extensions.
+  qwen hooks                 Manage Qwen Code hooks (use /hooks in interactive mode).
+  qwen mcp                   Manage MCP servers
+  qwen review <command>      Run a review non-interactively (\`run\`), plus the internal helpers used by the /review skill (PR worktree setup, context fetch, rules loading, presubmit checks, cleanup)
+  qwen sandbox [cmd...]      Inspect the sandbox backend, or run a command inside it
+  qwen serve                 Run Qwen Code as a local HTTP daemon (Stage 1 experimental: --http-bridge)
+  qwen sessions <command>    Manage Qwen Code sessions
+  qwen update                Check for Qwen Code updates and install if available
+
+Positionals:
+  query  Positional prompt. Defaults to one-shot; use -i/--prompt-interactive for interactive.
+
+Options:
+      --telemetry                       Enable telemetry? This flag specifically controls if telemetry is sent. Other --telemetry-* flags set specific values but do not enable telemetry on their own.  [deprecated: Use the "telemetry.enabled" setting in settings.json instead. This flag will be removed in a future version.] [boolean]
+      --telemetry-target                Set the telemetry target (local or gcp). Overrides settings files.  [deprecated: Use the "telemetry.target" setting in settings.json instead. This flag will be removed in a future version.] [string] [choices: "local", "gcp"]
+      --telemetry-otlp-endpoint         Set the OTLP endpoint for telemetry. Overrides environment variables and settings files.  [deprecated: Use the "telemetry.otlpEndpoint" setting in settings.json instead. This flag will be removed in a future version.] [string]
+      --telemetry-otlp-protocol         Set the OTLP protocol for telemetry (grpc or http). Overrides settings files.  [deprecated: Use the "telemetry.otlpProtocol" setting in settings.json instead. This flag will be removed in a future version.] [string] [choices: "grpc", "http"]
+      --telemetry-log-prompts           Enable or disable logging of user prompts for telemetry. Overrides settings files.  [deprecated: Use the "telemetry.logPrompts" setting in settings.json instead. This flag will be removed in a future version.] [boolean]
+      --telemetry-outfile               Redirect all telemetry output to the specified file.  [deprecated: Use the "telemetry.outfile" setting in settings.json instead. This flag will be removed in a future version.] [string]
+  -d, --debug                           Run in debug mode?  [boolean] [default: false]
+      --bare                            Minimal mode: skip implicit startup auto-discovery and only honor explicitly provided CLI inputs.  [boolean] [default: false]
+      --safe-mode                       Disable all customizations (context files, hooks, extensions, skills, MCP servers) for troubleshooting.  [boolean]
+      --proxy                           Proxy for Qwen Code, like schema://user:password@host:port  [deprecated: Use the "proxy" setting in settings.json instead. This flag will be removed in a future version.] [string]
+      --insecure                        Skip TLS certificate verification for API connections (for self-signed certs in trusted/lab environments). Equivalent to setting QWEN_TLS_INSECURE=1. WARNING: removes protection against man-in-the-middle attacks.  [boolean] [default: false]
+      --chat-recording                  Enable chat recording to disk. If false, chat history is not saved and --continue/--resume will not work.  [boolean]
+  -m, --model                           Model  [string]
+      --fallback-model                  Fallback model(s) for capacity errors (429/503/529), repeatable or comma-separated (max 3)  [array]
+  -p, --prompt                          Prompt. Appended to input on stdin (if any).  [deprecated: Use the positional prompt instead. This flag will be removed in a future version.] [string]
+  -i, --prompt-interactive              Execute the provided prompt and continue in interactive mode  [string]
+      --system-prompt                   Override the main session system prompt for this run. Can be combined with --append-system-prompt.  [string]
+      --append-system-prompt            Append instructions to the main session system prompt for this run. Can be combined with --system-prompt.  [string]
+      --output-style                    Output style for this run, for example "Concise" or "Explanatory". Overrides the general.outputStyle setting; "default" selects no style.  [string]
+  -s, --sandbox                         Run in sandbox?  [boolean]
+      --sandbox-image                   Sandbox image URI.  [deprecated: Use the "tools.sandboxImage" setting in settings.json instead. This flag will be removed in a future version.] [string]
+  -y, --yolo                            Automatically accept all actions (aka YOLO mode, see https://www.youtube.com/watch?v=xvFZjo5PgG0 for more details)?  [boolean] [default: false]
+      --approval-mode                   Set the approval mode: plan (Analyze only, do not modify files or execute commands), default (Require approval for file edits or shell commands), auto-edit (Automatically approve file edits), auto (LLM classifier auto-approves safe actions, blocks risky ones), yolo (Automatically approve all tools)  [string] [choices: "plan", "default", "auto-edit", "auto", "yolo"]
+      --acp                             Starts the agent in ACP mode  [boolean]
+      --experimental-lsp                Enable experimental LSP (Language Server Protocol) feature for code intelligence  [boolean] [default: false]
+      --restore-ask-user-question       On daemon session load/resume, re-hang a trailing unanswered ask_user_question instead of synthesizing a failed tool result  [boolean] [default: false]
+      --channel                         Channel identifier (VSCode, ACP, SDK, CI, desktop, daemon)  [string] [choices: "VSCode", "ACP", "SDK", "CI", "desktop", "daemon"]
+      --allowed-mcp-server-names        Allowed MCP server names  [array]
+      --mcp-config                      MCP server configuration as JSON string or file path. Can be a path to a JSON file or inline JSON with {"mcpServers": {...}} format.  [string]
+      --allowed-tools                   Tools to allow, will bypass confirmation  [array]
+  -e, --extensions                      A list of extensions to use. If not provided, all extensions are used.  [array]
+  -l, --list-extensions                 List all available extensions and exit.  [boolean]
+      --include-directories, --add-dir  Additional directories to include in the workspace (comma-separated or multiple --include-directories)  [array]
+      --openai-logging                  Enable logging of OpenAI API calls for debugging and analysis  [boolean]
+      --openai-logging-dir              Custom directory path for OpenAI API logs. Overrides settings files.  [string]
+      --openai-api-key                  OpenAI API key to use for authentication  [string]
+      --openai-base-url                 OpenAI base URL (for custom endpoints)  [string]
+      --screen-reader                   Enable screen reader mode for accessibility.  [boolean]
+      --input-format                    The format consumed from standard input.  [string] [choices: "text", "stream-json"] [default: "text"]
+  -o, --output-format                   The format of the CLI output.  [string] [choices: "text", "json", "stream-json"]
+      --include-partial-messages        Include partial assistant messages when using stream-json output.  [boolean] [default: false]
+      --json-fd                         File descriptor for structured JSON event output (dual output mode). The TUI renders normally on stdout while JSON events are written to this fd. The caller must provide this fd via spawn stdio configuration.  [number]
+      --json-file                       File path for structured JSON event output (dual output mode). Can be a regular file, FIFO (named pipe), or /dev/fd/N.  [string]
+      --json-schema                     JSON Schema that the model's final output must conform to (headless mode only). Accepts a JSON literal or "@path/to/schema.json". Registers a synthetic \`structured_output\` tool; the session ends on the first valid call.  [string]
+      --input-file                      File path for receiving remote input commands (bidirectional sync). An external process writes JSONL commands; the TUI watches and processes them.  [string]
+  -c, --continue                        Resume the most recent session for the current project.  [boolean] [default: false]
+  -r, --resume                          Resume a specific session by its ID. Use without an ID to show session picker.  [string]
+      --session-id                      Specify a session ID for this run.  [string]
+      --fork-session                    Create a new forked session from the resumed session. Must be used with --resume or --continue.  [boolean] [default: false]
+      --worktree                        Start the session inside a git worktree at <repoRoot>/.qwen/worktrees/<slug>/. Pass a slug (\`--worktree my-feature\`), a PR reference (\`--worktree=#123\` or a full GitHub pull-request URL), or use bare \`--worktree\` to auto-generate a slug. On exit, the WorktreeExitDialog prompts to keep or remove the worktree.  [string]
+      --max-session-turns               Maximum number of session turns (must be an integer)  [number]
+      --max-wall-time                   Run-level wall-clock budget for headless / unattended runs. Accepts seconds (e.g. \`90\`), or a duration string with unit (e.g. \`30s\`, \`5m\`, \`1h\`, \`1.5h\`). Minimum 1s — sub-second values (\`500ms\`, \`0.5\`) are rejected as typos; max ~24 days. Aborts the run with exit code 55 when exceeded.  [string]
+      --max-tool-calls                  Maximum cumulative tool calls executed during the run (success or failure; \`structured_output\` under --json-schema is exempt). Aborts with exit code 55 when exceeded. -1 / unset means no limit; 0 means "no tool calls allowed" (first call aborts). Capped at 1,000,000 to catch typos.  [number]
+      --max-subagent-depth              Maximum sub-agent nesting depth (1-based levels). 1 keeps sub-agents available but disables nesting; capped at 100. Overrides model.maxSubagentDepth from settings. Defaults to 5.  [number]
+      --core-tools                      Core tool paths  [array]
+      --exclude-tools                   Tools to exclude  [array]
+      --disabled-slash-commands         Slash command names to hide/disable (comma-separated or repeated). Merged with the \`slashCommands.disabled\` setting and QWEN_DISABLED_SLASH_COMMANDS. Matched case-insensitively against the final command name; a skill command matches under its registered name (rust:pdf) or its authored name (pdf).  [array]
+      --auth-type                       Authentication type  [string] [choices: "openai", "openai-responses", "anthropic", "qwen-oauth", "gemini", "vertex-ai"]
+  -v, --version                         Show version number  [boolean]
+  -h, --help                            Show help  [boolean]`;
+
 describe("helpParagraph", () => {
     it("a flag's own paragraph should be found, unwrapped, and bounded by the next flag", () => {
         expect(helpParagraph(CLAUDE_HELP, "--effort"))
@@ -717,6 +872,8 @@ Options:
             { help: CLINE_HELP, model: "--model", effort: "--thinking", rungs: 5, floor: 4 },
             { help: GEMINI_HELP, model: "--model", effort: undefined, rungs: 0, floor: 4 },
             { help: COPILOT_HELP, model: "--model", effort: "--reasoning-effort", rungs: 7, floor: 4 },
+            { help: OPENCODE_HELP, model: "--model", effort: undefined, rungs: 0, floor: 4 },
+            { help: QWEN_HELP, model: "--model", effort: undefined, rungs: 0, floor: 4 },
         ];
 
         for (const { help, model, effort, rungs, floor } of surveyed) {
@@ -727,6 +884,25 @@ Options:
             expect(caps.efforts).toHaveLength(rungs);
         }
         expect(new Set(surveyed.map((s) => s.effort)).size).toBeGreaterThan(1);
+    });
+
+    it("opencode and Qwen Code, read from their own captured help, should each offer a model and no effort control", () => {
+        // The CHANGELOG names all three yargs harnesses; one Gemini fixture
+        // pins one of them. These pin the other two from their own output.
+        for (const [name, version, help] of [["opencode", "1.18.31", OPENCODE_HELP], ["qwen", "0.24.2", QWEN_HELP]] as const) {
+            const caps = parseHarnessHelp(name, version, help);
+            expect(caps.supportsModel, name).toBe(true);
+            expect(caps.modelFlag, name).toBe("--model");
+            expect(caps.supportsEffort, name).toBe(false);
+            for (const sw of ["--continue", "--help", "--version"]) {
+                // `helpParagraph` is null for a switch AND for a flag the help
+                // never mentions, so the fixture is held to carry the flag
+                // before its paragraph is held to be absent.
+                expect(help, `${name} documents ${sw}`).toContain(sw);
+                expect(helpParagraph(help, sw), `${name} ${sw} is a switch`).toBeNull();
+            }
+        }
+        expect(allFlags(QWEN_HELP).map((f) => f.flag)).toContain("--approval-mode");
     });
 
     it("the examples should never be treated as the set of what exists", () => {

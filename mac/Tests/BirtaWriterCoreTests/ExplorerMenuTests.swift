@@ -22,10 +22,15 @@ final class ExplorerMenuTests: XCTestCase {
     }
 
     func testEveryRowShouldEitherActOrSeparate() {
-        for kind in [ExplorerMenu.EntryKind.folder, .document, .other] {
-            for item in ExplorerMenu.items(for: kind, name: "x") {
+        var rows = 0
+        for kind in ExplorerMenu.EntryKind.allCases {
+            let items = ExplorerMenu.items(for: kind, name: "x")
+            XCTAssertFalse(items.isEmpty, "\(kind) offers nothing")
+            for item in items {
+                rows += 1
                 XCTAssertEqual(item.action == nil, item.title.isEmpty, "\(kind): \(item)")
             }
         }
+        XCTAssertGreaterThan(rows, 10, "the sweep reached every kind's rows")
     }
 }

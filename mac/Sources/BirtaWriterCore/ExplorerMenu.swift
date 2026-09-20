@@ -3,10 +3,11 @@ import Foundation
 /// What a row of the file explorer offers when it is right-clicked, with no
 /// menu built: the rows, in order, per kind of entry.
 ///
-/// Kept as a table so a test can hold the whole vocabulary against the app's
-/// other file menus (the titlebar's Reveal in Finder, the File menu's New
-/// Note) rather than sampling a built `NSMenu`. The app builds the menu from
-/// this and performs the actions; nothing here touches a file.
+/// Kept as a table so a test can read the whole vocabulary, per kind, rather
+/// than sampling a built `NSMenu`; `EntryKind` is `CaseIterable` so that
+/// sweep is derived from the type and a fourth kind joins it unasked. The app
+/// builds the menu from this and performs the actions; nothing here touches
+/// a file.
 ///
 /// The set is the standard one for a file sidebar and no more: where the
 /// file opens, where it is, and where it goes. Rename is deliberately absent,
@@ -14,7 +15,7 @@ import Foundation
 /// name opens), and one rename with two doors is two answers about what
 /// happens to a file that is open in another tab.
 public enum ExplorerMenu {
-    public enum EntryKind: Equatable, Sendable {
+    public enum EntryKind: Equatable, Sendable, CaseIterable {
         case folder
         /// A document the editor opens.
         case document

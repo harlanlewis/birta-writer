@@ -86,9 +86,10 @@ declare global {
              * Whether the formatting row is open, on a host arranging
              * `formattingInSecondRow`; absent means shut. The host's one
              * answer for all its pages, never a per-page store: it is a
-             * setting changed in the host's own Settings window and pushed to
-             * every page as `setFormattingRowExpanded`, and no page
-             * originates a flip.
+             * setting changed in the host's own Settings window or asked
+             * for by a page's gear switch (`setFormattingRowExpanded` out),
+             * and pushed to every page as `setFormattingRowExpanded`; no
+             * page flips the row on its own.
              */
             formattingRowExpanded?: boolean;
             /** Frontmatter panel expanded on open (birta.frontmatterExpanded). */

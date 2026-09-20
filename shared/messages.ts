@@ -958,11 +958,12 @@ export type ToWebviewMessage =
     // the DOM entirely, so a webview that never enables it never pays for it.
     | { type: "setLineNumbers"; enabled: boolean }
     // Whether this page carries the formatting row, under
-    // `formattingInSecondRow`. One-way, and that is the whole shape of it: the
-    // row is a SETTING of the host's, changed in its own Settings window and
-    // seeded into every page as `__i18n.formattingRowExpanded`, so the page
-    // has no control that flips it and posts nothing back. Sent on a change to
-    // every open page, the one whose window made the change included.
+    // `formattingInSecondRow`. The row is a SETTING of the host's, seeded into
+    // every page as `__i18n.formattingRowExpanded` and changed in the host's
+    // own Settings window or asked for by a page's gear switch (the
+    // same-named request on the other arm); either way the host stores it and
+    // sends this to every open page, the one that asked included, so no page
+    // flips the row on its own.
     | { type: "setFormattingRowExpanded"; expanded: boolean }
     // Live read-only update, after `birta.readOnly` changes (MAR-53). The
     // setting is the DEFAULT, so this re-seeds the mode wholesale: a user who
