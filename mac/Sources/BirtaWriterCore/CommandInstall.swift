@@ -202,31 +202,38 @@ public enum CommandInstall {
     /// Carry out an install. Returns nil on success and the sentence to show
     /// otherwise.
     ///
+    /// The target is checked first, and it is the one thing here that is about
+    /// this app rather than about the user's directory: a link to a command
+    /// that is not in the bundle is a name on `PATH` that fails when it is
+    /// run, which is worse than a row that refused.
+    ///
     /// The directory is created when it is missing, which is the ordinary case
-    /// on a Mac nobody has set one up on. Removing before linking rather than
-    /// asking for an overwrite, because `createSymbolicLink` has no such
-    /// option and the only thing being removed is a link this already decided
-    /// is ours.
+    /// on a Mac nobody has set one up on.
     public static func install(link: URL, target: URL,
                                fileManager: FileManager = .default) -> String? {
-        switch plan(existing: inspect(link: link, fileManager: fileManager), target: target) {
-        case .alreadyInstalled:
-            return nil
-        case let .refuse(reason):
-            return reason
-        case .install, .relink:
-            do {
+        guard fileManager.fileExists(atPath: target.path) else {
+            return "This copy of the app has no \(executableName) to link to."
+        }
+        let plan = plan(existing: inspect(link: link, fileManager: fileManager), target: target)
+        do {
+            switch plan {
+            case .alreadyInstalled:
+                return nil
+            case let .refuse(reason):
+                return reason
+            case .install:
                 try fileManager.createDirectory(at: link.deletingLastPathComponent(),
                                                 withIntermediateDirectories: true)
-                if fileManager.isDeletableFile(atPath: link.path),
-                   (try? fileManager.attributesOfItem(atPath: link.path)) != nil {
-                    try fileManager.removeItem(at: link)
-                }
-                try fileManager.createSymbolicLink(at: link, withDestinationURL: target)
-                return nil
-            } catch {
-                return error.localizedDescription
+            case .relink:
+                // Removed rather than overwritten, because `createSymbolicLink`
+                // has no such option. What is being removed is a link the plan
+                // has already decided is ours.
+                try fileManager.removeItem(at: link)
             }
+            try fileManager.createSymbolicLink(at: link, withDestinationURL: target)
+            return nil
+        } catch {
+            return error.localizedDescription
         }
     }
 

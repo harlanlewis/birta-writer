@@ -93,7 +93,9 @@ run() {
 echo "no arguments"
 run < /dev/null
 expect_status 0 "$STATUS" "bare invocation"
-expect_contains "$OUT" "summon" "bare invocation summons"
+# The word, not just the verb. The app reads it out of its own argv and the
+# two programs cannot see each other's spelling of it.
+expect_contains "$OUT" "summon --summon" "bare invocation summons"
 
 echo "a file that is there"
 run real.md < /dev/null
@@ -154,9 +156,13 @@ expect_contains "$OUT" "usage:" "--help prints usage"
 expect_contains "$OUT" ".md, .markdown, .mdx" "--help names what is opened"
 
 echo "piped text"
+# Into a throwaway Application Support, never the real one: that folder holds
+# somebody's own files and a check has no business tidying up in it.
+export BIRTA_MAC_CLI_SUPPORT="$WORK/support"
 OUT="$(printf 'piped text\n' | "$BWR" 2>&1)"; STATUS=$?
 expect_status 0 "$STATUS" "pipe"
-expect_contains "$OUT" "/Piped/" "piped text lands in the app's Piped folder"
+expect_contains "$OUT" "$WORK/support/Birta Writer/Piped/" \
+    "piped text lands in the app's own Piped folder"
 PIPED="$(printf '%s\n' "$OUT" | sed -n 's/^write //p')"
 expect_file "$PIPED" "piped file reaches disk"
 checks=$((checks + 1))
@@ -164,9 +170,6 @@ if [ "$(cat "$PIPED" 2>/dev/null)" != "piped text" ]; then
     echo "FAIL piped bytes: $PIPED does not hold what was piped" >&2
     failures=$((failures + 1))
 fi
-rm -f "$PIPED"
-# The folder itself is left: it is the app's own and may already have held
-# files before this ran.
 
 echo "an empty pipe"
 OUT="$(: | "$BWR" 2>&1)"; STATUS=$?
@@ -199,6 +202,21 @@ ln -sf "$FAKE/Contents/MacOS/bwr" "$WORK/bin/bwr"
 OUT="$("$WORK/bin/bwr" --version 2>&1)"; STATUS=$?
 expect_status 0 "$STATUS" "--version through a symlink"
 expect_contains "$OUT" "Birta Writer 25.9.20" "the linked command finds its own bundle"
+
+echo "a development build keeps its piped text apart"
+# The flavour is read off the bundle the command belongs to, which is why the
+# bundle is looked for even under a dry run: a development build dropping files
+# among the release's is the thing the flavour split exists to stop, and a dry
+# run that skipped the lookup would report the release's folder and call it
+# right.
+DEV="$WORK/Birta Writer [DEV].app"
+mkdir -p "$DEV/Contents"
+sed 's/com.birtalabs.birta-writer</com.birtalabs.birta-writer-dev</' \
+    "$FAKE/Contents/Info.plist" > "$DEV/Contents/Info.plist"
+OUT="$(printf 'dev text\n' | BIRTA_MAC_CLI_BUNDLE="$DEV" "$BWR" 2>&1)"; STATUS=$?
+expect_status 0 "$STATUS" "pipe into a development build"
+expect_contains "$OUT" "$WORK/support/Birta Writer [DEV]/Piped/" \
+    "a development build pipes into a folder of its own"
 
 cd "$REPO"
 echo

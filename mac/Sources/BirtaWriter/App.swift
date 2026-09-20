@@ -134,7 +134,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding, 
     /// `argv` on a COLD launch only, which is exactly when it is needed: a
     /// warm one gets the reopen event the Dock icon sends, and
     /// `applicationShouldHandleReopen` summons from there.
-    static var summonedFromShell: Bool { CommandLine.arguments.contains("--summon") }
+    ///
+    /// The word is `CliInvocation.summonArgument` rather than a literal,
+    /// because the command spells it too and neither end can see the other's.
+    /// It takes the arguments so the reading is checkable, since a process
+    /// cannot be relaunched to change its own.
+    static func summonedFromShell(_ arguments: [String] = CommandLine.arguments) -> Bool {
+        arguments.contains(CliInvocation.summonArgument)
+    }
 
     /// A file the user pointed this app at, held until there is a Coordinator
     /// to give it to.
@@ -318,7 +325,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding, 
         // hotkey-summoned app and wrong for one somebody just double-clicked a
         // file in: the file has to appear. Last, so the panel comes up over
         // whatever the settings hooks above built.
-        if launchedWith != nil || Self.summonedFromShell { windows.summonAll() }
+        if launchedWith != nil || Self.summonedFromShell() { windows.summonAll() }
         installTerminationSignal()
     }
 

@@ -105,6 +105,16 @@ public enum CliInvocation {
         }
     }
 
+    /// The word the command puts in the app's `argv` for a launch with no file
+    /// to open.
+    ///
+    /// Here because TWO programs have to agree on it and neither can see the
+    /// other's spelling of it: the command passes it through `open --args` and
+    /// the app reads it out of `CommandLine.arguments`. A literal at each end
+    /// is a pair that can be renamed apart with every test still green, which
+    /// is the shape of drift no run reports.
+    public static let summonArgument = "--summon"
+
     /// The extensions in the message above, spelled once.
     ///
     /// Derived from `DocumentTypes.opened` rather than listed, because the

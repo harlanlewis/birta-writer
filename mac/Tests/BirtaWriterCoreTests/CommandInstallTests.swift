@@ -227,6 +227,16 @@ final class CommandInstallTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: target.path))
     }
 
+    /// A link to a command that is not in the bundle is a name on `PATH` that
+    /// fails when it is run, which is worse than a row that refused. Nothing
+    /// may be left behind either.
+    func testALinkToACommandThatIsNotThereShouldBeRefused() {
+        let target = work.appendingPathComponent("Nothing.app/Contents/MacOS/bwr")
+        let link = work.appendingPathComponent("bin/bwr")
+        XCTAssertNotNil(CommandInstall.install(link: link, target: target))
+        XCTAssertEqual(CommandInstall.inspect(link: link), .nothing)
+    }
+
     /// Unchecking a box over a command that is already gone is not an error.
     func testARemovalWithNothingThereShouldSayNothing() {
         XCTAssertNil(CommandInstall.uninstall(link: work.appendingPathComponent("bin/bwr")))

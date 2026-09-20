@@ -115,10 +115,20 @@ func launch(_ app: URL, arguments: [String]) -> Bool {
     return process.terminationStatus == 0
 }
 
-func locateApp() -> URL? {
-    guard let app = appBundle() else {
+/// The bundle this command belongs to, looked for even under a dry run.
+///
+/// A check must read the flavour the real command would: a development build's
+/// piped text goes in a folder of its own, and a dry run that skipped the
+/// lookup would put it in the release's and report that as correct. Nil only
+/// where there is no bundle at all, which is the command run straight out of
+/// `swift build`.
+let app = appBundle()
+
+/// The bundle, or a refusal. Everything that actually launches needs one.
+func requireApp() -> URL {
+    guard let app else {
         fail("cannot find Birta Writer.app; reinstall the command from Settings")
-        return nil
+        exit(1)
     }
     return app
 }
@@ -173,7 +183,7 @@ case .help:
     report(usage)
 
 case .version:
-    guard let app = locateApp() else { exit(1) }
+    let app = requireApp()
     let version = Bundle(url: app)?.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
     guard let version else {
         fail("cannot read the version of \(app.lastPathComponent)")
@@ -185,15 +195,17 @@ case .version:
 
 case .summon:
     if dryRun {
-        report("summon")
+        // The word itself, not just the verb: what the app reads out of its
+        // own `argv` is the other end of this and cannot see this spelling.
+        report("summon \(CliInvocation.summonArgument)")
         break
     }
-    guard let app = locateApp() else { exit(1) }
     // `--summon` reaches the app's `argv` on a cold launch and is ignored on a
     // warm one, where `open` sends the reopen event the Dock icon sends and the
     // app summons from there. Both routes end in every window showing, which is
     // what a call from a shell means: a request, never a toggle.
-    guard launch(app, arguments: ["--args", "--summon"]) else { exit(1) }
+    guard launch(requireApp(), arguments: ["--args", CliInvocation.summonArgument])
+    else { exit(1) }
 
 case .readStandardInput:
     let data = FileHandle.standardInput.readDataToEndOfFile()
@@ -201,11 +213,16 @@ case .readStandardInput:
         fail("nothing on standard input")
         exit(1)
     }
-    let app: URL? = dryRun ? nil : locateApp()
-    if !dryRun && app == nil { exit(1) }
     let flavour = AppFlavor.forBundle(app.flatMap { Bundle(url: $0)?.bundleIdentifier })
-    guard let support = FileManager.default.urls(for: .applicationSupportDirectory,
-                                                 in: .userDomainMask).first else {
+    // `BIRTA_MAC_CLI_SUPPORT` points this at a throwaway folder for a checking
+    // run, as `BIRTA_MAC_THEMES_DIR` does for the theme library and for the
+    // same reason: the real one holds somebody's own files, and a check that
+    // writes there has to tidy up after itself in a directory it did not make.
+    let named = ProcessInfo.processInfo.environment["BIRTA_MAC_CLI_SUPPORT"] ?? ""
+    let support = named.isEmpty
+        ? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+        : URL(fileURLWithPath: named)
+    guard let support else {
         fail("cannot find Application Support")
         exit(1)
     }
@@ -231,11 +248,12 @@ case .readStandardInput:
         report("open \(file.path)")
         break
     }
-    guard let app, launch(app, arguments: [file.path]) else { exit(1) }
+    guard launch(requireApp(), arguments: [file.path]) else { exit(1) }
 
 case let .open(targets):
-    let app: URL? = dryRun ? nil : locateApp()
-    if !dryRun && app == nil { exit(1) }
+    // Asked for before the loop, so a command that cannot find its app says so
+    // rather than creating every file it was given and then failing.
+    if !dryRun { _ = requireApp() }
     for target in targets {
         if case let .create(url) = target {
             // LaunchServices refuses a path with nothing at it, so a file the
@@ -253,6 +271,6 @@ case let .open(targets):
             report("open \(target.url.path)")
             continue
         }
-        guard let app, launch(app, arguments: [target.url.path]) else { exit(1) }
+        guard launch(requireApp(), arguments: [target.url.path]) else { exit(1) }
     }
 }
