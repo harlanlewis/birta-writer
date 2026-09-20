@@ -60,12 +60,22 @@ done
 
 echo "swift build -c $CONFIG"
 swift build -c "$CONFIG" --package-path mac
-BIN="$(swift build -c "$CONFIG" --package-path mac --show-bin-path)/BirtaWriter"
+SWIFT_BIN="$(swift build -c "$CONFIG" --package-path mac --show-bin-path)"
+BIN="$SWIFT_BIN/BirtaWriter"
+CLI="$SWIFT_BIN/BirtaWriterCli"
 
 APP="$OUT/$APP_NAME.app"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources/web/dist"
 cp "$BIN" "$APP/Contents/MacOS/$EXEC_NAME"
+# The `bwr` command, which Settings links into a directory on the user's PATH.
+# Its name in here is fixed whatever the link is called, because this is a file
+# in the bundle rather than a name on PATH; `CommandInstall.executableName` is
+# the other end of that. Contents/MacOS rather than Contents/Resources: a
+# Mach-O nested under Resources is the arrangement notarization objects to
+# (MAR-378). The SAME name in both flavours, since the bundles are what keep
+# them apart and the two links differ by their own names.
+cp "$CLI" "$APP/Contents/MacOS/bwr"
 cp mac/Resources/Info.plist "$APP/Contents/Info.plist"
 # The flavour, written into the copy rather than kept as a second plist. One
 # source of truth for everything else in there, and the two keys that differ

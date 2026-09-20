@@ -54,6 +54,7 @@ enum Prefs {
         case hasSeenWelcome
         case autoUpdate
         case agentEnabled
+        case commandName
         case newNoteNameTemplate
         case lastUpdateCheck
         case updateDeclinedTag
@@ -745,6 +746,46 @@ enum Prefs {
         set { d.set(newValue, forKey: Key.agentCommand.rawValue) }
     }
 
+    /// What the shell command Settings installs is CALLED.
+    ///
+    /// A setting rather than a constant because the name is the one thing
+    /// about this that can collide with somebody's machine: a command
+    /// shadowing a tool they already have is worse than no command at all,
+    /// and the only fix is a different word. Whether it is INSTALLED is
+    /// deliberately not stored beside it. The link on disk is the whole of
+    /// that fact, so a preference claiming otherwise could only be a second
+    /// answer able to disagree with the first.
+    static var commandName: String {
+        get {
+            let stored = d.string(forKey: Key.commandName.rawValue) ?? ""
+            return stored.isEmpty ? Self.defaultCommandName : stored
+        }
+        set { d.set(newValue, forKey: Key.commandName.rawValue) }
+    }
+
+    /// The name a fresh install offers, per flavour for the reason the hotkey
+    /// and the note are: the two builds are meant to sit in /Applications
+    /// together, and one name would mean whichever was installed second
+    /// silently took the other's.
+    static var defaultCommandName: String {
+        CommandInstall.defaultName(isDevelopmentBuild: AppFlavor.current == .dev)
+    }
+
+    /// Where the link goes.
+    static var commandLink: URL {
+        CommandInstall.defaultDirectory(home: FileManager.default.homeDirectoryForCurrentUser)
+            .appendingPathComponent(commandName)
+    }
+
+    /// What it points at, read off the RUNNING bundle rather than written
+    /// down: an app moved or replaced carries its command with it, and a link
+    /// into a copy that is no longer there is one an install repairs.
+    static var commandTarget: URL {
+        Bundle.main.bundleURL
+            .appendingPathComponent("Contents/MacOS", isDirectory: true)
+            .appendingPathComponent(CommandInstall.executableName)
+    }
+
     /// Whether this host can hand a prompt to an agent at all.
     ///
     /// Two ways to have none, and the row and the capability must agree with
@@ -932,6 +973,10 @@ enum Prefs {
         report("show in menu bar", !showInMenuBar, "off")
         report("agent", !agentEnabled, "off")
         report("agent command", agentEnabled && agentCommand != AgentPreset.fallback.template)
+        // The name only, never whether the link is there: this list is of
+        // settings that differ from their defaults, and installation is a fact
+        // about the filesystem rather than a setting.
+        report("command name", commandName != defaultCommandName)
         report("note home", noteHome != .iCloud, noteHome.rawValue)
         report("open to a blank note", openToBlankNote, "on")
         report("open files in", openFilesIn != .tab, openFilesIn.rawValue)
