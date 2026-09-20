@@ -16,6 +16,7 @@
 
 ### Fixed
 
+- A connection made by signing in through the browser renews itself when its grant lapses, instead of asking you to connect again. The renewal was written but never ran: the fields it needed were stored and then dropped on the way back out, so every connection looked as though it would never expire and a lapsed one could only be fixed by reconnecting. This reaches you only if your provider issues a credential that expires at all, which today means a Linear connection rather than a GitHub or Asana one.
 - The `/ai` composer now offers a model for Gemini CLI, opencode and Qwen Code, and a reasoning effort for GitHub Copilot CLI, Cline and aider. Birta reads what a harness accepts from that harness's own `--help`, and it was not reading the shapes those CLIs print, so the pickers were silently absent and Cline's effort menu opened with nothing in it. Where a harness names a reasoning flag without documenting its levels, as aider does, the effort picker now takes a typed value the way the model picker always has.
 
 ### Removed
