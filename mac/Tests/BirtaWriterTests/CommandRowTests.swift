@@ -56,9 +56,26 @@ final class CommandRowTests: XCTestCase {
     /// row that reported only the link would call this ready.
     func testALinkInADirectoryOffPathShouldBeReportedAsAProblem() {
         let controller = makeController()
-        let availability = controller.commandAvailability(name: "bwr", link: link, installed: true)
+        // The PATH is handed in, so the row is asked about a shell whose PATH
+        // provably lacks the link's directory rather than about whatever this
+        // test process happened to inherit, which may be nothing at all.
+        let availability = controller.commandAvailability(name: "bwr", link: link, installed: true,
+                                                          path: "/usr/bin:/bin")
         XCTAssertTrue(availability.isProblem, availability.note)
         XCTAssertTrue(availability.note.contains("PATH"), availability.note)
+    }
+
+    /// The other answer of the same rule, so the test above is not satisfied
+    /// by a row that calls every link a problem.
+    func testALinkInADirectoryOnPathShouldNotBeReportedAsAProblem() {
+        let controller = makeController()
+        // Read once: `link` is a fresh directory on every access, so reading
+        // it twice asks about two different directories.
+        let link = self.link
+        let onPath = "/usr/bin:/bin:" + link.deletingLastPathComponent().path
+        let availability = controller.commandAvailability(name: "bwr", link: link, installed: true,
+                                                          path: onPath)
+        XCTAssertFalse(availability.isProblem, availability.note)
     }
 
     /// A refusal replaces the standing, whatever the standing was. Telling

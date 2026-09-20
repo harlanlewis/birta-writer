@@ -72,7 +72,8 @@ final class OpenRoutingTests: XCTestCase {
 
 /// Where a row of the explorer sends its file: into the tab it was clicked
 /// in, unless a new tab was asked for or the tab holds text that only lives
-/// in it; never into another window.
+/// in it; and never into a second buffer, so a file open in another window
+/// fronts that window.
 final class ExplorerRoutingTests: XCTestCase {
     private let same: (String, String) -> Bool = { $0 == $1 }
     /// Two tabs of one folder window, then a loose window on a file of that

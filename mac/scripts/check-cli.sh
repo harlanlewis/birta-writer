@@ -16,8 +16,8 @@
 # brings the windows up, and that an opened file lands where `OpenRouting`
 # says. Those need a running app and belong to mac/scripts/measure.sh.
 #
-# The command is taken from `swift build`, so no app bundle is needed. Where
-# one is present the version arm runs against it too.
+# The command is taken from `swift build`, so no app bundle is needed: the
+# bundles the arms point it at are fabricated here, plists included.
 set -uo pipefail
 
 cd "$(dirname "$0")/../.."

@@ -382,7 +382,7 @@ export async function run({ page, check, baseUrl }) {
             toast: el?.classList.contains("agent-toast--visible") ?? false,
         };
     });
-    check("a failed run leaves the gutter and says nothing over the host",
+    check("a failed run leaves the gutter, and its failure says nothing in the corner over a host that raises it",
         afterFailure.markers === 0 && afterFailure.toast === false,
         JSON.stringify(afterFailure));
 

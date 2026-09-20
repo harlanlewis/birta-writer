@@ -26,6 +26,7 @@ import {
 } from "../plugins/blockKeys";
 import { registerEscapeLayer, closeTopmostLayer } from "../ui/escapeLayers";
 import { BlockRangeSelection } from "../plugins/blockRange";
+import { shrinkSelection } from "../plugins/smartSelect";
 import { foldPluginKey } from "../plugins/headingFold";
 import { NodeSelection } from "../pm";
 
@@ -931,5 +932,45 @@ describe("Escape returns to the caret the ladder started from (MAR-461)", () => 
         const restored = before.getBookmark().resolve(view.state.doc) as BlockRangeSelection;
         expect(restored.origin).toBe(start);
         expect(BlockRangeSelection.fromJSON(view.state.doc, before.toJSON())).toMatchObject({ origin: start });
+    });
+});
+
+describe("Escape from a node selection (MAR-461)", () => {
+    it("Escape to a block range and back from a selected rule should land on the rule, not after it", async () => {
+        const view = await makeEditor("alpha\n\n---\n\nomega");
+        let hrPos = -1;
+        view.state.doc.forEach((node, offset) => {
+            if (node.type.name === "hr") hrPos = offset;
+        });
+        expect(hrPos).toBeGreaterThan(-1);
+        view.dispatch(view.state.tr.setSelection(NodeSelection.create(view.state.doc, hrPos)));
+        toggleBlockSelection(view.state, view.dispatch);
+        expect(view.state.selection).toBeInstanceOf(BlockRangeSelection);
+        // A node selection's head is AFTER the node; the range remembers the
+        // node's own position, so the caret does not drift into the next
+        // block on the way back.
+        expect((view.state.selection as BlockRangeSelection).origin).toBe(hrPos);
+        toggleBlockSelection(view.state, view.dispatch);
+        expect(view.state.selection.from).toBe(hrPos);
+    });
+});
+
+describe("Shrink Selection keeps the ladder's origin (MAR-461)", () => {
+    it("three Mod+A, one shrink, then Escape should still go back to the caret", async () => {
+        const view = await makeEditor("one\n\ntwo\n\nthree\n\nfour\n\nfive");
+        placeCaretIn(view, "three");
+        const start = view.state.selection.from + 2;
+        view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, start)));
+        escalateSelectAll(view.state, view.dispatch);
+        escalateSelectAll(view.state, view.dispatch);
+        escalateSelectAll(view.state, view.dispatch);
+        expect(view.state.selection.from).toBe(0);
+        expect(shrinkSelection(view.state, view.dispatch)).toBe(true);
+        const shrunk = view.state.selection as BlockRangeSelection;
+        expect(shrunk).toBeInstanceOf(BlockRangeSelection);
+        expect(shrunk.to - shrunk.from).toBeLessThan(view.state.doc.content.size);
+        expect(shrunk.origin).toBe(start);
+        toggleBlockSelection(view.state, view.dispatch);
+        expect(view.state.selection.from).toBe(start);
     });
 });

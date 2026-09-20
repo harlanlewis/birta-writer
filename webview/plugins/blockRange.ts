@@ -41,6 +41,11 @@ export class BlockRangeSelection extends Selection {
      * it always did. Provenance rather than extent: `eq` ignores it, because
      * "already everything" is a question about which blocks are covered, and
      * a range that differs only in where it came from is the same range.
+     * One caller leans on that: `escalateSelectAll` skips its dispatch when
+     * the current range already equals the whole document, which is safe
+     * only because it builds that range with the current range's own origin.
+     * Derive the origin from anywhere else in that branch and the skip
+     * swallows the update.
      */
     readonly origin: number | null;
 

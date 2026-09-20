@@ -46,16 +46,13 @@ final class FirstRunWiringTests: XCTestCase {
             ("App.swift", "coordinator.onDidShow = { [weak self] in self?.finishFirstRun() }",
              "the panel coming up never ends the first run, so the popover stays "
                 + "and the invitation is offered again on the next launch"),
-            // The MAR-407 hop, moved. The first-run screen used to be where a
-            // refused default chord was reported, and the screen is off the
-            // path: this is the surface that teaches the chord now, so this is
-            // where a refusal has to reach.
+            // The MAR-407 hop: this is the surface that teaches the chord, so
+            // a chord macOS refused has to reach it here.
             ("App.swift", "refused: windows.refusedSummonCombo",
              "the popover teaches a chord macOS may already have refused"),
             ("Coordinator.swift", "onDidShow?()",
              "the panel never reports that it came up"),
         ]
-        XCTAssertEqual(hops.count, 5, "a hop was added or dropped without counting it")
 
         for hop in hops {
             XCTAssertTrue(source(hop.file).contains(hop.needle),

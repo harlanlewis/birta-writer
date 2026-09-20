@@ -521,8 +521,11 @@ function startBackground(
     const sendProgress = (line: string): void => {
         // A run saying the same thing again is not news. A harness reports
         // thinking as a stream of events, all of which reduce to one word, and
-        // repeating it costs a hop and a transaction to change nothing.
-        if (line === sentLine) { return; }
+        // repeating it costs a hop and a transaction to change nothing. The
+        // comparison is against what will be shown NEXT, the queued line when
+        // there is one, so A then B then A inside one window ends on A rather
+        // than on a B the run has already moved past.
+        if (line === (queuedLine ?? sentLine)) { return; }
         if (progressTimer) { queuedLine = line; return; }
         sentLine = line;
         report(uri, { type: "agentProgress", requestId, line });

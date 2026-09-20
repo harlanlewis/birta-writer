@@ -21,8 +21,7 @@ import Foundation
 /// Retiring the rows is a separate decision from retiring the launch that
 /// showed them, and this type only settles the second.
 ///
-/// The refusals on the invitation are what they always were, and each is
-/// doing different work.
+/// Two refusals gate the invitation, and each is doing different work.
 ///
 /// `isUserStore` is the throwaway defaults domain `mac/scripts/measure.sh`
 /// runs against, where every launch looks like a first one. Without it each

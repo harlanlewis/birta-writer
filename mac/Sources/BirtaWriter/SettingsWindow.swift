@@ -978,7 +978,12 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     /// Takes the link rather than reading `Prefs`, so a check can ask what the
     /// row would say about a directory of its own instead of about the command
     /// directory belonging to whoever is running it.
-    func commandAvailability(name: String, link: URL, installed: Bool) -> RowAvailability {
+    /// `path` is the login shell's `PATH`, injectable so a test can put the
+    /// link's directory on it or off it and reach both answers; the default
+    /// is what the row draws with. An empty string is a real answer (a shell
+    /// with no `PATH` has the link off it) and not a probe that never ran.
+    func commandAvailability(name: String, link: URL, installed: Bool,
+                             path: String = LoginShellPath.shared.childPath() ?? "") -> RowAvailability {
         if let commandRefusal { return .warning(commandRefusal) }
         let directory = link.deletingLastPathComponent()
         guard installed else {
@@ -988,7 +993,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         let standing = CommandInstall.standing(
             name: name,
             directory: directory.path,
-            path: LoginShellPath.shared.childPath() ?? "",
+            path: path,
             isExecutable: { FileManager.default.isExecutableFile(atPath: $0) })
         let note = standing.note(name: name, directory: Self.abbreviated(directory))
         return standing.isProblem ? .warning(note)

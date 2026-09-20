@@ -195,8 +195,8 @@ case .version:
     // Spelled by `AboutInfo` rather than here, which is the same sentence the
     // About window draws and the same reason it has one place to come from. An
     // unstamped build says so instead of printing a number that identifies no
-    // release; `macUpdateVersionSpelling.test.ts` is what holds every surface
-    // to that, and it read this line before there was one.
+    // release; `macUpdateVersionSpelling.test.ts` holds every surface to
+    // that, this one included.
     let about = AboutInfo(
         name: AppFlavor.forBundle(bundle.bundleIdentifier).displayName,
         shortVersion: bundle.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String,

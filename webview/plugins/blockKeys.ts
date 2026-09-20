@@ -42,7 +42,7 @@
  */
 import { keydownHandler } from "../pm";
 import type { Node as PMNode } from "../pm";
-import { Plugin, PluginKey, Selection, TextSelection, type EditorState, type Transaction } from "../pm";
+import { NodeSelection, Plugin, PluginKey, Selection, TextSelection, type EditorState, type Transaction } from "../pm";
 import type { EditorView } from "../pm";
 import { $prose } from "@milkdown/utils";
 import { closeTopmostLayer, isBareEscape } from "../ui/escapeLayers";
@@ -173,13 +173,17 @@ export const toggleBlockSelection: Command = (state, dispatch) => {
         }
         return true;
     }
-    const raw = BlockRangeSelection.tryCreate(state.doc, sel.from, sel.to, sel.head);
+    // Where the caret goes back to. A node selection has no caret inside
+    // it, and its head is the position AFTER the node, so the range remembers
+    // the node's own position and Escape lands back on it.
+    const origin = sel instanceof NodeSelection ? sel.from : sel.head;
+    const raw = BlockRangeSelection.tryCreate(state.doc, sel.from, sel.to, origin);
     if (!raw) {
         return false;
     }
     // Unit-snap: a collapsed heading selects WITH its hidden section.
     const unit = snapToUnits(unitBoundaries(state), raw.from, raw.to);
-    const range = BlockRangeSelection.tryCreate(state.doc, unit.from, unit.to, sel.head) ?? raw;
+    const range = BlockRangeSelection.tryCreate(state.doc, unit.from, unit.to, origin) ?? raw;
     if (dispatch) {
         dispatch(state.tr.setSelection(range));
     }

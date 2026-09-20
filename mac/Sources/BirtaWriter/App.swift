@@ -950,11 +950,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding, 
         // same state.
         firstRunWindow = coordinator
         coordinator.onDidShow = { [weak self] in self?.finishFirstRun() }
-        if let button = statusItem?.button {
-            let popover = FirstRunPopover(invitation)
-            popover.show(from: button)
-            firstRunPopover = popover
+        // No menu bar item, no invitation: the sentence has nowhere to hang
+        // and a wait with nothing to wait for is a blank screen for the
+        // duration. The panel comes up now, on the tour, which teaches the
+        // chord in its own words.
+        guard let button = statusItem?.button else {
+            firstRunOpenedByWait = true
+            windows.summonAll()
+            return
         }
+        let popover = FirstRunPopover(invitation)
+        popover.show(from: button)
+        firstRunPopover = popover
         let fallback = Timer(timeInterval: invitation.wait, repeats: false) { [weak self] _ in
             Task { @MainActor in
                 // Set BEFORE the summon, because the summon is what calls
@@ -1022,14 +1029,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding, 
     /// `WindowSet.openAtLaunch` falls back to.
     ///
     /// Failure is silent on purpose. Nothing is lost by not having the tour:
-    /// the panel opens empty, which is what it did before there was one, and
-    /// an error the first time somebody sees this app would be worse than the
-    /// absence it is reporting.
+    /// the panel opens empty, and an error the first time somebody sees this
+    /// app would be worse than the absence it is reporting.
+    ///
+    /// `isFirstRun` is `Prefs.isFirstLaunch`, the same gate
+    /// `applyOnboardingDefaults` acts on, and it has to be the same one: the
+    /// tour's opening says the app starts with the Mac, which is only true of
+    /// an install whose first launch registered it. An install that predates
+    /// the welcome key is invited and gets its panel, and is not told a thing
+    /// that was never done to it.
     private static func seedFirstRunNote() {
         let url = Prefs.activeURL
         guard FirstRunNote.shouldWrite(existing: FirstRunNote.existing(at: url),
                                        bufferIsEmpty: true,
-                                       isFirstRun: true,
+                                       isFirstRun: Prefs.isFirstLaunch,
                                        slot: Prefs.activeSlot) else { return }
         do {
             try FileManager.default.createDirectory(

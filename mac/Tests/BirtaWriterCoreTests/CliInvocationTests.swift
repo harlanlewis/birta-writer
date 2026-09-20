@@ -216,6 +216,13 @@ final class CliInvocationTests: XCTestCase {
         XCTAssertEqual(file.deletingLastPathComponent().path, directory.path)
         XCTAssertEqual(file.pathExtension, "md")
         XCTAssertTrue(file.lastPathComponent.hasPrefix("Piped "), file.lastPathComponent)
+        // The clock is in the name, down to the second: one second later is a
+        // different file with nothing taken, and the same second is the same
+        // name, which is what the uniquifying test beside this one is for.
+        let later = CliInvocation.pipedFile(in: directory, now: noon.addingTimeInterval(1), exists: { _ in false })
+        XCTAssertNotEqual(later.lastPathComponent, file.lastPathComponent)
+        let same = CliInvocation.pipedFile(in: directory, now: noon, exists: { _ in false })
+        XCTAssertEqual(same.lastPathComponent, file.lastPathComponent)
     }
 
     /// Two pipes inside one second, which is the only thing the clock in the

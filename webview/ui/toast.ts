@@ -72,6 +72,23 @@ interface LiveToast {
 
 const live = new Map<string, LiveToast>();
 
+/**
+ * Whether `surface` is showing a message right now, and of which tone.
+ *
+ * Read off the registry rather than off the DOM, because the registry is
+ * what put the node there: a caller that queried the document for the class
+ * would be asking a copy of the answer, and paying a lookup on a path some
+ * callers run per transaction. The one thing the registry cannot know on its
+ * own is whether its node is still in a document, so that is asked of the
+ * node: a page torn down and rebuilt leaves the entry pointing at a detached
+ * element, and a detached element is showing nothing to anybody.
+ */
+export function toastShowing(surface: string, tone?: ToastTone): boolean {
+    const entry = live.get(surface);
+    if (!entry || !entry.el.isConnected || !entry.el.classList.contains(`${surface}--visible`)) { return false; }
+    return tone === undefined || entry.el.classList.contains(`ui-notice--${tone}`);
+}
+
 function build(surface: string): LiveToast {
     const el = document.createElement("div");
     el.className = `ui-notice ${surface}`;

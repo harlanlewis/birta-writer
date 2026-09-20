@@ -7,8 +7,7 @@ import XCTest
 /// This is now the FIRST surface that teaches the summon, and the only one:
 /// the panel does not open until the chord is pressed, so a sentence naming a
 /// chord macOS has already given away sends somebody to press a key that does
-/// nothing and conclude the app is broken (MAR-407). The first-run screen used
-/// to be where that was caught, and it is not on the path any more.
+/// nothing and conclude the app is broken (MAR-407).
 final class FirstRunInvitationTests: XCTestCase {
     /// A chord that is not the default, so an arm reading the wrong one is
     /// visible rather than accidentally right.

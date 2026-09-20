@@ -165,14 +165,13 @@ public enum FirstRunNote {
     /// true, and is what the section is about, is that nothing in a document
     /// reaches out until the network switch is on.
     ///
-    /// The opening is the only disclosure there is, and that is what changed
-    /// when the questions stopped being asked. Nothing is shown before this
-    /// note, so two facts have nowhere else to land and are stated here: that
+    /// The opening is the only disclosure there is: no screen precedes this
+    /// note, so two facts have nowhere else to land and are stated here, that
     /// the app registers itself to start with the Mac
     /// (`Prefs.applyOnboardingDefaults`), and where the notes are kept,
-    /// including that they are in iCloud Drive when it is available.
-    /// `docs/NETWORK_POSTURE.md` argues that default partly on the grounds
-    /// that somebody is told, and this paragraph is where they are told.
+    /// including that they are in iCloud Drive when it is available. A
+    /// default nobody is told about is a decision made behind their back,
+    /// and this paragraph is where they are told.
     ///
     /// The Dock is an offer rather than a fact, so it sits in the closing list
     /// with the other things to go and do. `Prefs.showInDock` ships off and

@@ -708,3 +708,46 @@ describe("applyAgentResult over the corpus", () => {
         expect(refused).toEqual([]);
     }, budget(120_000));
 });
+
+describe("the corner's clock under the reader's own keystrokes (MAR-464)", () => {
+    let editor: Editor;
+    let v: EditorView;
+    const corner = (): HTMLElement | null => document.querySelector(`.${AGENT_TOAST_SURFACE}`);
+
+    beforeEach(async () => {
+        vi.clearAllMocks();
+        document.body.innerHTML = "";
+        editor = await makeEditor("First paragraph.\n\nSecond paragraph.\n\nThird.");
+        v = view(editor);
+    });
+
+    afterEach(async () => {
+        await editor.destroy();
+    });
+
+    it("typing between ticks should not move the counter, which changes only on the tick", () => {
+        vi.useFakeTimers();
+        try {
+            placeCaret(v, endOfBlock(v, 1));
+            const id = beginAgentRun(v);
+            markAgentRunning(v, id, "claude");
+            vi.advanceTimersByTime(10_000);
+            expect(corner()?.textContent).toBe("claude · working · 0:10");
+
+            // A keystroke inside the tick: `sync` runs on the transaction, and
+            // the clock has moved a second, but the sentence may not.
+            vi.advanceTimersByTime(1_200);
+            v.dispatch(v.state.tr.insertText("x"));
+            expect(corner()?.textContent).toBe("claude · working · 0:10");
+            vi.advanceTimersByTime(2_300);
+            v.dispatch(v.state.tr.insertText("y"));
+            expect(corner()?.textContent).toBe("claude · working · 0:10");
+
+            // The next tick is when it may move, and then it does.
+            vi.advanceTimersByTime(1_500);
+            expect(corner()?.textContent).toBe("claude · working · 0:15");
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+});

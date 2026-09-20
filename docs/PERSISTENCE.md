@@ -1,6 +1,6 @@
 # What a host owes the user's bytes
 
-The editor is one page and one protocol; a host is whatever mounts it, and the host owns the file. This document is the contract between the two for persistence: what every host must honour before it may call itself a Birta Writer surface, and what each host is free to decide. It is written from the two hosts that ship, Birta Writer for VS Code and Birta Writer for Mac, and every row below cites the code that keeps it. [`HOSTING.md`](HOSTING.md) is the sibling contract for what the editor needs from a page; this one is what the page needs from a file.
+The editor is one page and one protocol; a host is whatever mounts it, and the host owns the file. This document is the contract between the two for persistence: what every host must honour before it may call itself a Birta Writer surface, and what each host is free to decide. It is written from the two hosts that ship, Birta Writer for VS Code and Birta Writer for Mac, and every row below names what keeps it, ours or the platform's. [`HOSTING.md`](HOSTING.md) is the sibling contract for what the editor needs from a page; this one is what the page needs from a file.
 
 The split matters because a sync backend is a host too. [`NETWORK_POSTURE.md`](NETWORK_POSTURE.md) puts document content on rung 3 of its ladder, and the plan for pluggable sync backends (MAR-345) is built on the rule below that mechanism is pluggable and fidelity semantics are not. This is where that line is drawn.
 
@@ -28,7 +28,7 @@ The rows every host answers differently, with the two shipped answers.
 | External change: the document changed under the editor | Mechanism A in `src/externalChanges.ts`: `onDidChangeTextDocument`, debounced, with the version bumped synchronously at observe time so a racing page update is already stale; the page is re-based with a cursor-preserving minimal diff | Not observed. `NoteWatcher` follows a move and notices a delete through `NSFilePresenter`; a change to the bound file's CONTENTS while it is bound is not seen, and the buffer wins on the next write |
 | External change: the disk drifted from a dirty editor | Mechanism B, `src/diskDrift.ts`: a per-document watcher, an advisory badge, never a write | Same gap as the row above |
 | A file that moves or goes | VS Code's own handling of a renamed or deleted document | `NoteWatcher.onMoved` rebinds to the new path; `onDeleted` stops writing and offers to put a trashed file back (`MissingFileScreen.swift`) |
-| Crash safety | Hot exit backs up the `TextDocument`; how far it trails the editor is bounded by the sync scheduler's max wait, which is why that debounce may never be lengthened | The deferred write after an edit is the whole bound; with autosave off there is none, by the setting's own promise |
+| Crash safety | Hot exit backs up the `TextDocument`; how far it trails the editor is bounded by the sync scheduler's max wait, which is why that debounce may never be lengthened | The deferred write after an edit, re-held by each keystroke and capped by the coordinator's max wait under continuous typing, is the bound; with autosave off there is none, by the setting's own promise |
 | Frontmatter | Split off on the host before the page sees the body (`shared/contentTransform.ts`), held as a mirror, put back on write | The same split, ported line for line (`Frontmatter.swift`), with `frontmatterPort.test.ts` holding the two patterns equal |
 | Where the read root is | `localResourceRoots`, the workspace | `ResourceRoots`, rebased onto the bound file's folder |
 
@@ -36,14 +36,16 @@ The rows every host answers differently, with the two shipped answers.
 
 The rows agree on the promises and disagree on the mechanism, which is what a contract should look like. Two things the table makes visible are worth stating outright.
 
-The Mac app has no answer for the sixth and seventh rows. It was built as a scratchpad nobody else touched, where reading once and letting the buffer win was right. Directory windows, Open With and the `bwr` command have since made a file open in the app and open somewhere else the ordinary case, and a file edited in another editor, then summoned and hidden here, is written over. That is the second promise broken by omission, and it is tracked as MAR-469; until it lands, the app is in advisory mode on that row without the advisory.
+The Mac app has no answer for the two external-change rows. It was built as a scratchpad nobody else touched, where reading once and letting the buffer win was right. Directory windows, Open With and the `bwr` command have since made a file open in the app and open somewhere else the ordinary case, and a file edited in another editor, then summoned and hidden here, is written over. That is the second promise broken by omission: the app keeps neither mechanism and is not in advisory mode either, because nothing tells the user. It is tracked as MAR-469.
 
-The fourth row is where the Mac app made choices the contract should carry to any future host, because each is a decision and not an accident. The mode of a file the user made is theirs; 0600 is for a file the app named itself. A symlink stays a symlink because the person who made it meant it. Identical content is not written because a dismiss that changed nothing must leave the file's bytes, mtime and inode alone, which is the only way an unchanged file reads as unchanged to every other tool.
+The atomic-write row is where the Mac app made choices the contract should carry to any future host, because each is a decision and not an accident. The mode of a file the user made is theirs; 0600 is for a file the app named itself. A symlink stays a symlink because the person who made it meant it. Identical content is not written because a dismiss that changed nothing must leave the file's bytes, mtime and inode alone, which is the only way an unchanged file reads as unchanged to every other tool.
 
 ## Columns not yet written
 
 A host that owns no file at all: an embedding host with a database row, a form field or nothing (MAR-447). The rows above assume a path; that column needs a version token that is not a stat and a definition of "written" that is the host's.
 
-An iOS host on `UIDocument`, whose `contents(forType:)` is synchronous where the flush is an IPC hop away, sketched on MAR-226 and unrun.
+An iOS host on `UIDocument`, whose `contents(forType:)` is synchronous where the flush is an IPC hop away. The sketch is recorded on MAR-226, the closed design ticket this document answers, and is unrun. A web or cloud host has no sketch at all. The Tauri mapping that ticket once asked for is moot: the desktop host that shipped is native.
+
+Credentials are a column of their own that no row above holds: a keychain, a callback route for sign-in, and a consent scope a workspace cannot flip are VS Code services today (`SecretStorage`, `registerUriHandler`, application-scoped settings), and [`NETWORK_POSTURE.md`](NETWORK_POSTURE.md) says what a host off VS Code would owe in their place. No ticket carries that column yet.
 
 A sync backend with ancestry, where the admissibility predicate is a reachability check rather than equality and rejection has three outcomes (`rebase`, `defer`, `escalate`). The seam exists (MAR-346); no backend binds it yet (MAR-347).

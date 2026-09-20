@@ -29,6 +29,14 @@
  *     how long it has been, which is what somebody deciding whether to keep
  *     waiting has to go on. It costs the host nothing.
  *
+ *     Unlike the failure, it is not gated on the `notifications` capability.
+ *     That capability names what a host can RAISE, and a host raises a
+ *     failure once; a line that rewrites itself every few hundred
+ *     milliseconds is nothing any host would want raised, so every host
+ *     draws it here. Inside VS Code that means the run's progress is in the
+ *     page's corner and its failure is a notification: two surfaces, on
+ *     purpose, because they are two kinds of news.
+ *
  *     It shows a RUNNING run and nothing else. A failure is news rather than
  *     a control: there is nothing left to stop, the reason is a sentence that
  *     does not fit in a gutter, and a marker that has to be clicked away is a
@@ -63,7 +71,7 @@ import type { EditorView, Node as ProseNode } from "@/pm";
 import { t } from "../i18n";
 import { notifyAgentCancel } from "../messaging";
 import { hostHas } from "../../shared/hostProfile";
-import { hide, showToast } from "../ui/toast";
+import { hide, showToast, toastShowing } from "../ui/toast";
 import "./agentPending.css";
 
 export const agentPendingKey = new PluginKey<AgentPendingState>("birta-agent-pending");
@@ -290,11 +298,7 @@ const NOTICE_ELAPSED_AFTER_MS = 10000;
  * takes the corner back on its next tick once the dwell has run out.
  */
 function failureHoldingCorner(): boolean {
-    if (typeof document === "undefined") { return false; }
-    const el = document.querySelector(`.${AGENT_TOAST_SURFACE}`);
-    return el !== null
-        && el.classList.contains(`${AGENT_TOAST_SURFACE}--visible`)
-        && el.classList.contains("ui-notice--error");
+    return toastShowing(AGENT_TOAST_SURFACE, "error");
 }
 
 function elapsedLabel(ms: number): string {
@@ -317,7 +321,13 @@ export function agentNoticeText(runs: readonly AgentRun[], now: number): string 
     // is how long the longest one has been going.
     const oldest = live.reduce((a, b) => ((a.startedAt ?? now) <= (b.startedAt ?? now) ? a : b));
     const age = now - (oldest.startedAt ?? now);
-    const elapsed = age >= NOTICE_ELAPSED_AFTER_MS ? ` · ${elapsedLabel(age)}` : "";
+    // Quantized to the tick BEFORE it is labelled, so the sentence changes
+    // only when the tick says it may. `sync` also runs on every transaction,
+    // and a label at one-second resolution would otherwise count up under
+    // the reader's own keystrokes, which is the motion the tick exists to
+    // rule out.
+    const shownAge = Math.floor(age / NOTICE_TICK_MS) * NOTICE_TICK_MS;
+    const elapsed = age >= NOTICE_ELAPSED_AFTER_MS ? ` · ${elapsedLabel(shownAge)}` : "";
     if (live.length > 1) {
         // The number inside the sentence, not glued to the front of it: a
         // translator has to be able to put it where the language puts it.

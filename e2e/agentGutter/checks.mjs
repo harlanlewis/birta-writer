@@ -130,7 +130,7 @@ export async function run({ page, check, baseUrl }) {
     });
     check("the failure takes the marker out of the gutter",
         failure.markers === 0, JSON.stringify(failure));
-    check("and says nothing in the corner, because this host says it itself",
+    check("and the failure says nothing in the corner, because this host raises it itself",
         failure.toast === false, JSON.stringify(failure));
 
     // ── 2. A run on a plain top-level paragraph ──────────────────────

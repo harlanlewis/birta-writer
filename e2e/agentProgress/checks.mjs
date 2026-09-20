@@ -6,9 +6,9 @@
  * so whether a corner of the document is still clickable is a question about
  * hit testing rather than about class lists, and jsdom has no answer to it.
  * Two arms below drive real clicks at the corner and read where they landed:
- * one while a notice is up, one after everything has gone. The second one
- * failed before this suite existed, for every session that had ever seen an
- * `/ai` failure.
+ * one while a notice is up, one after everything has gone. The second pins
+ * that a dismissed failure pill, laid out at zero opacity, takes no click
+ * from the document under it.
  *
  * Everything about WHAT the notice says is in webview/__tests__/agentPending,
  * over the plugin state; this suite deliberately asserts as little of the

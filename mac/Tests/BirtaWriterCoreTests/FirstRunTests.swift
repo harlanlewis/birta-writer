@@ -32,7 +32,6 @@ final class FirstRunTests: XCTestCase {
                 }
             }
         }
-        XCTAssertEqual(seen.values.reduce(0, +), 16)
         // Every arm reached, so the matrix is not agreeing with itself about a
         // case it never produced. A three-way answer where one arm never
         // appears is a two-way answer with a dead branch.

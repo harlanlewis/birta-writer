@@ -27,6 +27,8 @@ import {
     harnessName,
     normalizeAgentMode,
     shellQuote,
+    CLAUDE_BACKGROUND_TEMPLATE,
+    CODEX_BACKGROUND_TEMPLATE,
     CHAT_OPEN_COMMAND,
     TERMINAL_NAME,
 } from "../agentBridge/askAgent";
@@ -995,5 +997,63 @@ describe("askAgent", () => {
         await expect(askAgent(() => Promise.resolve(activeAt(1)), reporter().report, "do x", "ai1")).resolves.toBeUndefined();
 
         expect(vscode.window.showErrorMessage).toHaveBeenCalled();
+    });
+});
+
+describe("the first-use templates and the stored command", () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+    });
+
+    it("the background templates should ask each harness for its structured output, with the flags that must travel together", () => {
+        // Claude Code's stream-json needs --print and --verbose beside it, and
+        // the CLI says so only in its error; the three are one unit here.
+        expect(CLAUDE_BACKGROUND_TEMPLATE).toContain(" -p ");
+        expect(CLAUDE_BACKGROUND_TEMPLATE).toContain("--output-format stream-json");
+        expect(CLAUDE_BACKGROUND_TEMPLATE).toContain("--verbose");
+        expect(CODEX_BACKGROUND_TEMPLATE).toContain("codex exec");
+        expect(CODEX_BACKGROUND_TEMPLATE).toContain("--json");
+    });
+
+    it("a route that is already configured should never be rewritten", async () => {
+        const { update } = configureRoute("claude {prompt}", "terminal");
+        makeFakeTextDocument("# Plan\n", noteUri);
+
+        await askAgent(() => Promise.resolve(activeAt(1)), reporter().report, "do x", "ai1");
+
+        expect(vscode.window.showQuickPick).not.toHaveBeenCalled();
+        expect(update).not.toHaveBeenCalled();
+    });
+});
+
+describe("the progress throttle's dedupe (MAR-464)", () => {
+    it("A then B then A inside one window should leave the corner on A, the run's latest word", async () => {
+        vi.useFakeTimers();
+        try {
+            configureRoute("claude -p {prompt}", "background");
+            makeFakeTextDocument("# Plan\n", noteUri);
+            const child = new FakeChild();
+            spawnMock.mockImplementation(() => child);
+            const { report, messages } = reporter();
+            const started = askAgent(() => Promise.resolve(activeAt(1)), report, "do x", "ai22");
+            await vi.advanceTimersByTimeAsync(0);
+            await started;
+
+            const lines = () => messages.filter((m) => m.type === "agentProgress")
+                .map((m) => (m as { line: string }).line);
+            child.stdout.emit("data", Buffer.from("A\n"));
+            child.stdout.emit("data", Buffer.from("B\n"));
+            child.stdout.emit("data", Buffer.from("A\n"));
+            expect(lines()).toEqual(["A"]);
+            // The window closes. B was superseded before it was ever shown,
+            // and A is what was sent, so nothing more goes out: the corner is
+            // on the run's latest word. A dedupe against the line last SENT
+            // would have dropped the second A and shown B here.
+            await vi.advanceTimersByTimeAsync(500);
+            expect(lines()).toEqual(["A"]);
+            expect(lines().at(-1)).toBe("A");
+        } finally {
+            vi.useRealTimers();
+        }
     });
 });
