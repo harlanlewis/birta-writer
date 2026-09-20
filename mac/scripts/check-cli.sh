@@ -191,7 +191,9 @@ cat > "$FAKE/Contents/Info.plist" <<'PLIST'
 PLIST
 OUT="$(BIRTA_MAC_CLI_BUNDLE="$FAKE" "$BWR" --version 2>&1)"; STATUS=$?
 expect_status 0 "$STATUS" "--version"
-expect_contains "$OUT" "Birta Writer 25.9.20" "--version reports the app's version"
+# `Version <number>`, which is the sentence the About window draws: one
+# spelling for every surface that names a build (`AboutInfo`).
+expect_contains "$OUT" "Birta Writer Version 25.9.20" "--version reports the app's version"
 
 echo "a real bundle's command finds its own app"
 # The placement the installed symlink depends on: the command inside
@@ -201,7 +203,15 @@ mkdir -p "$WORK/bin"
 ln -sf "$FAKE/Contents/MacOS/bwr" "$WORK/bin/bwr"
 OUT="$("$WORK/bin/bwr" --version 2>&1)"; STATUS=$?
 expect_status 0 "$STATUS" "--version through a symlink"
-expect_contains "$OUT" "Birta Writer 25.9.20" "the linked command finds its own bundle"
+expect_contains "$OUT" "Birta Writer Version 25.9.20" "the linked command finds its own bundle"
+
+echo "a build nobody stamped says so rather than naming a number"
+# Every local build is 0.0.0, which identifies no release and dates nothing.
+/usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString 0.0.0" \
+    "$FAKE/Contents/Info.plist" >/dev/null
+OUT="$(BIRTA_MAC_CLI_BUNDLE="$FAKE" "$BWR" --version 2>&1)"; STATUS=$?
+expect_status 0 "$STATUS" "--version on an unstamped build"
+expect_contains "$OUT" "Development build" "an unstamped build is named rather than numbered"
 
 echo "a development build keeps its piped text apart"
 # The flavour is read off the bundle the command belongs to, which is why the

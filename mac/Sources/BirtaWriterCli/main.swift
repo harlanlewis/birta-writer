@@ -184,14 +184,23 @@ case .help:
 
 case .version:
     let app = requireApp()
-    let version = Bundle(url: app)?.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
-    guard let version else {
-        fail("cannot read the version of \(app.lastPathComponent)")
+    guard let bundle = Bundle(url: app) else {
+        fail("cannot read \(app.lastPathComponent)")
         exit(1)
     }
-    // The app's version rather than one of this command's own. The two ship in
-    // one bundle and a second number would be a second thing to keep in step.
-    report("\(app.deletingPathExtension().lastPathComponent) \(version)")
+    // The APP's version rather than one of this command's own: the two ship in
+    // one bundle, and a second number would be a second thing to keep in step.
+    //
+    // Spelled by `AboutInfo` rather than here, which is the same sentence the
+    // About window draws and the same reason it has one place to come from. An
+    // unstamped build says so instead of printing a number that identifies no
+    // release; `macUpdateVersionSpelling.test.ts` is what holds every surface
+    // to that, and it read this line before there was one.
+    let about = AboutInfo(
+        name: AppFlavor.forBundle(bundle.bundleIdentifier).displayName,
+        shortVersion: bundle.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String,
+        copyright: nil)
+    report([about.name, about.versionLine].joined(separator: " "))
 
 case .summon:
     if dryRun {
