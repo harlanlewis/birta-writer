@@ -24,11 +24,20 @@
  *
  * The model list deserves its own warning, because it is the one place this
  * design can be misread into a lie. What the probe returns is whatever the
- * help gave, which for the harness this was built against is names quoted as
- * EXAMPLES rather than a catalog; a model absent from them works exactly as
- * well. So the list is offered as suggestions with free text always
- * reachable, and never as the set of models that exist. Removing that free
- * entry because the list looks complete would be the bug.
+ * help gave, which for every harness surveyed is names quoted as EXAMPLES
+ * rather than a catalog; a model absent from them works exactly as well. So
+ * the list is offered as suggestions with free text always reachable, and
+ * never as the set of models that exist. Removing that free entry because
+ * the list looks complete would be the bug.
+ *
+ * The effort list is the opposite and the two must not be made uniform. It
+ * is an enumeration read off the flag's own documented values, and the
+ * formatters that print one reject anything outside it, so free text beside
+ * a published scale offers a rung that fails rather than one that differs.
+ * Free text is therefore offered for effort only where the harness published
+ * NO scale, which is a real case (a flag that names itself and documents no
+ * values) and, without the row, is a menu holding nothing but the default
+ * the user already had.
  */
 import { t } from "@/i18n";
 import { IconArrowUp, IconPaperclip, IconX } from "@/ui/icons";
@@ -251,8 +260,20 @@ export function createAgentPanel(opts: {
     interface MenuItem {
         label: string;
         checked?: boolean;
-        /** Opens a text field in the menu instead of picking a value. */
-        freeText?: boolean;
+        /**
+         * Opens a text field in the menu instead of picking a value, and
+         * carries everything that field needs. The alternative was a boolean
+         * and a branch per control reading the right variable, which is the
+         * shape that leaves the second control half wired: an effort row
+         * that drew a field prefilled with the model and committed to it.
+         */
+        freeText?: {
+            placeholder: string;
+            /** What the field opens with, so editing a choice is not retyping it. */
+            current: string | undefined;
+            /** Undefined means "let the harness decide", as the default row does. */
+            commit(value: string | undefined): void;
+        };
         onPick(): void;
     }
 
@@ -274,20 +295,51 @@ export function createAgentPanel(opts: {
         // An inline field rather than `window.prompt`, which Electron does
         // not implement: it returns without asking, so the row would have
         // looked live and done nothing at all.
-        items.push({ label: t("Other model…"), freeText: true, onPick: () => {} });
+        items.push({
+            label: t("Other model…"),
+            freeText: {
+                placeholder: t("model name, as your harness spells it"),
+                current: model,
+                commit: (value) => { model = value; },
+            },
+            onPick: () => {},
+        });
         return items;
     }
 
     function effortMenuItems(): MenuItem[] {
         const pick = (value: string | undefined) => () => { effort = value; renderSpec(); };
-        return [
+        const rungs = caps?.efforts ?? [];
+        const items: MenuItem[] = [
             { label: t("Default effort"), checked: effort === undefined, onPick: pick(undefined) },
-            ...(caps?.efforts ?? []).map((e) => ({
+            ...rungs.map((e) => ({
                 label: displayEffort(e),
                 checked: effort === e,
                 onPick: pick(e),
             })),
         ];
+        // Free text only where the harness published no scale, which is the
+        // one asymmetry with the model menu above and is not an oversight.
+        // A model list is EXAMPLES, so a name missing from it may work; an
+        // effort list is an enumeration read off the flag's own documented
+        // values, and the formatters that print one (clap's `possible
+        // values`, yargs' `choices`) reject anything else, so a typed rung
+        // beside a real scale is a command that fails rather than a request
+        // that differs. Where there is no scale it is the only way in, and
+        // without it this menu holds nothing but the default the user
+        // already had.
+        if (rungs.length === 0) {
+            items.push({
+                label: t("Other effort…"),
+                freeText: {
+                    placeholder: t("effort level, as your harness spells it"),
+                    current: effort,
+                    commit: (value) => { effort = value; },
+                },
+                onPick: () => {},
+            });
+        }
+        return items;
     }
 
     let openMenu: HTMLElement | null = null;
@@ -322,7 +374,8 @@ export function createAgentPanel(opts: {
                     // row: the free-text row builds a field and the bubbling
                     // click then tore it straight back down.
                     ev.stopPropagation();
-                    if (item.freeText) {
+                    const free = item.freeText;
+                    if (free) {
                         // Swap the menu for a field, in place. Escape returns
                         // to the panel; Enter commits whatever was typed, and
                         // an empty field means "let the harness decide",
@@ -331,12 +384,12 @@ export function createAgentPanel(opts: {
                         const field = document.createElement("input");
                         field.type = "text";
                         field.className = "agent-panel-menu-input";
-                        field.placeholder = t("model name, as your harness spells it");
-                        field.value = model ?? "";
+                        field.placeholder = free.placeholder;
+                        field.value = free.current ?? "";
                         field.addEventListener("keydown", (ev) => {
                             ev.stopPropagation();
                             if (ev.key === "Enter") {
-                                model = field.value.trim() || undefined;
+                                free.commit(field.value.trim() || undefined);
                                 renderSpec();
                                 closeMenu();
                             } else if (ev.key === "Escape") {

@@ -177,21 +177,21 @@ export function harnessName(template: string): string {
 export const MODEL_FLAGS = ["--model"] as const;
 /**
  * What a CLI may call the reasoning-effort flag, for the case where it names
- * itself but enumerates nothing. Both entries are VERIFIED against installed
- * binaries: Claude Code says `--effort`, pi says `--thinking`. Nothing
+ * itself but enumerates nothing. Every entry is VERIFIED against an installed
+ * binary: Claude Code says `--effort`, pi says `--thinking`, and aider,
+ * GitHub Copilot CLI and Crush all say `--reasoning-effort`. Nothing
  * speculative belongs here; an unverified guess is the same n-of-1 error as
  * a parser written against one CLI, and `effortFlagFromValues` below is the
  * path that does not need the name at all.
  *
- * `--reasoning-effort` is verified on real binaries and is still deliberately
- * absent, which is the one entry to understand before adding another. Where
- * it enumerates its rungs (GitHub Copilot CLI) the shape rule already finds
- * it and the name buys nothing. Where it does not (aider), naming it turns
- * the picker on with nothing in it, because the effort menu carries no
- * free-text row the way the model menu does. So the panel gains that row
- * first, and this list gains the name second.
+ * A flag reaching the panel through THIS list rather than through its values
+ * arrives with an empty scale, so the composer's effort menu must offer free
+ * text, or it draws a menu holding only the default the user already had.
+ * That is a real coupling rather than a defensive note: the panel's
+ * `effortMenuItems` carries the other half, and a name added here without it
+ * ships chrome that cannot do anything.
  */
-export const EFFORT_FLAGS = ["--effort", "--thinking"] as const;
+export const EFFORT_FLAGS = ["--effort", "--thinking", "--reasoning-effort"] as const;
 
 /**
  * Every long flag the help documents, with its paragraph.

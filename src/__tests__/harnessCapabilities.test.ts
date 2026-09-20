@@ -150,9 +150,10 @@ Options:
  * Real argparse, against which the synthetic `ARGPARSE_HELP` above turns out
  * to be optimistic in the one place it matters: aider DOES document
  * `--reasoning-effort`, and documents no values for it at all. So the shape
- * rule cannot see it and `EFFORT_FLAGS` does not name it, and aider gets no
- * effort control. That is the current answer, pinned below with the reason,
- * not an answer anybody is happy with.
+ * rule cannot see it and the name in `EFFORT_FLAGS` is what finds it, which
+ * makes aider the one harness on the survey reaching the panel with a flag
+ * and no scale, and therefore the one the composer's free-text effort row
+ * exists for.
  *
  * The neighbours are kept because they are the traps: `-m` is `--message`
  * here rather than the model, `--list-models` puts a second long flag where
@@ -548,14 +549,16 @@ Options:
     });
 
     it("an argparse effort flag should be found by its values, not by its name", () => {
-        // `--reasoning-effort` is deliberately NOT in EFFORT_FLAGS; it was
-        // removed as an unverified guess. Finding it here is the shape rule
-        // doing the work the name list used to be asked for.
+        // `--reasoning-effort` IS in EFFORT_FLAGS now, so "the name did not
+        // find it" can no longer be asserted by its absence from that list.
+        // The scale is what discriminates: the name path yields a flag with
+        // no values at all, so a non-empty `efforts` here can only have come
+        // from the shape rule reading the paragraph.
         const caps = parseHarnessHelp("agent", "1.0", ARGPARSE_HELP);
 
         expect(caps.effortFlag).toBe("--reasoning-effort");
         expect(caps.efforts).toEqual(["low", "medium", "high"]);
-        expect(EFFORT_FLAGS).not.toContain("--reasoning-effort");
+        expect(EFFORT_FLAGS).toContain("--reasoning-effort");
     });
 
     it("an alias carrying its own metavar should not swallow the long flag", () => {
@@ -665,21 +668,23 @@ Options:
             .toBe("Set reasoning effort: none|low|medium|high|xhigh. Bare --thinking uses medium; omitted leaves provider default.");
     });
 
-    it("real argparse should give a model flag and, for aider today, no effort", () => {
-        // The survey's one unresolved case, pinned as it stands rather than
-        // as anyone would like it. aider documents `--reasoning-effort` and
-        // documents no values for it, so the shape rule cannot see it and
-        // `EFFORT_FLAGS` deliberately does not name it. Adding the name would
-        // turn the picker on with nothing in it, because the effort menu,
-        // unlike the model menu, has no free-text row to fall back to.
+    it("real argparse should give a model flag and an effort flag with no scale", () => {
+        // aider is the case the name list exists for, and the only one on
+        // the survey: it documents `--reasoning-effort` and documents no
+        // values, so the shape rule cannot see it and the name is what finds
+        // it. `efforts` staying empty is the load-bearing half, because that
+        // is what the composer's free-text row keys off; a scale invented
+        // here would be rungs aider never published.
         const caps = parseHarnessHelp("aider", "0.86.2", AIDER_HELP);
 
         expect(caps.supportsModel).toBe(true);
         expect(caps.modelFlag).toBe("--model");
-        expect(caps.supportsEffort).toBe(false);
-        // The fixture has to be able to express the defect, so assert the
+        expect(caps.supportsEffort).toBe(true);
+        expect(caps.effortFlag).toBe("--reasoning-effort");
+        expect(caps.efforts).toEqual([]);
+        // The fixture has to be able to express the case, so assert the
         // sweep REACHED the flag and found it empty, rather than inferring
-        // that from the absent control: a fixture missing the flag entirely
+        // that from the empty scale: a fixture missing the flag entirely
         // would satisfy the line above having tested nothing.
         const reasoning = allFlags(AIDER_HELP).find((f) => f.flag === "--reasoning-effort");
         expect(reasoning?.paragraph).toContain("Set the reasoning_effort API parameter");
@@ -708,7 +713,7 @@ Options:
             { help: CLAUDE_HELP, model: "--model", effort: "--effort", rungs: 5, floor: 3 },
             { help: CODEX_HELP, model: "--model", effort: undefined, rungs: 0, floor: 3 },
             { help: PI_HELP, model: "--model", effort: "--thinking", rungs: 7, floor: 3 },
-            { help: AIDER_HELP, model: "--model", effort: undefined, rungs: 0, floor: 5 },
+            { help: AIDER_HELP, model: "--model", effort: "--reasoning-effort", rungs: 0, floor: 5 },
             { help: CLINE_HELP, model: "--model", effort: "--thinking", rungs: 5, floor: 4 },
             { help: GEMINI_HELP, model: "--model", effort: undefined, rungs: 0, floor: 4 },
             { help: COPILOT_HELP, model: "--model", effort: "--reasoning-effort", rungs: 7, floor: 4 },
