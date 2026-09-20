@@ -196,38 +196,61 @@ final class SettingsWindowSizeTests: XCTestCase {
                        + "under the \(SettingsWindowController.Metrics.maxPaneHeight)pt ceiling")
     }
 
+    /// The cap is the one `fitWindowToPane` applies, the SMALLER of the
+    /// ceiling and the screen the window is on, and the panes are picked by
+    /// measurement rather than by name. A CI runner's display is well under
+    /// the ceiling, and General, once it draws the rows a Mac with iCloud
+    /// Drive off shows, is taller than that display: naming it as the pane
+    /// that fits reads as a claim about the display rather than the window,
+    /// and fails there for a reason that is about the display. The shortest
+    /// pane is the one that has to fit somewhere, and if none does the run
+    /// says so rather than measuring the capped arm as though it were exact.
     func testTheWindowShouldFollowThePaneItShows() {
         let controller = makeController()
         defer { controller.window?.close() }
-        let cap = SettingsWindowController.Metrics.maxPaneHeight
+        let screenHeight = (controller.window?.screen ?? NSScreen.main)?.visibleFrame.height
+            ?? SettingsWindowController.Metrics.maxPaneHeight
+        let cap = min(SettingsWindowController.Metrics.maxPaneHeight, screenHeight)
 
-        let general = fit(of: controller, tab: "general")
-        let advanced = fit(of: controller, tab: "advanced")
-        let back = fit(of: controller, tab: "general")
+        // From the type, so a pane added later is measured without this file
+        // being touched, and the enumeration asserts its own reach.
+        let fits = SettingsWindowController.tabNames.map { ($0, fit(of: controller, tab: $0)) }
+        XCTAssertGreaterThan(fits.count, 1, "fewer than two panes to compare")
+        guard let shortest = fits.min(by: { $0.1.pane < $1.1.pane }),
+              let tallest = fits.max(by: { $0.1.pane < $1.1.pane }) else {
+            return XCTFail("no panes measured")
+        }
 
-        // General is the short pane on every machine this has run on, and the
-        // arm being asserted below is the one where a pane fits: a window that
+        // The arm being asserted is the one where a pane fits: a window that
         // gave it less than it asked for would be showing a scroller over a
         // pane that had room.
-        XCTAssertLessThanOrEqual(general.pane, cap,
-                                 "General no longer fits under the ceiling, so the exact-fit "
+        XCTAssertLessThanOrEqual(shortest.1.pane, cap,
+                                 "no pane fits under \(cap)pt on this screen (shortest is "
+                                 + "\(shortest.0) at \(shortest.1.pane)pt), so the exact-fit "
                                  + "assertion below is measuring the capped arm instead")
-        XCTAssertEqual(general.content, general.pane, accuracy: 0.5)
+        XCTAssertEqual(shortest.1.content, shortest.1.pane, accuracy: 0.5,
+                       "the window gave \(shortest.0) \(shortest.1.content)pt for a "
+                       + "\(shortest.1.pane)pt pane that fits under \(cap)pt")
 
-        // The ceiling holds whichever pane is on screen. Whether any pane
-        // actually reaches it depends on the fonts and rows of the machine
+        // The cap holds whichever pane is on screen. Whether any pane actually
+        // reaches it depends on the fonts, rows and display of the machine
         // running this, so it is asserted as a bound rather than as coverage.
-        XCTAssertLessThanOrEqual(advanced.content, cap + 0.5)
-        XCTAssertLessThanOrEqual(general.content, cap + 0.5)
+        for (name, measured) in fits {
+            XCTAssertLessThanOrEqual(measured.content, cap + 0.5,
+                                     "\(name) was given \(measured.content)pt over a \(cap)pt cap")
+        }
 
         // The window followed rather than keeping the height it was built at,
         // and it followed BACK: panes are built once and kept, so a fit that
         // only ran while a pane was being built would pass the first switch
         // and not the second.
-        XCTAssertGreaterThan(abs(advanced.content - general.content), 0.5,
+        _ = fit(of: controller, tab: tallest.0)
+        let back = fit(of: controller, tab: shortest.0)
+        XCTAssertGreaterThan(abs(tallest.1.content - shortest.1.content), 0.5,
                              "the window is the same height for two panes of different heights: "
-                             + "general \(general.pane), advanced \(advanced.pane)")
-        XCTAssertEqual(back.content, general.content, accuracy: 0.5)
+                             + "\(shortest.0) \(shortest.1.pane), \(tallest.0) \(tallest.1.pane)")
+        XCTAssertEqual(back.content, shortest.1.content, accuracy: 0.5,
+                       "the window did not follow back to \(shortest.0)")
     }
 }
 

@@ -768,8 +768,26 @@ export type AgentRunMessage = {
     harness?: string;
 };
 
+/**
+ * One line of what a live `/ai` run is doing, for the corner notice
+ * (`webview/plugins/agentPending.ts`). Sent while the run is `running` and
+ * only then; the run's own `agentRun` report is what starts and ends it.
+ *
+ * Advisory and transient: the line never reaches the document and never
+ * reaches the view-state bag, so nothing survives a reload claiming a run
+ * that is no longer there. A host with no way to read its harness's output
+ * never sends one, and the notice falls back to the page's own clock.
+ */
+export type AgentProgressMessage = {
+    type: "agentProgress";
+    requestId: string;
+    /** Already reduced to one short line by the host; the page shows it as given. */
+    line: string;
+};
+
 export type ToWebviewMessage =
     | AgentRunMessage
+    | AgentProgressMessage
     // `viewState` carries the per-document VIEW state (fold anchors, scroll,
     // frontmatter collapse — the webview state bag) across webview recreation:
     // switching to the raw editor CLOSES the custom tab, so VS Code's own

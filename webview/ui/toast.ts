@@ -3,8 +3,13 @@
  *
  * A toast is news (docs/DESIGN_PRINCIPLES.md, "advisory, reversible, quiet"):
  * something happened, here is what, it goes on its own. Nothing here is a
- * control the user has to deal with, and nothing here is state: a message that
- * has to be acted on belongs in the document or in the host's own chrome.
+ * control the user has to deal with: a message that has to be ACTED on
+ * belongs in the document or in the host's own chrome.
+ *
+ * A message may last as long as the thing it is about (`persist`), and then
+ * its owner is what takes it away, with `hide`. That is still news rather
+ * than state: it says what is happening and offers nothing to do about it,
+ * and when the thing it reports ends there is nothing left behind.
  *
  * One element per SURFACE, reused. The surface class is what carries placement
  * and how long the message lives is what carries urgency, so two callers
@@ -16,6 +21,14 @@
  * region announces on CHANGE, so writing an identical string into a node that
  * already holds it is silent to a screen reader, which is exactly the repeat
  * case (the same veto twice).
+ *
+ * Whether a message announces at all is the caller's, for the same reason its
+ * tone and dwell are. A message that REWRITES itself while nothing happened,
+ * a line following a process that is still running, would otherwise be read
+ * out on every rewrite, which is worse than silence; what announces such a
+ * thing is its own control, once. The attribute is written on every call,
+ * because the node outlives any one message and a surface's first message
+ * would otherwise decide for every message after it.
  */
 
 /** What the message IS, which is what colours it. */
@@ -28,10 +41,18 @@ export interface ToastOptions {
      */
     readonly surface: string;
     readonly tone?: ToastTone;
-    /** How long before it fades. */
+    /** How long before it fades. Ignored when `persist` is set. */
     readonly dwellMs?: number;
     /** Whether a click takes it away early. */
     readonly dismissible?: boolean;
+    /**
+     * Hold it until the caller calls `hide`, because what it reports is still
+     * going on. The caller owns taking it away; a surface left holding one of
+     * these says something that is no longer true.
+     */
+    readonly persist?: boolean;
+    /** Whether a screen reader is told. Default yes; see the header. */
+    readonly announce?: boolean;
 }
 
 /** Long enough to read a short sentence without pinning the corner. */
@@ -50,6 +71,26 @@ interface LiveToast {
 }
 
 const live = new Map<string, LiveToast>();
+
+/**
+ * Whether `surface` is showing a message right now, and of which tone.
+ *
+ * Read off the registry rather than off the DOM, because the registry is
+ * what put the node there: a caller that queried the document for the class
+ * would be asking a copy of the answer, and paying a lookup on a path some
+ * callers run per transaction. The one thing the registry cannot know on its
+ * own is whether its node is still in a document, so that is asked of the
+ * node: a page torn down and rebuilt leaves the entry pointing at a detached
+ * element, and a detached element is showing nothing to anybody.
+ */
+export function toastShowing(surface: string, tone?: ToastTone): boolean {
+    const entry = live.get(surface);
+    if (!entry || !entry.el.isConnected || !entry.el.classList.contains(`${surface}--visible`)) { return false; }
+    // The node carries one tone class, `ui-notice--error`, and its absence
+    // IS the info tone; asking for either reads that one class.
+    const isError = entry.el.classList.contains("ui-notice--error");
+    return tone === undefined || (tone === "error") === isError;
+}
 
 function build(surface: string): LiveToast {
     const el = document.createElement("div");
@@ -94,13 +135,22 @@ export function showToast(message: string, opts: ToastOptions): HTMLElement | nu
     entry.dismissible = opts.dismissible ?? false;
     const { el } = entry;
     el.classList.toggle("ui-notice--error", opts.tone === "error");
+    // A message a click cannot take away must not take the click. Otherwise
+    // the corner it sits in stops being the document's for as long as it is
+    // up, which for a message that follows a running process is its whole
+    // life. Written per call, like aria-live and for the same reason.
+    el.classList.toggle("ui-notice--static", !entry.dismissible);
+    el.setAttribute("aria-live", opts.announce === false ? "off" : "polite");
     // See the header: a live region is silent on a rewrite of the same string.
     el.textContent = "";
     el.textContent = message;
     el.classList.add(`${opts.surface}--visible`);
     clearTimeout(entry.timer);
-    entry.timer = setTimeout(() => {
-        el.classList.remove(`${opts.surface}--visible`);
-    }, opts.dwellMs ?? DEFAULT_DWELL_MS);
+    entry.timer = undefined;
+    if (!opts.persist) {
+        entry.timer = setTimeout(() => {
+            el.classList.remove(`${opts.surface}--visible`);
+        }, opts.dwellMs ?? DEFAULT_DWELL_MS);
+    }
     return el;
 }

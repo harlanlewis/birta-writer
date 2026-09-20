@@ -42,7 +42,7 @@
  */
 import { keydownHandler } from "../pm";
 import type { Node as PMNode } from "../pm";
-import { Plugin, Selection, TextSelection, type EditorState, type Transaction } from "../pm";
+import { NodeSelection, Plugin, PluginKey, Selection, TextSelection, type EditorState, type Transaction } from "../pm";
 import type { EditorView } from "../pm";
 import { $prose } from "@milkdown/utils";
 import { closeTopmostLayer, isBareEscape } from "../ui/escapeLayers";
@@ -154,22 +154,36 @@ export function isBlockSpanning(state: EditorState): boolean {
  * Escape: escalate to a block range, or collapse one back to a caret.
  * Works on empty paragraphs and leaf blocks too — a block range needs no
  * text to select.
+ *
+ * Collapsing goes back to where the caret was before the keyboard grew the
+ * range (`origin`), which is what Escape means on a ladder: undo the
+ * escalation, not jump to the range's start. The range's start is where a
+ * whole-document range begins, so without the origin three Mod+A and an
+ * Escape put the caret at the top of the file however far down the reader
+ * was (MAR-461). A range with no origin (marquee, drag handle) still
+ * collapses to its start; there is no caret to go back to.
  */
 export const toggleBlockSelection: Command = (state, dispatch) => {
     const sel = state.selection;
     if (sel instanceof BlockRangeSelection) {
         if (dispatch) {
-            dispatch(state.tr.setSelection(Selection.near(state.doc.resolve(sel.from), 1)));
+            const back = sel.origin ?? sel.from;
+            const pos = Math.max(0, Math.min(back, state.doc.content.size));
+            dispatch(state.tr.setSelection(Selection.near(state.doc.resolve(pos), 1)));
         }
         return true;
     }
-    const raw = BlockRangeSelection.tryCreate(state.doc, sel.from, sel.to);
+    // Where the caret goes back to. A node selection has no caret inside
+    // it, and its head is the position AFTER the node, so the range remembers
+    // the node's own position and Escape lands back on it.
+    const origin = sel instanceof NodeSelection ? sel.from : sel.head;
+    const raw = BlockRangeSelection.tryCreate(state.doc, sel.from, sel.to, origin);
     if (!raw) {
         return false;
     }
     // Unit-snap: a collapsed heading selects WITH its hidden section.
     const unit = snapToUnits(unitBoundaries(state), raw.from, raw.to);
-    const range = BlockRangeSelection.tryCreate(state.doc, unit.from, unit.to) ?? raw;
+    const range = BlockRangeSelection.tryCreate(state.doc, unit.from, unit.to, origin) ?? raw;
     if (dispatch) {
         dispatch(state.tr.setSelection(range));
     }
@@ -192,7 +206,7 @@ export function extendBlockSelection(dir: -1 | 1): Command {
         if (sel instanceof BlockRangeSelection) {
             range = sel;
         } else if (!sel.empty && isBlockSpanning(state)) {
-            range = BlockRangeSelection.tryCreate(state.doc, sel.anchor, sel.head);
+            range = BlockRangeSelection.tryCreate(state.doc, sel.anchor, sel.head, sel.head);
         }
         if (!range) {
             return false;
@@ -250,8 +264,10 @@ export function extendBlockSelection(dir: -1 | 1): Command {
             }
         }
         if (dispatch) {
+            // The origin rides along: growing the range is still the same
+            // ladder, and Escape goes back to the same caret.
             dispatch(state.tr.setSelection(
-                new BlockRangeSelection(doc.resolve(anchor), doc.resolve(head)),
+                new BlockRangeSelection(doc.resolve(anchor), doc.resolve(head), range.origin),
             ));
         }
         return true;
@@ -272,7 +288,15 @@ export const escalateSelectAll: Command = (state, dispatch) => {
             return false;
         }
     }
-    const all = BlockRangeSelection.tryCreate(doc, 0, doc.content.size);
+    // The caret the ladder started from rides every rung, so Escape at the
+    // top goes back to it rather than to the document's start (MAR-461). A
+    // block range carries it itself; the first rung's text selection cannot,
+    // so the plugin holds it across that one step. A range that carries none
+    // (the marquee's) has no caret to remember.
+    const origin = sel instanceof BlockRangeSelection
+        ? sel.origin
+        : (ladderKey.getState(state)?.origin ?? sel.head);
+    const all = BlockRangeSelection.tryCreate(doc, 0, doc.content.size, origin);
     if (!all) {
         return false;
     }
@@ -306,14 +330,31 @@ export const escalateSelectAll: Command = (state, dispatch) => {
     const blockText = TextSelection.between($start, $end);
     const hasAllText = blockText.empty || (sel.from <= blockText.from && sel.to >= blockText.to);
     if (dispatch) {
-        dispatch(state.tr.setSelection(
-            hasAllText
-                ? (BlockRangeSelection.tryCreate(doc, unit.from, unit.to) ?? all)
-                : blockText,
-        ));
+        dispatch(hasAllText
+            ? state.tr.setSelection(BlockRangeSelection.tryCreate(doc, unit.from, unit.to, origin) ?? all)
+            // The one rung whose selection has no room for the origin: park
+            // it in the plugin for the next press to pick up.
+            : state.tr.setSelection(blockText).setMeta(ladderKey, { origin: sel.head }));
     }
     return true;
 };
+
+/**
+ * The caret the Mod+A ladder started from, held across its FIRST rung only.
+ *
+ * Rung one selects the block's text, and a TextSelection has nowhere to carry
+ * where the caret was; every later rung is a BlockRangeSelection, which
+ * carries it itself (`origin`). So this is a hand-off between two presses,
+ * not a second store: it is set by the rung that selects text, read by the
+ * rung that leaves it, and cleared by any other selection change, because a
+ * click or an arrow between the two presses ends the ladder. A document
+ * change in between maps it rather than dropping it, so typing over the
+ * selected text and pressing Mod+A again still counts as the same ladder.
+ */
+interface LadderState {
+    origin: number | null;
+}
+export const ladderKey = new PluginKey<LadderState>("blockKeysLadder");
 
 /**
  * Mod+Shift+↑/↓: extend the selection to the document start/end — but ONLY
@@ -571,7 +612,24 @@ export function handleBlockKeydown(view: EditorView, event: KeyboardEvent): bool
 }
 
 export const blockKeysPlugin = $prose(() =>
-    new Plugin({
+    new Plugin<LadderState>({
+        key: ladderKey,
+        state: {
+            init: () => ({ origin: null }),
+            apply(tr, prev) {
+                const set = tr.getMeta(ladderKey) as LadderState | undefined;
+                if (set) {
+                    return set;
+                }
+                if (tr.selectionSet) {
+                    return { origin: null };
+                }
+                if (tr.docChanged && prev.origin !== null) {
+                    return { origin: tr.mapping.map(prev.origin) };
+                }
+                return prev;
+            },
+        },
         props: {
             handleKeyDown: handleBlockKeydown,
         },

@@ -92,6 +92,26 @@ Picking a model rewrites the flag in the user's existing template (`setTemplateF
 
 Two boundaries hold that honest. The raw template never crosses into the webview: it is the user's machine config and a shell command, and the summary carries no part of it. And `agentModelName` reads only the unambiguous long forms (`--model x`, `--model=x`), never `-m` and never `--fallback-model`, and reports nothing when the template names nothing. Absent is not "the default model": an alias resolves inside the CLI, and a name printed here would be a guess in front of someone deciding whether to press Enter.
 
+### What a background run says while it runs
+
+A marker in the gutter and silence until the run ends leaves no way to tell a harness that is thinking from one that is waiting on a permission prompt or a network call. So while a run is live there is a quiet line in the corner: the harness, what it is doing, and, once a run has been going long enough for the question to arise, how long it has been going. It updates in place on the one toast surface, never stacks, takes no focus, offers nothing to click, and goes when the run does. The gutter marker is still the only control. Nothing about it is persisted: it is not in the document, not in the view-state bag, and a reload leaves nothing behind claiming a run that is no longer there.
+
+Two halves, and the seam between them is one message. The host reduces its child process's output to one short line and posts `agentProgress { requestId, line }`; the page renders exactly what it is given (`webview/plugins/agentPending.ts`, `docs/HOSTING.md`). A host with no way to read its harness lands on the floor rather than on nothing: the page's own clock names the harness and says how long it has been going. That does not say a run is thinking rather than waiting, which only the harness's own events can; what it says is that the run is still there and how long it has been, which is what somebody deciding whether to wait has to go on when nothing else can be read.
+
+The reading half is `src/agentBridge/agentProgress.ts`, and it tells harnesses apart by the SHAPE of what they print rather than by name. Two structured shapes are recognized, each reduced from output captured from a real run, with the version and the date, the way the help fixtures are:
+
+| Shape | Captured from | What a line is made of |
+|---|---|---|
+| Content blocks: an envelope per message, `content` blocks of `text`, `tool_use` and `thinking`, every event stamped with its session | Claude Code 2.1.278, `--output-format stream-json --verbose`, 2026-09-20 | the tool and the file it names, the opening of a narration, or the word `Thinking` |
+| Items: a flat event per thread, turn and item, the item carrying its own kind | Codex 0.149.0, `codex exec --json`, 2026-09-20 | the command run, the file changed, or the opening of an agent message |
+| Anything else | every harness, no capture needed | the last plain line, with the terminal's own colouring and redraws taken out |
+
+Reasoning CONTENT is never rendered, and that is a rule rather than a limit of the reducer. A harness's thinking may be private by policy, and the one shape above that carries thinking blocks at all sends them with the text removed and a signature in its place, so there is nothing to show even where it is offered. A thinking step gets the word alone. A corner is not a transcript, and a model that narrates nothing is served by the clock rather than by a summary invented for it.
+
+Birta does not add the flag that turns any of this on. Adding an argument to a command line somebody else wrote is how a request fails rather than differs, which is the rule the capability probe already keeps, and one of the two flags above has a prerequisite that no help text states (Claude Code's `--output-format stream-json` needs `--verbose`, which only its error says). What Birta does own is the templates its own first-use picker offers, and both background ones ask for events. A template that asks for none still runs exactly as it did, and the notice is the clock. The terminal templates ask for none on purpose: the user is reading that output, and events read worse than prose.
+
+One consequence to know before changing a template: a run whose stdout is events has no prose tail, so the two reports that quote one (a run that failed, a run that changed nothing) take the harness's own last words out of the events instead. The whole transcript still reaches the Birta AI output channel as printed, which for a structured run means JSON.
+
 ### Why Family-B is not built
 
 Implicit (automatic) context needs a *Family-B* wire adapter, where the editor hosts the agent over a socket/stdio protocol and pushes selection changes. The candidates are the Claude Code IDE protocol (localhost WebSocket + MCP), the Codex `/ide` context, and Zed's [Agent Client Protocol](https://github.com/agentclientprotocol/agent-client-protocol).

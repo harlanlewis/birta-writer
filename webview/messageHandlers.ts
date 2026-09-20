@@ -30,7 +30,7 @@ import { dispatchPathSuggestions } from "./components/pathLink/pathComplete";
 import { dispatchLinkTargetSuggestions, dispatchLinkTargetPicked, dispatchLinkTargetResolved } from "./components/pathLink/linkTargetComplete";
 import { dispatchImgPathSuggestions, dispatchImagePathResolved } from "./components/imageView/imgPathComplete";
 import { setLogTableSel, syncExternalContent, flushPendingEdit, acknowledgeFlush } from "./editor";
-import { regateCalcCues, regateNoteMarkers, setProofreadConfig, failAgentRun, markAgentRunning, settleAgentRun } from "./plugins";
+import { regateCalcCues, regateNoteMarkers, setProofreadConfig, failAgentRun, markAgentRunning, reportAgentProgress, settleAgentRun } from "./plugins";
 import { mergeAgentResult } from "./editor";
 import { notifyAgentMergeResult } from "./messaging";
 import { t } from "./i18n";
@@ -471,6 +471,13 @@ export function createMessageHandlers(
                     settleAgentRun(view, msg.requestId);
                     return;
             }
+        },
+        agentProgress(msg) {
+            // What a live run is doing, for the corner notice. A line for a
+            // run that has already settled is dropped by the plugin, which is
+            // the only place that knows which runs are still live.
+            const view = getEditorView();
+            if (view) { reportAgentProgress(view, msg.requestId, msg.line); }
         },
         imageUploadError(msg) {
             handleImageUploadError(msg.id, msg.error);

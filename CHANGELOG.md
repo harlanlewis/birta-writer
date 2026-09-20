@@ -4,6 +4,21 @@
 
 ## [Unreleased]
 
+### Added
+
+- Frontmatter carrying Open Knowledge Format provenance shows a quiet label at the bottom of the metadata panel: the `status` it declares, whether a person or only a machine countersigned it (from `generated` and `verified`), and the day a `stale_after` deadline passed. It is read from the block and never written back, it stays readable while the panel is collapsed, and a block the panel can only show as raw YAML gets no label. Ordinary frontmatter with none of those fields is unchanged.
+- While an `/ai` request runs in the background, a line in the corner says what your agent is doing: the tool it called, the file it read, or that it is thinking. It replaces itself in place and goes when the run does. Where your agent prints nothing Birta can read, the line names the agent and says it is working. Either way, once a run has been going for a while the line also counts how long, so you can see it is still there. The gutter marker is still what stops a run.
+
+### Changed
+
+- On a large document, preparing the file for the next save (serializing the document, merging it into the file's own bytes, and checking the result reopens unchanged) now runs off the editor's thread, so a pause in typing is no longer spent on work the editor cannot draw through. Below a size floor the pipeline is unchanged, and which bytes get written is decided by the same code either way.
+- The commands Birta offers the first time you use `/ai` now ask Claude Code and Codex for their structured output, which is what the corner line reads. A `birta.agent.command` you already have is never rewritten; add `--output-format stream-json --verbose` (Claude Code) or `--json` (`codex exec`) to yours for the same. With those flags the run's transcript in the Birta AI output channel is the agent's event stream rather than prose.
+
+### Fixed
+
+- After an `/ai` run failed, clicks near the bottom right corner of the editor stopped reaching the document for the rest of the session, swallowed by the dismissed message's own invisible pill.
+- Escape from a block selection the keyboard made puts the caret back where it was. Pressing Cmd+A three times selects every block, and Escape then left the caret at the top of the file, however far down you had been; it now returns to the position you started from. The same holds for Escape on a single block, a range grown with Shift+arrows, and a range moved with Alt+arrows. A range made with the mouse still collapses to its first block, since there is no earlier caret to go back to.
+
 ---
 
 ## [2026.920.0] - 2026, September 20

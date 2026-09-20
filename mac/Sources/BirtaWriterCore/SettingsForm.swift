@@ -8,6 +8,10 @@ import Foundation
 /// answered the question on first run with no row by that name to go back to.
 public enum SettingsRow: String, CaseIterable, Sendable {
     case summon = "Show and hide Birta Writer"
+    // Named for what it does rather than for the command it installs, because
+    // the command's name is the one thing on the row somebody can change and a
+    // label carrying it would go stale the moment they did.
+    case commandLine = "Open from Terminal"
     case storeInICloud = "Store in iCloud Drive"
     case location = "Location"
     case autosave = "Automatically save changes"
@@ -202,8 +206,16 @@ public enum SettingsForm {
     /// of their own, and each sits directly under the row that takes it away.
     /// `SettingsWindowController.setRowHidden` reaches into a card by index,
     /// so the pair has to stay in one card and in that order.
+    ///
+    /// The terminal command sits under the summon chord and in a card of its
+    /// own. Under, because both rows answer the same question, which is how
+    /// this app is reached from outside itself; its own, because the chord is
+    /// a setting and installing a command writes a file somewhere else on the
+    /// machine, and a card is the boundary that keeps the second from reading
+    /// as a property of the first.
     public static let general = SettingsPane(groups: [
         SettingsGroup(rows: [.summon]),
+        SettingsGroup(rows: [.commandLine]),
         SettingsGroup(rows: [.storeInICloud, .location, .autosave]),
         // The file-name row sits directly under the mode it depends on, so
         // the open-target row comes after it rather than between them.

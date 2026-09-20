@@ -325,7 +325,10 @@ export const shrinkSelection: Command = (state, dispatch) => {
             const interior = sel.head < sel.anchor ? sel.from : Math.max(sel.from, sel.to - 1);
             const unit =
                 units.find((u) => u.from <= interior && interior < u.to) ?? covered[covered.length - 1]!;
-            const range = BlockRangeSelection.tryCreate(doc, unit.from, unit.to);
+            // The origin rides along: shrinking is still the keyboard's
+            // ladder, and Escape from the shrunk range goes back to the
+            // same caret (MAR-461).
+            const range = BlockRangeSelection.tryCreate(doc, unit.from, unit.to, sel.origin);
             if (!range) {
                 return false;
             }

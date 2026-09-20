@@ -72,7 +72,8 @@ final class OpenRoutingTests: XCTestCase {
 
 /// Where a row of the explorer sends its file: into the tab it was clicked
 /// in, unless a new tab was asked for or the tab holds text that only lives
-/// in it; never into another window.
+/// in it; and never into a second buffer, so a file open in another window
+/// fronts that window.
 final class ExplorerRoutingTests: XCTestCase {
     private let same: (String, String) -> Bool = { $0 == $1 }
     /// Two tabs of one folder window, then a loose window on a file of that
@@ -100,15 +101,27 @@ final class ExplorerRoutingTests: XCTestCase {
                        "a second tab on one file in one window is two writers over one path")
     }
 
-    func testAFileOpenInAnotherWindowShouldStillOpenHere() {
-        XCTAssertEqual(route("/notes/loose.md"), .replaceHere,
-                       "a click in this window's sidebar is an instruction about this window")
-        XCTAssertEqual(route("/notes/loose.md", inNewTab: true), .tabHere)
+    func testAFileOpenInAnotherWindowShouldFrontThatWindowRatherThanOpenASecondBuffer() {
+        XCTAssertEqual(route("/notes/loose.md"), .existing(2),
+                       "two buffers over one path lose the earlier edits when the later one writes")
+        XCTAssertEqual(route("/notes/loose.md", inNewTab: true), .existing(2),
+                       "a new-tab ask is not a licence for a second writer over one path")
+    }
+
+    func testThisWindowsOwnTabShouldStillOutrankAnotherWindowHoldingTheSameFile() {
+        // The clicked window's group holds b.md and so does a loose window
+        // elsewhere: the reader stays where they clicked.
+        let both = windows + [OpenRouting.Window(file: "/notes/b.md")]
+        XCTAssertEqual(OpenRouting.explorerDestination(for: "/notes/b.md", windows: both, here: 0, inNewTab: false,
+                                                       hereHoldsUnsavedText: false, sameFile: same),
+                       .existing(1))
     }
 
     func testAWindowWithNoTabsShouldMatchOnlyItself() {
         XCTAssertEqual(route("/notes/loose.md", here: 2), .existing(2))
-        XCTAssertEqual(route("/notes/a.md", here: 2), .replaceHere, "a nil group is no group, not a shared one")
+        XCTAssertEqual(route("/notes/c.md", here: 2), .replaceHere, "a nil group is no group, not a shared one")
+        XCTAssertEqual(route("/notes/a.md", here: 2), .existing(0),
+                       "the file is open in another window, so that window is fronted, not the nil group matched")
     }
 
     func testTwoWindowsThatReadAlikeShouldStillBeTwoWindows() {

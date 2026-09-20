@@ -572,9 +572,26 @@ function applyMoveSelection(
         const runEnd = insertAt + contentSize;
         // Top-level runs stay selected as a real block range (leaf blocks
         // included); item-level ranges (inside a list) would snap outward
-        // to the whole list, so they keep the text-span fallback.
+        // to the whole list, so they keep the text-span fallback. The range
+        // is rebuilt rather than mapped, so the caret the keyboard grew it
+        // from has to be carried across by hand. Not through `tr.mapping`: a
+        // move is a delete and an insert, so the mapping sends a position
+        // inside the run to where the run WAS, which is now some other
+        // block. The caret keeps its offset within the run instead, so
+        // Escape after Alt+arrow goes back into the moved block's text and
+        // not to its start (MAR-461). Only when the run landed byte for
+        // byte; a dissolved parent shifts the offsets and there is no
+        // caret to carry.
+        const sourceSize = source.to - source.from;
+        const origin = preMoveSel instanceof BlockRangeSelection
+            && preMoveSel.origin !== null
+            && contentSize === sourceSize
+            && preMoveSel.origin >= source.from
+            && preMoveSel.origin <= source.to
+            ? insertAt + (preMoveSel.origin - source.from)
+            : null;
         const runRange = tr.doc.resolve(insertAt).depth === 0
-            ? BlockRangeSelection.tryCreate(tr.doc, insertAt, runEnd)
+            ? BlockRangeSelection.tryCreate(tr.doc, insertAt, runEnd, origin)
             : null;
         tr.setSelection(
             runRange ??

@@ -371,11 +371,18 @@ export async function run({ page, check, baseUrl }) {
     // Code profile, which raises its own notification, so nothing is drawn in
     // the corner. e2e/macHost holds the arm where the corner is the only place
     // it can appear.
-    const afterFailure = await page.evaluate(() => ({
-        markers: document.querySelectorAll(".ProseMirror .agent-pending").length,
-        toast: document.querySelector(".agent-toast") !== null,
-    }));
-    check("a failed run leaves the gutter and says nothing over the host",
+    const afterFailure = await page.evaluate(() => {
+        const el = document.querySelector(".agent-toast");
+        return {
+            markers: document.querySelectorAll(".ProseMirror .agent-pending").length,
+            // SHOWING, not present. That node is the one surface the live-run
+            // notice also draws on (MAR-464), so a run that has been live has
+            // left it in the page whatever it now says; the visible class is
+            // what says whether the corner is saying anything.
+            toast: el?.classList.contains("agent-toast--visible") ?? false,
+        };
+    });
+    check("a failed run leaves the gutter, and its failure says nothing in the corner over a host that raises it",
         afterFailure.markers === 0 && afterFailure.toast === false,
         JSON.stringify(afterFailure));
 

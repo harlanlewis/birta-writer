@@ -34,13 +34,30 @@ function snapEnd(doc: ProseNode, pos: number): number {
 }
 
 export class BlockRangeSelection extends Selection {
-    constructor($anchor: ResolvedPos, $head: ResolvedPos) {
+    /**
+     * Where the caret was before the keyboard grew this range, so Escape can
+     * put it back (MAR-461). Null for a range the keyboard did not make (the
+     * marquee, a drag handle, a block move), which collapses to its start as
+     * it always did. Provenance rather than extent: `eq` ignores it, because
+     * "already everything" is a question about which blocks are covered, and
+     * a range that differs only in where it came from is the same range.
+     * One caller leans on that: `escalateSelectAll` skips its dispatch when
+     * the current range already equals the whole document, which is safe
+     * only because it builds that range with the current range's own origin.
+     * Derive the origin from anywhere else in that branch and the skip
+     * swallows the update.
+     */
+    readonly origin: number | null;
+
+    constructor($anchor: ResolvedPos, $head: ResolvedPos, origin: number | null = null) {
         super($anchor, $head);
+        this.origin = origin;
     }
 
     override map(doc: ProseNode, mapping: Mappable): Selection {
+        const origin = this.origin === null ? null : mapping.map(this.origin);
         return (
-            BlockRangeSelection.tryCreate(doc, mapping.map(this.anchor), mapping.map(this.head)) ??
+            BlockRangeSelection.tryCreate(doc, mapping.map(this.anchor), mapping.map(this.head), origin) ??
             Selection.near(doc.resolve(Math.max(0, Math.min(mapping.map(this.head), doc.content.size))))
         );
     }
@@ -53,20 +70,23 @@ export class BlockRangeSelection extends Selection {
         );
     }
 
-    override toJSON(): { type: string; anchor: number; head: number } {
-        return { type: "blockRange", anchor: this.anchor, head: this.head };
+    override toJSON(): { type: string; anchor: number; head: number; origin?: number } {
+        return this.origin === null
+            ? { type: "blockRange", anchor: this.anchor, head: this.head }
+            : { type: "blockRange", anchor: this.anchor, head: this.head, origin: this.origin };
     }
 
     override getBookmark(): BlockRangeBookmark {
-        return new BlockRangeBookmark(this.anchor, this.head);
+        return new BlockRangeBookmark(this.anchor, this.head, this.origin);
     }
 
-    static override fromJSON(doc: ProseNode, json: { anchor?: unknown; head?: unknown }): Selection {
+    static override fromJSON(doc: ProseNode, json: { anchor?: unknown; head?: unknown; origin?: unknown }): Selection {
         if (typeof json.anchor !== "number" || typeof json.head !== "number") {
             throw new RangeError("Invalid input for BlockRangeSelection.fromJSON");
         }
+        const origin = typeof json.origin === "number" ? json.origin : null;
         return (
-            BlockRangeSelection.tryCreate(doc, json.anchor, json.head) ??
+            BlockRangeSelection.tryCreate(doc, json.anchor, json.head, origin) ??
             Selection.near(doc.resolve(Math.max(0, Math.min(json.head, doc.content.size))))
         );
     }
@@ -76,9 +96,10 @@ export class BlockRangeSelection extends Selection {
      * `anchor`/`head` order is preserved (a backward range keeps its anchor
      * at the bottom, so Shift+arrow extension honors direction). Null when
      * the snapped range contains no block (both positions at the same
-     * boundary, or an empty doc).
+     * boundary, or an empty doc). `origin` is carried, never snapped: it is
+     * a caret position, not a boundary.
      */
-    static tryCreate(doc: ProseNode, anchor: number, head: number): BlockRangeSelection | null {
+    static tryCreate(doc: ProseNode, anchor: number, head: number, origin: number | null = null): BlockRangeSelection | null {
         const backward = head < anchor;
         const from = snapStart(doc, backward ? head : anchor);
         const to = snapEnd(doc, backward ? anchor : head);
@@ -87,7 +108,7 @@ export class BlockRangeSelection extends Selection {
         }
         const $anchor = doc.resolve(backward ? to : from);
         const $head = doc.resolve(backward ? from : to);
-        return new BlockRangeSelection($anchor, $head);
+        return new BlockRangeSelection($anchor, $head, origin);
     }
 }
 
@@ -118,15 +139,20 @@ export class BlockRangeBookmark {
     constructor(
         readonly anchor: number,
         readonly head: number,
+        readonly origin: number | null = null,
     ) {}
 
     map(mapping: Mappable): BlockRangeBookmark {
-        return new BlockRangeBookmark(mapping.map(this.anchor), mapping.map(this.head));
+        return new BlockRangeBookmark(
+            mapping.map(this.anchor),
+            mapping.map(this.head),
+            this.origin === null ? null : mapping.map(this.origin),
+        );
     }
 
     resolve(doc: ProseNode): Selection {
         return (
-            BlockRangeSelection.tryCreate(doc, this.anchor, this.head) ??
+            BlockRangeSelection.tryCreate(doc, this.anchor, this.head, this.origin) ??
             Selection.near(doc.resolve(Math.max(0, Math.min(this.head, doc.content.size))))
         );
     }

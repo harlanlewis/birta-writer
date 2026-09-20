@@ -637,12 +637,24 @@ html {
     opacity: 1;
 }
 
-/* Bottom row: collapse toggle + "Add field" button */
+/* Bottom row: collapse toggle + "Add field" button, then the provenance label.
+   Wrapping so a long label moves to its own line instead of pushing the row
+   past the panel's width; two buttons alone never reach the wrap. */
 .fm-add-row {
     margin-top: 4px;
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 8px;
+}
+
+/* What a block's OKF fields say about this document (components/frontmatter/
+   provenance.ts). A label among chips, so it takes the chips' size and the
+   muted ink and none of their frame: no border, no padding, no hover. Nothing
+   here is clickable, and a reader must not have to find that out by trying. */
+.fm-provenance {
+    color: var(--vscode-descriptionForeground);
+    font-size: 0.85em;
 }
 
 /* The toggle, "Add field", and "Add metadata" buttons are pure

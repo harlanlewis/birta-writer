@@ -67,6 +67,17 @@ SEG = r"(?:[^|;&]|>&|&>)*"
 FILTER_WORD = r"(?:tail|head|grep|sed|awk|tee|wc|cut|sort|uniq)"
 FILTER = r"\|\s*" + FILTER_WORD + r"\b"
 
+# A runner asked for its usage is not a gate: `node e2e/run.mjs --help |
+# head` has no verdict to mask. The gate pattern matches the runner's path,
+# not what it was asked to do, so this is the one exception it needs, and it
+# is scoped to the GATE'S OWN stage: `--help` must sit between the runner and
+# the pipe. Matched anywhere in the command it would let `pnpm test | grep -h
+# FAIL` through, which is the headline case walking past the guard. The
+# stage is walked with SEG, so a `2>&1` between the runner and its flag does
+# not hide the flag, the same blindness SEG exists to avoid above.
+if re.search(GATE + SEG.replace("*", "*?", 1) + r"\s--help(?:\s|$)", cmd):
+    sys.exit(0)
+
 ALTERNATIVES = (
     "Use the grind skill's scripts/gate.sh (--tail N -- <cmd>), or keep the\n"
     "status and exit on it:\n"

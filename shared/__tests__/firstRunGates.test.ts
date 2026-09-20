@@ -1,14 +1,15 @@
 /**
- * Guard for the two first-run decisions in Birta Writer for Mac: whether the
- * screen goes up, and whether the tour may be written into the bound file.
+ * Guard for the two first-run decisions in Birta Writer for Mac: what a launch
+ * opens on, and whether the tour may be written into the bound file.
  *
  * Both decisions are pure and both are covered over their whole space by
- * `FirstRunScreenTests` and `FirstRunNoteTests`. What no Swift test can reach
- * is the WIRING: `Coordinator.seedFirstRunNote` and
- * `AppDelegate.applicationDidFinishLaunching` are the two call sites, and both
- * need a panel, a web view and a preferences domain to construct. So a correct
- * rule asked the wrong question, or asked from only one of two places, is
- * exactly the shape AGENTS.md names, a guard that is ABSENT rather than wrong.
+ * `FirstRunTests` and `FirstRunNoteTests`. What no Swift test can reach is
+ * the WIRING: `AppDelegate.applicationDidFinishLaunching` asks the first and
+ * seeds the tour for an invitation, `Coordinator` seeds it again for the
+ * screen, and all three need a panel, a web view and a preferences domain to
+ * construct. So a correct rule asked the wrong question, or asked from only
+ * some of its places, is exactly the shape AGENTS.md names, a guard that is
+ * ABSENT rather than wrong.
  *
  * This reads the Swift as text, the way `documentTypes.test.ts` does, because
  * that is what the two things being related have in common: neither can import
@@ -58,7 +59,14 @@ describe("the first-run gates", () => {
         const calls = sources.flatMap(({ path, source }) =>
             [...source.matchAll(/shouldWrite\(([\s\S]*?)\)\s*else/g)].map((m) => ({ path, args: m[1]! })),
         );
-        expect(calls).toHaveLength(1);
+        // Two seeds, one per way the tour arrives: the launch writes it
+        // before the windows are made for an invitation, and the Coordinator
+        // writes it when the screen finishes. A third caller is a new way in
+        // and has to be looked at, not counted.
+        expect(calls.map((c) => c.path).sort()).toEqual([
+            "mac/Sources/BirtaWriter/App.swift",
+            "mac/Sources/BirtaWriter/Coordinator.swift",
+        ]);
         for (const { path, args } of calls) {
             expect(args, `${path} passes no slot`).toMatch(/slot:/);
             expect(args, `${path} names a slot instead of deriving one`).not.toMatch(
@@ -73,10 +81,10 @@ describe("the first-run gates", () => {
      * the newest one: a launch pointed at a file is not the launch this screen
      * is for.
      */
-    it("a source outside FirstRunScreen re-deriving the screen's condition should be refused", () => {
+    it("a source outside FirstRun re-deriving the opening's condition should be refused", () => {
         const rederived = sources.filter(
             ({ path, source }) =>
-                !path.endsWith("FirstRunScreen.swift") &&
+                !path.endsWith("FirstRun.swift") &&
                 /isUserStore\s*&&\s*!\s*Prefs\.hasSeenWelcome/.test(source),
         );
         expect(rederived.map((s) => s.path)).toEqual([]);
@@ -86,20 +94,22 @@ describe("the first-run gates", () => {
      * And the one call site still asks the whole question, of the BINDING and
      * with the answer it reads rather than one written into the call.
      *
-     * Two ways to get this wrong and neither is visible to a rule test. A
-     * constant passes a check on the label alone while telling the screen no
-     * document is bound, and the app compiles. `launchedWith != nil` looks like
-     * the same question and is a launch-shaped one: it answers this case
-     * correctly once, then the wrong way on every later launch, which spends
-     * the tour on a note `shouldWrite` refuses.
+     * A constant passes a check on the label alone while telling the rule no
+     * document is bound, and the app compiles. The launch argument may be
+     * added to the stored binding but never stand in for it: `launchedWith`
+     * is a launch-shaped answer, true once and gone on the next launch, while
+     * the binding survives quitting. What the rule protects is that the
+     * stored one is always asked; the launch half only closes the window
+     * between the open event arriving and the binding being stored.
      */
-    it("the launch should ask FirstRunScreen whether a document is bound", () => {
+    it("the launch should ask FirstRun whether a document is bound, off the stored binding", () => {
         const app = sources.find((s) => s.path === "mac/Sources/BirtaWriter/App.swift")!.source;
-        const call = /FirstRunScreen\.shouldShow\(([\s\S]*?)\)\s*\{/.exec(app);
-        expect(call, "App.swift no longer asks FirstRunScreen").not.toBeNull();
+        const call = /FirstRun\.opening\(([\s\S]*?)\)\s*\n/.exec(app);
+        expect(call, "App.swift no longer asks FirstRun").not.toBeNull();
         const args = call![1]!;
         expect(args).toMatch(/forced:/);
-        // The stored binding, not a constant and not the launch argument.
+        // The stored binding is asked, not a constant and not the launch
+        // argument alone.
         expect(args).toMatch(/documentBound:\s*Prefs\.documentURL\s*!=\s*nil/);
     });
 });

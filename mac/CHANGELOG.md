@@ -12,12 +12,23 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ## [Unreleased]
 
+### Added
+
+- A `bwr` command opens Birta Writer for Mac from a shell. Install it from Settings, General, Open from Terminal, which links it into `~/.local/bin` and asks for no password. `bwr` brings the windows up, `bwr notes.md` opens a file where Open With would open it, `bwr new.md` creates the path and opens it, `bwr ~/notes/` opens a folder, `bwr a.md b.md` opens both, and `cat draft.md | bwr` puts what was piped in into a dated file and opens that. The command's name is yours to change, and the row says so when the directory it goes in is not on your `PATH`, or when something else already answers to that name. A development build installs `bwr-dev`, so the two can sit side by side.
+- `bwr --wait` is refused with a message rather than ignored, so `EDITOR='bwr --wait'` does not work yet.
+
+### Changed
+
+- The first launch introduces Birta Writer for Mac from the menu bar instead of a setup form. It says where the app lives and which keys to press, and pressing them is what opens the panel, onto a short tour with a table, a diagram, math and links already rendered. If the keys are not pressed the panel opens on its own shortly after, and sooner when another app has taken the chord. The questions the form used to ask now take their defaults; the tour says where your notes are kept and that Birta Writer for Mac starts with your Mac, and points at Cmd+, for the settings that change either.
+
 ### Removed
 
 - Birta Writer for Mac no longer says it updated itself. The card that sat in the panel after the app had replaced itself with a newer version is gone, and nothing takes its place. With automatic updates on, the app still replaces itself while nobody is using it, and it is now silent about having done so; the switch in Settings is what stops it, and an update offered while you are at the keyboard still asks first. The swap is written to the system log instead, as is a swap that was armed and did not go in.
 
 ### Fixed
 
+- A first launch turns Start at login on, the way the welcome screen was meant to. From 2026.827.0, the launch recorded where the notes folder is before it asked whether this was a first launch, so the answer was always no: the login item was never registered, and the welcome screen's switch came up off. The reading is taken before anything is stored now. Nothing is registered after the fact: an install whose first launch was on a release from 2026.827.0 up to this one still has no login item unless you turned the switch on, and Settings, General, Start at login is where to.
+- Picking a file from the file list, or from Go to File in a folder window, when that file is already open in another window now brings that window forward instead of opening the file a second time, and it does so even when a new tab was asked for. Two windows on one file each held their own copy, and whichever wrote last silently took the other's edits with it; opening from the Finder or Open Recent refuses that, and the file list now does too. A file already open as a tab of the window you clicked in still fronts that tab, as before.
 - Adding themes from an installed editor reads a theme from the newest copy of its extension. Where an editor held two versions of one theme extension and the version numbers compared differently as text than as numbers (`2.1.9` beside `2.1.10`), the older copy was read. This reaches you only if you add themes from the installed list and an extension there has been updated across such a boundary; a theme added from a file or a VSIX is unaffected.
 
 ---

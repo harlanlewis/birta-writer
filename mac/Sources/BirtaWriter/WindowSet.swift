@@ -483,7 +483,9 @@ final class WindowSet {
     /// the file lands where `OpenRouting.explorerDestination` says. A plain
     /// pick moves this tab to the file; a pick asking for a new tab, or a
     /// tab holding text that is not on disk, opens it beside; a file open as
-    /// another tab of this window fronts that tab. Never another window.
+    /// another tab of this window fronts that tab, and one open in some other
+    /// window fronts that window rather than opening a second buffer over one
+    /// path. `OpenRouting.explorerDestination`'s header has the argument.
     func openFromExplorer(_ url: URL, from here: Coordinator, inNewTab: Bool) {
         let target = url.standardizedFileURL
         guard let hereIndex = windows.firstIndex(where: { $0 === here }) else { return }

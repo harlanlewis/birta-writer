@@ -14,6 +14,29 @@
  *     into and around, and the request's own line has usually just been
  *     removed. Clicking it cancels the run.
  *
+ *   - THE CORNER NOTICE (MAR-464). While a run is live, a quiet line in the
+ *     corner says what is happening: the harness, what it is doing where the
+ *     host can read that (`agentProgress`), and how long it has been going
+ *     once that becomes a question worth answering. It updates in place on
+ *     the one toast surface, never stacks, never takes focus, and goes when
+ *     the run does. The marker remains the only control; the notice offers
+ *     nothing to click, which is what keeps it advisory.
+ *
+ *     A host that cannot read its harness's output sends no line and the
+ *     notice is the page's own clock, which is the floor rather than a
+ *     failure. It does not say a run is thinking rather than waiting, which
+ *     only the harness's own events can; it says the run is still there and
+ *     how long it has been, which is what somebody deciding whether to keep
+ *     waiting has to go on. It costs the host nothing.
+ *
+ *     Unlike the failure, it is not gated on the `notifications` capability.
+ *     That capability names what a host can RAISE, and a host raises a
+ *     failure once; a line that rewrites itself every few hundred
+ *     milliseconds is nothing any host would want raised, so every host
+ *     draws it here. Inside VS Code that means the run's progress is in the
+ *     page's corner and its failure is a notification: two surfaces, on
+ *     purpose, because they are two kinds of news.
+ *
  *     It shows a RUNNING run and nothing else. A failure is news rather than
  *     a control: there is nothing left to stop, the reason is a sentence that
  *     does not fit in a gutter, and a marker that has to be clicked away is a
@@ -48,7 +71,7 @@ import type { EditorView, Node as ProseNode } from "@/pm";
 import { t } from "../i18n";
 import { notifyAgentCancel } from "../messaging";
 import { hostHas } from "../../shared/hostProfile";
-import { showToast } from "../ui/toast";
+import { hide, showToast, toastShowing } from "../ui/toast";
 import "./agentPending.css";
 
 export const agentPendingKey = new PluginKey<AgentPendingState>("birta-agent-pending");
@@ -66,6 +89,10 @@ export interface AgentRun {
     status: "armed" | "running";
     /** The harness running it (`claude`, `codex`), for the tooltip; unknown until `running`. */
     harness?: string;
+    /** When the extension confirmed it as running, which is what the notice counts from. */
+    startedAt?: number;
+    /** The last thing the host said this run was doing, if it says at all. */
+    line?: string;
 }
 
 interface AgentPendingState {
@@ -76,6 +103,7 @@ interface AgentPendingState {
 type AgentAction =
     | { kind: "begin"; id: string; pos: number; base: ProseNode }
     | { kind: "running"; id: string; harness?: string }
+    | { kind: "progress"; id: string; line: string }
     | { kind: "settle"; id: string };
 
 function markerWidget(run: AgentRun): HTMLElement {
@@ -141,7 +169,12 @@ export const agentPendingPlugin = $prose(() => {
         key: agentPendingKey,
         view(view) {
             liveView = view;
-            return { destroy() { liveView = null; } };
+            const notice = new AgentNotice(view);
+            notice.sync();
+            return {
+                update() { notice.sync(); },
+                destroy() { notice.stop(); liveView = null; },
+            };
         },
         state: {
             init: () => ({ runs: [], decorations: DecorationSet.empty }),
@@ -161,7 +194,21 @@ export const agentPendingPlugin = $prose(() => {
                 if (action?.kind === "begin") {
                     runs = [...runs, { id: action.id, pos: action.pos, base: action.base, mapping: new Mapping(), status: "armed" }];
                 } else if (action?.kind === "running") {
-                    runs = runs.map((r) => (r.id === action.id ? { ...r, status: "running", harness: action.harness ?? r.harness } : r));
+                    runs = runs.map((r) => (r.id === action.id
+                        ? { ...r, status: "running", harness: action.harness ?? r.harness, startedAt: r.startedAt ?? Date.now() }
+                        : r));
+                } else if (action?.kind === "progress") {
+                    // A line for a run that has already settled is dropped
+                    // here, which is the only place that knows which runs are
+                    // still live.
+                    if (runs.some((r) => r.id === action.id)) {
+                        const next = runs.map((r) => (r.id === action.id ? { ...r, line: action.line } : r));
+                        // The marker does not draw the line, so the decorations
+                        // it already has are still the right ones. Rebuilding
+                        // them is a walk of the document for a corner message.
+                        if (!tr.docChanged) { return { runs: next, decorations: prev.decorations }; }
+                        runs = next;
+                    }
                 } else if (action?.kind === "settle") {
                     runs = runs.filter((r) => r.id !== action.id);
                 }
@@ -197,16 +244,147 @@ export function markAgentRunning(view: EditorView, id: string, harness?: string)
     dispatchIfLive(view, { kind: "running", id, harness });
 }
 
+/**
+ * What the host says this run is doing now, for the corner notice. View
+ * state and nothing else: it is never serialized, never put in the state bag,
+ * and a run that ends takes its line with it.
+ */
+export function reportAgentProgress(view: EditorView, id: string, line: string): void {
+    const text = line.trim();
+    if (!text) { return; }
+    dispatchIfLive(view, { kind: "progress", id, line: text });
+}
+
 export function settleAgentRun(view: EditorView, id: string): void {
     dispatchIfLive(view, { kind: "settle", id });
 }
 
 /**
- * The surface class the failure toast is drawn on: the editor's bottom
+ * The surface class both agent messages are drawn on: the editor's bottom
  * trailing corner. Where exactly, and why it is held clear of the window's
  * own bottom edge, is `agentPending.css`.
+ *
+ * ONE surface for the live line and the failure, which is what makes "never
+ * stacks" structural rather than a rule to remember: a surface is one node,
+ * so the two cannot be on screen at once and cannot collide. What they need
+ * from each other is that a failure, which is read once and gone, is not
+ * overwritten by the next tick of a notice about some other run; see
+ * `failureHoldingCorner`.
  */
 export const AGENT_TOAST_SURFACE = "agent-toast";
+
+/**
+ * How often the notice re-reads its own clock. Coarse on purpose: a corner
+ * line whose seconds count up one by one is motion where the rule asks for
+ * quiet, and nothing a reader decides turns on five seconds.
+ */
+const NOTICE_TICK_MS = 5000;
+
+/**
+ * How long a run goes before the notice says how long it has been going.
+ * Until then the elapsed time answers a question nobody has asked yet, and
+ * "0:03" in the corner is noise; past it, it is the whole difference between
+ * a run that is working and one that is stuck.
+ */
+const NOTICE_ELAPSED_AFTER_MS = 10000;
+
+/**
+ * Whether a failure is holding the corner right now.
+ *
+ * Asked of the surface itself rather than kept as a deadline beside it. One
+ * node carries both messages, so the node is what knows which one it is
+ * showing, and a second clock running alongside the toast's own could only
+ * ever disagree with it. While a failure is up the notice stands down, and it
+ * takes the corner back on its next tick once the dwell has run out.
+ */
+function failureHoldingCorner(): boolean {
+    return toastShowing(AGENT_TOAST_SURFACE, "error");
+}
+
+function elapsedLabel(ms: number): string {
+    const seconds = Math.floor(ms / 1000);
+    return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+}
+
+/**
+ * What the corner should say about `runs` at `now`, or null for nothing.
+ *
+ * Separated from the drawing so the sentence can be asked for without a
+ * document, a view or a clock: every rule about what it says (which run it
+ * names, when the elapsed time appears, what stands in for a host that says
+ * nothing) is decided here.
+ */
+export function agentNoticeText(runs: readonly AgentRun[], now: number): string | null {
+    const live = runs.filter((r) => r.status === "running");
+    if (live.length === 0) { return null; }
+    // The OLDEST run's clock. With more than one live, the interesting number
+    // is how long the longest one has been going.
+    const oldest = live.reduce((a, b) => ((a.startedAt ?? now) <= (b.startedAt ?? now) ? a : b));
+    const age = now - (oldest.startedAt ?? now);
+    // Quantized to the tick BEFORE it is labelled, so the sentence changes
+    // only when the tick says it may. `sync` also runs on every transaction,
+    // and a label at one-second resolution would otherwise count up under
+    // the reader's own keystrokes, which is the motion the tick exists to
+    // rule out.
+    const shownAge = Math.floor(age / NOTICE_TICK_MS) * NOTICE_TICK_MS;
+    const elapsed = age >= NOTICE_ELAPSED_AFTER_MS ? ` · ${elapsedLabel(shownAge)}` : "";
+    if (live.length > 1) {
+        // The number inside the sentence, not glued to the front of it: a
+        // translator has to be able to put it where the language puts it.
+        return `${t("{0} agents working").replace("{0}", String(live.length))}${elapsed}`;
+    }
+    const run = live[0];
+    const who = run.harness ?? t("Your agent");
+    return `${who} · ${run.line ?? t("working")}${elapsed}`;
+}
+
+/**
+ * Draws that sentence on the toast surface and keeps it current.
+ *
+ * The clock runs only while something is live, so a document with no run
+ * costs nothing at all. Redundant writes are skipped, because the editor
+ * updates on every keystroke and the sentence changes on neither of them.
+ */
+class AgentNotice {
+    private timer: ReturnType<typeof setInterval> | undefined;
+    private shown: string | undefined;
+
+    constructor(private readonly view: EditorView) {}
+
+    sync(): void {
+        if (this.view.isDestroyed) { this.stop(); return; }
+        const runs = agentPendingKey.getState(this.view.state)?.runs ?? [];
+        const text = agentNoticeText(runs, Date.now());
+        if (text === null) {
+            this.stop();
+            return;
+        }
+        this.timer ??= setInterval(() => this.sync(), NOTICE_TICK_MS);
+        if (failureHoldingCorner()) {
+            // Forget what was drawn, so the sentence is written again when
+            // the corner comes back.
+            this.shown = undefined;
+            return;
+        }
+        if (text === this.shown) { return; }
+        this.shown = text;
+        showToast(text, {
+            surface: AGENT_TOAST_SURFACE,
+            persist: true,
+            // It rewrites itself on a clock; see ui/toast.ts on why that must
+            // not be announced. The marker announced the run when it started.
+            announce: false,
+        });
+    }
+
+    stop(): void {
+        clearInterval(this.timer);
+        this.timer = undefined;
+        if (this.shown === undefined) { return; }
+        this.shown = undefined;
+        hide(AGENT_TOAST_SURFACE);
+    }
+}
 
 /**
  * How long a failure stays. Longer than an ordinary notice, because this one
@@ -240,6 +418,9 @@ export function failAgentRun(view: EditorView, id: string, error: string,
     dispatchIfLive(view, { kind: "settle", id });
     if (hostHas("notifications")) { return; }
     const reason = error.trim();
+    // The corner is one surface, and this claims it: while an error message
+    // is up, the live-run notice stands down rather than overwriting a reason
+    // on its next tick. See `failureHoldingCorner`.
     showToast(reason ? `${who}: ${reason}` : `${who}: ${t("request failed")}`, {
         surface: AGENT_TOAST_SURFACE,
         tone: "error",

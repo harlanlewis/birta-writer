@@ -64,6 +64,7 @@ export {
     failAgentRun,
     markAgentRunning,
     recordsExternalInHistory,
+    reportAgentProgress,
     settleAgentRun,
 } from "./agentPending";
 export { mathInlineEditPlugin } from "./mathInlineEdit";

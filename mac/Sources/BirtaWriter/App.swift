@@ -125,6 +125,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding, 
         statusItem = item
     }
 
+    /// Whether this launch was asked for by the `bwr` command with no file.
+    ///
+    /// The one thing the command cannot say through LaunchServices. A file
+    /// reaches `application(_:open:)` and summons on its own account; a bare
+    /// `bwr` has nothing to open and still has to show, because a call from a
+    /// shell is a request rather than a toggle. `open --args` puts this in
+    /// `argv` on a COLD launch only, which is exactly when it is needed: a
+    /// warm one gets the reopen event the Dock icon sends, and
+    /// `applicationShouldHandleReopen` summons from there.
+    ///
+    /// The word is `CliInvocation.summonArgument` rather than a literal,
+    /// because the command spells it too and neither end can see the other's.
+    /// It takes the arguments so the reading is checkable, since a process
+    /// cannot be relaunched to change its own.
+    static func summonedFromShell(_ arguments: [String] = CommandLine.arguments) -> Bool {
+        arguments.contains(CliInvocation.summonArgument)
+    }
+
     /// A file the user pointed this app at, held until there is a Coordinator
     /// to give it to.
     ///
@@ -175,6 +193,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding, 
         // nothing is bound to a file: the binding is the new folder's
         // scratchpad, and a note carried in afterwards can land on the path
         // the panel is already editing. `StrandedNotes` holds the decision.
+        //
+        // Whether this is the FIRST launch is read before that offer, and
+        // has to be: the offer records the notes derivation on every arm,
+        // the ones that ask nothing included, and `Prefs.isFirstLaunch` is
+        // the absence of every stored key. Read after it, a first launch is
+        // an existing install, the login item is never registered and the
+        // tour is never written. `FirstRunWiringTests` holds the order.
+        let firstLaunch = Prefs.isFirstLaunch
+        launchWasFirst = firstLaunch
         NotesMoveOffer.offerAtLaunch()
         // Before any Coordinator exists, so a launch that came from Open With
         // mounts against the file it was asked for rather than mounting the
@@ -182,12 +209,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding, 
         // puts it in front of whatever else comes back.
         let launchedWith = pendingOpen
         pendingOpen = nil
+        // ONE decision for the whole launch, taken here because the earliest
+        // thing it governs happens before the windows are made. `FirstRun`
+        // holds every arm and why, including the one Open With adds: nothing
+        // about a first run is put in front of a panel bound to somebody's own
+        // file. Asked of the BINDING and of this launch's file together, so it
+        // holds on every later launch as well as this one.
+        // `BIRTA_MAC_DEFAULTS_SUITE` gives a checking run its own domain,
+        // which is what `isUserStore` refuses, for the same reason the panel
+        // does not remember its frame.
+        let opening = FirstRun.opening(
+            forced: ProcessInfo.processInfo.environment["BIRTA_MAC_OPEN_WELCOME"] == "1",
+            isUserStore: Prefs.isUserStore,
+            hasSeenWelcome: Prefs.hasSeenWelcome,
+            documentBound: Prefs.documentURL != nil || launchedWith != nil)
+        // BEFORE the windows, so the ordinary mount is what opens the tour.
+        if opening == .invitation { Self.seedFirstRunNote(isFirstRun: firstLaunch) }
         windows.openPreferences = { [weak self] in self?.menuOpenSettings() }
         windows.hidePreferences = { [weak self] in self?.settingsWindow?.close() }
         windows.paletteProbe = { [weak self] query, mode in
             self?.probePalette(query: query, mode: mode) ?? "unavailable"
         }
-        windows.openAtLaunch(launchedWith: launchedWith)
+        let firstWindow = windows.openAtLaunch(launchedWith: launchedWith)
         buildStatusMenu()
         applyMenuBarPresence()
         windows.startAll()
@@ -247,21 +290,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding, 
         // What the LAST launch did to itself, if it did anything. Nothing is
         // said on screen; this clears the record and writes it to the log.
         recordSilentUpdate()
-        // After the panel exists, so the screen has a window to take over.
-        // `FirstRunScreen` holds every arm of the decision and why, including
-        // the one Open With adds: the screen is not put in front of a panel
-        // bound to somebody's own file. Asked of the BINDING rather than of
-        // `launchedWith`, so it holds on every later launch too, which is what
-        // keeps the tour from being spent on a note it may not write.
-        // `BIRTA_MAC_DEFAULTS_SUITE` gives a checking run its own domain, which
-        // is what `isUserStore` refuses, for the same reason the panel does not
-        // remember its frame.
-        if FirstRunScreen.shouldShow(
-            forced: ProcessInfo.processInfo.environment["BIRTA_MAC_OPEN_WELCOME"] == "1",
-            isUserStore: Prefs.isUserStore,
-            hasSeenWelcome: Prefs.hasSeenWelcome,
-            documentBound: Prefs.documentURL != nil) {
-            showWelcome()
+        // Acted on HERE rather than where it was taken, because both arms need
+        // things that do not exist until now: the screen needs a panel to take
+        // over, and the invitation needs the status item to point at and the
+        // hotkey registration's answer to report.
+        switch opening {
+        case .screen: showWelcome()
+        case .invitation: beginFirstRun(on: firstWindow)
+        case .nothing: break
         }
         // A settings window can otherwise only be opened by a person, which
         // makes "does it construct" a question nothing but a human can answer.
@@ -298,7 +334,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding, 
         // hotkey-summoned app and wrong for one somebody just double-clicked a
         // file in: the file has to appear. Last, so the panel comes up over
         // whatever the settings hooks above built.
-        if launchedWith != nil { windows.summonAll() }
+        if launchedWith != nil || Self.summonedFromShell() { windows.summonAll() }
         installTerminationSignal()
     }
 
@@ -878,8 +914,165 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding, 
 
     /// Show the first-run screen, which lives IN the panel rather than in a
     /// window of its own. The Advanced button that re-shows it comes here too.
+    ///
+    /// No ordinary launch reaches this any more; `FirstRun` says which do.
     func showWelcome() {
         front?.showWelcome()
+    }
+
+    // MARK: - The first run
+
+    /// The popover under the menu bar item, while it is up.
+    private var firstRunPopover: FirstRunPopover?
+    /// The floor under the first run: the panel comes up on its own if the
+    /// chord never does. Invalidated by the panel coming up either way.
+    private var firstRunFallback: Timer?
+    /// The window whose first appearance ends the first run, so its hook can
+    /// be taken back off. Weak: the set owns its windows, and a first run that
+    /// outlived its own panel would be holding one alive to hear about it.
+    private weak var firstRunWindow: Coordinator?
+    /// Whether the wait raised the panel rather than the chord, which is the
+    /// one thing `onDidShow` cannot say and the only thing that changes what
+    /// happens to the popover.
+    private var firstRunOpenedByWait = false
+    /// Whether this launch found no stored key at all, read before the launch
+    /// stored any (see `applicationDidFinishLaunching`). The two things a
+    /// first run does on its own authority, register the login item and write
+    /// the tour, both gate on this and on nothing read later.
+    private var launchWasFirst = false
+
+    /// Teach the summon by having it made.
+    ///
+    /// With a menu bar item, nothing opens here: the menu bar says where the
+    /// app is and which keys to press, and the chord is the only route to the
+    /// panel, which is what makes the gesture teach itself rather than be
+    /// described. On a first launch the note behind it already holds the
+    /// tour, written by `seedFirstRunNote` before the window was made; an
+    /// install that predates the welcome key is invited over its own note.
+    ///
+    /// `applyOnboardingDefaults` still runs, and what it does is now done with
+    /// no switch drawn beside it, so the tour is what says so. Its own header
+    /// carries the constraint that follows: nothing it writes may turn the
+    /// network on.
+    private func beginFirstRun(on coordinator: Coordinator) {
+        Prefs.applyOnboardingDefaults(firstLaunch: launchWasFirst)
+        let invitation = FirstRunInvitation.of(name: AppFlavor.current.displayName,
+                                               combo: Prefs.hotkey,
+                                               refused: windows.refusedSummonCombo)
+        // The panel coming up is what ends this, whichever brought it up. Held
+        // on the window rather than on the hotkey, because the wait below
+        // raises the same panel by another route and both have to clear the
+        // same state.
+        firstRunWindow = coordinator
+        coordinator.onDidShow = { [weak self] in self?.finishFirstRun() }
+        // No menu bar item, no invitation: the sentence has nowhere to hang
+        // and a wait with nothing to wait for is a blank screen for the
+        // duration. The panel comes up now, on whatever note is bound. The
+        // item is only absent where Show in menu bar was stored off, which
+        // is an existing install, so this arm never has a tour to open on.
+        guard let button = statusItem?.button else {
+            firstRunOpenedByWait = true
+            windows.summonAll()
+            return
+        }
+        let popover = FirstRunPopover(invitation)
+        popover.show(from: button)
+        firstRunPopover = popover
+        let fallback = Timer(timeInterval: invitation.wait, repeats: false) { [weak self] _ in
+            Task { @MainActor in
+                // Set BEFORE the summon, because the summon is what calls
+                // `finishFirstRun`, synchronously, and a flag written after it
+                // would be read by nobody.
+                self?.firstRunOpenedByWait = true
+                self?.windows.summonAll()
+            }
+        }
+        // `.common`, not the default mode, and the popover is why: a popover
+        // and a status-item menu both track the run loop in a mode of their
+        // own, so a timer in the default mode stops while either is up. The
+        // floor under a first run would then be lifted by exactly the surface
+        // it is there to back up.
+        RunLoop.main.add(fallback, forMode: .common)
+        firstRunFallback = fallback
+    }
+
+    /// The panel is up, so the first run is over.
+    ///
+    /// `hasSeenWelcome` is spent HERE rather than at launch, so a crash before
+    /// anybody saw anything does not spend the one chance to offer this. The
+    /// tour is already on disk by then and `FirstRunNote.shouldWrite` refuses
+    /// a note with writing in it, so a second launch finds the tour where it
+    /// left it and invites again over the top of nothing.
+    private func finishFirstRun() {
+        firstRunFallback?.invalidate()
+        firstRunFallback = nil
+        // Pressing the chord is the proof the sentence was read, and the only
+        // one there is: a popover dismissed another way says it was in the
+        // way. So it goes when the chord brought the panel up, and stays when
+        // the wait did, because then the keys it draws are still unread and
+        // the note deliberately cannot name them.
+        //
+        // The reference is KEPT in that arm, and has to be: this object owns
+        // the `NSPopover`, so dropping it here would take the popover off
+        // screen by deallocating it, which is the opposite of what the arm
+        // asks for.
+        if firstRunOpenedByWait {
+            firstRunPopover?.letTheFirstClickTakeIt()
+        } else {
+            firstRunPopover?.close()
+            firstRunPopover = nil
+        }
+        firstRunWindow?.onDidShow = nil
+        firstRunWindow = nil
+        Prefs.hasSeenWelcome = true
+    }
+
+    /// Put the tour on disk before the panel mounts the file it is in.
+    ///
+    /// BEFORE the windows are made, which is the whole of why it is here
+    /// rather than on the Coordinator: a launch reads its note off disk, so a
+    /// tour written afterwards would have to be pushed into a page already
+    /// holding the empty file, and the two writes would race. Written first,
+    /// the ordinary mount is what opens it and there is no second path at all.
+    ///
+    /// `bufferIsEmpty` is true because there is no buffer: nothing is mounted
+    /// yet, and no page exists to hold bytes the file has not been given. The
+    /// other three refusals are what does the work here, and `FirstRunNote`
+    /// says what each is for.
+    ///
+    /// Asked of `Prefs.activeURL` and its slot, which is the settings' own
+    /// answer to what a launch opens and, with nothing stored, exactly what
+    /// `WindowSet.openAtLaunch` falls back to.
+    ///
+    /// Failure is silent on purpose. Nothing is lost by not having the tour:
+    /// the panel opens empty, and an error the first time somebody sees this
+    /// app would be worse than the absence it is reporting.
+    ///
+    /// `isFirstRun` is the launch's own first-launch reading, taken before
+    /// anything was stored and the same value `applyOnboardingDefaults` acts
+    /// on, and it has to be the same one: the tour's opening says the app
+    /// starts with the Mac, which is only true of an install whose first
+    /// launch registered it. An install that predates the welcome key is
+    /// invited and gets its panel, and is not told a thing that was never
+    /// done to it. Not read here, because by now the launch has stored keys.
+    private static func seedFirstRunNote(isFirstRun: Bool) {
+        let url = Prefs.activeURL
+        guard FirstRunNote.shouldWrite(existing: FirstRunNote.existing(at: url),
+                                       bufferIsEmpty: true,
+                                       isFirstRun: isFirstRun,
+                                       slot: Prefs.activeSlot) else { return }
+        do {
+            try FileManager.default.createDirectory(
+                at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try AtomicFile.writeString(FirstRunNote.markdown, to: url)
+        } catch {
+            NSLog("Birta Writer: could not write the first-run note to \(url.path): \(error)")
+            return
+        }
+        // Whatever was remembered about this path describes a document that no
+        // longer exists there, so a scroll offset or a fold anchor kept from
+        // it would be applied to the tour.
+        Prefs.setViewStateJSON(nil, for: url)
     }
 
     @objc func menuBackToNotes() {

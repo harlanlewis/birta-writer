@@ -106,12 +106,17 @@ public enum OpenRouting {
     /// tab that was clicked in. A new tab is the reader's explicit ask, by
     /// Cmd+click, middle click or the row's Open in New Tab.
     ///
-    /// The window stays the one that was clicked in. A file already open as
-    /// another tab of that same window fronts that tab; one open in some
-    /// OTHER window does not pull the reader across to it, because a click
-    /// in this window's sidebar is an instruction about this window. That
-    /// second buffer over one path is the reader's to hold: the later write
-    /// wins, and nothing here reconciles the two.
+    /// A file already open as another tab of the clicked window fronts that
+    /// tab. One open in some OTHER window fronts that window instead, and
+    /// the reader is pulled across to it: a click in this window's sidebar
+    /// is an instruction about this window, but the alternative is a second
+    /// buffer over one path, where the later write wins and the earlier
+    /// edits go without a word. The outside route (`destination`) refuses
+    /// that for the same reason, and a sidebar click is not a licence to
+    /// lose bytes the Finder would not. The clicked window's own tabs are
+    /// asked first, so a window that already has the file keeps the reader
+    /// where they clicked, and two windows that both hold it front the one
+    /// clicked in rather than the other.
     ///
     /// One thing overrides the replace: a tab whose text is not on disk and
     /// will not be written by leaving it (autosave off, the title reading
@@ -138,6 +143,12 @@ public enum OpenRouting {
                 && (index == here || (group != nil && windows[index].group == group))
         }) {
             return .existing(open)
+        }
+        // Not in this window: any other window holding the file is fronted
+        // before a second buffer is opened over it. A new-tab ask does not
+        // override this, for the same reason it does not within one window.
+        if let elsewhere = windows.indices.first(where: { sameFile(windows[$0].file, file) }) {
+            return .existing(elsewhere)
         }
         return inNewTab || hereHoldsUnsavedText ? .tabHere : .replaceHere
     }

@@ -54,6 +54,7 @@ enum Prefs {
         case hasSeenWelcome
         case autoUpdate
         case agentEnabled
+        case commandName
         case newNoteNameTemplate
         case lastUpdateCheck
         case updateDeclinedTag
@@ -745,6 +746,46 @@ enum Prefs {
         set { d.set(newValue, forKey: Key.agentCommand.rawValue) }
     }
 
+    /// What the shell command Settings installs is CALLED.
+    ///
+    /// A setting rather than a constant because the name is the one thing
+    /// about this that can collide with somebody's machine: a command
+    /// shadowing a tool they already have is worse than no command at all,
+    /// and the only fix is a different word. Whether it is INSTALLED is
+    /// deliberately not stored beside it. The link on disk is the whole of
+    /// that fact, so a preference claiming otherwise could only be a second
+    /// answer able to disagree with the first.
+    static var commandName: String {
+        get {
+            let stored = d.string(forKey: Key.commandName.rawValue) ?? ""
+            return stored.isEmpty ? Self.defaultCommandName : stored
+        }
+        set { d.set(newValue, forKey: Key.commandName.rawValue) }
+    }
+
+    /// The name a fresh install offers, per flavour for the reason the hotkey
+    /// and the note are: the two builds are meant to sit in /Applications
+    /// together, and one name would mean whichever was installed second
+    /// silently took the other's.
+    static var defaultCommandName: String {
+        CommandInstall.defaultName(isDevelopmentBuild: AppFlavor.current == .dev)
+    }
+
+    /// Where the link goes.
+    static var commandLink: URL {
+        CommandInstall.defaultDirectory(home: FileManager.default.homeDirectoryForCurrentUser)
+            .appendingPathComponent(commandName)
+    }
+
+    /// What it points at, read off the RUNNING bundle rather than written
+    /// down: an app moved or replaced carries its command with it, and a link
+    /// into a copy that is no longer there is one an install repairs.
+    static var commandTarget: URL {
+        Bundle.main.bundleURL
+            .appendingPathComponent("Contents/MacOS", isDirectory: true)
+            .appendingPathComponent(CommandInstall.executableName)
+    }
+
     /// Whether this host can hand a prompt to an agent at all.
     ///
     /// Two ways to have none, and the row and the capability must agree with
@@ -807,25 +848,35 @@ enum Prefs {
         Key.allCases.allSatisfy { d.object(forKey: $0.rawValue) == nil }
     }
 
-    /// Make true what the first-run screen is about to SHOW, before it draws.
+    /// Make true what a first run is about to act as though it had settled.
     ///
-    /// The screen presents live settings, so anything it displays as on has to
-    /// be on. Almost nothing is left to do here, and that is the point rather
-    /// than an omission: every switch it shows now agrees with the accessor
-    /// default beside it, so the two cannot disagree by construction. Only the
-    /// login item is not a preference, and a system registration has no
-    /// default to agree with.
+    /// Almost nothing is left to do here, and that is the point rather than an
+    /// omission: every setting a first run touches now agrees with the
+    /// accessor default beside it, so the two cannot disagree by construction.
+    /// Only the login item is not a preference, and a system registration has
+    /// no default to agree with.
+    ///
+    /// The registration is what this function IS, and what it costs is a
+    /// disclosure rather than a switch. `FirstRun.opening` sends an ordinary
+    /// first run to the invitation, which asks nothing, so nobody sees a row
+    /// saying this happened: `FirstRunNote.markdown` says it in the note's
+    /// opening paragraph instead, and Settings is where it is undone. Keeping
+    /// it is deliberate. This is a menu-bar app whose whole promise is one
+    /// keystroke, and a copy that does not come back after a restart answers
+    /// that keystroke with nothing, which is the failure the summon surfaces
+    /// exist to prevent.
     ///
     /// Link previews and embeds is the row this function must never grow back.
-    /// It
-    /// is the only setting that reaches the network, it ships off, and the
-    /// first-run screen does not ask about it, so nothing here may switch it
-    /// on. That is the whole of the claim in `docs/NETWORK_POSTURE.md`.
+    /// It is the only setting that reaches the network, it ships off, and
+    /// nothing on a first run asks about it, so nothing here may switch it on.
+    /// That is the whole of the claim in `docs/NETWORK_POSTURE.md`, and it
+    /// binds harder now that no screen would show what had been done.
     ///
-    /// FIRST LAUNCH ONLY. An existing install reaches this screen too, because
-    /// `hasSeenWelcome` is absent for everybody who had the app before it existed,
-    /// and registering a login item for them would be reaching into something
-    /// they have been living with.
+    /// FIRST LAUNCH ONLY, and `isFirstLaunch` is a stricter question than the
+    /// one that decided to call this. `hasSeenWelcome` is absent for everybody
+    /// who had the app before that key existed, so an existing install is
+    /// offered the invitation too, and registering a login item for them would
+    /// be reaching into something they have been living with.
     ///
     /// AND THE PERSON'S OWN STORE ONLY, which is the same gate `Updater`
     /// keeps and for the same reason: `mac/scripts/measure.sh` launches a
@@ -922,6 +973,10 @@ enum Prefs {
         report("show in menu bar", !showInMenuBar, "off")
         report("agent", !agentEnabled, "off")
         report("agent command", agentEnabled && agentCommand != AgentPreset.fallback.template)
+        // The name only, never whether the link is there: this list is of
+        // settings that differ from their defaults, and installation is a fact
+        // about the filesystem rather than a setting.
+        report("command name", commandName != defaultCommandName)
         report("note home", noteHome != .iCloud, noteHome.rawValue)
         report("open to a blank note", openToBlankNote, "on")
         report("open files in", openFilesIn != .tab, openFilesIn.rawValue)

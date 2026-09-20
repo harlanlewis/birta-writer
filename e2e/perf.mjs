@@ -187,6 +187,7 @@ async function measureFixture(chromium, baseUrl, content, runs, fixture = "?") {
     const syncSplits = samples.slice(1).map((s) => s.__syncSplit).filter(Boolean);
     if (syncSplits.length) {
         agg.syncSplit = {
+            toJson: round(median(syncSplits.map((s) => s.toJson))),
             serialize: round(median(syncSplits.map((s) => s.serialize))),
             merge: round(median(syncSplits.map((s) => s.merge))),
             fingerprint: round(median(syncSplits.map((s) => s.fingerprint))),
@@ -262,15 +263,17 @@ async function measureMode(only, runs, jsonOut) {
         }
     }
     // The sync split probe, warm (see README, "The sync split"): what one
-    // sync of this document costs piece by piece, and whether its reparse
-    // leaves the interaction thread for the verify worker (MAR-430).
+    // sync of this document costs piece by piece, and whether all but the
+    // snapshot leaves the interaction thread for the sync worker (MAR-430,
+    // MAR-432). `toJson` is what the interaction thread keeps once it does,
+    // so the two readings together size what is left to move.
     const withSync = Object.entries(report.fixtures).filter(([, agg]) => agg.syncSplit);
     if (withSync.length) {
-        console.log("\nsync split, warm probe after settle (ms): serialize / merge / live fingerprint / verifying reparse\n");
+        console.log("\nsync split, warm probe after settle (ms): toJSON snapshot / serialize / merge / live fingerprint / verifying reparse\n");
         for (const [name, agg] of withSync) {
             const s = agg.syncSplit;
-            const where = s.offThread ? "reparse off-thread" : "reparse on the main thread";
-            console.log(`  ${name.padEnd(12)} serialize ${s.serialize}  merge ${s.merge}  fingerprint ${s.fingerprint}  reparse ${s.reparse}  (${where})`);
+            const where = s.offThread ? "all but toJSON off-thread" : "all on the main thread";
+            console.log(`  ${name.padEnd(12)} toJSON ${s.toJson}  serialize ${s.serialize}  merge ${s.merge}  fingerprint ${s.fingerprint}  reparse ${s.reparse}  (${where})`);
         }
     }
     console.log("");

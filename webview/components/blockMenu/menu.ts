@@ -304,6 +304,9 @@ export function duplicateBlockRange(
         const runStart = dir === 1 ? insertAt : range.from;
         const sel = state.selection;
         if (sel instanceof BlockRangeSelection) {
+            // No origin, on purpose: the caret the ladder started from is in
+            // the SOURCE run, and carrying it here would send Escape back into
+            // the original rather than the copy that is now selected.
             const runRange = BlockRangeSelection.tryCreate(
                 tr.doc, runStart, runStart + content.size,
             );

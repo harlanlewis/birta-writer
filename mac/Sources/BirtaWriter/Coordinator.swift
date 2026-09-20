@@ -380,6 +380,16 @@ final class Coordinator {
     /// dismissing afterwards should put the user back in the Finder.
     var onWillShow: (() -> Void)?
 
+    /// Raised once the panel is up, for the app to note that it happened.
+    ///
+    /// The pair to `onWillShow` and not a substitute for it: what reads this
+    /// wants the panel to BE up, not to be about to be. The first run is its
+    /// only user, and what it is asking is whether this window came forward at
+    /// all, by the chord or by the wait it puts under it
+    /// (`AppDelegate.beginFirstRun`); a handler set here is taken back off
+    /// when that is answered, because every later summon raises it too.
+    var onDidShow: (() -> Void)?
+
     /// The close button and Cmd+W. What closing MEANS is the app's to decide
     /// rather than this window's, because it depends on how many there are:
     /// the last window hides, so the editor stays mounted and the next summon
@@ -1600,6 +1610,7 @@ final class Coordinator {
                 MainActor.assumeIsolated { self?.measure.trace("dock \(line)") }
             }
         }
+        onDidShow?()
     }
 
     /// Come forward again, with none of the rest of a summon.

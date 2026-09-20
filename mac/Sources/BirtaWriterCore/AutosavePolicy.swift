@@ -55,8 +55,9 @@ public enum WriteAction: Equatable, Sendable {
 ///
 /// Deferral is separate from permission. An edit that is allowed to be written
 /// is still not written on the keystroke: `Debounce` in the coordinator holds
-/// it for a beat so a burst of typing is one write rather than hundreds. The
-/// bound on how far disk trails the editor is that beat, and nothing else.
+/// it for a beat so a burst of typing is one write rather than hundreds, and
+/// the beat is re-held by each keystroke with a ceiling under continuous
+/// typing. The bound on how far disk trails the editor is that ceiling.
 public enum AutosavePolicy {
     public static func action(for trigger: WriteTrigger, autosaveEnabled: Bool) -> WriteAction {
         switch trigger {
