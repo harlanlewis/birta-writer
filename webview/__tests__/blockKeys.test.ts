@@ -22,6 +22,7 @@ import {
     duplicateSelectedBlocks,
     deleteSelectedBlocks,
     handleBlockKeydown,
+    blockKeysPlugin,
 } from "../plugins/blockKeys";
 import { registerEscapeLayer, closeTopmostLayer } from "../ui/escapeLayers";
 import { BlockRangeSelection } from "../plugins/blockRange";
@@ -46,6 +47,10 @@ async function makeEditor(markdown: string): Promise<EditorView> {
         // Real guard in the loop: these suites exercise moves/duplicates,
         // which must now pass the content-conservation guard (MAR-108).
         .use(contentGuardPlugin)
+        // The plugin itself, not only its exported commands: the Mod+A
+        // ladder hands the origin across its first rung through plugin
+        // state, and a command run without it takes the fallback.
+        .use(blockKeysPlugin)
         .create();
     editors.push(editor);
     return editor.action((ctx) => ctx.get(editorViewCtx));
@@ -815,5 +820,116 @@ describe("escalateSelectAll with a NodeSelection", () => {
         escalateSelectAll(view.state, view.dispatch);
         expect(view.state.selection.from).toBe(0);
         expect(view.state.selection.to).toBe(view.state.doc.content.size);
+    });
+});
+
+describe("Escape returns to the caret the ladder started from (MAR-461)", () => {
+    const DOC = "one\n\ntwo\n\nthree\n\nfour\n\nfive";
+
+    /**
+     * Two characters INTO the block's text, never at its start. The old
+     * collapse-to-start lands one position inside the block, which is
+     * exactly where `placeCaretIn` puts a caret, so a test placed there
+     * passes on the old behaviour and pins nothing.
+     */
+    function placeCaretInside(view: EditorView, text: string): number {
+        placeCaretIn(view, text);
+        const pos = view.state.selection.from + 2;
+        view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, pos)));
+        expect(view.state.selection.$from.parentOffset).toBe(2);
+        return pos;
+    }
+
+    it("three Mod+A then Escape should put the caret back where it was, not at the top", async () => {
+        const view = await makeEditor(DOC);
+        const start = placeCaretInside(view, "three");
+        expect(start).toBeGreaterThan(1);
+        escalateSelectAll(view.state, view.dispatch);
+        escalateSelectAll(view.state, view.dispatch);
+        escalateSelectAll(view.state, view.dispatch);
+        expect(view.state.selection).toBeInstanceOf(BlockRangeSelection);
+        expect(view.state.selection.from).toBe(0);
+        expect(view.state.selection.to).toBe(view.state.doc.content.size);
+        toggleBlockSelection(view.state, view.dispatch);
+        expect(view.state.selection.empty).toBe(true);
+        expect(view.state.selection.from).toBe(start);
+    });
+
+    it("Escape to a block range and Escape back should round-trip the caret", async () => {
+        const view = await makeEditor(DOC);
+        const start = placeCaretInside(view, "four");
+        toggleBlockSelection(view.state, view.dispatch);
+        expect(view.state.selection).toBeInstanceOf(BlockRangeSelection);
+        toggleBlockSelection(view.state, view.dispatch);
+        expect(view.state.selection.from).toBe(start);
+    });
+
+    it("Shift+Down growing the range should keep the origin, so Escape still goes back", async () => {
+        const view = await makeEditor(DOC);
+        const start = placeCaretInside(view, "two");
+        toggleBlockSelection(view.state, view.dispatch);
+        extendBlockSelection(1)(view.state, view.dispatch);
+        extendBlockSelection(1)(view.state, view.dispatch);
+        expect(selectedText(view)).toBe("two three four");
+        toggleBlockSelection(view.state, view.dispatch);
+        expect(view.state.selection.from).toBe(start);
+    });
+
+    it("a range the keyboard did not make should still collapse to its start", async () => {
+        const view = await makeEditor(DOC);
+        // The marquee's shape: two positions snapped outward, no origin.
+        const range = BlockRangeSelection.tryCreate(view.state.doc, 6, 20);
+        expect(range).not.toBeNull();
+        expect(range!.origin).toBeNull();
+        view.dispatch(view.state.tr.setSelection(range!));
+        toggleBlockSelection(view.state, view.dispatch);
+        expect(view.state.selection.from).toBe(range!.from + 1);
+    });
+
+    it("the origin should map through a block move, so Escape lands in the same text", async () => {
+        const view = await makeEditor(DOC);
+        placeCaretInside(view, "three");
+        toggleBlockSelection(view.state, view.dispatch);
+        moveSelectedBlocks(1)(view.state, view.dispatch, view);
+        expect(blockOrder(view)).toEqual(["one", "two", "four", "three", "five"]);
+        toggleBlockSelection(view.state, view.dispatch);
+        const $pos = view.state.selection.$from;
+        expect(view.state.selection.empty).toBe(true);
+        expect($pos.node($pos.depth).textContent).toBe("three");
+        expect($pos.parentOffset).toBe(2);
+    });
+
+    it("a selection made by hand between the first two presses should end the ladder, so the parked origin is not read", async () => {
+        const view = await makeEditor(DOC);
+        const stale = placeCaretInside(view, "two");
+        escalateSelectAll(view.state, view.dispatch); // rung 1: the block's text, origin parked
+        // A shift-select over exactly "four"'s text, with no meta: the next
+        // Mod+A is rung two straight away (the text is already all selected),
+        // which is the one press that READS the parked origin rather than
+        // parking a fresh one. A caret click would not reach it.
+        let fourStart = -1;
+        view.state.doc.forEach((node, offset) => {
+            if (node.textContent === "four") fourStart = offset + 1;
+        });
+        expect(fourStart).toBeGreaterThan(-1);
+        view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, fourStart, fourStart + 4)));
+        escalateSelectAll(view.state, view.dispatch); // the block
+        expect(view.state.selection).toBeInstanceOf(BlockRangeSelection);
+        escalateSelectAll(view.state, view.dispatch); // everything
+        toggleBlockSelection(view.state, view.dispatch);
+        const $pos = view.state.selection.$from;
+        expect(view.state.selection.from).not.toBe(stale);
+        expect($pos.node($pos.depth).textContent).toBe("four");
+    });
+
+    it("the origin should survive JSON and a bookmark, which is what undo restores", async () => {
+        const view = await makeEditor(DOC);
+        const start = placeCaretInside(view, "three");
+        toggleBlockSelection(view.state, view.dispatch);
+        const before = view.state.selection as BlockRangeSelection;
+        expect(before.origin).toBe(start);
+        const restored = before.getBookmark().resolve(view.state.doc) as BlockRangeSelection;
+        expect(restored.origin).toBe(start);
+        expect(BlockRangeSelection.fromJSON(view.state.doc, before.toJSON())).toMatchObject({ origin: start });
     });
 });

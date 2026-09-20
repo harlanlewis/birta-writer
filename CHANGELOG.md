@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Escape from a block selection the keyboard made puts the caret back where it was. Pressing Cmd+A three times selects every block, and Escape then left the caret at the top of the file, however far down you had been; it now returns to the position you started from. The same holds for Escape on a single block, a range grown with Shift+arrows, and a range moved with Alt+arrows. A range made with the mouse still collapses to its first block, since there is no earlier caret to go back to.
+
 ---
 
 ## [2026.920.0] - 2026, September 20
