@@ -11,6 +11,7 @@
 
 ### Changed
 
+- On a large document, preparing the file for the next save (serializing the document, merging it into the file's own bytes, and checking the result reopens unchanged) now runs off the editor's thread, so a pause in typing is no longer spent on work the editor cannot draw through. Below a size floor the pipeline is unchanged, and which bytes get written is decided by the same code either way.
 - The commands Birta offers the first time you use `/ai` now ask Claude Code and Codex for their structured output, which is what the corner line reads. A `birta.agent.command` you already have is never rewritten; add `--output-format stream-json --verbose` (Claude Code) or `--json` (`codex exec`) to yours for the same. With those flags the run's transcript in the Birta AI output channel is the agent's event stream rather than prose.
 
 ### Fixed
