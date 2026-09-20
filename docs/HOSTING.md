@@ -76,6 +76,6 @@ Inbound messages are trusted. The editor listens on its own window for `message`
 
 ## What is not covered
 
-- Persisting across a reload. The view-state bag lives in the stub's `getState` and `setState`, and a stub that forgets loses folds, scroll and table widths on every load. The document itself is the host's from the first `update` on. What a host that owns a file rather than a variable has to do about saving, external edits and conflicts is the contract MAR-226 is meant to write, and neither shipped host's answer is portable.
+- Persisting across a reload. The view-state bag lives in the stub's `getState` and `setState`, and a stub that forgets loses folds, scroll and table widths on every load. The document itself is the host's from the first `update` on. What a host that owns a file rather than a variable has to do about saving, external edits and conflicts is [`PERSISTENCE.md`](PERSISTENCE.md): three promises every host keeps, and a table of the rows each shipped host answered for itself, none of which is portable as written.
 - A lighter build for reading. The bundle is sized for an application that opens a document; a read-only render on a page that mostly does something else pays for an editor it never uses. There is no separate entry point for that today.
 - A host-side library. The frame page and the message handling in `e2e/frameHost/index.html` are the reference, copied rather than imported. Whether that becomes a shipped script is a decision for the first consumer outside this repository (MAR-447).

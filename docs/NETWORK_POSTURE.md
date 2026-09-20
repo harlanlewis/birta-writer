@@ -194,10 +194,10 @@ Every mechanism above that handles a credential is VS Code's:
 
 None of these has an analog on Tauri, Capacitor, iPadOS, or the web, so any surface beyond VS Code inherits three pieces of work that no host-adapter design has costed: a keychain, a callback-URL scheme, and a consent-scope guarantee. Invariant 2 in particular has no obvious reimplementation off VS Code, because application scope is a VS Code settings concept.
 
-That is the live question, and it is a reason to treat this document as an input to the persistence and host-contract design (MAR-226) rather than as a separate concern.
+That is the live question, and it is a reason to treat this document as an input to the persistence contract ([`PERSISTENCE.md`](PERSISTENCE.md)) rather than as a separate concern.
 
 ---
 
 ## Tracking
 
-MAR-198 (connector foundation: the seam and GitHub shipped, the rest of the roster open), MAR-186 (provider roadmap), MAR-179 and MAR-199 (the shipped consent ladder and its application scope, both Done), MAR-232 (rung 3, gated). The open portability question feeds MAR-226.
+MAR-198 (connector foundation: the seam and GitHub shipped, the rest of the roster open), MAR-186 (provider roadmap), MAR-179 and MAR-199 (the shipped consent ladder and its application scope, both Done), MAR-232 (rung 3, gated). The open portability question feeds the columns [`PERSISTENCE.md`](PERSISTENCE.md) has not yet written.
