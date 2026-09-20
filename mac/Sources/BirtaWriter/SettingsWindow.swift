@@ -157,6 +157,26 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     /// layout entirely rather than left as a blank line.
     private var agentDocLinkHolder: NSView?
     private let agentEnabledSwitch = NSSwitch()
+    /// The terminal command: whether the link is there, and what it is called.
+    ///
+    /// The switch's position is read off the FILESYSTEM every time the pane is
+    /// drawn rather than out of a preference, because the link is the fact and
+    /// a stored copy of it could only be a second answer able to disagree: a
+    /// command removed by hand, or left behind by an app that has been
+    /// deleted, has to move this switch.
+    private let commandSwitch = NSSwitch()
+    private let commandField = NSTextField(string: Prefs.commandName)
+    private let commandCaption = Caption("")
+    /// Whether the last install or removal failed, and what it said.
+    ///
+    /// Held because the sentence under the row is otherwise a statement about
+    /// where the command stands, which a refusal has to replace: telling
+    /// somebody their command is ready when the click that was meant to
+    /// install it was turned away is the one thing this row must not do.
+    var commandRefusal: String?
+    /// The name the link on disk is under, as `showCommand` last read it, so
+    /// a rename knows what to take away. Nil when no link of ours is there.
+    private var commandLinkedName: String?
     /// Whether the page currently running was booted with the agent
     /// capability. Compared against `Prefs.agentAvailable` after every write
     /// on this pane, so the editor is reloaded when the answer changed and
@@ -749,6 +769,14 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         // template and the name it produces sit in one column.
         newNoteCaption.alignment = .right
 
+        commandField.delegate = self
+        commandField.font = .monospacedSystemFont(ofSize: NSFont.smallSystemFontSize, weight: .regular)
+        commandField.placeholderString = Prefs.defaultCommandName
+        // A command name is a word, so the field is one word wide. Under the
+        // switch rather than beside it, which leaves the trailing edge to the
+        // control that is the question.
+        commandField.widthAnchor.constraint(equalToConstant: 140).isActive = true
+
         loginSettingsButton.target = self
         loginSettingsButton.action = #selector(openLoginItemSettings)
         loginSettingsButton.controlSize = .small
@@ -758,6 +786,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
             (iCloudSwitch, Prefs.noteHome == .iCloud, #selector(toggleICloud)),
             (updateSwitch, Prefs.autoUpdate, #selector(toggleAutoUpdate)),
             (agentEnabledSwitch, Prefs.agentEnabled, #selector(toggleAgentEnabled)),
+            (commandSwitch, false, #selector(toggleCommandInstalled)),
             (autosaveSwitch, Prefs.autosave, #selector(toggleAutosave)),
             (dockSwitch, Prefs.showInDock, #selector(toggleShowInDock)),
             (menuBarSwitch, Prefs.showInMenuBar, #selector(toggleShowInMenuBar)),
@@ -845,6 +874,9 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     private func showRowAvailability() {
         showAutoUpdate()
         showLoginItem(LoginItem.state)
+        // A third: whether the terminal command is there is a fact about the
+        // filesystem, and one a person can change from outside this window.
+        showCommand()
         // Which draws the summon row too, because its sentence names the
         // surfaces this decides.
         showPresence()
@@ -914,6 +946,72 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
             row: SettingsForm.index(of: .agentCommand, inPane: SettingsForm.aiAgent) ?? 1,
             hidden: !Prefs.agentEnabled)
         fitWindowToPane()
+    }
+
+    /// What the terminal command row shows, read off the disk.
+    ///
+    /// The switch follows the LINK rather than a preference, so a command
+    /// removed by hand, or left pointing at an app that has been deleted,
+    /// moves it. The sentence under it is the other half and is not the same
+    /// question: a link that exists still does nothing if its directory is not
+    /// on `PATH`, or if something earlier there already answers to the name,
+    /// and a row reporting only the link would be silent about both.
+    private func showCommand() {
+        let name = Prefs.commandName
+        let link = Prefs.commandLink
+        let installed = CommandInstall.plan(existing: CommandInstall.inspect(link: link),
+                                            target: Prefs.commandTarget) == .alreadyInstalled
+        commandSwitch.state = installed ? .on : .off
+        commandField.stringValue = name
+        // What a rename has to take with it, remembered here because this is
+        // the one place that reads the disk.
+        commandLinkedName = installed ? name : nil
+        rowViews[.commandLine]?.apply(commandAvailability(name: name, link: link, installed: installed))
+    }
+
+    /// The sentence, given what is on disk.
+    ///
+    /// A refusal wins over everything else: the one thing this row must not do
+    /// is say the command is ready when the click meant to install it was
+    /// turned away.
+    ///
+    /// Takes the link rather than reading `Prefs`, so a check can ask what the
+    /// row would say about a directory of its own instead of about the command
+    /// directory belonging to whoever is running it.
+    func commandAvailability(name: String, link: URL, installed: Bool) -> RowAvailability {
+        if let commandRefusal { return .warning(commandRefusal) }
+        let directory = link.deletingLastPathComponent()
+        guard installed else {
+            return .available("Adds \(name) to \(Self.abbreviated(directory)) so you can open "
+                              + "files from Terminal.")
+        }
+        let standing = CommandInstall.standing(
+            name: name,
+            directory: directory.path,
+            path: LoginShellPath.shared.childPath() ?? "",
+            isExecutable: { FileManager.default.isExecutableFile(atPath: $0) })
+        let note = standing.note(name: name, directory: Self.abbreviated(directory))
+        return standing.isProblem ? .warning(note)
+                                  : .available("\(name) notes.md opens a file from Terminal.")
+    }
+
+    /// A path with the home directory written the way a shell writes it. What
+    /// this row is about is a path somebody will type, so it is shown the way
+    /// they would type it.
+    private static func abbreviated(_ url: URL) -> String {
+        (url.path as NSString).abbreviatingWithTildeInPath
+    }
+
+    /// Install or remove the link.
+    ///
+    /// The switch is put back where the disk says afterwards rather than left
+    /// where the click moved it, which is what keeps a refusal from leaving a
+    /// switch reading on over a command that was never installed.
+    @objc private func toggleCommandInstalled() {
+        commandRefusal = commandSwitch.state == .on
+            ? CommandInstall.install(link: Prefs.commandLink, target: Prefs.commandTarget)
+            : CommandInstall.uninstall(link: Prefs.commandLink)
+        showCommand()
     }
 
     /// The file-name template exists only when a summon makes a new note.
@@ -1106,6 +1204,12 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
                                        linkTitle: NoteNameTemplate.referenceLinkTitle,
                                        to: NoteNameTemplate.referenceURL)],
                     nil)
+        case .commandLine:
+            // The field is BELOW the switch, on the agent command row's
+            // argument: what goes in it is a word for a shell rather than a
+            // setting to read, so it is monospaced and given the width a
+            // command name needs rather than a slot at the trailing edge.
+            return (commandSwitch, [commandField], commandCaption)
         case .agentEnabled: return (agentEnabledSwitch, [], nil)
         case .agentCommand:
             // The field is BELOW rather than beside: a shell command is long
@@ -1738,6 +1842,9 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     /// is re-read on the way in rather than only when it is first built.
     func windowDidBecomeKey(_ notification: Notification) {
         showLoginItem(LoginItem.state)
+        // Same reason, one directory over: the link this row reports is one a
+        // shell can remove while the window sits there.
+        showCommand()
         // And the appearance: View > Theme and the palette move the same
         // setting this pane shows, and the window is not told.
         refreshAppearance()
@@ -1770,6 +1877,34 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
             showNoteNamePreview()
         default: return
         }
+    }
+
+    /// The command name, committed when the edit FINISHES rather than on every
+    /// keystroke like the two fields above.
+    ///
+    /// The difference is that this field owns a file. A name stored per
+    /// keystroke would either leave the link under the name it was installed
+    /// with, so the row reports a command nobody can run, or move it once per
+    /// character, which is a directory full of links called `b`, `bw`, `bwr`.
+    func controlTextDidEndEditing(_ notification: Notification) {
+        guard notification.object as? NSTextField === commandField else { return }
+        // A name typed away to nothing is the default rather than a command
+        // called nothing at all.
+        let typed = commandField.stringValue.trimmingCharacters(in: .whitespaces)
+        let previous = commandLinkedName
+        Prefs.commandName = typed.isEmpty ? Prefs.defaultCommandName : typed
+        commandRefusal = nil
+        if let previous, previous != Prefs.commandName {
+            // The command moves WITH its name. Leaving the old link where it
+            // is would make a rename install a second command rather than
+            // rename the one that is already there.
+            let old = CommandInstall.defaultDirectory(
+                home: FileManager.default.homeDirectoryForCurrentUser)
+                .appendingPathComponent(previous)
+            commandRefusal = CommandInstall.uninstall(link: old)
+                ?? CommandInstall.install(link: Prefs.commandLink, target: Prefs.commandTarget)
+        }
+        showCommand()
     }
 
     /// What the template would call a note made right now.

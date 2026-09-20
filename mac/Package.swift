@@ -26,6 +26,16 @@ let package = Package(
                 .linkedFramework("Carbon"),
             ]
         ),
+        // The `bwr` command, a second executable that ships inside the same
+        // bundle at Contents/MacOS. It links AppKit for nothing and does not
+        // get it: everything it does is Foundation plus one `open(1)`, which
+        // is what keeps a shell command from paying for a GUI framework it
+        // never draws with.
+        .executableTarget(
+            name: "BirtaWriterCli",
+            dependencies: ["BirtaWriterCore"],
+            path: "Sources/BirtaWriterCli"
+        ),
         .testTarget(
             name: "BirtaWriterCoreTests",
             dependencies: ["BirtaWriterCore"],

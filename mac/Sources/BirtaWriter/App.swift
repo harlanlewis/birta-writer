@@ -125,6 +125,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding, 
         statusItem = item
     }
 
+    /// Whether this launch was asked for by the `bwr` command with no file.
+    ///
+    /// The one thing the command cannot say through LaunchServices. A file
+    /// reaches `application(_:open:)` and summons on its own account; a bare
+    /// `bwr` has nothing to open and still has to show, because a call from a
+    /// shell is a request rather than a toggle. `open --args` puts this in
+    /// `argv` on a COLD launch only, which is exactly when it is needed: a
+    /// warm one gets the reopen event the Dock icon sends, and
+    /// `applicationShouldHandleReopen` summons from there.
+    static var summonedFromShell: Bool { CommandLine.arguments.contains("--summon") }
+
     /// A file the user pointed this app at, held until there is a Coordinator
     /// to give it to.
     ///
@@ -307,7 +318,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding, 
         // hotkey-summoned app and wrong for one somebody just double-clicked a
         // file in: the file has to appear. Last, so the panel comes up over
         // whatever the settings hooks above built.
-        if launchedWith != nil { windows.summonAll() }
+        if launchedWith != nil || Self.summonedFromShell { windows.summonAll() }
         installTerminationSignal()
     }
 

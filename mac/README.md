@@ -71,6 +71,28 @@ The tour is never written into a file the app was pointed at, whatever that file
 
 What the app WRITES is a separate list, one extension long, and `DocumentTypes` holds the two apart. Every file the app creates is a note it named itself, so a save panel offering three formats would be offering a name the note template cannot produce.
 
+## Opening from a shell
+
+Settings, General, Open from Terminal installs `bwr`: a symlink in `~/.local/bin` pointing at `Contents/MacOS/bwr` inside the bundle. A link rather than a copy, so an app that moves or replaces itself carries its command with it, and in a directory the user owns, so nothing about the gesture needs a password. `bwr-dev` is the name a development build offers, for the reason its hotkey and its note differ: the two bundles are meant to sit in `/Applications` together, and one name would mean whichever was installed second silently took the other's. The name is editable, because the only thing about this that can collide with somebody's machine is the word, and renaming it moves the link rather than leaving a second one behind.
+
+| Typed | What happens |
+| -- | -- |
+| `bwr` | Every window comes up, as the summon key does. A call from a shell is a request rather than a toggle. |
+| `bwr notes.md` | The file opens where Open With would open it, which is `OpenRouting.destination`'s answer and not this command's. Relative paths resolve against the shell's directory, which the app does not share. |
+| `bwr new.md` | The path is created empty and opened. |
+| `bwr ~/notes/` | A directory window rooted there. |
+| `bwr a.md b.md` | Both, in the order typed. |
+| `cat draft.md \| bwr`, `bwr -` | The text is written to a dated file under the app's own Application Support folder and opened like any other. A file really called `-` is `./-`. |
+| `bwr --version`, `bwr --help` | The app's version, and the usage. |
+
+Two decisions are worth knowing before changing any of it. The command is a launcher and not a second front end: everything it can be asked to do ends in `open(1)` handing a file to the app, which is the route the Finder's Open With takes, so where a file lands stays one question with one answer. And it opens exactly what `DocumentTypes.opened` opens, rather than a list of its own; the extensionless files that fill a Unix working directory are the reason, since `Makefile`, `LICENSE` and `COMMIT_EDITMSG` are the largest class of non-Markdown on the machine and nothing in the name tells them apart from a note.
+
+A path with nothing at it is created before the app is asked for it, which is a deviation from what an editor usually does and is forced: LaunchServices refuses a path that does not exist, so the alternative to creating it is refusing it. It is created with the mode the user's `umask` gives any other file they make from a shell, because 0600 is for a note the app named itself rather than for a path somebody typed.
+
+`--wait` is parsed, validated and then refused, because carrying it out needs a channel back from the app saying the document closed and the bytes landed, and that is not built. So `EDITOR='bwr --wait'` does not work yet, and says so rather than returning the moment the file opens.
+
+`BirtaWriterCore.CliInvocation` is what the words mean and `CommandInstall` is how the name gets onto `PATH`; both are pure, so the whole table is decidable without a disk or a running app. The settings row reads the link off the filesystem every time it is drawn rather than out of a preference, because the link is the fact: a command removed by hand, or one left pointing at an app that has been deleted, has to move that switch. It reports two more things the link alone cannot say, which are whether the directory is on `PATH` at all and whether something earlier there already answers to the name.
+
 ## Saving
 
 The app edits one file. There is nothing to file away and nothing that empties the panel; the window names the file where macOS names a file, in the titlebar beside the traffic lights:
@@ -213,6 +235,8 @@ One buffer, written to `iCloud Drive/Birta Writer/Birta Writer.md`, or to `~/Doc
 `bash mac/scripts/measure.sh` runs the built app under `BIRTA_MAC_MEASURE=1`, drives it through that mode's debug signals, and prints the intervals MAR-374 asks about (first mount, warm summon to caret, cold recovery after the WebContent process is killed) plus idle memory, and it checks that inserted text reaches the scratchpad after a hide and survives the kill. With the autosave setting off it checks the promise the other way: the hide writes nothing, and the SIGTERM that ends the run writes rather than putting up a sheet nobody is there to answer. A figure it prints is a reading; quote it from an idle machine, never from a document.
 
 It needs the screen unlocked and awake for the length of the run, and it refuses to start on a locked one. This is the precondition to know about, because a run takes minutes and an unattended display sleeps inside that, and because of how it fails when it does. Nothing can take activation past the login window, so `WindowSet.toggle` summons on every signal rather than dismissing, and the panel stays up and covered. WebKit then suspends idle callbacks for a window that is not on screen while timers keep running, so the page goes on taking keys and autosaving, the early arms pass, and the first arms to read anything the page schedules on idle report the product broken. The spelling and grammar arms are those. They blamed `NSSpellChecker` for a screen that had gone to sleep, which is why `hide_panel` now stops the run at the first panel that will not dismiss and says which of the two causes it was.
+
+`bash mac/scripts/check-cli.sh` is the terminal command's own check, beside `measure.sh` rather than inside it: that one reports timings and this one asserts behaviour and fails. It walks every row of the invocation table and every refusal, and it launches nothing, because `BIRTA_MAC_CLI_DRY_RUN=1` makes the command print the request it would hand to LaunchServices while still doing its own half of the work. So what it asserts is the filesystem the command leaves behind and the request it would make, and what it cannot reach is the app's side of the handoff: that `--summon` brings the windows up, and that an opened file lands where `OpenRouting` says. Those two are the manual checklist's.
 
 `BIRTA_MAC_OPEN_SETTINGS=general|markdown|appearance|aiAgent|advanced` opens Settings on a pane at launch, which is how a pane is proven to construct without a person to click it. The same seam as `BIRTA_MAC_SCRATCHPAD` and `BIRTA_MAC_DEFAULTS_SUITE`, and used with them. `BIRTA_MAC_SETTINGS_SNAPSHOT=<file.png>` beside it writes a picture of that pane a moment after it opens, drawn by the views themselves; switches, popups and buttons are layer-backed and do not appear in it, so it answers how a pane is laid out and not whether a control is there.
 
