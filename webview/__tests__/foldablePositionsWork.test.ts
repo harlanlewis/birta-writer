@@ -22,7 +22,7 @@ import { describe, it, expect, afterEach, beforeAll, vi } from "vitest";
 import { Editor, rootCtx, defaultValueCtx, editorViewCtx } from "@milkdown/core";
 import type { EditorView } from "../pm";
 import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
-import { allFoldablePositions, foldAllCommand, headingFoldPlugin } from "../plugins/headingFold";
+import { allFoldablePositions, foldAllCommand, foldLevels, headingFoldPlugin } from "../plugins/headingFold";
 
 let editors: Editor[] = [];
 
@@ -134,6 +134,56 @@ describe("the Fold All row's enablement probe", () => {
         // The claim. Before the fix this walk asked `nodeAt` once per
         // descendant, so the count tracked the document; the ten-fold fixture
         // must not cost ten times the lookups.
+        expect(large.lookups).toBeLessThanOrEqual(small.lookups + 2);
+    });
+});
+
+/**
+ * The sibling MAR-439 did not reach, found by the MAR-438 profile pass.
+ *
+ * `allFoldablePositions` resolved a range for every foldable and returned only
+ * the positions, so `foldLevels` asked `foldHiddenRange` again from a bare
+ * position and paid the `doc.nodeAt` fragment scan once per foldable. Its
+ * docstring's O(n log n) claim was about the stack that computes containment
+ * depth, and was made before anyone noticed the lookup underneath it was
+ * linear, so the function was quadratic in the block count while documenting
+ * that it was not.
+ *
+ * Reachable by the user, not an internal path: `foldToLevel(n)` is
+ * `foldLevel1` through `foldLevel7` in editorCommands.ts, on the palette and
+ * on the keyboard.
+ */
+describe("the fold-level commands' containment walk", () => {
+    async function levelsWork(markdown: string): Promise<{ lookups: number; levels: number; blocks: number }> {
+        const view = await makeEditor(markdown);
+        // Reach, taken BEFORE the spy for the same reason as above: this
+        // document really does have foldables at more than one level, so a
+        // flat lookup count cannot be the walk having found nothing to level.
+        const levels = foldLevels(view.state.doc);
+        expect(levels.size).toBeGreaterThan(0);
+        expect(new Set(levels.values()).size).toBeGreaterThan(1);
+        const calls = nodeAtCalls(view);
+        // The instrument is live, asserted rather than assumed.
+        calls.reset();
+        view.state.doc.nodeAt(0);
+        expect(calls.count()).toBeGreaterThan(0);
+        calls.reset();
+        foldLevels(view.state.doc);
+        return { lookups: calls.count(), levels: levels.size, blocks: view.state.doc.childCount };
+    }
+
+    it("should take its ranges from the walk that computed them, so its lookups should not grow with the document", async () => {
+        const small = await levelsWork(SMALL);
+        const large = await levelsWork(LARGE);
+
+        // Reach first, in the unit the defect scaled with.
+        expect(small.levels).toBeGreaterThan(0);
+        expect(large.levels).toBeGreaterThan(small.levels * 5);
+        expect(large.blocks).toBeGreaterThan(small.blocks * 5);
+
+        // The claim. Before the fix this asked `nodeAt` once per foldable, so
+        // the count tracked the foldable count; the ten-fold fixture must not
+        // cost ten times the lookups.
         expect(large.lookups).toBeLessThanOrEqual(small.lookups + 2);
     });
 });
