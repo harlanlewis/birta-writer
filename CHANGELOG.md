@@ -17,6 +17,7 @@
 
 - The button that shows and hides the table of contents says so by inking the pane in its own mark, rather than by tinting the whole button. The mark is a picture of the window, so a filled pane says which half of it is showing, which reads from further away than a wash the width of a button and does not borrow the look every other toolbar button wears for "this option is on".
 - Spelling, grammar and style checks are now Proofreading, a submenu of the toolbar's gear, rather than a button of their own on the bar. Every row is the same and every command is unchanged, so Check Spelling, Check Grammar, Check Style, the style sub-checks and Highlight Note Markers still run from the command palette and the slash menu exactly as before. The bar loses a permanent control for a set of modes most readers set once, and the submenu is named for what it checks, which is what the Mac app's own View menu already calls the same rows.
+- The file explorer no longer closes itself when the window is narrow: it stays docked at whatever width the window is and the text gives up the room. And on a host that draws the explorer's toggle in its own chrome, which Birta Writer for Mac now does from the titlebar, the toolbar carries no folder button and there is no hover preview flying the list out; a host that leaves the toggle to the toolbar keeps both. The 2026.916.0 entry's toolbar button and floating mode therefore no longer describe the Mac app.
 
 ### Fixed
 

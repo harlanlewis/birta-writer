@@ -54,7 +54,10 @@ final class AppPanel: NSPanel {
     /// than left to the heuristic AppKit derives from the class, so it can
     /// differ by what a window is rooted at; `TabGroupPolicy.tabbingIdentifier`
     /// is the rule.
-    static let notesTabbingIdentifier =
+    /// `nonisolated` because `init`'s default argument reads it from a
+    /// nonisolated context, which Swift 6 refuses for a main-actor static; the
+    /// value is a plain string with no actor state behind it.
+    nonisolated static let notesTabbingIdentifier =
         TabGroupPolicy.tabbingIdentifier(bundleID: AppFlavor.current.bundleID, root: nil)
 
     /// Whether this window is the one that remembers its size and position

@@ -10,10 +10,10 @@ import AppKit
 /// leading one is this app's, so the pair only reads as a pair if the second
 /// is the first mirrored rather than a different picture of the same idea.
 ///
-/// It replaces `sidebar.leading`, which was the right MEANING and the wrong
-/// mark to put next to the page's: SF Symbols draws that one as a filled pane
-/// beside a framed one, at a weight of its own, so the two ends of one strip
-/// were a solid glyph and an outline.
+/// Not `sidebar.leading`, which is the right MEANING and the wrong mark to
+/// put next to the page's: SF Symbols draws that one as a filled pane beside
+/// a framed one, at a weight of its own, so the two ends of one strip would
+/// be a solid glyph and an outline.
 ///
 /// ## The geometry is the SVG's, transcribed
 ///
@@ -40,7 +40,7 @@ enum PaneGlyph {
     /// `<rect x="3" y="3" width="18" height="18" rx="2"/>`.
     static let frameInset: CGFloat = 3
     static let cornerRadius: CGFloat = 2
-    /// `<path d="M9 3v18"/>` — the divider.
+    /// `<path d="M9 3v18"/>`, the divider.
     static let dividerX: CGFloat = 9
     /// `stroke-width="2"`.
     static let strokeWidth: CGFloat = 2

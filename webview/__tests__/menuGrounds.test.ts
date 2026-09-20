@@ -137,11 +137,10 @@ let scanned: Unit[] | undefined;
 /**
  * Sized to what these tests DO, a read and parse of every stylesheet source
  * under `webview/`, rather than left at the default a shared CI runner can
- * trip: under coverage the scan has twice reached the default on the nightly
- * runner (2026-09-13, 2026-09-16) with nothing wrong in the tree, and a red
- * nobody can act on teaches the next reader to re-run rather than read
- * (AGENTS.md, "Choosing what to assert"). The corpus suites take the same
- * shape for the same reason.
+ * trip under coverage with nothing wrong in the tree: a red nobody can act
+ * on teaches the next reader to re-run rather than read (AGENTS.md,
+ * "Choosing what to assert"). The corpus suites take the same shape for the
+ * same reason.
  */
 const SCAN_TIMEOUT_MS = budget(30_000);
 

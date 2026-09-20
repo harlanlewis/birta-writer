@@ -336,7 +336,12 @@ public struct ThemeStore: Sendable {
             let folders = (try? FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: [.isDirectoryKey])) ?? []
             // Newest version first, so an extension installed twice over
             // (`name-2.1.269` beside `name-2.1.261`) is read from the later.
-            for folder in folders.sorted(by: { $0.lastPathComponent > $1.lastPathComponent }) {
+            // Numeric-aware, as `DirectoryListing` sorts: a plain string
+            // compare puts `name-2.1.9` after `name-2.1.10` and reads the
+            // older copy.
+            for folder in folders.sorted(by: {
+                $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedDescending
+            }) {
                 for source in themes(inExtension: folder) {
                     let key = source.label ?? source.url.lastPathComponent
                     guard seen.insert(key).inserted else { continue }

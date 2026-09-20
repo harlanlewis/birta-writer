@@ -1239,9 +1239,12 @@ fi
 # Parentage AND geometry, because either alone passes on a page that has the
 # other wrong: a row drawn at the right pixels but parented to the body takes
 # none of the bar's protections, and a row inside the bar drawn somewhere else
-# is a layout bug the parent check cannot see. The toggle is checked as NOT in
-# the row, because a toggle that opens a row it lives in keeps that row's
-# height reserved even when closed.
+# is a layout bug the parent check cannot see. The bar carries NO toggle for
+# the row: whether it shows is the app's setting, switched from Settings and
+# from the gear menu, so the trace must report the toggle absent rather than
+# merely outside the row. A toggle back on the bar would be permanent space
+# spent on a question asked once, and a toggle inside the row it opens would
+# keep that row's height reserved even when closed.
 # At the WINDOW'S leading edge, which is the one thing only this script can
 # check: the browser harness page carries no traffic-light inset, so the
 # difference between a row indented to clear buttons that are not on its row
@@ -1249,13 +1252,13 @@ fi
 # is inset by 78; this one must not be.
 if awk "BEGIN{exit !($FR_X <= 1)}" && awk "BEGIN{exit !($FR_W > 0)}" \
    && [ "$FR_IN_BAR" = "true" ] \
-   && [ "$FR_TOGGLE_IN_ROW" = "false" ] \
-   && awk "BEGIN{exit !($FR_TOGGLE_W > 0)}" \
+   && [ "$FR_TOGGLE_IN_ROW" = "absent" ] \
+   && awk "BEGIN{exit !($FR_TOGGLE_W < 0)}" \
    && awk "BEGIN{exit !($FR_BAR_HEIGHT > 0)}" \
    && awk "BEGIN{exit !(($FR_Y + $FR_H) >= $FR_BAR_BOTTOM - 1 && ($FR_Y + $FR_H) <= $FR_BAR_BOTTOM + 1)}"; then
     echo "formatting row       ok: $DOCK"
 else
-    echo "formatting row       FAILED: expected a row at the window's leading edge, inside the bar, with its toggle outside it" >&2
+    echo "formatting row       FAILED: expected a row at the window's leading edge, inside the bar, and no toggle for it on the bar" >&2
     echo "$DOCK" >&2; exit 1
 fi
 

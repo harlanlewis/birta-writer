@@ -114,7 +114,9 @@ export class ConnectorService {
     /**
      * Token renewals in flight, one per connector, so concurrent resolves of
      * different cards share a renewal instead of racing each other into
-     * spending the same refresh token twice. Holds promises, never credentials.
+     * spending the same refresh token twice. Not a second store: each entry
+     * is dropped the moment its renewal settles, so nothing here outlives
+     * the call that made it.
      */
     private renewing = new Map<ConnectorId, Promise<string | null>>();
 
@@ -517,7 +519,7 @@ export class ConnectorService {
         // against a provider that rotates its refresh token, the second spends
         // one the first already invalidated, so a card reads `expired` while
         // the connection is fine, and the two writes race over which record
-        // survives. Measured at two calls before this existed.
+        // survives: N lapsed cards in one turn are N renewals without this.
         //
         // Keyed by connector rather than by the refresh token, which would be
         // a second place a credential lives. The renewal writes its record
@@ -595,12 +597,13 @@ export class ConnectorService {
             const refreshToken = (parsed as { refreshToken?: unknown }).refreshToken;
             const expiresAt = (parsed as { expiresAt?: unknown }).expiresAt;
             const privateAccess = (parsed as { privateAccess?: unknown }).privateAccess;
-            // Every field `writeRecord` stores is read back here. A field
-            // written and not read is not a smaller record, it is a silently
-            // disabled feature: `refreshToken` and `expiresAt` were stored by
-            // the OAuth connect and dropped here, which left `expiresAt`
-            // permanently undefined, so `oauthCredential` always took its
-            // still-good branch and no refresh could ever run.
+            // Every field `writeRecord` stores is read back here, and it must
+            // stay that way. A field written and not read is not a smaller
+            // record, it is a silently disabled feature: drop `expiresAt` and
+            // `oauthCredential` takes its still-good branch forever, so no
+            // refresh can run and every test that seeds a record through
+            // `writeRecord` still passes. The lapsed-grant test in
+            // `connectorService.test.ts` is the one that reads through here.
             //
             // `expiresAt` is typed rather than taken on trust: a keychain value
             // is JSON somebody else could have written, and a non-number there

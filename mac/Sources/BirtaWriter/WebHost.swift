@@ -448,8 +448,10 @@ final class WebHost: NSObject, WKScriptMessageHandler, WKNavigationDelegate, WKU
                   'inBar=' + (d.parentElement === bar),
                   'barBottom=' + Math.round(b.bottom),
                   'barHeight=' + Math.round(b.height),
-                  // The toggle belongs to the bar's own row, not to the row it
-                  // opens; collapsed, it is the only part of this on screen.
+                  // No toggle is expected on the bar: the row is the app's
+                  // setting, switched from Settings and the gear menu. Still
+                  // reported so measure.sh can hold it ABSENT rather than
+                  // silently not looking; -1 and 'absent' are that answer.
                   'toggleX=' + Math.round(t.left),
                   'toggleW=' + Math.round(t.width),
                   'toggleInRow=' + (toggle ? !!toggle.closest('.tb-dock') : 'absent')].join(' ');

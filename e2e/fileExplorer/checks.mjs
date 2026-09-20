@@ -33,9 +33,10 @@ export async function run({ page, check, baseUrl }) {
     }, sel);
     const px = (v) => Math.round(parseFloat(v));
     /**
-     * Turn the formatting row on or off. The host's setting is the only route:
-     * the row has no control of its own on the page, so this is what the
-     * shell's Settings window does (`setFormattingRowExpanded`).
+     * Turn the formatting row on or off by the host's route, which is what
+     * the shell's Settings window does and what the page's gear switch asks
+     * the host to do (`setFormattingRowExpanded`); driven directly here so
+     * the check reads the row's geometry and not the switch.
      */
     const setFormattingRow = (on) => page.evaluate(
         (v) => { window.postMessage({ type: "setFormattingRowExpanded", expanded: v }, "*"); }, on);
@@ -73,6 +74,12 @@ export async function run({ page, check, baseUrl }) {
     await page.goto(`${baseUrl}/index.html`);
     await page.waitForSelector(".milkdown .ProseMirror", { timeout: 10000 });
     await page.waitForSelector(".files-panel", { timeout: 10000 });
+    // The positive control for the never-fetched check above: the same
+    // pattern must match once a root arrives, or that check is reading a
+    // chunk name the build no longer emits and passes over nothing.
+    const fetchedWithRoot = await page.evaluate(() =>
+        performance.getEntriesByType("resource").some((e) => /fileExplorer/i.test(e.name)));
+    check("directory window: the explorer's chunk is fetched, by the name the never-fetched check looks for", fetchedWithRoot);
     await page.waitForSelector(rowSel("readme.md"), { timeout: 10000 });
     await page.waitForTimeout(SETTLE);
 

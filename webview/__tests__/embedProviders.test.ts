@@ -414,8 +414,12 @@ describe("linearCardParts", () => {
     });
 });
 
-describe("asanaId — recognized URL forms", () => {
-    const cases: Array<[string, string]> = [
+/**
+ * Every task URL shape `asanaId` accepts, with its id. Module-level because
+ * `asanaCardParts` below derives its sweep from this same table, so a shape
+ * added here is decomposed there without a second list to keep in step.
+ */
+const ASANA_TASK_CASES: Array<[string, string]> = [
         ["https://app.asana.com/0/1201234567890123/1207654321098765", "0/1201234567890123/1207654321098765"],
         // The classic permalink's trailing view flag names the same task, so
         // it collapses into the same id rather than a second cache entry.
@@ -428,7 +432,9 @@ describe("asanaId — recognized URL forms", () => {
         ["https://app.asana.com/1/1100000000000001/task/1207654321098765", "1/1100000000000001/task/1207654321098765"],
         ["http://app.asana.com/0/1/2", "0/1/2"],
     ];
-    for (const [url, expected] of cases) {
+
+describe("asanaId — recognized URL forms", () => {
+    for (const [url, expected] of ASANA_TASK_CASES) {
         it(`${url} should extract ${expected}`, () => {
             expect(asanaId(url)).toBe(expected);
         });
@@ -459,18 +465,14 @@ describe("asanaId — recognized URL forms", () => {
 
 describe("asanaCardParts", () => {
     it("should find the task gid in every shape the extractor accepts", () => {
-        // Derived from the extractor rather than hand-listed, so a shape added
-        // to asanaId that this cannot decompose fails here instead of
-        // silently building no request.
-        const urls = [
-            "https://app.asana.com/0/1201234567890123/1207654321098765",
-            "https://app.asana.com/1/1100000000000001/project/1201234567890123/task/1207654321098765",
-            "https://app.asana.com/1/1100000000000001/task/1207654321098765",
-        ];
-        const ids = urls.map((url) => asanaId(url));
+        // Derived from the extractor's own accepted-shape table rather than
+        // hand-listed, so a shape added to asanaId that this cannot decompose
+        // fails here instead of silently building no request.
+        const ids = ASANA_TASK_CASES.map(([url]) => asanaId(url));
+        expect(ids.length).toBeGreaterThanOrEqual(3);
         expect(ids.every((id) => id !== null)).toBe(true);
-        for (const id of ids) {
-            expect(asanaCardParts(id!).taskGid).toBe("1207654321098765");
+        for (const [i, id] of ids.entries()) {
+            expect(asanaCardParts(id!).taskGid).toBe(ASANA_TASK_CASES[i]![1].split("/").at(-1));
         }
     });
 

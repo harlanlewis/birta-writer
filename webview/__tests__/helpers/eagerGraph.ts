@@ -1,9 +1,10 @@
 /**
  * The webview entry's EAGER module graph: every `.ts` module reached from
  * `webview/index.ts` through static relative imports, in ES evaluation order.
- * A dynamic `import()` is not followed, which is the point: a test that needs
- * to say "this module is loaded lazily, never at launch" asks whether the
- * module is in this set. Not a test file; Vitest only collects `*.test.ts`.
+ * A dynamic `import()` is not followed, and neither is a type-only import,
+ * which is the point: a test that needs to say "this module is loaded
+ * lazily, never at launch" asks whether the module is in this set. Not a
+ * test file; Vitest only collects `*.test.ts`.
  *
  * Resolution mirrors the bundler: extensionless specifiers try `.ts` then
  * `index.ts`, and the `@/` alias declared in `esbuild.mjs` maps to `webview/`.
@@ -17,8 +18,12 @@ import { dirname, join, relative, resolve } from "node:path";
 export const WEBVIEW_DIR = resolve(__dirname, "..", "..");
 export const WEBVIEW_ENTRY = join(WEBVIEW_DIR, "index.ts");
 
+// `import type` and `export type` are not edges: the bundler erases them, so
+// a loader may name its lazy chunk's types without pulling the chunk into
+// the eager graph. `import { type X }` inside braces is left as an edge,
+// because the same clause may carry a value import beside it.
 const RELATIVE_IMPORT_RE =
-    /^\s*(?:import|export)\s+(?:[^;]*?\sfrom\s+)?["']((?:\.|@\/)[^"']*)["']/gm;
+    /^\s*(?:import|export)\s+(?!type\s)(?:[^;]*?\sfrom\s+)?["']((?:\.|@\/)[^"']*)["']/gm;
 
 /** Blank out comments while preserving offsets, so a `;` in prose can't split a clause. */
 function stripComments(source: string): string {

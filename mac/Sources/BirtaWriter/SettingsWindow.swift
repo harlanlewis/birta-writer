@@ -342,9 +342,10 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     /// Show or hide the formatting row in every window.
     ///
     /// The app's setting rather than a command, which is why this is not
-    /// `onEditorCommand`: the page has no control that flips it and posts
-    /// nothing back, so the store and every open page are this closure's to
-    /// move (`WindowSet.setFormattingRowExpanded`). Defaulted so a test
+    /// `onEditorCommand`: a page's gear switch only asks, and the answer
+    /// comes back to every page from the store, so the store and every open
+    /// page are this closure's to move (`WindowSet.setFormattingRowExpanded`,
+    /// the same route the page's request takes). Defaulted so a test
     /// building this window need not wire an app behind it.
     private let onFormattingRowChange: (Bool) -> Void
 

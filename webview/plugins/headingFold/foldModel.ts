@@ -611,11 +611,11 @@ export function cleanFoldedPositions(doc: any, folded: Iterable<number>): Set<nu
 /** Every foldable position in the doc paired with the range it hides: top-level
  * heading sections plus every other foldable kind at any chrome-bearing depth
  * (callouts, list items with descendants, tables with body rows, non-empty code
- * blocks — one fold grammar, so Fold All folds them all).
+ * blocks: one fold grammar, so Fold All folds them all).
  *
  * The range comes back because this walk already has it. Both branches below
- * resolve one — the heading branch reads it out of the cached map, the
- * descendant branch computes it from a node it holds — and a caller that wants
+ * resolve one (the heading branch reads it out of the cached map, the
+ * descendant branch computes it from a node it holds), and a caller that wants
  * it too must otherwise ask `foldHiddenRange` from a bare position, which is
  * the `doc.nodeAt` fragment scan that function's own comment names as the
  * hazard, paid once per foldable. `foldLevels` did exactly that. */
