@@ -725,11 +725,12 @@ export interface HarnessCapabilities {
     /**
      * Effort values the help ENUMERATES, in its own order. Empty when it lists
      * none, and empty is load-bearing rather than merely uninformative: it is
-     * what makes the composer offer a typed effort instead of a menu. A
-     * harness that names a reasoning flag and documents no levels, as aider
-     * does, reaches the user through that row and through nothing else, so a
-     * reader who fills this in from somewhere other than the help is taking
-     * the row away.
+     * what makes the composer's effort menu carry a typed row instead of the
+     * rungs. A harness that names a reasoning flag and documents no levels, as
+     * aider does, reaches the user through that row and through nothing else,
+     * so a reader who fills this in from somewhere other than the help is
+     * taking the row away. `supportsEffort` still gates the control itself, so
+     * a harness with no such flag at all gets neither.
      *
      * The asymmetry with `modelExamples` is deliberate. A help text quotes
      * models as EXAMPLES, so one absent from the list may still work and free
