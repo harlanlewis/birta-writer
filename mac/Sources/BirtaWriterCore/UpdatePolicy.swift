@@ -295,21 +295,6 @@ public enum UpdatePolicy {
         "\(appName) \(plain(tag)) is available."
     }
 
-    /// What the panel says after a swap that happened on its own.
-    ///
-    /// It names the version, because "updated" with no version is news
-    /// somebody cannot check, and it says IN THE BACKGROUND, because the one
-    /// thing worth explaining is that nobody was asked. A person who reads
-    /// this and wants it not to happen again has a switch in Settings, and the
-    /// sentence is what sends them looking for it.
-    ///
-    /// Past tense throughout: by the time this is on screen the swap is done,
-    /// the app in front of the reader is the new one, and there is nothing
-    /// pending and nothing to wait for.
-    public static func installedNotice(appName: String, tag: String) -> String {
-        "\(appName) updated to \(plain(tag)) in the background."
-    }
-
     // MARK: the check somebody asked for
 
     /// What a check that somebody PRESSED A BUTTON FOR found.
@@ -382,9 +367,12 @@ public enum UpdatePolicy {
                 detail: releaseGap(current: current, latest: latest),
                 buttons: [installNowTitle, installOnQuitTitle, cancelTitle])
         case .upToDate:
+            // The version and nothing else. The title has already said it is
+            // the newest one, and a detail that says so again is a second
+            // sentence carrying no second fact.
             return CheckReport(
                 title: "\(appName) is up to date.",
-                detail: "You have \(plain(current)), which is the newest version.",
+                detail: "You have \(plain(current)).",
                 buttons: ["OK"])
         case .unreachable:
             return CheckReport(
