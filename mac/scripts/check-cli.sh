@@ -154,6 +154,7 @@ run --help < /dev/null
 expect_status 0 "$STATUS" "--help"
 expect_contains "$OUT" "usage:" "--help prints usage"
 expect_contains "$OUT" ".md, .markdown, .mdx" "--help names what is opened"
+expect_contains "$OUT" "--wait" "--help names the flag that is not built yet"
 
 echo "piped text"
 # Into a throwaway Application Support, never the real one: that folder holds

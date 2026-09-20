@@ -90,8 +90,9 @@ let usage = """
       -w, --wait      wait until the document is closed (not available yet)
       --              stop reading options, so a file may begin with a hyphen
 
-    Files are opened where Open With would open them, which the "Open files in"
-    setting decides. Birta Writer opens \(CliInvocation.openedSpelling) files.
+    Files open where Open With opens them, which depends on what is already
+    open and on the "Open files in" setting. Birta Writer opens
+    \(CliInvocation.openedSpelling) files.
     """
 
 /// Run `open(1)` for one thing, and say whether it worked.
