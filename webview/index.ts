@@ -27,11 +27,16 @@ import "./style.css";
 import "./ui/suggestList.css"; // suggest-dropdown surface deltas (must follow style.css, which owns the .fm-suggest-* base)
 import "./components/agentPanel/agentPanel.css"; // the /ai composer's own anatomy
 import { installCrashReporter } from "./crashReporter";
+import { applyBootContentWidth } from "./contentWidth";
 
 // Crash boundary (MAR-169): install before any component initializes, so an
 // uncaught error / unhandled rejection anywhere below reaches the extension
 // as a structured crash report instead of dying silently in the iframe.
 installCrashReporter();
+
+// The document's width state, before anything has a layout to be laid out
+// wrong (webview/contentWidth.ts).
+applyBootContentWidth();
 import {
     createEditor,
     getEditorView,

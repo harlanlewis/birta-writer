@@ -27,7 +27,24 @@
   .editor-topbar { height: 40px; box-sizing: border-box; }
 </style>
 <script>
-  window.__i18n = { translations: {}, isMac: true, toolbar: { placements: {}, order: [] }, tocAutoHideThreshold: 99 };
+  // Fixed page width, declared rather than fallen into: the per-block width
+  // controls exist only in that mode, and the page is what puts the mode on
+  // the document (webview/contentWidth.ts).
+  //
+  // The measure is far past the runner's viewport on purpose, so the column
+  // still fills the window and every subject keeps the position this
+  // fixture has always measured it at.
+  //
+  // Narrowing it to a reading measure moves them all, and one subject then
+  // changes verdict: the code block's fullscreen button reports a landing on
+  // `body`. Its landing at THIS measure is `div.`, which is neither the
+  // button (`button.bc-btn`) nor its icon (`svg.`), so the tap is missing
+  // that button either way and only what lies under it differs. The sweep
+  // passes here because a div is not one of the editable hosts a retarget is
+  // counted against. Which is a question about hover-revealed chrome under a
+  // finger, open and not this fixture's, and a width chosen to dodge it
+  // would be the wrong reason to choose one.
+  window.__i18n = { translations: {}, isMac: true, toolbar: { placements: {}, order: [] }, tocAutoHideThreshold: 99, contentWidth: "fixed", maxContentWidth: 300 };
   window.__posted = [];
   const DOC = [
     "# Heading one",

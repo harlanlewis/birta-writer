@@ -391,7 +391,14 @@ export async function run({ page, check, baseUrl }) {
     // setting, `#editor` is a centred column, and most of the margin is the
     // body: a listener on the container alone armed the marquee only in the
     // column's own padding band, and the feature read as absent. ──
-    await page.evaluate(() => document.documentElement.style.setProperty("--editor-max-width", "60ch"));
+    // Both halves of the width state, as the page itself applies them
+    // (webview/contentWidth.ts): the class picks which margin rules apply
+    // and the variable is the measure inside them, so the cap alone leaves
+    // the full-width rules in force and nothing narrows.
+    await page.evaluate(() => {
+        document.documentElement.style.setProperty("--editor-max-width", "60ch");
+        document.body.classList.remove("editor-width-auto");
+    });
     await page.waitForTimeout(100);
     const fixedGeo = await page.evaluate(() => {
         const first = document.querySelector(".ProseMirror > *:first-child").getBoundingClientRect();

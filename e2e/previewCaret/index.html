@@ -29,9 +29,13 @@
   .editor-topbar { height: 40px; box-sizing: border-box; }
 </style>
 <script>
+  // Fixed page width, declared rather than fallen into: the per-block
+  // width controls exist only in that mode, and the page is what puts the
+  // mode on the document (webview/contentWidth.ts).
   window.__i18n = {
     translations: {}, isMac: true,
     toolbar: { placements: {}, order: [] },
+    contentWidth: "fixed", maxContentWidth: 100,
   };
   window.__posted = [];
   const DOC = [

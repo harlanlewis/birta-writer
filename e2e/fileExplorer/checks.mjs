@@ -227,6 +227,29 @@ export async function run({ page, check, baseUrl }) {
         JSON.stringify(rootOrder) === JSON.stringify(["assets", "docs", "locked", ".hidden.md", "notes.txt", "readme.md", "zzz.md"]),
         JSON.stringify(rootOrder));
 
+    // ── The width state is the BUNDLE's to put on the page ──────────────
+    // This page carries neither half of it, exactly as the Mac app's own page
+    // carries neither, so what is on the document here is what the bundle put
+    // there (webview/contentWidth.ts). It is both halves or nothing useful:
+    // with the class off and no `--editor-max-width`, the FIXED-width margin
+    // rules apply and their calc reads that variable with no fallback, so
+    // `margin-left` is invalid at computed-value time and falls back to 0.
+    // Nothing about the panel or the formatting row changes, which is what
+    // makes it hard to see: the document is simply drawn under the file list.
+    const widthState = await page.evaluate(() => {
+        const first = document.querySelector(".milkdown .ProseMirror > *");
+        return {
+            auto: document.body.classList.contains("editor-width-auto"),
+            maxWidth: getComputedStyle(document.documentElement).getPropertyValue("--editor-max-width").trim(),
+            blockLeft: Math.round(first.getBoundingClientRect().left),
+            panelRight: Math.round(document.querySelector(".files-panel").getBoundingClientRect().right),
+        };
+    });
+    check("the bundle put both halves of the width state on a page carrying neither",
+        widthState.auto && widthState.maxWidth === "none", JSON.stringify(widthState));
+    check("the document's first block clears the docked panel",
+        widthState.blockLeft >= widthState.panelRight, JSON.stringify(widthState));
+
     // ── Full-width layout: the content clears the panel ──────────────────
     // The panel's far edge, which is `--files-width`: the inset comes out of
     // the panel's box, so its rect width is that less the inset.

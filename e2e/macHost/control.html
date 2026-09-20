@@ -16,7 +16,10 @@
   .editor-topbar { height: 40px; box-sizing: border-box; }
 </style>
 <script>
-  document.addEventListener("DOMContentLoaded", () => document.body.classList.add("editor-width-auto", "vscode-dark"));
+  // Only the theme class, as index.html does and for the reason given there:
+  // the bundle is what puts the width state on the document. Keeping the
+  // two pages identical here is this file's whole contract (above).
+  document.addEventListener("DOMContentLoaded", () => document.body.classList.add("vscode-dark"));
   window.__i18n = { translations: {}, isMac: true, toolbar: { placements: {}, order: [] }, tocAutoHideThreshold: 3 };
   // The shell seeds `getState` from the persisted bag in its document-start
   // user script (Bridge.userScript), so the page reads it synchronously before

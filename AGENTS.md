@@ -131,6 +131,7 @@ webview/editing/blockOps.ts                   Published block-operations surface
 webview/utils/calc.ts                         Deterministic calc engine (eval-free parser, =/=> detection, block evaluation, refresh scanner); units via the lazy mathjs seam in calcUnits.ts
 webview/plugins/calc.ts                       Inline-calc ProseMirror wiring: advisory =/=> suggestions + the auto-insert rule
 webview/plugins/calcRefresh.ts                Answer maintenance: refresh, variable cascade, withdrawal (consent model in its header)
+webview/contentWidth.ts                       The PAGE's own width state, put on the document at boot: the pair (`--editor-max-width` and the full-width class) that must never disagree, and the one place a host's declared mode is read
 webview/blockWidth.ts                         Per-block PRESENTATION preferences (width, code word-wrap, list numbering) + block identity: occurrence-disambiguated content anchors
 webview/utils/orderedMarkers.ts               Ordered-list numbering vocabulary + marker spelling; holds the argument for why a style is presentation, never source
 webview/plugins/listNumbering.ts              Numbering lifecycle: the `numbering` attr is the live truth, the state bag is the reload mirror
