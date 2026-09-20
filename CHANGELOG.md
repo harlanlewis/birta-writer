@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+---
+
+## [2026.920.0] - 2026, September 20
+
 ### Added
 
 - Asana task cards. A bare Asana task link on its own line renders as a card of the task's name, its assignee, its due date and whether it is done. It needs a connection, because Asana answers nothing without one, so an unconnected card is built from the link alone, requests nothing, and says it needs connecting rather than going blank. `birta.embeds.providers.asana` turns the provider off; the card needs `birta.embeds.enabled`, and the connected card needs `birta.network.enabled`.

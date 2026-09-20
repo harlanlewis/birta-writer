@@ -12,6 +12,10 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ## [Unreleased]
 
+---
+
+## [2026.920.0] - 2026, September 20
+
 ### Added
 
 - Content Width, on the Appearance pane beside the font and its size: Full fills the window, and Fixed caps the text at a reading measure and centres it, for every window at once. The measure is in character widths, so it follows the font size rather than needing one of its own. The same control is in the toolbar's gear menu, for the window it is opened from, and Full Width and Fixed Width are rows in the command palette.
