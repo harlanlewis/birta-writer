@@ -62,8 +62,9 @@ const CLEAN = "lost: (none); gained: (none)";
 
 /**
  * Does `text` reopen holding exactly the content `liveFp` fingerprints?
- * Exported for the verify worker (workers/verifyWorker.ts), which answers
- * this and nothing else, with the same function.
+ * The sync worker (workers/verifyWorker.ts) reaches it through
+ * `mergeVerified`, the one function that decides which bytes reach the file
+ * on either thread.
  */
 export function reopensAs(liveFp: Fingerprint, text: string, parse: ParseMarkdown): boolean {
     let doc: ProseNode | null;
@@ -152,41 +153,6 @@ export function mergeVerified(
     // broken and writing canonical bytes would not fix it, while discarding
     // the file's spelling on every save certainly would hurt.
     return result(reopensAs(liveFp, fallback, parse) ? fallback : merged);
-}
-
-/** Answers `reopensAs` somewhere else: a worker holding the page's parser (utils/verifyOracle.ts). */
-export type ReopensOracle = (liveFp: Fingerprint, text: string) => Promise<boolean>;
-
-/**
- * `mergeVerified` with the reopen question asked of an oracle instead of run
- * here (MAR-430). The merge and the fallback are still computed on the
- * caller's thread, because on the largest fixture they are a rounding error
- * beside the reparse and computing them here keeps the short-circuit above
- * from costing a round trip. The live fingerprint is taken lazily, past that
- * short-circuit, for the same reason.
- *
- * THE TWO FUNCTIONS MUST DECIDE IDENTICALLY, and `verifiedMerge.test.ts`
- * holds them together over the corpus: same bytes, same `canonical`, for
- * every input, whichever thread answered. Everything they share is in
- * `candidates`; what this one adds is only that its two questions are awaited.
- */
-export async function mergeVerifiedWith(
-    saved: string,
-    serialized: string,
-    profile: FormatProfile,
-    protection: RoundTripProtection | null,
-    liveFingerprint: () => Fingerprint,
-    reopens: ReopensOracle,
-): Promise<VerifiedMerge> {
-    const { merged, fallback, result } = candidates(saved, serialized, profile, protection);
-    if (merged === fallback) {
-        return result(merged);
-    }
-    const liveFp = liveFingerprint();
-    if (await reopens(liveFp, merged)) {
-        return result(merged);
-    }
-    return result((await reopens(liveFp, fallback)) ? fallback : merged);
 }
 
 /** The two texts every save chooses between, and the `canonical` verdict for either. */

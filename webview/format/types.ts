@@ -46,9 +46,9 @@ export type EditorPlugins = Parameters<Editor["use"]>[0];
 /**
  * The half of a format that PARSES: its presets and its stringify
  * configuration, and nothing that draws. A context with no document can build
- * a parser from one (utils/headlessParser.ts), which is how the save
- * pipeline's verify worker answers the reopen question with the page's own
- * schema and remark pipeline (workers/verifyWorker.ts). A FormatModule is one
+ * a parser and a serializer from one (utils/headlessParser.ts), which is how
+ * the save pipeline's worker makes the whole save decision with the page's
+ * own schema, remark pipeline and serializer (workers/verifyWorker.ts). A FormatModule is one
  * of these plus its chrome, and a format's parse half must stay importable
  * with no DOM: a module that reads `window` while it loads cannot be in it.
  */
