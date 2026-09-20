@@ -31,24 +31,126 @@ final class CommandRowTests: XCTestCase {
             .appendingPathComponent("command-row-\(UUID().uuidString)/bin/bwr")
     }
 
-    func testTheRowShouldBeOnTheGeneralPane() {
+    func testTheRowShouldBeOnTheAdvancedPane() {
         let controller = makeController()
-        controller.selectTabForTesting("general")
+        controller.selectTabForTesting("advanced")
         XCTAssertNotNil(controller.rowForTesting(.commandLine),
                         "the terminal command row was not drawn")
+        XCTAssertNotNil(controller.rowForTesting(.commandName),
+                        "the command name row was not drawn")
     }
 
-    /// Before it is installed the row says what the click would do, and where.
-    /// A person deciding whether to press it is deciding about a file in a
-    /// directory of theirs, so the directory is named.
-    func testWithNothingInstalledTheRowShouldSayWhatWouldBeAdded() {
+    /// The drawing follows the answer it is given. Both arms, because a row
+    /// that is always hidden would satisfy the first on its own; which answer
+    /// it is given is `showsCommandName`, asked below.
+    func testTheNameRowShouldFollowTheSwitchAboveIt() {
+        let controller = makeController()
+        defer { controller.window?.close() }
+        controller.selectTabForTesting("advanced")
+        guard let row = controller.rowForTesting(.commandName) else {
+            return XCTFail("the command name row was not drawn")
+        }
+        controller.showCommandNameForTesting(shown: false)
+        XCTAssertTrue(row.isHidden, "the name row was drawn with no command installed")
+        controller.showCommandNameForTesting(shown: true)
+        XCTAssertFalse(row.isHidden, "the name row stayed away with the command installed")
+    }
+
+    /// A refusal keeps the field, and this is the dead end it exists to stop.
+    ///
+    /// A refusal is usually ABOUT the name (something else already answers to
+    /// it) and leaves nothing installed. Going by the link alone would take
+    /// the field away at exactly that moment, so the stored name would be
+    /// stuck at the one that cannot be installed and every retry would be
+    /// refused for the same reason with nothing to edit.
+    func testARefusalShouldKeepTheNameRowEvenThoughNothingIsInstalled() {
+        let controller = makeController()
+        defer { controller.window?.close() }
+        controller.selectTabForTesting("advanced")
+        guard let row = controller.rowForTesting(.commandName) else {
+            return XCTFail("the command name row was not drawn")
+        }
+        // The rule, both arms, asked of the predicate rather than of the disk:
+        // whoever is running this may have the command installed, and reading
+        // the real directory would answer about their machine.
+        XCTAssertFalse(SettingsWindowController.showsCommandName(installed: false, refusal: nil),
+                       "the row is drawn with nothing installed and nothing refused")
+        XCTAssertTrue(SettingsWindowController.showsCommandName(
+            installed: false, refusal: "A file of that name is already there."),
+                      "a refusal takes away the field that answers it")
+        XCTAssertTrue(SettingsWindowController.showsCommandName(installed: true, refusal: nil))
+
+        // And the drawing follows the answer, so the rule above reaches a row.
+        controller.showCommandNameForTesting(
+            shown: SettingsWindowController.showsCommandName(
+                installed: false, refusal: "A file of that name is already there."))
+
+        XCTAssertFalse(row.isHidden, "a refusal took away the field that answers it")
+    }
+
+    /// The sentence the drawn row actually carries, and that it follows the
+    /// field as it is typed in.
+    ///
+    /// `commandHelp` is a pure function and is asked directly below, which
+    /// says nothing about whether anything calls it: the name is committed
+    /// only when the edit finishes, so a caption wired to the stored
+    /// preference would pass every check there is and still name the old
+    /// command for the whole of an edit.
+    func testTheSentenceUnderTheFieldShouldFollowWhatIsTyped() {
+        let controller = makeController()
+        defer { controller.window?.close() }
+        controller.selectTabForTesting("advanced")
+        guard let content = controller.window?.contentView,
+              let row = controller.rowForTesting(.commandName),
+              let field = monospacedField(in: content) else {
+            return XCTFail("the command name row was not drawn")
+        }
+
+        field.stringValue = "notes"
+        controller.controlTextDidChange(
+            Notification(name: NSControl.textDidChangeNotification, object: field))
+
+        XCTAssertEqual(row.caption?.stringValue,
+                       SettingsWindowController.commandHelp(name: "notes", link: Prefs.commandLink),
+                       "the row's sentence did not follow the field")
+        // Nothing was written: the name belongs to the edit's end.
+        XCTAssertNotEqual(Prefs.commandName, "notes")
+    }
+
+    /// The command field, which is the one monospaced editable field on the
+    /// Advanced pane.
+    private func monospacedField(in view: NSView) -> NSTextField? {
+        if let found = view as? NSTextField, found.isEditable,
+           found.font?.fontName.contains("Mono") == true { return found }
+        for subview in view.subviews {
+            if let found = monospacedField(in: subview) { return found }
+        }
+        return nil
+    }
+
+    /// The sentence under the field says what the switch does and where, and
+    /// names the directory: a person deciding whether to press it is deciding
+    /// about a file in a directory of theirs.
+    func testTheHelpSentenceShouldSayWhatIsAddedAndWhere() {
+        let link = self.link
+        let help = SettingsWindowController.commandHelp(name: "bwr", link: link)
+        XCTAssertTrue(help.contains("bwr"), help)
+        XCTAssertTrue(help.contains(link.deletingLastPathComponent().lastPathComponent), help)
+    }
+
+    /// The switch row says nothing when nothing is wrong, whether or not the
+    /// command is installed. What installing gets you is the name row's
+    /// sentence; this row is for problems, and
+    /// `testARefusalShouldReplaceWhateverElse` below is where that is asked.
+    func testTheSwitchRowShouldSayNothingWhenNothingIsWrong() {
         let controller = makeController()
         let link = self.link
-        let availability = controller.commandAvailability(name: "bwr", link: link, installed: false)
-        XCTAssertFalse(availability.isProblem)
-        XCTAssertTrue(availability.note.contains("bwr"), availability.note)
-        XCTAssertTrue(availability.note.contains(link.deletingLastPathComponent().lastPathComponent),
-                      availability.note)
+        let onPath = "/usr/bin:/bin:" + link.deletingLastPathComponent().path
+        for installed in [false, true] {
+            let availability = controller.commandAvailability(name: "bwr", link: link,
+                                                              installed: installed, path: onPath)
+            XCTAssertEqual(availability.note, "", "installed: \(installed)")
+        }
     }
 
     /// The pairing this row exists for: the link is there and the name still
@@ -92,9 +194,18 @@ final class CommandRowTests: XCTestCase {
     /// The name is the row's, so a renamed command is the one the sentence
     /// talks about rather than the default it no longer is.
     func testTheSentenceShouldNameTheCommandTheRowIsAbout() {
-        let controller = makeController()
-        let availability = controller.commandAvailability(name: "notes", link: link, installed: false)
-        XCTAssertTrue(availability.note.contains("notes"), availability.note)
-        XCTAssertFalse(availability.note.contains("bwr"), availability.note)
+        let help = SettingsWindowController.commandHelp(name: "notes", link: link)
+        XCTAssertTrue(help.contains("notes"), help)
+        XCTAssertFalse(help.contains("bwr"), help)
+    }
+
+    /// The sentence follows the FIELD rather than the stored name, because
+    /// the name is committed when the edit finishes: a sentence reading the
+    /// preference would name the old command for the whole of an edit.
+    func testAnEmptyFieldShouldBeReadAsTheDefaultName() {
+        let field = NSTextField(string: "  ")
+        XCTAssertEqual(SettingsWindowController.typedName(in: field), Prefs.defaultCommandName)
+        field.stringValue = " notes "
+        XCTAssertEqual(SettingsWindowController.typedName(in: field), "notes")
     }
 }

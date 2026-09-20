@@ -73,7 +73,7 @@ What the app WRITES is a separate list, one extension long, and `DocumentTypes` 
 
 ## Opening from a shell
 
-Settings, General, Open from Terminal installs `bwr`: a symlink in `~/.local/bin` pointing at `Contents/MacOS/bwr` inside the bundle. A link rather than a copy, so an app that moves or replaces itself carries its command with it, and in a directory the user owns, so nothing about the gesture needs a password. `bwr-dev` is the name a development build offers, for the reason its hotkey and its note differ: the two bundles are meant to sit in `/Applications` together, and one name would mean whichever was installed second silently took the other's. The name is editable, because the only thing about this that can collide with somebody's machine is the word, and renaming it moves the link rather than leaving a second one behind.
+Settings, Advanced, Open from Terminal installs `bwr`: a symlink in `~/.local/bin` pointing at `Contents/MacOS/bwr` inside the bundle. A link rather than a copy, so an app that moves or replaces itself carries its command with it, and in a directory the user owns, so nothing about the gesture needs a password. `bwr-dev` is the name a development build offers, for the reason its hotkey and its note differ: the two bundles are meant to sit in `/Applications` together, and one name would mean whichever was installed second silently took the other's. The name is editable, because the only thing about this that can collide with somebody's machine is the word, and renaming it moves the link rather than leaving a second one behind.
 
 | Typed | What happens |
 | -- | -- |

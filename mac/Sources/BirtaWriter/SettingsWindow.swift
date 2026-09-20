@@ -166,7 +166,18 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     /// deleted, has to move this switch.
     private let commandSwitch = NSSwitch()
     private let commandField = NSTextField(string: Prefs.commandName)
+    /// The sentence under the SWITCH, which carries a problem and nothing
+    /// else.
+    ///
+    /// The switch is the INSTALL, so what can go wrong with installing
+    /// belongs to it: a refusal, and a link that nothing on `PATH` can
+    /// reach. What the command is for is said under the field below, where
+    /// the name it names is.
     private let commandCaption = Caption("")
+    /// The sentence under the FIELD: what installing does and where, with the
+    /// name being typed in it. Drawn with its row, which comes and goes
+    /// (`showsCommandName`).
+    private let commandNameCaption = Caption("")
     /// Whether the last install or removal failed, and what it said.
     ///
     /// Held because the sentence under the row is otherwise a statement about
@@ -207,6 +218,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     private var filesGroup: NSView?
     private var notesGroup: NSView?
     private var agentGroup: NSView?
+    private var commandGroup: NSView?
     private let newNoteCaption = Caption("")
     private let updateSwitch = NSSwitch()
     private let updateCaption = Caption("")
@@ -341,6 +353,16 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     /// changes, and this is for one with a surface the application owns. The
     /// publishing targets are the first of those, and `WindowSet` holds why.
     private let onChangeEverywhere: () -> Void
+    /// Hand every window's page the capabilities this host provides now, with
+    /// no reload.
+    ///
+    /// A third closure rather than `onChangeEverywhere`, because what it does
+    /// is the difference this exists for: that one reloads, and reloading was
+    /// the whole cost of moving the `/ai` switch. Everywhere rather than the
+    /// front window, for the reason the publishing targets are: a back window
+    /// left on the old answer would go on offering a command the settings had
+    /// just withdrawn.
+    private let onHostCapabilitiesChange: () -> Void
     /// Show the welcome window. Injected rather than built here: the window is
     /// the app delegate's, so it survives this one being closed.
     private let onShowWelcome: () -> Void
@@ -383,6 +405,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
          refusedSummonCombo: @escaping () -> HotkeyCombo? = { nil },
          onChange: @escaping (BeforeReload?) -> Void,
          onChangeEverywhere: @escaping () -> Void,
+         onHostCapabilitiesChange: @escaping () -> Void = {},
          onReset: @escaping () -> Void = {},
          onShowWelcome: @escaping () -> Void,
          onCheckForUpdates: @escaping () -> Void,
@@ -401,6 +424,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         self.refusedSummonCombo = refusedSummonCombo
         self.onChange = onChange
         self.onChangeEverywhere = onChangeEverywhere
+        self.onHostCapabilitiesChange = onHostCapabilitiesChange
         self.onReset = onReset
         self.onShowWelcome = onShowWelcome
         self.onCheckForUpdates = onCheckForUpdates
@@ -619,6 +643,12 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     /// ever hands a row its answer.
     func rowForTesting(_ row: SettingsRow) -> SettingsRowView? { rowViews[row] }
 
+    /// Draw the command name row as it stands with the command installed or
+    /// not, without a link on disk to install: the filesystem half is
+    /// `CommandInstallTests`'s, and what is asked here is whether the row
+    /// follows the answer.
+    func showCommandNameForTesting(shown: Bool) { showCommandName(shown: shown) }
+
     /// Show a pane by name, for `BIRTA_MAC_OPEN_SETTINGS`. Unknown names are
     /// ignored rather than fatal: the variable is a probe, and a typo in it
     /// should not stop the app.
@@ -665,6 +695,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
             (filesGroup, .location, SettingsForm.general),
             (notesGroup, .newNoteName, SettingsForm.general),
             (agentGroup, .agentCommand, SettingsForm.aiAgent),
+            (commandGroup, .commandName, SettingsForm.advanced(showsWelcomeScreen: true)),
         ]
         for (card, row, pane) in cards {
             guard let card, let index = SettingsForm.index(of: row, inPane: pane) else { continue }
@@ -772,9 +803,11 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         commandField.delegate = self
         commandField.font = .monospacedSystemFont(ofSize: NSFont.smallSystemFontSize, weight: .regular)
         commandField.placeholderString = Prefs.defaultCommandName
-        // A command name is a word, so the field is one word wide. Under the
-        // switch rather than beside it, which leaves the trailing edge to the
-        // control that is the question.
+        // A command name is a word, so the field is one word wide, at the
+        // trailing edge of its own row: it is the answer to that row's
+        // question, which is what a settings row puts there. Right-aligned to
+        // match the note-name template's field, the other short one.
+        commandField.alignment = .right
         commandField.widthAnchor.constraint(equalToConstant: 140).isActive = true
 
         loginSettingsButton.target = self
@@ -837,7 +870,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         // `rowViews`, so they are `showRowAvailability`'s and are called again
         // once the pane exists. What stays here is the switch positions, which
         // are properties and are safe to set before anything is laid out.
-        networkCaption.say("Renders some YouTube, Loom, Figma, Google Docs, and links from "
+        networkCaption.say("Renders YouTube, Loom, Figma, Google Docs, and links from "
                            + "other services as interactive embedded content. Requires internet "
                            + "access.", bad: false)
         autosaveSwitch.state = Prefs.autosave ? .on : .off
@@ -967,9 +1000,81 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         // the one place that reads the disk.
         commandLinkedName = installed ? name : nil
         rowViews[.commandLine]?.apply(commandAvailability(name: name, link: link, installed: installed))
+        // While the command is there, and also while the last attempt was
+        // REFUSED. A refusal is usually ABOUT the name (something else already
+        // answers to it), and the refused attempt leaves nothing installed, so
+        // a row that went by the link alone would take away the one control
+        // that can answer the sentence beside it: the name would be stuck at
+        // the one that cannot be installed, and every retry would be refused
+        // for the same reason with no way to edit it.
+        showCommandName(shown: Self.showsCommandName(installed: installed, refusal: commandRefusal))
     }
 
-    /// The sentence, given what is on disk.
+    /// Whether the name row is drawn at all.
+    ///
+    /// A value rather than a branch inside the drawing, so both answers can be
+    /// asked for without a link on disk: whoever runs the checks may have the
+    /// command installed, and a check that read the real directory would be
+    /// answering about their machine rather than about this rule.
+    static func showsCommandName(installed: Bool, refusal: String?) -> Bool {
+        installed || refusal != nil
+    }
+
+    /// Draw the name row, or take it away.
+    ///
+    /// Off is not "on but ignored", the same rule the agent command row keeps:
+    /// with no link on disk there is no command to name, and a field sitting
+    /// there would be a setting for a file nobody has. `showsCommandName` is
+    /// the rule, refusal included.
+    private func showCommandName(shown: Bool) {
+        showCommandHelp()
+        guard let commandGroup else { return }
+        SettingsWindowController.setRowHidden(
+            commandGroup,
+            row: SettingsForm.index(of: .commandName,
+                                    inPane: SettingsForm.advanced(showsWelcomeScreen: true)) ?? 1,
+            hidden: !shown)
+        fitWindowToPane()
+    }
+
+    /// The sentence under the field.
+    ///
+    /// One sentence whatever the command's standing is. What the row says is
+    /// what installing the name in the field gets you, which is the same
+    /// sentence before and after the link exists; what is WRONG, when
+    /// something is, is the switch row's to say.
+    ///
+    /// Read off the FIELD rather than out of `Prefs`, because the name is
+    /// committed when the edit finishes: a sentence reading the preference
+    /// would name the old command for the whole of an edit, which is exactly
+    /// when somebody is looking at it to see what they are about to get.
+    private func showCommandHelp() {
+        commandNameCaption.say(
+            Self.commandHelp(name: Self.typedName(in: commandField), link: Prefs.commandLink),
+            bad: false)
+    }
+
+    /// What a field holding a command name means: what was typed, or the
+    /// default, which is what a name typed away to nothing installs.
+    static func typedName(in field: NSTextField) -> String {
+        let typed = field.stringValue.trimmingCharacters(in: .whitespaces)
+        return typed.isEmpty ? Prefs.defaultCommandName : typed
+    }
+
+    /// The sentence itself, given a name and where the link goes. Static and
+    /// not private so a check can ask about a directory of its own rather than
+    /// about the command directory belonging to whoever is running it.
+    static func commandHelp(name: String, link: URL) -> String {
+        "Add \(name) to \(abbreviated(link.deletingLastPathComponent())) so you can open "
+            + "files from Terminal."
+    }
+
+    /// What the SWITCH row says, given what is on disk: a problem, or nothing.
+    ///
+    /// Nothing is the ordinary answer, and that is the split this row keeps.
+    /// What the switch is FOR is said under the field below it
+    /// (`commandHelp`), beside the name it is about; what can go wrong with
+    /// installing belongs to the switch, which is the control that installs.
     ///
     /// A refusal wins over everything else: the one thing this row must not do
     /// is say the command is ready when the click meant to install it was
@@ -986,18 +1091,14 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
                              path: String = LoginShellPath.shared.childPath() ?? "") -> RowAvailability {
         if let commandRefusal { return .warning(commandRefusal) }
         let directory = link.deletingLastPathComponent()
-        guard installed else {
-            return .available("Adds \(name) to \(Self.abbreviated(directory)) so you can open "
-                              + "files from Terminal.")
-        }
+        guard installed else { return .available() }
         let standing = CommandInstall.standing(
             name: name,
             directory: directory.path,
             path: path,
             isExecutable: { FileManager.default.isExecutableFile(atPath: $0) })
         let note = standing.note(name: name, directory: Self.abbreviated(directory))
-        return standing.isProblem ? .warning(note)
-                                  : .available("\(name) notes.md opens a file from Terminal.")
+        return standing.isProblem ? .warning(note) : .available()
     }
 
     /// A path with the home directory written the way a shell writes it. What
@@ -1157,6 +1258,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
             if group.rows.contains(.location) { filesGroup = box }
             if group.rows.contains(.newNoteName) { notesGroup = box }
             if group.rows.contains(.agentCommand) { agentGroup = box }
+            if group.rows.contains(.commandName) { commandGroup = box }
             sections.append(box)
         }
         return sections
@@ -1210,11 +1312,15 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
                                        to: NoteNameTemplate.referenceURL)],
                     nil)
         case .commandLine:
-            // The field is BELOW the switch, on the agent command row's
-            // argument: what goes in it is a word for a shell rather than a
-            // setting to read, so it is monospaced and given the width a
-            // command name needs rather than a slot at the trailing edge.
-            return (commandSwitch, [commandField], commandCaption)
+            // No field here: it is the row below, which exists only while the
+            // switch is on. The sentence is the problem one (`commandCaption`).
+            return (commandSwitch, [], commandCaption)
+        case .commandName:
+            // The field at the trailing edge, the way the note-name template's
+            // is, rather than full width under the label the way the agent's
+            // command is: what goes in this one is a single word. Monospaced
+            // because it is a word for a shell rather than a setting to read.
+            return (commandField, [], commandNameCaption)
         case .agentEnabled: return (agentEnabledSwitch, [], nil)
         case .agentCommand:
             // The field is BELOW rather than beside: a shell command is long
@@ -1746,14 +1852,21 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         syncAgentCapability()
     }
 
-    /// Reload the page only when the agent CAPABILITY has actually changed.
+    /// Tell the pages only when the agent CAPABILITY has actually changed.
     ///
-    /// The page is built from the host profile at boot, so a change to what
-    /// this host PROVIDES has to be handed to it again, and the only way to
-    /// do that is a reload. A reload is not free to watch: the editor is torn
-    /// down and rebuilt under whoever is looking at it, which is why it has
-    /// to be asked for by something that changed rather than by something
-    /// that was touched.
+    /// The page is seeded with the host profile at boot, so a change to what
+    /// this host PROVIDES has to be handed to it again; what is handed over is
+    /// the capability list (`hostCapabilitiesChanged`,
+    /// `LIVE_HOST_CAPABILITIES` in shared/hostProfile.ts), not a fresh page.
+    /// It used to be a reload, which is not free to watch: the editor was torn
+    /// down and rebuilt under whoever was looking at it in order to add or
+    /// remove two menu rows.
+    ///
+    /// The guard survives the reload going away, and it is doing less work
+    /// than it was: a message is cheap where a reload was not. It stays
+    /// because the message is still a claim that something changed, and
+    /// posting one per keystroke of the command field would make every page
+    /// re-place its bar for a change that is not one.
     ///
     /// Swapping one working command for another does not change what this
     /// host provides. `AgentAvailability` is the same rule `Prefs.bootConfig`
@@ -1763,7 +1876,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         let available = Prefs.agentAvailable
         guard available != agentCapabilityInPage else { return }
         agentCapabilityInPage = available
-        onChange(nil)
+        onHostCapabilitiesChange()
     }
 
     /// Everything back to defaults, in the order that leaves nothing stale.
@@ -1880,6 +1993,12 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
             // where a broken format is visible.
             Prefs.newNoteNameTemplate = newNoteField.stringValue
             showNoteNamePreview()
+        case let field where field === commandField:
+            // The name itself is committed when the edit FINISHES, for the
+            // reason `controlTextDidEndEditing` gives: this field owns a file.
+            // The sentence under it is about what is being typed, so it
+            // follows the keystroke and nothing is written.
+            showCommandHelp()
         default: return
         }
     }

@@ -47,14 +47,14 @@ function stubDeps(topbarTb: ToolbarController | null): MessageHandlerDeps {
 }
 
 /** A bar that records only what this path asks of it. */
-function stubToolbar(): ToolbarController & { applySyntaxSets: ReturnType<typeof vi.fn> } {
-    const bar = { applySyntaxSets: vi.fn() };
+function stubToolbar(): ToolbarController & { refreshOfferedItems: ReturnType<typeof vi.fn> } {
+    const bar = { refreshOfferedItems: vi.fn() };
     return new Proxy(bar, {
         get(target, key) {
             if (key in target) { return (target as Record<string | symbol, unknown>)[key]; }
             return () => {};
         },
-    }) as ToolbarController & { applySyntaxSets: ReturnType<typeof vi.fn> };
+    }) as ToolbarController & { refreshOfferedItems: ReturnType<typeof vi.fn> };
 }
 
 const container = document.createElement("div");
@@ -121,7 +121,7 @@ describe("a live syntax-target change", () => {
 
         handlers.syntaxSetsChanged!({ type: "syntaxSetsChanged", sets: ["gfm"] }, container);
 
-        expect(bar.applySyntaxSets).toHaveBeenCalledTimes(1);
+        expect(bar.refreshOfferedItems).toHaveBeenCalledTimes(1);
     });
 
     it("should survive a page with no bar, which is every host that hides it", () => {

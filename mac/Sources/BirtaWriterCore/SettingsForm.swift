@@ -12,6 +12,11 @@ public enum SettingsRow: String, CaseIterable, Sendable {
     // the command's name is the one thing on the row somebody can change and a
     // label carrying it would go stale the moment they did.
     case commandLine = "Open from Terminal"
+    // The name the command is installed under: the row above is the question,
+    // and this is the one property of the answer, so it comes and goes with
+    // it (`SettingsWindowController.showsCommandName`). A name for a command
+    // that is not there would be a setting for a file nobody has.
+    case commandName = "Command name"
     case storeInICloud = "Store in iCloud Drive"
     case location = "Location"
     case autosave = "Automatically save changes"
@@ -206,23 +211,14 @@ public enum SettingsForm {
     /// of their own, and each sits directly under the row that takes it away.
     /// `SettingsWindowController.setRowHidden` reaches into a card by index,
     /// so the pair has to stay in one card and in that order.
-    ///
-    /// The terminal command sits under the summon chord and in a card of its
-    /// own. Under, because both rows answer the same question, which is how
-    /// this app is reached from outside itself; its own, because the chord is
-    /// a setting and installing a command writes a file somewhere else on the
-    /// machine, and a card is the boundary that keeps the second from reading
-    /// as a property of the first.
     public static let general = SettingsPane(groups: [
         SettingsGroup(rows: [.summon]),
-        SettingsGroup(rows: [.commandLine]),
         SettingsGroup(rows: [.storeInICloud, .location, .autosave]),
         // The file-name row sits directly under the mode it depends on, so
         // the open-target row comes after it rather than between them.
         SettingsGroup(rows: [.opens, .newNoteName, .opensFilesIn]),
         SettingsGroup(rows: [.showInDock, .showInMenuBar]),
         SettingsGroup(rows: [.startAtLogin]),
-        SettingsGroup(rows: [.richLinks]),
     ])
 
     /// The agent `/ai` hands a prompt to.
@@ -257,13 +253,23 @@ public enum SettingsForm {
     /// explaining its absence: a reader scanning a list of flavors for
     /// CommonMark finds it where they looked, and the switch they cannot move
     /// says the rest.
+    ///
+    /// Rich link previews and embeds is the last card, and it is on this pane
+    /// rather than General for the reason the flavors are: what it decides is
+    /// how a piece of the document is DRAWN, which is the writing rather than
+    /// the app. Its own card, because it is not a flavor: the rows above
+    /// choose which syntax the editor offers to write, and this one turns
+    /// plain links into something the page fetches over the network, which is
+    /// a different question and the only one on this pane with a cost outside
+    /// the document.
     public static let markdown = SettingsPane(
         intro: [
             "Birta Writer can render many flavors of Markdown. Choose the ones you write for, "
                 + "and the toolbar and menus offer only their formatting.",
         ],
         groups: [SettingsGroup(rows: [.commonMark, .syntaxGfm, .syntaxObsidian, .syntaxPandoc,
-                                      .syntaxNotion, .syntaxCalc])])
+                                      .syntaxNotion, .syntaxCalc]),
+                 SettingsGroup(rows: [.richLinks])])
 
     /// The row that carries a target, in the vocabulary's own order.
     ///
@@ -295,10 +301,19 @@ public enum SettingsForm {
     /// Reset before Welcome screen: reset is the row every build shows, and
     /// the one below it exists only on a build that shows the first run.
     ///
+    /// The terminal command leads, in a card of its own, and it is here
+    /// rather than on General because of what pressing it does: installing a
+    /// command writes a file somewhere else on the machine, which is a
+    /// different kind of answer from the rows that store a preference. Its
+    /// name is a hidden dependent under it, in the one card and in that
+    /// order, for the reason `.location` and `.newNoteName` are:
+    /// `SettingsWindowController.setRowHidden` reaches into a card by index.
+    ///
     /// Take the flavour rather than reading it, so both arms are checkable
     /// without a defaults domain or a second bundle.
     public static func advanced(showsWelcomeScreen: Bool) -> SettingsPane {
         SettingsPane(groups: [
+            SettingsGroup(rows: [.commandLine, .commandName]),
             SettingsGroup(rows: [.autoUpdate]),
             SettingsGroup(rows: showsWelcomeScreen ? [.resetSettings, .welcomeScreen]
                                                    : [.resetSettings]),

@@ -466,6 +466,17 @@ public enum HostMessage: Equatable {
     /// Ask the page which editor commands it can run here, answered with
     /// `paletteCommands`. A host that never asks is never sent the list.
     case requestPaletteCommands
+    /// What this host provides now, replacing the list the page booted with
+    /// (`HOST_PROFILES.mac` in shared/hostProfile.ts, filtered in
+    /// `Prefs.bootConfig`).
+    ///
+    /// One capability moves while a page is up, and it is the only reason
+    /// this exists: Settings, AI Agent, Enable /ai commands. Before it, that
+    /// switch RELOADED the page, which flushed the buffer and rebuilt the
+    /// editor under whoever was looking at it in order to add or remove two
+    /// menu rows. The list, never a delta, because the list is what a host
+    /// declares.
+    case hostCapabilitiesChanged([String])
     /// One report about an `/ai` run. `status` drives the gutter marker the
     /// page already draws for the extension.
     case agentRun(requestId: String, status: String, harness: String?, text: String?, message: String?)
@@ -597,6 +608,8 @@ public enum HostMessage: Equatable {
             return ["type": "setLineNumbers", "enabled": enabled]
         case .requestPaletteCommands:
             return ["type": "requestPaletteCommands"]
+        case let .hostCapabilitiesChanged(capabilities):
+            return ["type": "hostCapabilitiesChanged", "capabilities": capabilities]
         case let .editorCommand(command, arg):
             var row: [String: Any] = ["type": "editorCommand", "command": command]
             // Omitted rather than sent as null, the way every other optional

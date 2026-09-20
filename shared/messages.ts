@@ -14,6 +14,7 @@ import type { PlantUmlThemeMode } from "./plantuml";
 import type { EmbedCardResult } from "./connectors";
 import type { HostPromptStep } from "./hostPrompt";
 import type { Diagnostics } from "./feedback/compose";
+import type { HostCapability } from "./hostProfile";
 
 /** Image metadata: disk-relative path + WebView-accessible URI + file name */
 export type ProjectImage = {
@@ -897,6 +898,17 @@ export type ToWebviewMessage =
     // document changes, because a target governs the tools and never the
     // parser (shared/syntaxSets.ts).
     | { type: "syntaxSetsChanged"; sets: readonly SyntaxSet[] }
+    // What the HOST provides changed while the page was up: the whole
+    // capability list as it now stands, replacing the one the page booted
+    // with (shared/hostProfile.ts). The Mac app sends it when /ai is switched
+    // on or off, which is the one capability a user moves; a host that never
+    // moves one never sends this and nothing about the page changes.
+    //
+    // The list, never a delta, for the reason the boot declaration is a list:
+    // the profile is what the host IS, so a message carrying one capability
+    // would be a second shape for the same fact and the two could disagree
+    // about a capability neither mentioned.
+    | { type: "hostCapabilitiesChanged"; capabilities: readonly HostCapability[] }
     | { type: "fmSuggestions"; key: string; values: string[] }
     | { type: "proofreadConfig"; config: ProofreadConfig }
     // Live update of the Notes-tab custom markers (birta.notes.customMarkers changed).

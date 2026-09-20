@@ -109,7 +109,7 @@ export function initToolbar(
      * targets the editor writes for (birta.syntax.sets). Every item is already
      * built, so this only decides which of them are placed.
      */
-    applySyntaxSets: () => void;
+    refreshOfferedItems: () => void;
     /** Update the font picker's active-preset indicator (and optional stack previews). */
     setFontPreset: (preset: FontPreset, stacks?: FontStacks) => void;
     /** Update the font picker's size-stepper display (percent). */
@@ -557,13 +557,13 @@ export function initToolbar(
             layout.setLogseq(reason !== null);
         },
         applyConfig: layout.applyConfig,
-        applySyntaxSets: (): void => {
+        refreshOfferedItems: (): void => {
             // Two levels, because a target withdraws at two: an item whose
             // every command it withdrew leaves the bar, and a row inside a
             // family dropdown that survives leaves that menu. The pickers are
             // built once and outlive any re-placement, so they re-gate their
             // own rows rather than being rebuilt.
-            layout.applySyntaxSets();
+            layout.refreshOfferedItems();
             for (const picker of [listPicker, codePicker, quotePicker]) {
                 picker.regate();
             }

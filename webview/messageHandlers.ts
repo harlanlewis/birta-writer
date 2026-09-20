@@ -44,6 +44,7 @@ import { renderFrontmatterPanel, refreshFrontmatterEmptyState } from "./componen
 import { dispatchFmSuggestions } from "./components/frontmatter/suggestMenu";
 import { runEditorCommand } from "./editorCommands";
 import { refreshShortcutsHelpIfLoaded } from "./components/shortcutsHelp/loader";
+import { hostHas, setHostCapabilities } from "../shared/hostProfile";
 import { answerPaletteCommandsRequest, repostPaletteCommandsIfAsked } from "./paletteCommands";
 import { hideTooltip, showTooltipForRect } from "./ui/tooltip";
 import {
@@ -58,7 +59,7 @@ import { handleEmbedCardResult, setConnectorStates } from "./embedConnector";
 import { regateEmbeds } from "./plugins/embed";
 import { setWhatsNewUnread } from "./components/toolbar/settingsMenu";
 import { setAgentRoute } from "./agentRoute";
-import { resolveAgentAttachment, setAgentCapabilities } from "./agentPanelController";
+import { closeAgentPanel, resolveAgentAttachment, setAgentCapabilities } from "./agentPanelController";
 import { resolveNativeDatePicker } from "./dateInsert";
 import { resolveHostDiagnostics, resolveHostPrompt } from "./hostPrompt";
 
@@ -100,8 +101,14 @@ export interface ToolbarController {
     setDebugMode(enabled: boolean): void;
     /** Rebuild the toolbar for a changed per-item placement config. */
     applyConfig(config: import("../shared/messages").ToolbarConfig): void;
-    /** Re-place the bar's items after a syntax-target change (shared/syntaxSets.ts). */
-    applySyntaxSets(): void;
+    /**
+     * Re-place the bar's items: the set of them that may be placed has
+     * changed under it, because the syntax target moved
+     * (shared/syntaxSets.ts) or the host withdrew a capability
+     * (shared/hostProfile.ts). Nothing is built here; every item already
+     * exists, and what this recomputes is which of them the bar carries.
+     */
+    refreshOfferedItems(): void;
     /** Update the font picker's active-preset indicator (and, when provided, its per-preset stack previews). */
     setFontPreset(preset: import("../shared/messages").FontPreset, stacks?: import("../shared/messages").FontStacks): void;
     /** Update the font picker's size-stepper display (percent). */
@@ -661,7 +668,7 @@ export function createMessageHandlers(
             if (window.__i18n) {
                 window.__i18n.syntaxSets = msg.sets;
             }
-            topbarTb?.applySyntaxSets();
+            topbarTb?.refreshOfferedItems();
             // The cheatsheet is the other surface that decided its contents
             // once: it is a singleton built on first open, so its own gate
             // would otherwise be read under the target the page loaded with
@@ -670,6 +677,31 @@ export function createMessageHandlers(
             // A host palette is a third such surface, and it lives outside
             // the page: it is told rather than re-read, if it ever asked.
             repostPaletteCommandsIfAsked();
+        },
+        hostCapabilitiesChanged(msg) {
+            // The same shape as the target change above, and for the same
+            // reason: `hostHas` reads the boot blob on every call, so writing
+            // the list back IS the update, and the surfaces that decided their
+            // contents once are the only ones that have to be told.
+            //
+            // What this replaces is a page RELOAD, which is what the Mac app
+            // did when /ai was switched on or off: the capability is read at
+            // boot, so the only way to hand over a new one was to boot again,
+            // and the editor was torn down and rebuilt under whoever was
+            // looking at it for a change that moves two menu rows.
+            setHostCapabilities(msg.capabilities);
+            topbarTb?.refreshOfferedItems();
+            refreshShortcutsHelpIfLoaded();
+            repostPaletteCommandsIfAsked();
+            // A surface that is already OPEN is the one thing re-gating does
+            // not reach, because every gate above is asked when a surface is
+            // drawn. The composer is the only such surface: its Send posts
+            // `askAgentAdvanced` itself rather than through
+            // `runEditorCommand`, so a panel left standing after the host
+            // withdrew its agent is a live control for a thing that is gone.
+            // The reload this message replaced took it away by destroying the
+            // page, which is why nothing else had to.
+            if (!hostHas("agent")) { closeAgentPanel(); }
         },
         requestPaletteCommands() {
             answerPaletteCommandsRequest();

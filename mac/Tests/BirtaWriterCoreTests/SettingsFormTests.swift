@@ -77,7 +77,10 @@ final class SettingsFormTests: XCTestCase {
         XCTAssertEqual(Set(rows).count, rows.count, "two targets share a row")
         // The floor first, then the targets in the vocabulary's order: a reader
         // meets what every flavor contains before the flavors.
-        XCTAssertEqual([.commonMark] + rows, SettingsForm.rows(of: SettingsForm.markdown),
+        // The pane's FIRST card: the row under it is about how a link is
+        // drawn rather than about a flavor, so the claim is made of the card
+        // that holds the vocabulary rather than of the whole pane.
+        XCTAssertEqual([.commonMark] + rows, SettingsForm.markdown.groups.first?.rows,
                        "the Markdown pane is not the floor and then the targets, in vocabulary order")
         // The label a reader sees is the target's own, spelled once.
         XCTAssertEqual(rows.map(\.rawValue), SyntaxSet.allCases.map(\.label))
