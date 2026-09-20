@@ -44,7 +44,7 @@ import { renderFrontmatterPanel, refreshFrontmatterEmptyState } from "./componen
 import { dispatchFmSuggestions } from "./components/frontmatter/suggestMenu";
 import { runEditorCommand } from "./editorCommands";
 import { refreshShortcutsHelpIfLoaded } from "./components/shortcutsHelp/loader";
-import { setHostCapabilities } from "../shared/hostProfile";
+import { hostHas, setHostCapabilities } from "../shared/hostProfile";
 import { answerPaletteCommandsRequest, repostPaletteCommandsIfAsked } from "./paletteCommands";
 import { hideTooltip, showTooltipForRect } from "./ui/tooltip";
 import {
@@ -59,7 +59,7 @@ import { handleEmbedCardResult, setConnectorStates } from "./embedConnector";
 import { regateEmbeds } from "./plugins/embed";
 import { setWhatsNewUnread } from "./components/toolbar/settingsMenu";
 import { setAgentRoute } from "./agentRoute";
-import { resolveAgentAttachment, setAgentCapabilities } from "./agentPanelController";
+import { closeAgentPanel, resolveAgentAttachment, setAgentCapabilities } from "./agentPanelController";
 import { resolveNativeDatePicker } from "./dateInsert";
 import { resolveHostDiagnostics, resolveHostPrompt } from "./hostPrompt";
 
@@ -693,6 +693,15 @@ export function createMessageHandlers(
             topbarTb?.refreshOfferedItems();
             refreshShortcutsHelpIfLoaded();
             repostPaletteCommandsIfAsked();
+            // A surface that is already OPEN is the one thing re-gating does
+            // not reach, because every gate above is asked when a surface is
+            // drawn. The composer is the only such surface: its Send posts
+            // `askAgentAdvanced` itself rather than through
+            // `runEditorCommand`, so a panel left standing after the host
+            // withdrew its agent is a live control for a thing that is gone.
+            // The reload this message replaced took it away by destroying the
+            // page, which is why nothing else had to.
+            if (!hostHas("agent")) { closeAgentPanel(); }
         },
         requestPaletteCommands() {
             answerPaletteCommandsRequest();

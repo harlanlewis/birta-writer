@@ -19,6 +19,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import "./setup";
 import { createMessageHandlers, type MessageHandlerDeps, type ToolbarController } from "../messageHandlers";
 import { commandAvailable } from "../../shared/commandAvailability";
+import { agentPanelOpen, closeAgentPanel, openAgentPanel } from "../agentPanelController";
 import { hostHas, ALL_HOST_CAPABILITIES, HOST_PROFILES, LIVE_HOST_CAPABILITIES } from "../../shared/hostProfile";
 
 function stubDeps(topbarTb: ToolbarController | null): MessageHandlerDeps {
@@ -150,6 +151,41 @@ describe("a live host-capability change", () => {
             { type: "hostCapabilitiesChanged", capabilities: WITHOUT_AGENT }, container,
         )).not.toThrow();
         expect(hostHas("agent")).toBe(false);
+    });
+
+    it("should take away a composer that is already open, which no gate reaches", async () => {
+        // Every other gate here is asked when a surface is DRAWN, so a panel
+        // already standing is untouched by all of them, and its Send posts
+        // `askAgentAdvanced` itself rather than through `runEditorCommand`.
+        // The reload this message replaced took it away by destroying the
+        // page. Opened for real rather than stubbed, because what is in doubt
+        // is whether the handler reaches the panel at all.
+        window.__i18n!.host = { capabilities: MAC, arrangements: [], shortcuts: [] };
+        openAgentPanel(() => null);
+        await vi.waitFor(() => expect(agentPanelOpen()).toBe(true));
+
+        const handlers = createMessageHandlers(stubDeps(null));
+        handlers.hostCapabilitiesChanged!(
+            { type: "hostCapabilitiesChanged", capabilities: WITHOUT_AGENT }, container);
+
+        expect(agentPanelOpen()).toBe(false);
+    });
+
+    it("should leave an open composer alone while the agent is still there", async () => {
+        // The other arm, so the close above is the withdrawal rather than the
+        // message: a reader who turns some other capability off must not lose
+        // the request they are in the middle of typing.
+        window.__i18n!.host = { capabilities: MAC, arrangements: [], shortcuts: [] };
+        openAgentPanel(() => null);
+        await vi.waitFor(() => expect(agentPanelOpen()).toBe(true));
+
+        const handlers = createMessageHandlers(stubDeps(null));
+        handlers.hostCapabilitiesChanged!(
+            { type: "hostCapabilitiesChanged", capabilities: MAC.filter((c) => c !== "toc") },
+            container);
+
+        expect(agentPanelOpen()).toBe(true);
+        closeAgentPanel();
     });
 
     it("should name capabilities a host actually has, or it withdraws nothing", () => {
