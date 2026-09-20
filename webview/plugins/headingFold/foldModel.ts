@@ -608,24 +608,39 @@ export function cleanFoldedPositions(doc: any, folded: Iterable<number>): Set<nu
     return next;
 }
 
-/** Every foldable position in the doc: top-level heading sections plus every
- * other foldable kind at any chrome-bearing depth (callouts, list items with
- * descendants, tables with body rows, non-empty code blocks — one fold
- * grammar, so Fold All folds them all). */
-export function allFoldablePositions(doc: any): number[] {
-    const positions: number[] = [];
+/** Every foldable position in the doc paired with the range it hides: top-level
+ * heading sections plus every other foldable kind at any chrome-bearing depth
+ * (callouts, list items with descendants, tables with body rows, non-empty code
+ * blocks — one fold grammar, so Fold All folds them all).
+ *
+ * The range comes back because this walk already has it. Both branches below
+ * resolve one — the heading branch reads it out of the cached map, the
+ * descendant branch computes it from a node it holds — and a caller that wants
+ * it too must otherwise ask `foldHiddenRange` from a bare position, which is
+ * the `doc.nodeAt` fragment scan that function's own comment names as the
+ * hazard, paid once per foldable. `foldLevels` did exactly that. */
+export function allFoldableEntries(doc: any): { pos: number; range: HeadingFoldRange }[] {
+    const entries: { pos: number; range: HeadingFoldRange }[] = [];
     for (const [pos, range] of cachedFoldRanges(doc)) {
         if (range) {
-            positions.push(pos);
+            entries.push({ pos, range });
         }
     }
     doc.descendants((node: any, pos: number) => {
-        if (!isHeadingNode(node) && foldHiddenRange(doc, pos, node) !== null) {
-            positions.push(pos);
+        if (!isHeadingNode(node)) {
+            const range = foldHiddenRange(doc, pos, node);
+            if (range !== null) {
+                entries.push({ pos, range });
+            }
         }
         return true;
     });
-    return positions;
+    return entries;
+}
+
+/** Every foldable position in the doc, in `allFoldableEntries`' order. */
+export function allFoldablePositions(doc: any): number[] {
+    return allFoldableEntries(doc).map((entry) => entry.pos);
 }
 
 /**
@@ -658,13 +673,14 @@ export function allFoldablePositions(doc: any): number[] {
  * a few thousand foldables would make the difference visible.
  */
 export function foldLevels(doc: any): Map<number, number> {
-    const entries: { pos: number; to: number }[] = [];
-    for (const pos of allFoldablePositions(doc)) {
-        const range = foldHiddenRange(doc, pos);
-        if (range) {
-            entries.push({ pos, to: range.to });
-        }
-    }
+    // The ranges come from the walk rather than being asked for again: every
+    // entry it returns already carries one, and re-deriving it from a bare
+    // position cost a `doc.nodeAt` fragment scan per foldable, which on a
+    // document whose foldables are mostly its headings is the block count
+    // squared. The sort below is what the stack needs and is the O(n log n)
+    // this function's contract names.
+    const entries = allFoldableEntries(doc)
+        .map(({ pos, range }) => ({ pos, to: range.to }));
     entries.sort((a, b) => a.pos - b.pos);
     const levels = new Map<number, number>();
     // Ends of the ranges still open at the current position, innermost last.
