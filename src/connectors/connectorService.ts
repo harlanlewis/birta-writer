@@ -111,6 +111,12 @@ export class ConnectorService {
     private cache = new Map<string, Promise<EmbedCardResult | null>>();
     /** Connected-state mirror, so the hot path avoids a keychain read per card. */
     private connected = new Map<ConnectorId, boolean>();
+    /**
+     * Token renewals in flight, one per connector, so concurrent resolves of
+     * different cards share a renewal instead of racing each other into
+     * spending the same refresh token twice. Holds promises, never credentials.
+     */
+    private renewing = new Map<ConnectorId, Promise<string | null>>();
 
     /**
      * The browser round trip, injectable so a test drives connect and refresh
@@ -502,20 +508,63 @@ export class ConnectorService {
         if (!record.refreshToken) {
             return null;
         }
-        const refreshed = await this.flow.refresh(spec, record.refreshToken);
+        // One renewal per connector at a time, and every concurrent resolve
+        // waits on the same one.
+        //
+        // The resolve cache dedupes by CARD, so two different issue links in a
+        // document are two independent resolves that read the same lapsed
+        // record in the same turn. Renewing once each is not merely wasteful:
+        // against a provider that rotates its refresh token, the second spends
+        // one the first already invalidated, so a card reads `expired` while
+        // the connection is fine, and the two writes race over which record
+        // survives. Measured at two calls before this existed.
+        //
+        // Keyed by connector rather than by the refresh token, which would be
+        // a second place a credential lives. The renewal writes its record
+        // before it settles, so a resolve arriving after the entry is dropped
+        // reads the fresh record and asks for nothing.
+        const inFlight = this.renewing.get(spec.id);
+        if (inFlight) {
+            return inFlight;
+        }
+        const pending = this.renew(spec, record.refreshToken);
+        this.renewing.set(spec.id, pending);
+        try {
+            return await pending;
+        } finally {
+            this.renewing.delete(spec.id);
+        }
+    }
+
+    /**
+     * Spend a refresh token and record what came back, or null when the
+     * provider would not renew.
+     *
+     * Nothing is written on a failure. A record carrying a fresh access token
+     * beside a spent refresh token, or one whose refresh token was cleared, is
+     * unrecoverable without reconnecting and would not say so, which is worse
+     * than the `expired` card a null produces.
+     */
+    private async renew(spec: ConnectorSpec, refreshToken: string): Promise<string | null> {
+        const refreshed = await this.flow.refresh(spec, refreshToken);
         if (!refreshed.ok) {
             return null;
         }
-        // The provider may or may not rotate the refresh token. Keeping the old
-        // one when none comes back is what makes a non-rotating provider work;
-        // overwriting with undefined would end the connection at the next
-        // expiry for no reason.
+        // A disconnect may have landed while the provider was answering.
+        // Writing now would resurrect a credential the user just deleted, and
+        // "disconnecting deletes it" is a promise rather than a tendency.
+        if (await this.readRecord(spec.id) === null) {
+            return null;
+        }
         await this.writeRecord(spec.id, {
             auth: spec.auth,
             token: refreshed.tokens.accessToken,
-            ...(refreshed.tokens.refreshToken ?? record.refreshToken
-                ? { refreshToken: refreshed.tokens.refreshToken ?? record.refreshToken }
-                : {}),
+            // The provider may or may not rotate. Keeping the one just spent
+            // when none comes back is what makes a non-rotating provider work;
+            // overwriting with undefined would end the connection at the next
+            // expiry for no reason. One of the two always exists, because a
+            // renewal is only attempted while holding a refresh token.
+            refreshToken: refreshed.tokens.refreshToken ?? refreshToken,
             ...(refreshed.tokens.expiresAt !== undefined
                 ? { expiresAt: refreshed.tokens.expiresAt }
                 : {}),
@@ -543,10 +592,27 @@ export class ConnectorService {
                 return null;
             }
             const token = (parsed as { token?: unknown }).token;
+            const refreshToken = (parsed as { refreshToken?: unknown }).refreshToken;
+            const expiresAt = (parsed as { expiresAt?: unknown }).expiresAt;
             const privateAccess = (parsed as { privateAccess?: unknown }).privateAccess;
+            // Every field `writeRecord` stores is read back here. A field
+            // written and not read is not a smaller record, it is a silently
+            // disabled feature: `refreshToken` and `expiresAt` were stored by
+            // the OAuth connect and dropped here, which left `expiresAt`
+            // permanently undefined, so `oauthCredential` always took its
+            // still-good branch and no refresh could ever run.
+            //
+            // `expiresAt` is typed rather than taken on trust: a keychain value
+            // is JSON somebody else could have written, and a non-number there
+            // would make the comparison against `Date.now()` answer false and
+            // refresh on every single resolve.
             return {
                 auth,
                 ...(typeof token === "string" ? { token } : {}),
+                ...(typeof refreshToken === "string" ? { refreshToken } : {}),
+                ...(typeof expiresAt === "number" && Number.isFinite(expiresAt)
+                    ? { expiresAt }
+                    : {}),
                 ...(privateAccess === true ? { privateAccess: true } : {}),
             };
         } catch {

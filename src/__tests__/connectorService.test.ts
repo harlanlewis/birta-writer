@@ -672,4 +672,316 @@ describe("ConnectorService", () => {
             expect(checked).toBe(cases.length);
         });
     });
+
+    /**
+     * The `oauth-pkce` refresh, which had never run.
+     *
+     * `connectViaOAuth` stored `refreshToken` and `expiresAt`; `readRecord`
+     * reconstructed the record by hand and read back only `auth`, `token` and
+     * `privateAccess`. So `record.expiresAt` was always undefined, the
+     * still-good branch always won, and `record.refreshToken` was never there
+     * for the branch below it. A lapsed Linear grant read as `expired` and
+     * asked the user to reconnect a connection the code was written to renew
+     * for them.
+     *
+     * These pin the renewal itself and the four properties the rest of this
+     * seam already promises: the token goes to the pinned host and nowhere
+     * else, a failure writes nothing, rotation replaces and silence keeps, and
+     * two lapsing cards spend the refresh token once between them.
+     */
+    describe("a lapsed oauth-pkce connection", () => {
+        const ISSUE_A = "https://linear.app/acme/issue/MAR-1/one";
+        const ISSUE_B = "https://linear.app/acme/issue/MAR-2/two";
+        const STALE = "stale-access-token";
+        const OLD_REFRESH = "the-old-refresh-token";
+
+        /** A stored connection whose access token lapsed ten seconds ago. */
+        function lapsed(extra: Record<string, unknown> = {}): string {
+            return JSON.stringify({
+                auth: "oauth-pkce",
+                token: STALE,
+                refreshToken: OLD_REFRESH,
+                expiresAt: Date.now() - 10_000,
+                ...extra,
+            });
+        }
+
+        /** An OAuthFlow whose refresh is a spy, so nothing reaches a network. */
+        function flowWith(refresh: ReturnType<typeof vi.fn>) {
+            return { authorize: vi.fn(), refresh } as unknown as ConstructorParameters<
+                typeof ConnectorService
+            >[1];
+        }
+
+        const grants = (tokens: Record<string, unknown>) =>
+            vi.fn(async () => ({ ok: true as const, tokens }));
+
+        const issue = () => jsonResponse({
+            data: { issues: { nodes: [{ identifier: "MAR-1", title: "An issue" }] } },
+        });
+
+        it("a lapsed grant should renew itself and put the FRESH token on the wire", async () => {
+            // The regression test for the defect. Before the fix this refresh
+            // was called zero times and `Bearer stale-access-token` went out.
+            const refresh = grants({ accessToken: "fresh-access-token" });
+            const fetchSpy = vi.fn(async () => issue());
+            vi.stubGlobal("fetch", fetchSpy);
+            const secrets = fakeSecrets({ "birta.connector.linear": lapsed() });
+            const service = new ConnectorService(secrets.api, flowWith(refresh));
+
+            const result = await service.resolveCard(ISSUE_A);
+
+            // Reached before read: this path had never executed, so "the
+            // refresh never ran" is the outcome to rule out before believing
+            // anything the card says.
+            expect(refresh).toHaveBeenCalledTimes(1);
+            expect((refresh.mock.calls[0] as unknown as [unknown, string])[1]).toBe(OLD_REFRESH);
+            expect(result).toMatchObject({ state: "ready", connector: "linear" });
+            const [, init] = fetchSpy.mock.calls[0] as unknown as [string, RequestInit];
+            expect((init.headers as Record<string, string>).authorization)
+                .toBe("Bearer fresh-access-token");
+            expect(JSON.stringify(init.headers)).not.toContain(STALE);
+        });
+
+        it("a grant with no stated expiry should never be refreshed speculatively", async () => {
+            // Absent means the provider told us nothing, not that it lapsed.
+            // Refreshing on a guess spends a refresh token to solve a problem
+            // nobody reported, and on a rotating provider it would invalidate
+            // a token that was working.
+            const refresh = grants({ accessToken: "fresh-access-token" });
+            const fetchSpy = vi.fn(async () => issue());
+            vi.stubGlobal("fetch", fetchSpy);
+            const stored = JSON.stringify({ auth: "oauth-pkce", token: STALE, refreshToken: OLD_REFRESH });
+            const service = new ConnectorService(
+                fakeSecrets({ "birta.connector.linear": stored }).api,
+                flowWith(refresh),
+            );
+            await service.resolveCard(ISSUE_A);
+            expect(refresh).not.toHaveBeenCalled();
+            const [, init] = fetchSpy.mock.calls[0] as unknown as [string, RequestInit];
+            expect((init.headers as Record<string, string>).authorization).toBe(`Bearer ${STALE}`);
+        });
+
+        it("the skew window should be what decides, not the expiry alone", async () => {
+            // A token that expires during a round trip reads as a revoked
+            // grant, so renewal starts before the stated moment. Both sides of
+            // the window are asserted: one alone would pass against a branch
+            // that always refreshed or never did.
+            const cases: Array<[string, number, boolean]> = [
+                ["well inside its life", 10 * 60_000, false],
+                ["inside the skew window", 30_000, true],
+            ];
+            let checked = 0;
+            for (const [name, msAhead, shouldRefresh] of cases) {
+                const refresh = grants({ accessToken: "fresh-access-token" });
+                vi.stubGlobal("fetch", vi.fn(async () => issue()));
+                const service = new ConnectorService(
+                    fakeSecrets({
+                        "birta.connector.linear": lapsed({ expiresAt: Date.now() + msAhead }),
+                    }).api,
+                    flowWith(refresh),
+                );
+                await service.resolveCard(ISSUE_A);
+                expect(refresh.mock.calls.length > 0, name).toBe(shouldRefresh);
+                checked += 1;
+            }
+            expect(checked).toBe(cases.length);
+        });
+
+        it("a rotated refresh token should replace the old one in the keychain", async () => {
+            const refresh = grants({
+                accessToken: "fresh-access-token",
+                refreshToken: "rotated-refresh-token",
+                expiresAt: Date.now() + 3600_000,
+            });
+            vi.stubGlobal("fetch", vi.fn(async () => issue()));
+            const secrets = fakeSecrets({ "birta.connector.linear": lapsed() });
+            const service = new ConnectorService(secrets.api, flowWith(refresh));
+            await service.resolveCard(ISSUE_A);
+
+            expect(refresh).toHaveBeenCalledTimes(1);
+            const stored = JSON.parse(secrets.store.get("birta.connector.linear")!);
+            expect(stored.refreshToken).toBe("rotated-refresh-token");
+            expect(stored.token).toBe("fresh-access-token");
+            expect(stored.expiresAt).toBeGreaterThan(Date.now());
+            // And the renewed record must survive a read, or the next lapse
+            // repeats the whole defect one turn later.
+            expect(await new ConnectorService(secrets.api, flowWith(grants({}))).isConnected("linear"))
+                .toBe(true);
+        });
+
+        it("a provider that rotates nothing should keep the refresh token it had", async () => {
+            // Overwriting with undefined would end the connection at the next
+            // expiry for no reason, which is a defect that only shows up one
+            // token lifetime after the change that caused it.
+            const refresh = grants({ accessToken: "fresh-access-token" });
+            vi.stubGlobal("fetch", vi.fn(async () => issue()));
+            const secrets = fakeSecrets({ "birta.connector.linear": lapsed() });
+            await new ConnectorService(secrets.api, flowWith(refresh)).resolveCard(ISSUE_A);
+
+            expect(refresh).toHaveBeenCalledTimes(1);
+            const stored = JSON.parse(secrets.store.get("birta.connector.linear")!);
+            expect(stored.refreshToken).toBe(OLD_REFRESH);
+            expect(stored.token).toBe("fresh-access-token");
+        });
+
+        it("a refresh that fails should answer expired and leave the record untouched", async () => {
+            // Half a write is worse than none: a record carrying a fresh
+            // access token and a spent refresh token, or one whose refresh
+            // token was cleared, cannot be recovered from without reconnecting
+            // and would not say so.
+            const refresh = vi.fn(async () => ({ ok: false as const, reason: "refused" as const }));
+            const fetchSpy = vi.fn(async () => issue());
+            vi.stubGlobal("fetch", fetchSpy);
+            const before = lapsed();
+            const secrets = fakeSecrets({ "birta.connector.linear": before });
+            const service = new ConnectorService(secrets.api, flowWith(refresh));
+
+            expect(await service.resolveCard(ISSUE_A)).toEqual({ state: "expired", connector: "linear" });
+            expect(refresh).toHaveBeenCalledTimes(1);
+            // Byte for byte, so a rewrite that happened to round-trip the same
+            // fields would still be visible as a write.
+            expect(secrets.store.get("birta.connector.linear")).toBe(before);
+            expect(secrets.api.store).not.toHaveBeenCalled();
+            // And the stale token must not have been tried anyway. A failed
+            // renewal is the end of the attempt, not a fallback to the token
+            // we already know the provider is done with.
+            expect(fetchSpy).not.toHaveBeenCalled();
+        });
+
+        it("a connection with no refresh token should expire rather than ask for one", async () => {
+            const refresh = grants({ accessToken: "fresh-access-token" });
+            const fetchSpy = vi.fn(async () => issue());
+            vi.stubGlobal("fetch", fetchSpy);
+            const stored = JSON.stringify({
+                auth: "oauth-pkce", token: STALE, expiresAt: Date.now() - 10_000,
+            });
+            const service = new ConnectorService(
+                fakeSecrets({ "birta.connector.linear": stored }).api,
+                flowWith(refresh),
+            );
+            expect(await service.resolveCard(ISSUE_A)).toEqual({ state: "expired", connector: "linear" });
+            expect(refresh).not.toHaveBeenCalled();
+            expect(fetchSpy).not.toHaveBeenCalled();
+        });
+
+        it("two cards lapsing at once should spend the refresh token ONCE", async () => {
+            // The resolve cache dedupes by card id, so two DIFFERENT issue
+            // links are two independent resolves that both read the same
+            // lapsed record in the same turn. Without a single flight they
+            // both renew: on a rotating provider the second spends a refresh
+            // token the first already invalidated, so one of the two cards
+            // reads `expired` while the connection is perfectly good, and the
+            // two writes race over which record survives.
+            let issued = 0;
+            const refresh = vi.fn(async () => {
+                issued += 1;
+                // A real round trip is not instant, which is the whole reason
+                // a second resolve can arrive inside it.
+                await new Promise((r) => setTimeout(r, 5));
+                return issued === 1
+                    ? { ok: true as const, tokens: { accessToken: "fresh-access-token", refreshToken: "rotated" } }
+                    // A rotating provider refuses the token it already spent.
+                    : { ok: false as const, reason: "refused" as const };
+            });
+            const fetchSpy = vi.fn(async () => issue());
+            vi.stubGlobal("fetch", fetchSpy);
+            const secrets = fakeSecrets({ "birta.connector.linear": lapsed() });
+            const service = new ConnectorService(secrets.api, flowWith(refresh));
+
+            const [a, b] = await Promise.all([
+                service.resolveCard(ISSUE_A),
+                service.resolveCard(ISSUE_B),
+            ]);
+
+            expect(refresh).toHaveBeenCalledTimes(1);
+            expect(a).toMatchObject({ state: "ready" });
+            expect(b).toMatchObject({ state: "ready" });
+            const stored = JSON.parse(secrets.store.get("birta.connector.linear")!);
+            expect(stored.refreshToken).toBe("rotated");
+            expect(stored.token).toBe("fresh-access-token");
+        });
+
+        it("a renewal should be asked for again once the fresh token itself lapses", async () => {
+            // The single flight must be per attempt, not a latch: a service
+            // that renewed once and never again would pass the test above and
+            // fail the user one token lifetime later.
+            const refresh = grants({ accessToken: "fresh-access-token" });
+            vi.stubGlobal("fetch", vi.fn(async () => issue()));
+            const secrets = fakeSecrets({ "birta.connector.linear": lapsed() });
+            const service = new ConnectorService(secrets.api, flowWith(refresh));
+            await service.resolveCard(ISSUE_A);
+            expect(refresh).toHaveBeenCalledTimes(1);
+
+            // The renewal stored no expiry, so put the record back into a
+            // lapsed state the way a second token lifetime would.
+            secrets.store.set("birta.connector.linear", lapsed({ token: "fresh-access-token" }));
+            await service.resolveCard(ISSUE_B);
+            expect(refresh).toHaveBeenCalledTimes(2);
+        });
+
+        it("disconnecting during a renewal should not resurrect the credential", async () => {
+            // A hazard this change creates rather than one it inherits: before
+            // the renewal could run, nothing wrote a record after a disconnect.
+            // Now a renewal in flight when the user hits Disconnect would put
+            // a working credential back into the keychain, seconds after the
+            // editor said it had deleted it, and nothing would ever say so.
+            let release: (() => void) | undefined;
+            const refresh = vi.fn(async () => {
+                await new Promise<void>((r) => { release = r; });
+                return { ok: true as const, tokens: { accessToken: "fresh-access-token" } };
+            });
+            vi.stubGlobal("fetch", vi.fn(async () => issue()));
+            const secrets = fakeSecrets({ "birta.connector.linear": lapsed() });
+            const service = new ConnectorService(secrets.api, flowWith(refresh));
+
+            const pending = service.resolveCard(ISSUE_A);
+            await vi.waitFor(() => expect(release).toBeDefined());
+            // Reached before read: the disconnect has to land INSIDE the
+            // renewal, and a test where the renewal had already finished would
+            // pass without ever exercising the window.
+            expect(refresh).toHaveBeenCalledTimes(1);
+
+            await service.disconnect("linear");
+            release!();
+            expect(await pending).toEqual({ state: "expired", connector: "linear" });
+
+            expect(secrets.store.has("birta.connector.linear")).toBe(false);
+            expect(await service.isConnected("linear")).toBe(false);
+        });
+
+        it("a keychain expiry that is not a usable number should not renew on every resolve", async () => {
+            // A record is JSON in a store this process does not own, so the
+            // expiry is whatever text is there. A value the comparison against
+            // Date.now() answers false for reads as lapsed, and would spend a
+            // refresh token on every card in the document.
+            //
+            // The cases are written as raw JSON on purpose. An earlier version
+            // of this test passed `Number.NaN` through `JSON.stringify`, which
+            // emits `null`, so the NaN case never reached the finiteness check
+            // it was named for and the check survived being deleted. `-1e999`
+            // is the reachable way to get a non-finite number out of JSON.parse
+            // and it is the harmful direction: -Infinity reads as lapsed.
+            const cases = ['"soon"', "null", "{}", "-1e999", "1e999"];
+            let checked = 0;
+            for (const literal of cases) {
+                const raw = `{"auth":"oauth-pkce","token":"${STALE}",`
+                    + `"refreshToken":"${OLD_REFRESH}","expiresAt":${literal}}`;
+                // The fixture has to be able to express the case: a literal
+                // this parser rejects would make the record unreadable and the
+                // card `locked`, which is not what is under test here.
+                expect(() => JSON.parse(raw)).not.toThrow();
+                const refresh = grants({ accessToken: "fresh-access-token" });
+                vi.stubGlobal("fetch", vi.fn(async () => issue()));
+                const service = new ConnectorService(
+                    fakeSecrets({ "birta.connector.linear": raw }).api,
+                    flowWith(refresh),
+                );
+                await service.resolveCard(ISSUE_A);
+                expect(refresh, `expiresAt: ${literal}`).not.toHaveBeenCalled();
+                checked += 1;
+            }
+            expect(checked).toBe(cases.length);
+        });
+    });
 });
