@@ -40,6 +40,7 @@ done
 APP_NAME="Birta Writer"
 BUNDLE_ID="com.birtalabs.birta-writer"
 EXEC_NAME="BirtaWriter"
+ICON="AppIcon.icns"
 if [ "$FLAVOR" = dev ]; then
     APP_NAME="Birta Writer [DEV]"
     BUNDLE_ID="com.birtalabs.birta-writer-dev"
@@ -49,6 +50,10 @@ if [ "$FLAVOR" = dev ]; then
     # build quits the release: the app somebody keeps their notes in, taken
     # away by a build nobody asked to replace it.
     EXEC_NAME="BirtaWriterDev"
+    # The dark mark, so the Dock tells the two builds apart at a glance. It
+    # is copied in under the release icon's name, below, which keeps
+    # `CFBundleIconFile` one value rather than one more key to stamp.
+    ICON="AppIconDev.icns"
 fi
 
 for f in dist/webview.js dist/webview.css dist/hostPalette.css; do
@@ -92,8 +97,8 @@ cp mac/Resources/index.html "$APP/Contents/Resources/web/index.html"
 # The icons: AppIcon.icns is what Info.plist's CFBundleIconFile names, and
 # MenuBarTemplate.pdf is what the status item loads. Both are committed rather
 # than generated here, so no build machine needs rsvg-convert; regenerate them
-# with mac/scripts/make-icons.sh.
-cp mac/Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
+# with mac/scripts/make-icons.sh. The flavour decides which icon, not its name.
+cp "mac/Resources/$ICON" "$APP/Contents/Resources/AppIcon.icns"
 cp mac/Resources/MenuBarTemplate.pdf "$APP/Contents/Resources/MenuBarTemplate.pdf"
 # The first-run hero, both appearances. Committed outputs like the two above.
 cp mac/Resources/WelcomeHero.png "$APP/Contents/Resources/WelcomeHero.png"

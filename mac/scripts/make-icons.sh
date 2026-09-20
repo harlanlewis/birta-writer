@@ -6,6 +6,7 @@
 # Outputs, both checked in and both read by build-app.sh:
 #
 #   mac/Resources/AppIcon.icns          the app icon, every size macOS asks for
+#   mac/Resources/AppIconDev.icns       the DEVELOPMENT flavour's icon, the dark mark
 #   mac/Resources/MenuBarTemplate.pdf   the menu-bar mark, vector and alpha-only
 #   mac/Resources/WelcomeHero.png       the mark on the first-run screen, light
 #   mac/Resources/WelcomeHeroDark.png   the same, dark
@@ -13,7 +14,7 @@
 # The marks are drawn in a private repository, which stays the source of truth;
 # the SVGs here are deliberate copies, so that packaging never depends on that
 # checkout being present and a public clone can still regenerate. A brand
-# refresh starts by copying the two SVGs in, then running this.
+# refresh starts by copying the three SVGs in, then running this.
 #
 # Needs rsvg-convert and ImageMagick (brew install librsvg imagemagick). Neither
 # is a build dependency: the outputs are committed, so no build machine or CI
@@ -23,6 +24,7 @@ set -euo pipefail
 cd "$(dirname "$0")/../.."
 RES=mac/Resources
 OUT_ICNS="$RES/AppIcon.icns"
+OUT_ICNS_DEV="$RES/AppIconDev.icns"
 OUT_PDF="$RES/MenuBarTemplate.pdf"
 OUT_HERO="$RES/WelcomeHero.png"
 OUT_HERO_DARK="$RES/WelcomeHeroDark.png"
@@ -39,27 +41,36 @@ trap 'rm -rf "$WORK"' EXIT
 # radius 185.4, with the 100px margin all round that the system's own drop
 # shadow is drawn into. Shipping the flat square instead reads as a tile that
 # forgot to be an icon next to everything else in the Dock.
-rsvg-convert -w 824 -h 824 "$RES/birta-writer-mac-logo-light.svg" -o "$WORK/art.png"
 magick -size 824x824 xc:none -draw 'roundrectangle 0,0 823,823 185.4,185.4' -alpha extract "$WORK/mask.png"
-magick "$WORK/art.png" "$WORK/mask.png" -alpha off -compose CopyOpacity -composite "$WORK/rounded.png"
-magick "$WORK/rounded.png" -background none -gravity center -extent 1024x1024 "$WORK/icon1024.png"
 
-ICONSET="$WORK/AppIcon.iconset"
-mkdir -p "$ICONSET"
 # iconutil takes these names and no others; the @2x of one size and the @1x of
 # the next are the same pixels, and both have to be present.
-gen() { magick "$WORK/icon1024.png" -resize "${1}x${1}" -filter lanczos "$ICONSET/$2.png"; }
-gen 16 icon_16x16
-gen 32 'icon_16x16@2x'
-gen 32 icon_32x32
-gen 64 'icon_32x32@2x'
-gen 128 icon_128x128
-gen 256 'icon_128x128@2x'
-gen 256 icon_256x256
-gen 512 'icon_256x256@2x'
-gen 512 icon_512x512
-gen 1024 'icon_512x512@2x'
-iconutil -c icns "$ICONSET" -o "$OUT_ICNS"
+icns() {
+    local art="$WORK/art.png" icon="$WORK/icon1024.png" set="$WORK/AppIcon.iconset"
+    rsvg-convert -w 824 -h 824 "$RES/$1" -o "$art"
+    magick "$art" "$WORK/mask.png" -alpha off -compose CopyOpacity -composite "$WORK/rounded.png"
+    magick "$WORK/rounded.png" -background none -gravity center -extent 1024x1024 "$icon"
+    rm -rf "$set"
+    mkdir -p "$set"
+    gen() { magick "$icon" -resize "${1}x${1}" -filter lanczos "$set/$2.png"; }
+    gen 16 icon_16x16
+    gen 32 'icon_16x16@2x'
+    gen 32 icon_32x32
+    gen 64 'icon_32x32@2x'
+    gen 128 icon_128x128
+    gen 256 'icon_128x128@2x'
+    gen 256 icon_256x256
+    gen 512 'icon_256x256@2x'
+    gen 512 icon_512x512
+    gen 1024 'icon_512x512@2x'
+    iconutil -c icns "$set" -o "$2"
+}
+icns birta-writer-mac-logo-light.svg "$OUT_ICNS"
+# The DEVELOPMENT flavour wears the dark mark, so the two builds can be told
+# apart in the Dock and the app switcher, where both names are truncated to
+# the same "Birta Writer". `build-app.sh --dev` installs it under the release
+# icon's file name, so `CFBundleIconFile` stays one value in one plist.
+icns birta-writer-mac-logo-dark.svg "$OUT_ICNS_DEV"
 
 # The menu-bar mark. PDF because a status item is drawn at whatever the display's
 # backing scale is, and a template image is rendered from its alpha alone, which
@@ -93,4 +104,4 @@ hero() {
 hero birta-writer-mac-logo-light.svg "$OUT_HERO"
 hero birta-writer-mac-logo-dark.svg "$OUT_HERO_DARK"
 
-echo "wrote $OUT_ICNS, $OUT_PDF, $OUT_HERO and $OUT_HERO_DARK"
+echo "wrote $OUT_ICNS, $OUT_ICNS_DEV, $OUT_PDF, $OUT_HERO and $OUT_HERO_DARK"
