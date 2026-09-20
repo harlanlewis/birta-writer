@@ -65,6 +65,25 @@ export const IconPanelTop = svg(`<rect x="3" y="3" width="18" height="18" rx="2"
 // toggle buttons.
 export const IconPanelLeft = svg(`<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18"/>`);
 export const IconPanelRight = svg(`<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M15 3v18"/>`);
+/**
+ * `IconPanelLeft` with its pane inked: what a sidebar toggle draws while the
+ * panel it opens is OUT.
+ *
+ * The same frame and the same divider, so the pair reads as one mark in two
+ * states rather than two marks. What says "on" is the pane itself being
+ * filled, which is the thing the button is about; the alternative this
+ * replaces was a tinted box behind the whole glyph, which says "this control
+ * is active" about the button rather than "the panel is out" about the window.
+ *
+ * The fill is clipped to the frame's own rounded corners (the two arcs), so it
+ * meets the frame rather than squaring off inside it. It is drawn FIRST and
+ * the strokes go over it, which costs nothing (one colour) and keeps the
+ * outline's geometry exactly `IconPanelLeft`'s.
+ */
+export const IconPanelLeftFilled = svg(
+    `<path d="M9 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h4z" fill="currentColor" stroke="none"/>`
+    + `<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18"/>`,
+);
 // Two-way horizontal arrows: "swap sides". Used by the TOC dock-side switch.
 export const IconArrowLeftRight = svg(`<path d="M8 3 4 7l4 4"/><path d="M4 7h16"/><path d="m16 21 4-4-4-4"/><path d="M20 17H4"/>`);
 export const IconExpandHorizontal = svg(`<path d="M16 12h6"/><path d="M8 12H2"/><path d="M12 2v2"/><path d="M12 8v2"/><path d="M12 14v2"/><path d="M12 20v2"/><path d="m19 15 3-3-3-3"/><path d="m5 9-3 3 3 3"/>`);

@@ -250,7 +250,20 @@ export async function run({ page, check, baseUrl }) {
                 return panel.getBoundingClientRect().top
                     >= bar.getBoundingClientRect().bottom - row - 0.5;
             })(),
+            // What the button says, and how. The state is the MARK: one of
+            // its two glyphs is drawn and the other is not. The wash is read
+            // beside it so the check can assert it did NOT move, which is the
+            // half that would otherwise go unnoticed if the old treatment came
+            // back alongside the new one.
             lit: getComputedStyle(document.querySelector(".tb-toc-btn")).backgroundColor,
+            paneInked: (() => {
+                const svgs = [...document.querySelectorAll(".tb-toc-btn svg")];
+                const drawn = svgs.map((el) => getComputedStyle(el).display !== "none");
+                // Exactly one drawn, and it is the one carrying a filled path.
+                if (drawn.filter(Boolean).length !== 1) { return `drawn=${drawn.length ? drawn : "none"}`; }
+                const shown = svgs[drawn.indexOf(true)];
+                return shown.innerHTML.includes('fill="currentColor"');
+            })(),
             // The numbers behind `clearsBar`, in the payload rather than left
             // to be re-derived: a bare false there says the panel is under the
             // bar and not whether it is six pixels short (still sliding) or
@@ -303,8 +316,34 @@ export async function run({ page, check, baseUrl }) {
             open.open && open.panelOnScreen, JSON.stringify({ shut, open }));
         check("mac: and it starts below the window's chrome, beside the formatting row rather than under it",
             open.clearsBar, JSON.stringify(open));
-        check("mac: and the button says so, from the panel's own classes",
-            open.lit !== shut.lit, JSON.stringify({ shut: shut.lit, open: open.lit }));
+        check("mac: and the button says so by inking its pane, from the panel's own classes",
+            shut.paneInked === false && open.paneInked === true,
+            JSON.stringify({ shut: shut.paneInked, open: open.paneInked }));
+        // The other half of the same claim, and the one that only a browser
+        // can make: exactly one glyph is drawn at a time. Both are in the DOM,
+        // so a rule that stopped hiding either would put two marks in a 22px
+        // button and the structural assertion above would still hold.
+        check("mac: exactly one of the button's two glyphs is drawn in each state",
+            typeof shut.paneInked === "boolean" && typeof open.paneInked === "boolean",
+            JSON.stringify({ shut: shut.paneInked, open: open.paneInked }));
+        // ...and the wash it replaces is gone rather than drawn alongside it.
+        //
+        // Measured with the pointer OFF the button, which is the whole of why
+        // this is a second reading rather than another field of the one above:
+        // the click that opened the panel leaves the pointer on the button, so
+        // a background read there is `:hover`'s, which every button in the bar
+        // has and which says nothing about this state. Read there, this check
+        // failed on a build that was right.
+        await page.mouse.move(20, Math.round(await page.evaluate(() => window.innerHeight / 2)));
+        await page.waitForTimeout(250);
+        const rested = await page.evaluate(() => ({
+            lit: getComputedStyle(document.querySelector(".tb-toc-btn")).backgroundColor,
+            hovered: document.querySelector(".tb-toc-btn")?.matches(":hover") ?? null,
+        }));
+        check("mac: the pointer really did leave the button before its resting look was read",
+            rested.hovered === false, JSON.stringify(rested));
+        check("mac: and it no longer washes the whole button to say the same thing",
+            rested.lit === shut.lit, JSON.stringify({ shut: shut.lit, rested: rested.lit }));
 
         // A tab the strip has HIDDEN must take no width, or the row it is
         // measured in has more items in it than the measurement is told about.

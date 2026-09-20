@@ -294,15 +294,21 @@ final class TitlebarActionsView: NSView {
         /// The mark as a template image, or nil for a symbol this macOS does
         /// not have. Nil is worth surfacing rather than substituting: a button
         /// with no image is visible, and a stand-in is not.
+        ///
+        /// `toggledOn` is what the thing this button toggles is doing, and it
+        /// is read only by a mark that HAS a second state. An SF Symbol here
+        /// has none: they are the file verbs, which toggle nothing, so the
+        /// flag reaches nothing and changes nothing rather than being gated at
+        /// the call site.
         @MainActor
-        func image(named: String?) -> NSImage? {
+        func image(named: String?, toggledOn: Bool = false) -> NSImage? {
             switch self {
             case let .symbol(name):
                 let image = NSImage(systemSymbolName: name, accessibilityDescription: named)
                 image?.isTemplate = true
                 return image
             case .pane:
-                let image = PaneGlyph.image()
+                let image = PaneGlyph.image(paneFilled: toggledOn)
                 image.accessibilityDescription = named
                 return image
             }
@@ -569,6 +575,7 @@ final class TitlebarActionButton: NSButton {
 
     init(action: TitlebarActionsView.Action) {
         row = AppMenu.row(for: action.namedBy ?? action.selector)
+        glyph = action.glyph
         super.init(frame: .zero)
         // Template, so the mark inks itself from `contentTintColor` and
         // follows the appearance rather than carrying a colour this file would
@@ -628,18 +635,32 @@ final class TitlebarActionButton: NSButton {
     /// it.
     private var isToggleOn = false
 
-    /// Say whether the thing this button toggles is on, so the name follows
-    /// the menu row's: what a press will DO, never what is on screen.
+    /// Say whether the thing this button toggles is on: the name follows the
+    /// menu row's (what a press will DO, never what is on screen), and a mark
+    /// that has two states draws the other one.
     ///
-    /// Nothing else changes. The button draws no pressed state, because the
-    /// state is already on screen at full size: the sidebar it toggles is
-    /// either there or it is not, and a second, smaller picture of the same
-    /// fact is a visual channel spent saying what the window already says.
+    /// The MARK is where the state is said, not a wash behind the button. The
+    /// glyph is a picture of the window, so inking its pane says which half is
+    /// showing in the thing the button is already about; a tinted box says
+    /// "this control is active", which is what every option button in the
+    /// page's bar wears and is a different claim. `PaneGlyph` draws both, and
+    /// the page does the same swap in CSS for the outline's toggle at the
+    /// other end of the band (`IconPanelLeftFilled`).
+    ///
+    /// A button whose glyph has no second state is untouched, which is every
+    /// button here but the sidebar's.
     func setToggleOn(_ on: Bool) {
         guard on != isToggleOn else { return }
         isToggleOn = on
         nameSelf(offTitle: row?.title)
+        if let stated = glyph.image(named: row?.title, toggledOn: on) { image = stated }
     }
+
+    /// What this button draws, kept so a state change can ask it for the other
+    /// picture. The action is not kept: nothing else needs it, and a button
+    /// holding its whole action would invite reading the selector back out of
+    /// it instead of out of `TitlebarActionsView.shipped`.
+    private let glyph: TitlebarActionsView.Glyph
 
     required init?(coder: NSCoder) { fatalError("not used") }
 
