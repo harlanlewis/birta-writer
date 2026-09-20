@@ -17,7 +17,7 @@ import {
     computeRoundTripProtection,
     type RoundTripProtection,
 } from "@birta/minimal-diff";
-import { mergeVerified, mergeVerifiedWith } from "./utils/verifiedMerge";
+import { mergeVerified } from "./utils/verifiedMerge";
 import { verifyOracle, type VerifyOracle } from "./utils/verifyOracle";
 import { fingerprintDoc } from "./plugins/fingerprints";
 import { configureHeadingIds, seedHeadingIds, type HeadingIdSeed } from "./plugins/headingIdSync";
@@ -401,36 +401,44 @@ let _onUpdate: ((markdown: string) => void) | null = null;
 // at the call site in index.ts.
 let _onDocChange: (() => void) | null = null;
 
-// ── Off-thread verification (MAR-430, tier B0) ─────────────────────────────
-// A sync's verifying reparse is the one whole-document parse on the edit path
-// and, on a large document, most of the sync (`pnpm perf huge-outline` prints
-// the split as `sync split`). Above this many characters the reopen question
-// goes to the verify worker (utils/verifyOracle.ts) and the interaction
-// thread keeps only the serialize, the merge and the live fingerprint; below
-// it the parse is cheaper than a round trip, and the pipeline is the
-// synchronous one it always was. The floor sits above `pnpm perf large`, so
-// every gated launch fixture keeps the synchronous path, and below the typing
-// gate's `xlarge`, so that gate exercises the worker.
+// ── Off-thread sync (MAR-430 tier B0, MAR-432 tier B1) ─────────────────────
+// A sync's whole save decision — the serialize, the minimal-diff merge, the
+// live fingerprint and the verifying reparse — is O(document size), and on a
+// large document it is the largest thing the edit path does (`pnpm perf
+// huge-outline` prints the split as `sync split`). Above this many characters
+// the document goes to the sync worker (utils/verifyOracle.ts) as
+// `doc.toJSON()` and the bytes come back, so the interaction thread keeps one
+// JSON walk and a structured clone; below it a round trip costs more than the
+// work does, and the pipeline is the synchronous one it always was. The floor
+// sits above `pnpm perf large`, so every gated launch fixture keeps the
+// synchronous path, and below the typing gate's `xlarge`, so that gate
+// exercises the worker.
+//
+// The size read is the SAVED bytes, which the pipeline already holds, because
+// the decision now has to be made before anything has been serialized. It
+// trails the document by at most one sync, which moves only which path a
+// document crossing the floor takes on the sync that crosses it.
 //
 // The flush (`flushPendingEdit`) never waits on the worker: a save is the
-// user's own gesture, its answer is due inside the host's flush timeout, and
-// the main-thread check is the same function answering the same question.
-// What crosses to the worker is text and a fingerprint; what comes back is a
-// boolean. Which bytes reach the file is decided by `utils/verifiedMerge`
-// either way, and `verifiedMerge.test.ts` holds its two forms identical.
-export const OFF_THREAD_VERIFY_MIN_CHARS = 100_000;
-let _offThreadMinChars = OFF_THREAD_VERIFY_MIN_CHARS;
+// user's own gesture, and its answer is due inside the host's flush timeout.
+// Which bytes reach the file is decided by `mergeVerified`
+// (`utils/verifiedMerge`) in both places — the worker calls that same
+// function — so the worker moves where the work ran and never what it chose.
+export const OFF_THREAD_SYNC_MIN_CHARS = 100_000;
+let _offThreadMinChars = OFF_THREAD_SYNC_MIN_CHARS;
 
 /** Test seam: lower the floor so a jsdom-sized document takes the worker path. */
-export function setOffThreadVerifyMinCharsForTests(minChars: number | undefined): void {
-    _offThreadMinChars = minChars ?? OFF_THREAD_VERIFY_MIN_CHARS;
+export function setOffThreadSyncMinCharsForTests(minChars: number | undefined): void {
+    _offThreadMinChars = minChars ?? OFF_THREAD_SYNC_MIN_CHARS;
 }
 
-// Every serialization the pipeline takes, sync or flush, numbered in order.
-// THE ORDERING RULE: a worker's answer commits only while no serialization
-// has been taken since the one it answers. A flush taken meanwhile carried
-// fresher bytes to the file, and an older answer landing after it would post
-// older content under a newer seq, which the extension would apply; a later
+// Every point at which the pipeline takes the document's content, sync or
+// flush — by serializing it here, or by handing it to the worker as JSON —
+// numbered in order.
+// THE ORDERING RULE: a worker's answer commits only while nothing has been
+// taken since what it answers. A flush taken meanwhile carried fresher bytes
+// to the file, and an older answer landing after it would post older content
+// under a newer seq, which the extension would apply; a later
 // sync or an external re-base moved the baseline the answer was merged
 // against. All three read as "not current", and a stale answer is dropped
 // whole, never partially applied.
@@ -442,7 +450,7 @@ let _serialSeq = 0;
 let _inFlight: { editor: Editor; seq: number; saved: string } | null = null;
 let _syncOwed = false;
 
-/** The oracle to ask for this document, or null: the worker holds the markdown parser and no other. */
+/** The oracle to ask for this document, or null: the worker holds the markdown format and no other. */
 function offThreadOracle(): VerifyOracle | null {
     return format === markdownFormat ? verifyOracle() : null;
 }
@@ -451,9 +459,9 @@ function offThreadOracle(): VerifyOracle | null {
  * The file-ready bytes for `markdown`: the minimal-diff merge into the saved
  * text, verified to reopen as the document it came from (MAR-343 —
  * `utils/verifiedMerge`). Both save paths go through here or through
- * `mergeForSaveWith` below, which is the same decision with its reparse run
- * elsewhere; neither can acquire the check without the other, and the
- * merge's damage does not care which one wrote it.
+ * `mergeForSaveOffThread` below, which is this same function run in the
+ * worker; neither can acquire the check without the other, and the merge's
+ * damage does not care which one wrote it.
  *
  * The parser comes from the editor's own context, so this stays on the
  * FormatModule seam: the verifier is handed a parse function and a profile
@@ -461,12 +469,13 @@ function offThreadOracle(): VerifyOracle | null {
  *
  * Every pass stamps a `merge` work count: one pass, how many times the
  * verifier reparsed the merged bytes (zero for a file already in the
- * serializer's spelling, one or two otherwise), and how many of those ran on
- * the interaction thread. Each is a whole-document walk, so how many of them
- * a burst pays is what the nightly heavy-fixture gate holds
- * (`e2e/perf-counts.mjs`); a scheduler that fires too often, the defect #421
- * found, moves this count and no gated duration, and a worker that quietly
- * stops loading moves `mainReparses` off its ceiling of zero.
+ * serializer's spelling, one or two otherwise), how many of those ran on the
+ * interaction thread, and whether the serialize did. Each is a
+ * whole-document walk, so how many of them a burst pays is what the nightly
+ * heavy-fixture gate holds (`e2e/perf-counts.mjs`); a scheduler that fires
+ * too often, the defect #421 found, moves this count and no gated duration,
+ * and a worker that quietly stops loading moves `mainReparses` and
+ * `mainSerializes` off their ceiling of zero.
  */
 function mergeForSave(editor: Editor, markdown: string): { text: string; canonical: boolean } {
     let reparses = 0;
@@ -481,35 +490,29 @@ function mergeForSave(editor: Editor, markdown: string): { text: string; canonic
             return editor.action((ctx) => ctx.get(parserCtx)(text)) as ProseNode | null;
         },
     );
-    countWork("merge", { passes: 1, reparses, mainReparses: reparses });
+    countWork("merge", { passes: 1, reparses, mainReparses: reparses, mainSerializes: 1 });
     return result;
 }
 
 /**
- * `mergeForSave` with the reopen question asked of `oracle`. The merge, the
- * fallback and the live fingerprint are all taken synchronously, in the task
- * that serialized, so the answer describes the document as it stood at one
- * instant; only the reparse is awaited.
+ * The same decision, made in the worker. The document is taken as JSON and
+ * the baseline and its protection are read synchronously, in the task the
+ * caller is in, so the answer describes the document as it stood at one
+ * instant; the serialize, the merge, the fingerprint and the reparses all
+ * happen on the other side.
+ *
+ * `saved` is the caller's own record of the baseline rather than a fresh
+ * read, so the bytes that come back were merged into exactly the baseline
+ * the flight recorded and `isCurrent` is asking about the right one.
  */
-async function mergeForSaveWith(
-    editor: Editor,
-    markdown: string,
+async function mergeForSaveOffThread(
+    doc: ProseNode,
+    saved: string,
     oracle: VerifyOracle,
 ): Promise<{ text: string; canonical: boolean }> {
-    let reparses = 0;
-    const result = await mergeVerifiedWith(
-        _savedMarkdown,
-        markdown,
-        format.formatProfile,
-        getProtection(),
-        () => fingerprintDoc(editor.action((ctx) => getState(ctx).doc)),
-        (liveFp, text) => {
-            reparses++;
-            return oracle.reopens(liveFp, text);
-        },
-    );
-    countWork("merge", { passes: 1, reparses, mainReparses: 0 });
-    return result;
+    const answer = await oracle.merge(doc.toJSON(), saved, getProtection());
+    countWork("merge", { passes: 1, reparses: answer.reparses, mainReparses: 0, mainSerializes: 0 });
+    return { text: answer.text, canonical: answer.canonical };
 }
 
 /**
@@ -547,12 +550,11 @@ function dropCanonicalProtection(): void {
  * protection, and ship it to the extension if it substantively changed. The
  * scheduler guarantees this is never called mid-IME-composition.
  *
- * On a document past the off-thread floor the verifying reparse is asked of
- * the worker and the commit lands when it answers; everything else about the
- * sync, the serialize included, still happens here and now. The answer is
- * committed only while it is current (see `_serialSeq`), and an oracle that
- * fails answers the same question on this thread, so the worker decides
- * where the check ran and never whether it ran.
+ * On a document past the off-thread floor the whole decision is asked of the
+ * worker and the commit lands when it answers; what happens here and now is
+ * one `doc.toJSON()`. The answer is committed only while it is current (see
+ * `_serialSeq`), and an oracle that fails makes the same decision on this
+ * thread, so the worker decides where the work ran and never what it chose.
  */
 function syncNow(): void {
     if (!_editor) { return; }
@@ -562,19 +564,19 @@ function syncNow(): void {
         _syncOwed = true;
         return;
     }
-    const markdown = editor.action(getMarkdown());
-    const seq = ++_serialSeq;
-    if (!oracle || markdown.length < _offThreadMinChars) {
-        commitSync(mergeForSave(editor, markdown));
+    if (!oracle || _savedMarkdown.length < _offThreadMinChars) {
+        ++_serialSeq;
+        commitSync(mergeForSave(editor, editor.action(getMarkdown())));
         return;
     }
-    const flight = { editor, seq, saved: _savedMarkdown };
+    const doc = editor.action((ctx) => getState(ctx).doc);
+    const flight = { editor, seq: ++_serialSeq, saved: _savedMarkdown };
     _inFlight = flight;
-    mergeForSaveWith(editor, markdown, oracle).then(
+    mergeForSaveOffThread(doc, flight.saved, oracle).then(
         (result) => settleSync(flight, result),
         // The oracle retired itself (utils/verifyOracle.ts). The same
-        // question, answered here, if the answer is still wanted.
-        () => settleSync(flight, isCurrent(flight) ? mergeForSave(editor, markdown) : null),
+        // decision, made here, if the answer is still wanted.
+        () => settleSync(flight, isCurrent(flight) ? mergeForSave(editor, editor.action(getMarkdown())) : null),
     );
 }
 
@@ -743,12 +745,12 @@ export function acknowledgeFlush(id: string, applied: boolean): void {
  * processor alone gives the first half, the whole parse gives the sum, and
  * construction is the difference.
  *
- * `syncSplit` (MAR-430): what one sync costs, piece by piece, on the
- * document as it stands: the serialize, the minimal-diff merge, the live
- * fingerprint, and the verifying reparse of the merged bytes. `offThread`
- * says whether this document's syncs send that reparse to the verify worker,
- * so the reading says which pieces the interaction thread still pays. It is
- * how MAR-432 sizes its next tier.
+ * `syncSplit` (MAR-430, MAR-432): what one sync costs, piece by piece, on
+ * the document as it stands: the `doc.toJSON()` snapshot, the serialize, the
+ * minimal-diff merge, the live fingerprint, and the verifying reparse of the
+ * merged bytes. `offThread` says whether this document's syncs hand all but
+ * the snapshot to the sync worker, so the reading says which pieces the
+ * interaction thread still pays. It is how the next tier is sized.
  */
 function installPerfProbes(editor: Editor, markdown: string): void {
     const host = globalThis as { __perfInit?: unknown; __birtaPerf?: unknown };
@@ -775,23 +777,27 @@ function installPerfProbes(editor: Editor, markdown: string): void {
             const mdast = t1 - t0;
             return { mdast, pm: (t2 - t1) - mdast, chars: markdown.length };
         },
-        syncSplit(): { serialize: number; merge: number; fingerprint: number; reparse: number; chars: number; offThread: boolean } {
-            const t0 = performance.now();
+        syncSplit(): { toJson: number; serialize: number; merge: number; fingerprint: number; reparse: number; chars: number; offThread: boolean } {
+            const doc = editor.action((ctx) => getState(ctx).doc);
+            const tj0 = performance.now();
+            doc.toJSON();
+            const tj1 = performance.now();
             const serialized = editor.action(getMarkdown());
             const t1 = performance.now();
             const merged = applyMinimalChanges(_savedMarkdown, serialized, format.formatProfile, getProtection());
             const t2 = performance.now();
-            fingerprintDoc(editor.action((ctx) => getState(ctx).doc));
+            fingerprintDoc(doc);
             const t3 = performance.now();
             editor.action((ctx) => ctx.get(parserCtx)(merged));
             const t4 = performance.now();
             return {
-                serialize: t1 - t0,
+                toJson: tj1 - tj0,
+                serialize: t1 - tj1,
                 merge: t2 - t1,
                 fingerprint: t3 - t2,
                 reparse: t4 - t3,
                 chars: serialized.length,
-                offThread: serialized.length >= _offThreadMinChars && offThreadOracle() !== null,
+                offThread: _savedMarkdown.length >= _offThreadMinChars && offThreadOracle() !== null,
             };
         },
     };
@@ -1300,10 +1306,10 @@ export async function createEditor(
     instrumentTransactions(_editor.action((ctx) => getView(ctx)));
     installPerfProbes(_editor, initialMarkdown);
 
-    // A document past the off-thread floor starts its verify worker now, in
-    // idle time after the mount, and runs the worker's parser over the text
-    // once so the first sync's question is answered warm. The main thread
-    // pays a Blob and a constructor; the parse is the worker's.
+    // A document past the off-thread floor starts its sync worker now, in
+    // idle time after the mount, and runs the worker's parser and serializer
+    // over the text once so the first sync's question is answered warm. The
+    // main thread pays a Blob and a constructor; the rest is the worker's.
     if (initialMarkdown.length >= _offThreadMinChars) {
         requestIdle(() => offThreadOracle()?.warm(initialMarkdown), 5000);
     }

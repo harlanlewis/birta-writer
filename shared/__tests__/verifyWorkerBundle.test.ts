@@ -1,5 +1,5 @@
 /**
- * The verify worker's SHIPPED script, run where there is no document.
+ * The sync worker's SHIPPED script, run where there is no document.
  *
  * `verifyWorker.test.ts` drives the entry through Vitest's module graph, and
  * that graph resolves packages the way Node does. esbuild resolves them the
@@ -24,7 +24,7 @@ import { verifyWorkerBuildOptions } from "../../scripts/verifyWorkerBuild.mjs";
 
 const webviewDir = join(__dirname, "..", "..", "webview");
 
-describe("the verify worker's shipped script", () => {
+describe("the sync worker's shipped script", () => {
     it("should load and answer in a scope with no document", async () => {
         const result = await esbuild.build({
             ...verifyWorkerBuildOptions({ production: false, webviewDir }),
@@ -58,18 +58,29 @@ describe("the verify worker's shipped script", () => {
             EventTarget,
             crypto,
             navigator: { userAgent: "worker" },
+            // A real `postMessage` structured-clones, so the protection's
+            // maps arrive as the receiving realm's own; nothing clones across
+            // a vm context, so the script is given this realm's `Map` and the
+            // profile's `instanceof Map` shape check answers as it does in a
+            // browser. Without it the merge would run with no baseline facts,
+            // which is a different question than this one asks.
+            Map,
         };
         scope.self = scope;
         scope.globalThis = scope;
         const context = createContext(scope);
         expect(runInContext("typeof document", context)).toBe("undefined");
+        expect(runInContext("new Map()", context)).toBeInstanceOf(Map);
         runInContext(script!.text, context, { filename: "verifyWorker.js" });
 
-        const text = "# Notes\n\n- alpha\n    - beta\n\nProse with an &amp; entity and a [link](https://example.com).\n";
-        // The fingerprint the page would send, from the parser the page uses.
+        // A four-space outline the serializer spells at two, carrying the
+        // entity whose decoder is the reason this file exists. The merge has
+        // to come back holding the file's own indentation, which it can only
+        // do if the protection crossed and the verifying reparse ran.
+        const saved = "# Notes\n\n- alpha\n    - beta\n\nProse with an &amp; entity and a [link](https://example.com).\n";
         const { createHeadlessParser } = await import("../../webview/utils/headlessParser");
         const { markdownParse } = await import("../../webview/format/markdown/parse");
-        const { fingerprintDoc } = await import("../../webview/plugins/fingerprints");
+        const { computeRoundTripProtection, markdownProfile } = await import("../../webview/utils/minimalDiff");
         // This test's own global needs the same one capability for the
         // parser built here (headlessParserNoDom.test.ts says why), on a
         // target of its own so the two scopes never hear each other's timers.
@@ -80,19 +91,23 @@ describe("the verify worker's shipped script", () => {
             dispatchEvent: outer.dispatchEvent.bind(outer),
         });
         const parser = await createHeadlessParser(markdownParse);
-        const liveFp = fingerprintDoc(parser.parse(text)!);
+        const protection = computeRoundTripProtection(saved, parser.serialize(parser.parse(saved)!), markdownProfile);
+        // The heading, so the entity line stays untouched and its saved
+        // spelling is the merge keeping bytes rather than the serializer
+        // reproducing them.
+        const edited = saved.replace("# Notes", "# Notes and more");
 
         const ask = (request: VerifyRequest): void => {
             target.dispatchEvent(new MessageEvent("message", { data: request }));
         };
-        ask({ type: "reopens", id: 1, text, liveFp });
-        ask({ type: "reopens", id: 2, text: text.replace("\n    - beta", "\n- beta"), liveFp });
+        ask({ type: "merge", id: 1, doc: parser.parse(saved)!.toJSON(), saved, protection });
+        ask({ type: "merge", id: 2, doc: parser.parse(edited)!.toJSON(), saved, protection });
         for (let i = 0; i < 2000 && replies.length < 2; i++) {
             await new Promise((resolve) => setTimeout(resolve, 5));
         }
         expect(replies).toEqual([
-            { type: "verdict", id: 1, reopens: true },
-            { type: "verdict", id: 2, reopens: false },
+            { type: "merged", id: 1, text: saved, canonical: false, reparses: 1 },
+            { type: "merged", id: 2, text: edited, canonical: false, reparses: 1 },
         ]);
         await parser.destroy();
     }, budget(60_000));

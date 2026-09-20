@@ -20,7 +20,8 @@
       "mdw:style-scan.chars": 8629,
       "mdw:lint-request.blocks": 61,
       "mdw:lint-request.chars": 8629,
-      "mdw:merge.mainReparses": 0
+      "mdw:merge.mainReparses": 0,
+      "mdw:merge.mainSerializes": 0
     }
   }
 }
