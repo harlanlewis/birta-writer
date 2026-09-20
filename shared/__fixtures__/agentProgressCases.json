@@ -1,0 +1,340 @@
+{
+  "_comment": [
+    "The /ai progress reader's cases, as data, because there are two implementations of it:",
+    "src/agentBridge/agentProgress.ts for the extension and",
+    "mac/Sources/BirtaWriterCore/AgentProgress.swift for Birta Writer for Mac. Neither",
+    "language can import the other, so the cases live here and both suites read this file:",
+    "src/__tests__/agentProgress.test.ts and",
+    "mac/Tests/BirtaWriterCoreTests/AgentProgressTests.swift. Both assert the count they ran,",
+    "and shared/__tests__/agentProgressPort.test.ts holds the two readers' constants and",
+    "words together.",
+    "",
+    "The two structured streams are the actual bytes a real run printed, on the version",
+    "their names carry, captured 2026-09-20, for the reason the help fixtures are",
+    "captures: a schema written by hand only proves the reducer agrees with whoever wrote",
+    "it. Three things are trimmed from the capture and nothing else is altered: the init",
+    "event's tool list, the thinking block's signature, and the result event's usage block.",
+    "The run captured for each: note.md holding two lines, one request to read it and",
+    "append a line, in an empty directory.",
+    "",
+    "Each case is fed chunk by chunk to one fresh reader. A feed entry's chunk is repeated",
+    "`repeat` times to make the text, and that text is fed `feeds` times (default 1);",
+    "`shows` is what the LAST of those reads answered, null for nothing. `structured` and",
+    "`lastSaid` are the reader's state after the whole case.",
+    "",
+    "Add a case here, not in one suite. A case only one implementation passes is the",
+    "finding, not the fixture's problem."
+  ],
+  "cases": [
+    {
+      "name": "claude-code-2.1.278-stream-json",
+      "why": "A captured Claude Code run, one event per chunk, reduced to the steps a reader can follow. The thinking block arrived with an EMPTY thinking string beside a signature: the harness withholding the content, not this reducer.",
+      "feed": [
+        {
+          "stream": "stdout",
+          "chunk": "{\"type\":\"system\",\"subtype\":\"init\",\"cwd\":\"/tmp/probe\",\"session_id\":\"b96cf965-8bfd-4959-9102-fe31e7e1867d\",\"tools\":[\"Task\",\"Bash\",\"Read\"],\"model\":\"claude-haiku-4-5-20251001\",\"permissionMode\":\"acceptEdits\"}\n",
+          "shows": null
+        },
+        {
+          "stream": "stdout",
+          "chunk": "{\"type\":\"system\",\"subtype\":\"thinking_tokens\",\"estimated_tokens\":50,\"estimated_tokens_delta\":50,\"session_id\":\"b96cf965-8bfd-4959-9102-fe31e7e1867d\",\"uuid\":\"8b72d60c-5272-490f-bc1e-4a888f25e0b1\"}\n",
+          "shows": "Thinking"
+        },
+        {
+          "stream": "stdout",
+          "chunk": "{\"type\":\"assistant\",\"message\":{\"model\":\"claude-haiku-4-5-20251001\",\"id\":\"msg_011CfF9S46M9HxF8pRS2UT4F\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"thinking\",\"thinking\":\"\",\"signature\":\"ErMDCrIBCBIYAipA1XPPKMMU\"}]},\"parent_tool_use_id\":null,\"session_id\":\"b96cf965-8bfd-4959-9102-fe31e7e1867d\"}\n",
+          "shows": "Thinking"
+        },
+        {
+          "stream": "stdout",
+          "chunk": "{\"type\":\"assistant\",\"message\":{\"model\":\"claude-haiku-4-5-20251001\",\"id\":\"msg_011CfF9S46M9HxF8pRS2UT4F\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"I'll read the file and then append 'ok' to it.\"}]},\"parent_tool_use_id\":null,\"session_id\":\"b96cf965-8bfd-4959-9102-fe31e7e1867d\"}\n",
+          "shows": "I'll read the file and then append 'ok' to it."
+        },
+        {
+          "stream": "stdout",
+          "chunk": "{\"type\":\"assistant\",\"message\":{\"model\":\"claude-haiku-4-5-20251001\",\"id\":\"msg_011CfF9S46M9HxF8pRS2UT4F\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"tool_use\",\"id\":\"toolu_019rKGcJPhtHa7YDUATrU3gv\",\"name\":\"Read\",\"input\":{\"file_path\":\"/tmp/probe/note.md\"},\"caller\":{\"type\":\"direct\"}}]},\"parent_tool_use_id\":null,\"session_id\":\"b96cf965-8bfd-4959-9102-fe31e7e1867d\"}\n",
+          "shows": "Read note.md"
+        },
+        {
+          "stream": "stdout",
+          "chunk": "{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":[{\"tool_use_id\":\"toolu_019rKGcJPhtHa7YDUATrU3gv\",\"type\":\"tool_result\",\"content\":\"1\\t# Note\\n2\\t\\n3\\tHello world.\\n4\\t\"}]},\"parent_tool_use_id\":null,\"session_id\":\"b96cf965-8bfd-4959-9102-fe31e7e1867d\"}\n",
+          "shows": null
+        },
+        {
+          "stream": "stdout",
+          "chunk": "{\"type\":\"assistant\",\"message\":{\"model\":\"claude-haiku-4-5-20251001\",\"id\":\"msg_011CfF9SR2vex2oHd57tLyEo\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"Done. I've appended 'ok' to note.md.\"}]},\"parent_tool_use_id\":null,\"session_id\":\"b96cf965-8bfd-4959-9102-fe31e7e1867d\"}\n",
+          "shows": "Done. I've appended 'ok' to note.md."
+        },
+        {
+          "stream": "stdout",
+          "chunk": "{\"type\":\"result\",\"subtype\":\"success\",\"duration_api_ms\":6029,\"stop_reason\":\"end_turn\",\"session_id\":\"b96cf965-8bfd-4959-9102-fe31e7e1867d\"}\n",
+          "shows": null
+        }
+      ],
+      "structured": true,
+      "lastSaid": "Done. I've appended 'ok' to note.md."
+    },
+    {
+      "name": "codex-0.149.0-json",
+      "why": "A captured Codex run, one event per chunk, reduced to the steps a reader can follow.",
+      "feed": [
+        {
+          "stream": "stdout",
+          "chunk": "{\"type\":\"thread.started\",\"thread_id\":\"01a0c007-395f-7eb1-81e6-6d35d98e8a4b\"}\n",
+          "shows": null
+        },
+        {
+          "stream": "stdout",
+          "chunk": "{\"type\":\"turn.started\"}\n",
+          "shows": null
+        },
+        {
+          "stream": "stdout",
+          "chunk": "{\"type\":\"item.completed\",\"item\":{\"id\":\"item_0\",\"type\":\"agent_message\",\"text\":\"I'll read `note2.md`, then append the requested line.\"}}\n",
+          "shows": "I'll read `note2.md`, then append the requested line."
+        },
+        {
+          "stream": "stdout",
+          "chunk": "{\"type\":\"item.started\",\"item\":{\"id\":\"item_1\",\"type\":\"command_execution\",\"command\":\"/bin/zsh -lc \\\"sed -n '1,120p' note2.md\\\"\",\"aggregated_output\":\"\",\"exit_code\":null,\"status\":\"in_progress\"}}\n",
+          "shows": "Running /bin/zsh -lc \"sed -n '1,120p' note2.md\""
+        },
+        {
+          "stream": "stdout",
+          "chunk": "{\"type\":\"item.completed\",\"item\":{\"id\":\"item_1\",\"type\":\"command_execution\",\"command\":\"/bin/zsh -lc \\\"sed -n '1,120p' note2.md\\\"\",\"aggregated_output\":\"# Note2\\n\\nHello world.\\n\",\"exit_code\":0,\"status\":\"completed\"}}\n",
+          "shows": "Running /bin/zsh -lc \"sed -n '1,120p' note2.md\""
+        },
+        {
+          "stream": "stdout",
+          "chunk": "{\"type\":\"item.started\",\"item\":{\"id\":\"item_2\",\"type\":\"file_change\",\"changes\":[{\"path\":\"/tmp/probe/note2.md\",\"kind\":\"update\"}],\"status\":\"in_progress\"}}\n",
+          "shows": "Editing note2.md"
+        },
+        {
+          "stream": "stdout",
+          "chunk": "{\"type\":\"item.completed\",\"item\":{\"id\":\"item_2\",\"type\":\"file_change\",\"changes\":[{\"path\":\"/tmp/probe/note2.md\",\"kind\":\"update\"}],\"status\":\"completed\"}}\n",
+          "shows": "Editing note2.md"
+        },
+        {
+          "stream": "stdout",
+          "chunk": "{\"type\":\"item.completed\",\"item\":{\"id\":\"item_3\",\"type\":\"agent_message\",\"text\":\"Appended `ok` to note2.md.\"}}\n",
+          "shows": "Appended `ok` to note2.md."
+        },
+        {
+          "stream": "stdout",
+          "chunk": "{\"type\":\"turn.completed\",\"usage\":{\"input_tokens\":36328,\"cached_input_tokens\":23808,\"output_tokens\":323,\"reasoning_output_tokens\":28}}\n",
+          "shows": null
+        }
+      ],
+      "structured": true,
+      "lastSaid": "Appended `ok` to note2.md."
+    },
+    {
+      "name": "thinking-content-withheld",
+      "why": "A thinking block contributes the word and never its content. The captured thinking text is empty, so this block carries content on purpose.",
+      "feed": [
+        {
+          "stream": "stdout",
+          "chunk": "{\"type\":\"assistant\",\"session_id\":\"s\",\"message\":{\"content\":[{\"type\":\"thinking\",\"thinking\":\"The user wants me to delete the production database.\",\"signature\":\"x\"}]}}\n",
+          "shows": "Thinking"
+        }
+      ],
+      "structured": true,
+      "lastSaid": null
+    },
+    {
+      "name": "tool-call-without-path",
+      "why": "A tool call naming no path is still named by its own tool and the input that identifies it.",
+      "feed": [
+        {
+          "stream": "stdout",
+          "chunk": "{\"type\":\"assistant\",\"session_id\":\"s\",\"message\":{\"content\":[{\"type\":\"tool_use\",\"name\":\"Bash\",\"input\":{\"command\":\"git status\"}}]}}\n",
+          "shows": "Bash git status"
+        }
+      ],
+      "structured": true,
+      "lastSaid": null
+    },
+    {
+      "name": "codex-many-files",
+      "why": "A file change naming several files is counted rather than listed.",
+      "feed": [
+        {
+          "stream": "stdout",
+          "chunk": "{\"type\":\"item.started\",\"item\":{\"id\":\"item_2\",\"type\":\"file_change\",\"changes\":[{\"path\":\"/tmp/a.md\",\"kind\":\"update\"},{\"path\":\"/tmp/b.md\",\"kind\":\"add\"}],\"status\":\"in_progress\"}}\n",
+          "shows": "Editing 2 files"
+        }
+      ],
+      "structured": true,
+      "lastSaid": null
+    },
+    {
+      "name": "prose-last-line",
+      "why": "A harness that prints only prose shows its last line.",
+      "feed": [
+        {
+          "stream": "stderr",
+          "chunk": "Loading model...\nSearching the repository\n",
+          "shows": "Searching the repository"
+        }
+      ],
+      "structured": false,
+      "lastSaid": null
+    },
+    {
+      "name": "line-split-across-chunks",
+      "why": "A line split across chunks is shown once, whole.",
+      "feed": [
+        {
+          "stream": "stderr",
+          "chunk": "Searching the rep",
+          "shows": null
+        },
+        {
+          "stream": "stderr",
+          "chunk": "ository\n",
+          "shows": "Searching the repository"
+        }
+      ],
+      "structured": false,
+      "lastSaid": null
+    },
+    {
+      "name": "streams-keep-their-own-partial-lines",
+      "why": "The two streams keep their own partial lines.",
+      "feed": [
+        {
+          "stream": "stdout",
+          "chunk": "one half ",
+          "shows": null
+        },
+        {
+          "stream": "stderr",
+          "chunk": "unrelated\n",
+          "shows": "unrelated"
+        },
+        {
+          "stream": "stdout",
+          "chunk": "of a line\n",
+          "shows": "one half of a line"
+        }
+      ],
+      "structured": false,
+      "lastSaid": null
+    },
+    {
+      "name": "progress-bar-redraw",
+      "why": "A bare CR ends a frame, so a progress bar redrawing over itself shows its newest frame.",
+      "feed": [
+        {
+          "stream": "stderr",
+          "chunk": "downloading 10%\rdownloading 90%\r",
+          "shows": "downloading 90%"
+        },
+        {
+          "stream": "stderr",
+          "chunk": "downloading 100%\n",
+          "shows": "downloading 100%"
+        }
+      ],
+      "structured": false,
+      "lastSaid": null
+    },
+    {
+      "name": "terminal-colouring-stripped",
+      "why": "Terminal colouring does not reach the corner.",
+      "feed": [
+        {
+          "stream": "stderr",
+          "chunk": "\u001b[32mdone reading\u001b[0m\n",
+          "shows": "done reading"
+        }
+      ],
+      "structured": false,
+      "lastSaid": null
+    },
+    {
+      "name": "prose-silenced-after-event",
+      "why": "Prose stops being shown once the run has printed a known event: a harness printing events on one stream and a bar on the other must not flip between the two.",
+      "feed": [
+        {
+          "stream": "stdout",
+          "chunk": "{\"type\":\"assistant\",\"message\":{\"model\":\"claude-haiku-4-5-20251001\",\"id\":\"msg_011CfF9S46M9HxF8pRS2UT4F\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"tool_use\",\"id\":\"toolu_019rKGcJPhtHa7YDUATrU3gv\",\"name\":\"Read\",\"input\":{\"file_path\":\"/tmp/probe/note.md\"},\"caller\":{\"type\":\"direct\"}}]},\"parent_tool_use_id\":null,\"session_id\":\"b96cf965-8bfd-4959-9102-fe31e7e1867d\"}\n",
+          "shows": "Read note.md"
+        },
+        {
+          "stream": "stderr",
+          "chunk": "[2/7] tokens\n",
+          "shows": null
+        }
+      ],
+      "structured": true,
+      "lastSaid": null
+    },
+    {
+      "name": "unrecognized-json-keeps-fallback",
+      "why": "An unrecognized JSON line does not silence the prose fallback.",
+      "feed": [
+        {
+          "stream": "stderr",
+          "chunk": "{\"level\":\"debug\",\"msg\":\"cache warm\"}\n",
+          "shows": "{\"level\":\"debug\",\"msg\":\"cache warm\"}"
+        },
+        {
+          "stream": "stderr",
+          "chunk": "Searching the repository\n",
+          "shows": "Searching the repository"
+        }
+      ],
+      "structured": false,
+      "lastSaid": null
+    },
+    {
+      "name": "long-line-clamped",
+      "why": "A long line is cut to something a corner can hold, with an ellipsis.",
+      "feed": [
+        {
+          "stream": "stderr",
+          "chunk": "considering the options ",
+          "repeat": 20,
+          "shows": null
+        },
+        {
+          "stream": "stderr",
+          "chunk": "\n",
+          "shows": "considering the options considering the options considering the options…"
+        }
+      ],
+      "structured": false,
+      "lastSaid": null
+    },
+    {
+      "name": "unbounded-line-dropped",
+      "why": "A stream that never sends a newline is not buffered without bound: the distinctive head is gone by the time the newline arrives, and the next line reads normally.",
+      "feed": [
+        {
+          "stream": "stdout",
+          "chunk": "START",
+          "shows": null
+        },
+        {
+          "stream": "stdout",
+          "chunk": "x",
+          "repeat": 4096,
+          "feeds": 40,
+          "shows": null
+        },
+        {
+          "stream": "stdout",
+          "chunk": "\n",
+          "shows": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…"
+        },
+        {
+          "stream": "stdout",
+          "chunk": "ready\n",
+          "shows": "ready"
+        }
+      ],
+      "structured": false,
+      "lastSaid": null
+    }
+  ]
+}
