@@ -8,6 +8,7 @@
 import { describe, it, expect } from "vitest";
 import {
     canonicalEmbedUrl,
+    EMBED_KINDS,
     EMBED_CSP_FRAME_HOSTS,
     EMBED_CSP_IMG_HOSTS,
     OEMBED_HOSTS,
@@ -16,11 +17,13 @@ import {
     type EmbedKind,
 } from "../embedProviders";
 
-const KINDS: EmbedKind[] = [
-    "youtube", "vimeo", "loom", "figma", "github",
-    "googledrive", "googledocs", "googleslides", "googlesheets", "googlefile",
-    "miro", "linear", "codepen", "codesandbox", "stackblitz",
-];
+/**
+ * Every kind, from the roster itself rather than a hand-written list. A list
+ * written out here is a list a new provider never joins, and the round trip
+ * below would then pass while saying nothing about it; `IDS` is typed over
+ * EmbedKind, so the compiler is what makes the fixture keep up.
+ */
+const KINDS: readonly EmbedKind[] = EMBED_KINDS;
 
 /** Real-shaped ids, one per kind — used by every round-trip loop below. */
 const IDS: Record<EmbedKind, string> = {
@@ -36,6 +39,7 @@ const IDS: Record<EmbedKind, string> = {
     googlefile: "document/1AbCdEfGhIjKlMnOpQrStUvWxYz01234",
     miro: "uXjVO5X2CWo=",
     linear: "birta/issue/MAR-186/embed-provider-roadmap",
+    asana: "0/1201234567890123/1207654321098765",
     codepen: "chriscoyier/AbCdEf",
     codesandbox: "new-react-sandbox-abc123",
     stackblitz: "vitejs-vite-abc123",
@@ -63,6 +67,7 @@ describe("canonicalEmbedUrl", () => {
         );
         expect(canonicalEmbedUrl("miro", IDS.miro)).toBe(`https://miro.com/app/board/${IDS.miro}/`);
         expect(canonicalEmbedUrl("linear", IDS.linear)).toBe(`https://linear.app/${IDS.linear}`);
+        expect(canonicalEmbedUrl("asana", IDS.asana)).toBe(`https://app.asana.com/${IDS.asana}`);
     });
 
     it("every canonical URL should re-recognize as its own kind and id", () => {

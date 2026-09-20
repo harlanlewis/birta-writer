@@ -40,6 +40,8 @@ import {
 } from "../../shared/embedProviders";
 
 export {
+    asanaCardParts,
+    asanaId,
     canonicalEmbedUrl,
     codepenEmbedUrl,
     codepenId,
@@ -76,6 +78,7 @@ export {
     EMBED_KINDS,
     embedProviderEnabled,
     embedProviderSettingKey,
+    type AsanaCardParts,
     type EmbedKind,
     type EmbedMatch,
     type GithubCardParts,
@@ -313,6 +316,19 @@ const PROVIDERS: readonly EmbedProvider[] = [
         hasMetadata: false,
         externalUrl: (id) => canonicalEmbedUrl("linear", id),
         openLabel: "Open in Linear",
+    },
+    {
+        // An Asana task URL: the numbers in it are all it discloses, so the
+        // rung-0 card is thin on purpose and the connector is what fills it.
+        // No playerUrl and no aspect, because a task is a record rather than a
+        // canvas: the card carries all of it, and there is nothing a frame
+        // would add that the card does not already say.
+        kind: "asana",
+        name: "Asana",
+        needsNetwork: false,
+        hasMetadata: false,
+        externalUrl: (id) => canonicalEmbedUrl("asana", id),
+        openLabel: "Open in Asana",
     },
     {
         kind: "codepen",

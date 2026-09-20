@@ -44,6 +44,7 @@ const IDS: Record<EmbedKind, string> = {
     googlefile: "document/1AbCdEfGhIjKlMnOpQrStUvWxYz01234",
     miro: "uXjVO5X2CWo=",
     linear: "birta/issue/MAR-186/embed-provider-roadmap",
+    asana: "0/1201234567890123/1207654321098765",
     codepen: "chriscoyier/AbCdEf",
     codesandbox: "new-react-sandbox-abc123",
     stackblitz: "vitejs-vite-abc123",
@@ -60,7 +61,7 @@ describe("EMBED_KINDS", () => {
         // nothing would make all of them green while asserting nothing. The
         // floor is the roster as shipped; raising it is what adding a provider
         // is supposed to feel like.
-        expect(EMBED_KINDS.length).toBeGreaterThanOrEqual(15);
+        expect(EMBED_KINDS.length).toBeGreaterThanOrEqual(16);
         expect(new Set(EMBED_KINDS).size).toBe(EMBED_KINDS.length);
     });
 

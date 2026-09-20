@@ -31,6 +31,8 @@ import {
     codepenId,
     codesandboxEmbedUrl,
     codesandboxId,
+    asanaCardParts,
+    asanaId,
     linearCardParts,
     linearId,
     miroEmbedUrl,
@@ -409,6 +411,75 @@ describe("linearCardParts", () => {
             key: "MAR-186",
             slug: "embed-provider-roadmap",
         });
+    });
+});
+
+describe("asanaId — recognized URL forms", () => {
+    const cases: Array<[string, string]> = [
+        ["https://app.asana.com/0/1201234567890123/1207654321098765", "0/1201234567890123/1207654321098765"],
+        // The classic permalink's trailing view flag names the same task, so
+        // it collapses into the same id rather than a second cache entry.
+        ["https://app.asana.com/0/1201234567890123/1207654321098765/f", "0/1201234567890123/1207654321098765"],
+        ["https://app.asana.com/0/1201234567890123/1207654321098765?focus=true", "0/1201234567890123/1207654321098765"],
+        [
+            "https://app.asana.com/1/1100000000000001/project/1201234567890123/task/1207654321098765",
+            "1/1100000000000001/project/1201234567890123/task/1207654321098765",
+        ],
+        ["https://app.asana.com/1/1100000000000001/task/1207654321098765", "1/1100000000000001/task/1207654321098765"],
+        ["http://app.asana.com/0/1/2", "0/1/2"],
+    ];
+    for (const [url, expected] of cases) {
+        it(`${url} should extract ${expected}`, () => {
+            expect(asanaId(url)).toBe(expected);
+        });
+    }
+
+    const rejects = [
+        "https://app.asana.com/0/1201234567890123", // a project view, not a task
+        "https://app.asana.com/0/1201234567890123/list", // a project's list view
+        "https://app.asana.com/0/inbox/1207654321098765", // the inbox
+        "https://app.asana.com/0/1201234567890123/1207654321098765/x", // an unknown trailing flag
+        "https://app.asana.com/0/1201234567890123/1207654321098765/f/extra", // too deep
+        "https://app.asana.com/1/1100000000000001/project/1201234567890123", // no task
+        "https://app.asana.com/1/1100000000000001/portfolio/1201234567890123/item/1", // wrong sections
+        "https://app.asana.com/1/1100000000000001/task/abc", // a gid must be digits
+        "https://app.asana.com/0/12012345678901234567890/1", // past the gid bound
+        "https://app.asana.com/2/1100000000000001/task/1207654321098765", // an unknown path version
+        "https://asana.com/0/1201234567890123/1207654321098765", // the marketing host, not the app
+        "https://app.asana.com.evil.com/0/1/2", // lookalike host
+        "https://app.asana.com/", // nothing
+        "ftp://app.asana.com/0/1/2", // wrong protocol
+    ];
+    for (const url of rejects) {
+        it(`${url} should return null`, () => {
+            expect(asanaId(url)).toBeNull();
+        });
+    }
+});
+
+describe("asanaCardParts", () => {
+    it("should find the task gid in every shape the extractor accepts", () => {
+        // Derived from the extractor rather than hand-listed, so a shape added
+        // to asanaId that this cannot decompose fails here instead of
+        // silently building no request.
+        const urls = [
+            "https://app.asana.com/0/1201234567890123/1207654321098765",
+            "https://app.asana.com/1/1100000000000001/project/1201234567890123/task/1207654321098765",
+            "https://app.asana.com/1/1100000000000001/task/1207654321098765",
+        ];
+        const ids = urls.map((url) => asanaId(url));
+        expect(ids.every((id) => id !== null)).toBe(true);
+        for (const id of ids) {
+            expect(asanaCardParts(id!).taskGid).toBe("1207654321098765");
+        }
+    });
+
+    it("should carry the project gid only when the URL named one", () => {
+        expect(asanaCardParts("0/1201234567890123/1207654321098765").projectGid).toBe("1201234567890123");
+        expect(
+            asanaCardParts("1/1100000000000001/project/1201234567890123/task/1207654321098765").projectGid,
+        ).toBe("1201234567890123");
+        expect(asanaCardParts("1/1100000000000001/task/1207654321098765").projectGid).toBeUndefined();
     });
 });
 

@@ -16,10 +16,16 @@
  * string only ever SELECTS a connector, and every byte of the outgoing request
  * is rebuilt here from parts the recognizer already validated.
  */
-import { githubCardParts, linearCardParts, type EmbedKind, type EmbedMatch } from "./embedProviders";
+import {
+    asanaCardParts,
+    githubCardParts,
+    linearCardParts,
+    type EmbedKind,
+    type EmbedMatch,
+} from "./embedProviders";
 
 /** The connectors this pass understands. Widen the union to add one. */
-export type ConnectorId = "github" | "linear";
+export type ConnectorId = "github" | "linear" | "asana";
 
 /**
  * How a connector obtains its credential. The strategy is a property of the
@@ -37,8 +43,10 @@ export type ConnectorId = "github" | "linear";
  *    for providers whose OAuth demands a confidential client secret (which is
  *    unshippable inside a distributed extension) or a verification program.
  *
- * `token` has no live row: it is named because the seam is shaped for it, and
- * a strategy with no provider behind it is a code path nothing has ever run.
+ * All three rungs are live (MAR-186): GitHub on `builtin`, Linear on
+ * `oauth-pkce`, Asana on `token`. The ladder is ordered by what it costs the
+ * user, and a provider takes the highest rung its own platform offers rather
+ * than the one that would be easiest to write.
  */
 export type ConnectorAuthKind = "builtin" | "oauth-pkce" | "token";
 
@@ -87,10 +95,20 @@ export interface ConnectorSpec {
      */
     privateScopes?: readonly string[];
     /**
-     * What `privateScopes` actually covers, shown before the user proceeds.
-     * Required whenever `privateScopes` is broader than reading — which for
-     * GitHub it unavoidably is, because no OAuth scope grants read-only access
-     * to a private repository.
+     * What the grant actually covers, shown before the user proceeds.
+     *
+     * Required wherever the credential is broader than reading, which happens
+     * two ways and for different reasons. GitHub's opt-in `privateScopes` is
+     * broader because no OAuth scope grants read-only access to a private
+     * repository. A `token` connector is broader because the scope is not ours
+     * to ask for at all: the user mints a personal access token carrying
+     * whatever their own account can do, so the only honest disclosure is what
+     * that token could do rather than what Birta asks for.
+     *
+     * Both cases are pinned in `connectors.test.ts`. The difference that
+     * matters to the reader is WHERE it is shown: the private tier states it in
+     * the tier picker, and the token rung states it in the paste box, because
+     * those are the moments the user is deciding.
      */
     scopeNote?: string;
     /**
@@ -122,6 +140,18 @@ export interface ConnectorSpec {
      * verifying is about the credential, not about anything the user opened.
      */
     verifyUrl: string;
+    /**
+     * Where a `token` connector's user goes to mint one, opened in the browser
+     * when the connect flow asks for a paste. Required for `token` and
+     * meaningless for the other two, which is pinned both ways by
+     * `connectors.test.ts`.
+     *
+     * A browser destination, never a credential destination, on exactly the
+     * terms `oauth.authorizeUrl` is: it is deliberately NOT in `apiHosts`, and
+     * the provider's own documentation rather than an app deep link, because a
+     * page that explains where the button is survives the button moving.
+     */
+    tokenHelpUrl?: string;
 }
 
 /** Every connector, keyed by id. */
@@ -178,6 +208,41 @@ export const CONNECTORS: Record<ConnectorId, ConnectorSpec> = {
         anonymousReads: false,
         verifyUrl: "https://api.linear.app/graphql",
     },
+    asana: {
+        id: "asana",
+        label: "Asana",
+        // The third rung, and the first provider to need it. Asana's OAuth is
+        // a confidential-client flow: it issues a client SECRET and offers no
+        // public PKCE client, and a secret shipped inside a distributed
+        // extension is not a secret. A personal access token is the whole of
+        // what Asana offers a program running on the user's own machine, so
+        // the rung is the provider's choice rather than ours.
+        auth: "token",
+        // EMPTY, and structurally so rather than by minimalism. A personal
+        // access token carries whatever grant Asana attached to it when the
+        // user minted it; there is no scope parameter for this flow to ask
+        // with, so a list here would be a claim nothing could honour.
+        scopes: [],
+        // Mandatory here for the same reason GitHub's opt-in carries one, and
+        // it is the disclosure the token rung cannot do without: an Asana
+        // personal access token is minted with the user's own permissions and
+        // Asana offers no read-only kind, so the credential can do far more
+        // than the card. Saying "read-only" without this would describe our
+        // code rather than the grant the user is handing over.
+        scopeNote: "An Asana personal access token carries everything your own account can do: Asana issues no read-only kind. Birta only ever reads.",
+        // One host, and Asana's API genuinely is one host: unlike a
+        // per-instance provider, every workspace is reached at app.asana.com.
+        // That is what let this row ship inside the exact-host rule.
+        apiHosts: ["app.asana.com"],
+        // Asana's API is authenticated in full: there is no anonymous read of
+        // any task, so an unconnected request could only 401. Asking anyway
+        // would put the document's task ids on the wire for nothing.
+        anonymousReads: false,
+        // The cheapest authenticated call Asana has, and it names the account
+        // rather than anything the user opened.
+        verifyUrl: "https://app.asana.com/api/1.0/users/me",
+        tokenHelpUrl: "https://developers.asana.com/docs/personal-access-token",
+    },
 };
 
 /** Every connector id, for iteration (the connect/disconnect pickers). */
@@ -191,6 +256,7 @@ export const CONNECTOR_IDS: readonly ConnectorId[] = Object.keys(CONNECTORS) as 
 export function connectorForEmbedKind(kind: EmbedKind): ConnectorId | null {
     if (kind === "github") { return "github"; }
     if (kind === "linear") { return "linear"; }
+    if (kind === "asana") { return "asana"; }
     return null;
 }
 
@@ -290,6 +356,40 @@ function linearApiRequest(match: EmbedMatch): ConnectorApiRequest | null {
 }
 
 /**
+ * The fields an Asana task card shows, as a constant this module owns.
+ *
+ * Asana returns a task's full object unless it is asked for a projection, so
+ * naming the four fields the card draws is what keeps the response from
+ * carrying notes, subtasks, custom fields and followers the card would read
+ * past and the cap would have to absorb. A document contributes a task gid and
+ * nothing else: it cannot add a field here, any more than it can reshape
+ * Linear's query.
+ */
+const ASANA_TASK_FIELDS = "name,completed,assignee.name,due_on";
+
+/** An Asana gid, re-validated here rather than trusted from the recognizer. */
+const ASANA_GID = /^\d{1,20}$/;
+
+/**
+ * Build Asana's card request: one GET for the task the URL named.
+ *
+ * Returns null rather than a partial request for any id whose task gid is not
+ * a plain decimal string, so a hand-built match can put nothing but digits
+ * into the path.
+ */
+function asanaApiRequest(match: EmbedMatch): ConnectorApiRequest | null {
+    const { taskGid } = asanaCardParts(match.id);
+    if (!ASANA_GID.test(taskGid ?? "")) {
+        return null;
+    }
+    return {
+        connector: "asana",
+        url: `https://app.asana.com/api/1.0/tasks/${encodeURIComponent(taskGid)}`
+            + `?opt_fields=${ASANA_TASK_FIELDS}`,
+    };
+}
+
+/**
  * Build the API request for a recognized embed, or null when there is nothing
  * to ask (no connector, or a shape whose card the API cannot improve on).
  *
@@ -302,6 +402,9 @@ export function connectorApiRequest(match: EmbedMatch): ConnectorApiRequest | nu
     const connector = connectorForEmbedKind(match.kind);
     if (connector === "linear") {
         return linearApiRequest(match);
+    }
+    if (connector === "asana") {
+        return asanaApiRequest(match);
     }
     if (connector !== "github") {
         return null;

@@ -24,7 +24,7 @@ describe("connectorForEmbedKind", () => {
         // The map is the gate: a kind absent from it can never reach a
         // credential-bearing code path, whatever its URL says.
         const mapped = EMBED_KINDS.filter((kind) => connectorForEmbedKind(kind) !== null);
-        expect(mapped).toEqual(["github", "linear"]);
+        expect(mapped).toEqual(["github", "linear", "asana"]);
     });
 
     it("every mapped connector should exist in the registry", () => {
@@ -132,6 +132,10 @@ describe("connectorApiRequest", () => {
             "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
             "https://www.figma.com/design/abcdefghij/Title",
             "https://linear.app/acme/issue/MAR-1/slug",
+            "https://app.asana.com/0/1201234567890123/1207654321098765",
+            "https://app.asana.com/0/1201234567890123/1207654321098765/f",
+            "https://app.asana.com/1/1100000000000001/project/1201234567890123/task/1207654321098765",
+            "https://app.asana.com/1/1100000000000001/task/1207654321098765",
             "https://miro.com/app/board/abcdefgh=",
             "https://docs.google.com/document/d/" + "a".repeat(30) + "/edit",
             "https://codepen.io/user/pen/abcdef",
@@ -198,5 +202,44 @@ describe("the connector registry", () => {
                 expect(spec.privateScopes.length).toBeGreaterThan(spec.scopes.length);
             }
         }
+    });
+
+    it("every auth strategy should carry exactly the fields its own rung needs", () => {
+        // Each rung's discriminator is checked in BOTH directions, because the
+        // failure worth catching is a field that quietly stops being declared:
+        // a token connector with no help page asks for a credential without
+        // saying where one comes from, and a help page on an OAuth row is a
+        // second, unread source of truth for where the user should go.
+        const seen = new Set<string>();
+        for (const id of CONNECTOR_IDS) {
+            const spec = CONNECTORS[id];
+            seen.add(spec.auth);
+            expect(spec.tokenHelpUrl !== undefined, `${id} tokenHelpUrl`).toBe(spec.auth === "token");
+            expect(spec.oauth !== undefined, `${id} oauth`).toBe(spec.auth === "oauth-pkce");
+            expect(spec.builtinProviderId !== undefined, `${id} builtinProviderId`).toBe(
+                spec.auth === "builtin",
+            );
+            if (spec.auth === "token") {
+                // A personal access token carries whatever grant the provider
+                // attached when the user minted it. There is no scope
+                // parameter in this flow to ask with, so a list here would be
+                // a claim nothing could honour.
+                expect(spec.scopes).toEqual([]);
+                expect(spec.privateScopes).toBeUndefined();
+                // And because the scope is not ours to ask for, the user is
+                // handing over whatever their own account can do. That has to
+                // be stated, or "read-only" describes our code rather than the
+                // credential.
+                expect(spec.scopeNote, `${id} must disclose what its token covers`).toBeTruthy();
+                const help = new URL(spec.tokenHelpUrl!);
+                expect(help.protocol).toBe("https:");
+                // A browser destination, on the same terms authorizeUrl is:
+                // the credential may not be sent there.
+                expect(spec.apiHosts).not.toContain(help.hostname);
+            }
+        }
+        // A sweep over a registry where one rung is unrepresented would hold
+        // the two directions above vacuously for it. All three are live.
+        expect([...seen].sort()).toEqual(["builtin", "oauth-pkce", "token"]);
     });
 });
