@@ -187,7 +187,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding, 
         windows.paletteProbe = { [weak self] query, mode in
             self?.probePalette(query: query, mode: mode) ?? "unavailable"
         }
-        let first = windows.openAtLaunch(launchedWith: launchedWith)
+        windows.openAtLaunch(launchedWith: launchedWith)
         buildStatusMenu()
         applyMenuBarPresence()
         windows.startAll()
@@ -244,11 +244,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding, 
                 self?.applyStagedUpdateIfUnattended()
             }
         }
-        // What the LAST launch did to itself, if it did anything. Read after
-        // the window exists, because the window is what carries the notice,
-        // and before anything can be summoned, so the message is already in
-        // place the first time the panel is looked at.
-        announceSilentUpdate(on: first)
+        // What the LAST launch did to itself, if it did anything. Nothing is
+        // said on screen; this clears the record and writes it to the log.
+        recordSilentUpdate()
         // After the panel exists, so the screen has a window to take over.
         // `FirstRunScreen` holds every arm of the decision and why, including
         // the one Open With adds: the screen is not put in front of a panel
@@ -1132,8 +1130,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding, 
         // Written BEFORE the quit, because after it there is no process left
         // to write anything, and this is the only record that the swap was
         // ever attempted. It is not yet a claim that the swap WORKED:
-        // `announceSilentUpdate` asks the next launch's own version about
-        // that, and clears this without a word if the answer is no.
+        // `recordSilentUpdate` asks the next launch's own version about that.
         Prefs.updateInstalledTag = staged.tag
         // Quitting is what performs the swap, through the ordinary terminate
         // path so the buffer is flushed on the way out. Nobody is here to
@@ -1154,30 +1151,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding, 
             || aboutWindow?.window?.isVisible == true
     }
 
-    /// Say what the app did to itself while nobody was watching.
+    /// Write down what the app did to itself while nobody was watching, and
+    /// say nothing.
     ///
-    /// Only where the running build proves it happened. `updateInstalledTag`
-    /// is written by the process that armed the swap, before it could know
-    /// whether the swap would work, and it can fail for reasons that leave the
-    /// old app in place: a staged bundle the temporary directory reclaimed, a
-    /// move that could not be made. So the version this build actually is
-    /// answers the question, and a build older than the tag means the swap did
-    /// not happen and there is nothing to announce.
+    /// The log rather than the panel, and it is the same argument `Updater`
+    /// makes about a background run: nobody asked for this, the app keeping
+    /// itself current is not a thing to act on, and the one surface that
+    /// could carry it is hidden most of the time, so a message put there is
+    /// spent on whichever window somebody next summoned for something else.
     ///
-    /// The notice itself stays until it is dismissed, which is why the tag is
-    /// cleared by the button rather than here. The panel is hidden most of the
-    /// time; an announcement spent on being SHOWN would be spent on a window
-    /// that was up for a second while somebody reached for something else.
-    private func announceSilentUpdate(on window: Coordinator) {
+    /// The running build is still what answers whether the swap happened.
+    /// `updateInstalledTag` is written by the process that armed the swap,
+    /// before it could know whether the swap would work, and it can fail for
+    /// reasons that leave the old app in place: a staged bundle the temporary
+    /// directory reclaimed, a move that could not be made. So the version this
+    /// build actually is answers the question, and a build older than the tag
+    /// means the swap did not happen. That failure is the line worth having,
+    /// because nothing else in the app can see it.
+    ///
+    /// Cleared either way, here. The tag survived a quit so that the next
+    /// launch could tell those two apart; once it has, it is answered.
+    private func recordSilentUpdate() {
         guard let pending = Prefs.updateInstalledTag else { return }
-        guard !ReleaseFeed.isNewer(pending, than: updater.environment.currentVersion()) else {
-            Prefs.updateInstalledTag = nil
-            return
-        }
-        window.showUpdateNotice(
-            UpdatePolicy.installedNotice(appName: AppFlavor.current.displayName, tag: pending)
-        ) {
-            Prefs.updateInstalledTag = nil
+        Prefs.updateInstalledTag = nil
+        let running = updater.environment.currentVersion()
+        if ReleaseFeed.isNewer(pending, than: running) {
+            NSLog("Birta Writer: the unattended swap to \(pending) did not go in; still \(running)")
+        } else {
+            NSLog("Birta Writer: updated to \(pending) in the background")
         }
     }
 
