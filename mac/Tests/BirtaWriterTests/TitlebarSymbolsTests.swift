@@ -116,6 +116,63 @@ final class TitlebarSymbolsTests: XCTestCase {
             """)
     }
 
+    /// How many samples per point the pane mark is measured at.
+    ///
+    /// Four, and the number is load-bearing. What this file has to be able to
+    /// see is half a stroke width, which on a 16 point mark is two thirds of a
+    /// point; measured at one sample per point, an edge two thirds of a point
+    /// out lands in the same column as one that is right, and the check passes
+    /// over the exact defect it was written for. That is not a hypothetical:
+    /// the first version of this measured at 1x and a deliberate revert to the
+    /// wrong geometry went green.
+    private static let paneSamplesPerPoint = 4
+
+    /// Ink per sample column of the pane mark, across its middle band, in
+    /// units of "how much of the band is inked".
+    ///
+    /// The middle band only, so the frame's own top and bottom edges (which
+    /// are ink in every column) cannot drown out what is between them.
+    private func paneColumns(filled: Bool = false) -> [Double] {
+        let image = PaneGlyph.image(paneFilled: filled)
+        let up = Self.paneSamplesPerPoint
+        let width = Int(image.size.width) * up, height = Int(image.size.height) * up
+        guard width > 0, let rep = NSBitmapImageRep(
+            bitmapDataPlanes: nil,
+            pixelsWide: width, pixelsHigh: height,
+            bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true,
+            isPlanar: false, colorSpaceName: .deviceRGB,
+            bytesPerRow: 0, bitsPerPixel: 0,
+        ) else { return [] }
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
+        NSColor.black.set()
+        image.draw(in: NSRect(x: 0, y: 0, width: CGFloat(width), height: CGFloat(height)))
+        NSGraphicsContext.restoreGraphicsState()
+
+        var columns = [Double](repeating: 0, count: width)
+        let band = (height / 3)..<(height * 2 / 3)
+        for y in band {
+            for x in 0..<width {
+                columns[x] += Double(rep.colorAt(x: x, y: y)?.alphaComponent ?? 0)
+            }
+        }
+        return columns.map { $0 / Double(band.count) }
+    }
+
+    /// A sample column's index for a point on the page's own 24-unit axis.
+    private func paneSample(at unit: CGFloat) -> Int {
+        Int((unit / PaneGlyph.viewBox * PaneGlyph.drawnSize).rounded()) * Self.paneSamplesPerPoint
+    }
+
+    /// Where the ink starts and stops, in POINTS, so the assertions read on
+    /// the page's own scale rather than in samples.
+    private func paneInkEdges(_ columns: [Double]) -> (first: Double, last: Double)? {
+        guard let first = columns.firstIndex(where: { $0 > 0.05 }),
+              let last = columns.lastIndex(where: { $0 > 0.05 }) else { return nil }
+        let up = Double(Self.paneSamplesPerPoint)
+        return (Double(first) / up, Double(last + 1) / up)
+    }
+
     /// The pane mark's divider is on the LEADING side, which is the whole
     /// claim the glyph exists to make.
     ///
@@ -124,32 +181,8 @@ final class TitlebarSymbolsTests: XCTestCase {
     /// mirrored, which is the one defect that would make the two ends of the
     /// band point the same way. So this reads the pixels.
     func testThePaneMarkShouldPutItsDividerOnTheLeadingSide() {
-        let image = PaneGlyph.image()
-        let size = image.size
-        XCTAssertGreaterThan(size.width, 0, "the mark drew nothing to measure")
-        guard let rep = NSBitmapImageRep(bitmapDataPlanes: nil,
-                                         pixelsWide: Int(size.width), pixelsHigh: Int(size.height),
-                                         bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true,
-                                         isPlanar: false, colorSpaceName: .deviceRGB,
-                                         bytesPerRow: 0, bitsPerPixel: 0) else {
-            return XCTFail("no bitmap to draw into")
-        }
-        NSGraphicsContext.saveGraphicsState()
-        NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
-        NSColor.black.set()
-        image.draw(in: NSRect(origin: .zero, size: size))
-        NSGraphicsContext.restoreGraphicsState()
-
-        // Ink per column, measured across the middle band only, so the
-        // frame's own top and bottom edges (which are ink in every column)
-        // cannot drown the divider out.
-        let width = Int(size.width), height = Int(size.height)
-        var columns = [Double](repeating: 0, count: width)
-        for y in (height / 3)..<(height * 2 / 3) {
-            for x in 0..<width {
-                columns[x] += Double(rep.colorAt(x: x, y: y)?.alphaComponent ?? 0)
-            }
-        }
+        let columns = paneColumns()
+        XCTAssertFalse(columns.isEmpty, "the mark drew nothing to measure")
         XCTAssertGreaterThan(columns.reduce(0, +), 0, "the band measured no ink at all")
 
         // The page's own x, and its reflection. Asked as a pair rather than as
@@ -157,12 +190,70 @@ final class TitlebarSymbolsTests: XCTestCase {
         // here, a centred one has ink at neither, and each fails on its own
         // line. Both columns are clear of the frame's two sides, so what is
         // being read is the divider and nothing else.
-        let here = Int((PaneGlyph.dividerX / PaneGlyph.viewBox * size.width).rounded())
-        let mirrored = width - here
+        let here = paneSample(at: PaneGlyph.dividerX)
         XCTAssertGreaterThan(columns[here], 0,
                              "no divider at the page's x: the mark is centred, mirrored, or not drawn")
-        XCTAssertEqual(columns[mirrored], 0, accuracy: 0.01,
+        XCTAssertEqual(columns[columns.count - here], 0, accuracy: 0.01,
                        "ink at the reflection: the mark is drawn the wrong way round")
+    }
+
+    /// The mark is the size the page draws it, which the numbers cannot say.
+    ///
+    /// This is the check the parity test could not be. An SVG stroke straddles
+    /// its path; a stroke inset inside the path draws a mark one stroke width
+    /// smaller on every side, with tighter corners, out of numbers that all
+    /// match. That is what this drew before, and beside the page's mark a few
+    /// inches away it was visibly not the same glyph while every check passed.
+    ///
+    /// So the OUTER extent of the ink is measured and compared with where the
+    /// browser puts it: the frame's path inset by `frameInset`, less half a
+    /// stroke for the half that falls outside.
+    func testThePaneMarkShouldBeTheSizeTheBrowserDrawsIt() {
+        let columns = paneColumns()
+        XCTAssertFalse(columns.isEmpty, "the mark drew nothing to measure")
+        guard let ink = paneInkEdges(columns) else {
+            return XCTFail("no ink in the band, so neither edge means anything")
+        }
+        let scale = PaneGlyph.drawnSize / PaneGlyph.viewBox
+        let stroke = PaneGlyph.strokeWidth * scale
+        let outerLeft = PaneGlyph.frameInset * scale - stroke / 2
+        let outerRight = (PaneGlyph.viewBox - PaneGlyph.frameInset) * scale + stroke / 2
+        // A third of a point, which is half of what this has to discriminate:
+        // an inset stroke puts each edge half a stroke width (two thirds of a
+        // point) inside where the browser puts it. The tolerance is for
+        // antialiasing at the sampling rate above, and it is deliberately
+        // smaller than the defect rather than merely "small".
+        XCTAssertEqual(ink.first, Double(outerLeft), accuracy: 0.34,
+                       "the frame starts in the wrong place: the stroke is not straddling its path")
+        XCTAssertEqual(ink.last, Double(outerRight), accuracy: 0.34,
+                       "the frame ends in the wrong place: the stroke is not straddling its path")
+    }
+
+    /// The filled state inks the PANE and nothing else.
+    func testTheFilledPaneMarkShouldInkTheLeadingPaneAndNotTheRest() {
+        let plain = paneColumns()
+        let filled = paneColumns(filled: true)
+        XCTAssertFalse(plain.isEmpty || filled.isEmpty, "a state drew nothing to measure")
+
+        // Between the frame's left edge and the divider there is one column of
+        // ink in the plain mark and a solid block in the filled one. Sampled
+        // in the middle of that run rather than at its edges, which belong to
+        // the frame and the divider in both states.
+        let mid = paneSample(at: (PaneGlyph.frameInset + PaneGlyph.dividerX) / 2)
+        XCTAssertEqual(plain[mid], 0, accuracy: 0.01, "the plain mark has ink inside its pane")
+        XCTAssertGreaterThan(filled[mid], 0.9, "the filled mark does not ink its pane")
+
+        // ...and the other side of the divider is empty in both, or this is a
+        // mark that fills itself rather than its pane.
+        let beyond = paneSample(at: (PaneGlyph.dividerX + PaneGlyph.viewBox - PaneGlyph.frameInset) / 2)
+        XCTAssertEqual(plain[beyond], 0, accuracy: 0.01)
+        XCTAssertEqual(filled[beyond], 0, accuracy: 0.01,
+                       "the fill ran past the divider, so it is not the pane that is inked")
+
+        // The frame did not move between the states, which is what makes them
+        // two states of one mark rather than two marks.
+        XCTAssertEqual(paneInkEdges(plain)?.first, paneInkEdges(filled)?.first)
+        XCTAssertEqual(paneInkEdges(plain)?.last, paneInkEdges(filled)?.last)
     }
 
     func testTheMeasurementShouldSeeAGlyphThatHangsLow() {

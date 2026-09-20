@@ -38,6 +38,7 @@ import {
     IconSearch,
     IconFileCode,
     IconPanelLeft,
+    IconPanelLeftFilled,
     IconFolder,
     IconAlertTriangle,
     IconPencil,
@@ -424,7 +425,12 @@ export function initToolbar(
     // host that has one (`ITEM_HOST_CAPABILITY`).
     if (available.has("toc")) {
         items.toc = wrap("toc", btn(
-            IconPanelLeft,
+            // Both states of one mark, and CSS shows the one the panel's own
+            // body class asks for (toolbar.css). Both are in the DOM because
+            // the state is a body class and nothing here listens to it: the
+            // button holds no copy of what the panel is doing, which is the
+            // rule this item already followed for its pressed look.
+            IconPanelLeft + IconPanelLeftFilled,
             withChord(t("Toggle Table of Contents"), "toggleToc"),
             () => runEditorCommand("toggleToc", getEditor),
             "tb-toc-btn",

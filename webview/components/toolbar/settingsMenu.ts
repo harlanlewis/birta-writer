@@ -187,7 +187,8 @@ export function createSettingsMenu(
         // paints nothing, the menu stays open, and the switch moves when the
         // answer lands (`setFormattingRowChecked`). A switch that painted
         // itself would be right in this window and a guess about every other.
-        if (isFormattingRowExpanded && hostArranges("formattingInSecondRow")) {
+        const hasFormattingRow = Boolean(isFormattingRowExpanded) && hostArranges("formattingInSecondRow");
+        if (hasFormattingRow && isFormattingRowExpanded) {
             const item = createSwitchItem(t("Formatting toolbar"));
             formattingRowSwitch = item;
             item.el.addEventListener("mousedown", (e) => {
@@ -199,23 +200,59 @@ export function createSettingsMenu(
             rows.push(item.el);
         }
         if (checksRow) {
-            // Typography is how the text LOOKS and Proofreading is what the
-            // editor SAYS about it: two subjects, so a rule between them.
-            if (rows.length > 0) { rows.push(makeSep()); }
+            // Beside the formatting row's switch with no rule between them,
+            // and behind one where the typography ends. Typography is how the
+            // text LOOKS; these two are what the editor PUTS ON it, a row of
+            // controls and a set of underlines, which is near enough one
+            // subject that a line between them was separating two rows rather
+            // than two groups.
+            if (rows.length > 0 && !hasFormattingRow) { rows.push(makeSep()); }
             rows.push(checksRow);
         }
         let typographyInserted = rows.length === 0;
 
+        // The rows this surface actually offers, gathered before any of them
+        // is drawn, because whether a rule is worth drawing depends on how
+        // many rows are on each side of it and that is not known one row at a
+        // time.
+        //
+        // A row the host cannot answer (its settings UI, its keybindings UI,
+        // our release page) or an arrangement withdraws (the layout rows,
+        // where the layout is not the user's) is not offered.
+        const offered = TOOLBAR_MENU_COMMANDS.filter(
+            (meta) => menuActions[meta.id] && commandAvailable(meta.id),
+        );
+        const groupSize = new Map<string | undefined, number>();
+        for (const meta of offered) {
+            groupSize.set(meta.menuGroup, (groupSize.get(meta.menuGroup) ?? 0) + 1);
+        }
+        /**
+         * Whether the boundary between two groups earns a rule here.
+         *
+         * A separator's job is to separate GROUPS, and between two groups that
+         * are each a single row it is just a line between two rows: it says
+         * nothing the space around them does not, and a run of them turns a
+         * short menu into a ladder. So a boundary is drawn only where at least
+         * one side is more than one row.
+         *
+         * This is a fact about the surface rather than about the taxonomy, and
+         * that is the point: the groups themselves are unchanged
+         * (shared/editorCommands.ts, mirrored by the native context menu's
+         * group prefixes), and a menu keeps every rule whose groups it
+         * actually has. In VS Code every group has two rows and nothing moves;
+         * on a surface that withdraws most of them, the keyboard cheatsheet
+         * and the host's Settings row stop being fenced off from each other.
+         */
+        const boundaryEarnsRule = (before: string | undefined, after: string | undefined): boolean =>
+            (groupSize.get(before) ?? 0) > 1 || (groupSize.get(after) ?? 0) > 1;
+
         let prevGroup: string | undefined;
-        for (const meta of TOOLBAR_MENU_COMMANDS) {
-            const action = menuActions[meta.id];
-            // A row the host cannot answer (its settings UI, its keybindings
-            // UI, our release page) or an arrangement withdraws (the layout
-            // rows, where the layout is not the user's) is not offered.
-            if (!action || !commandAvailable(meta.id)) { continue; }
-            if (prevGroup !== undefined && meta.menuGroup !== prevGroup) {
+        let first = true;
+        for (const meta of offered) {
+            if (!first && meta.menuGroup !== prevGroup && boundaryEarnsRule(prevGroup, meta.menuGroup)) {
                 menu.appendChild(makeSep());
             }
+            first = false;
             if (!typographyInserted && meta.menuGroup !== "layout") {
                 menu.append(...rows, makeSep());
                 typographyInserted = true;
@@ -226,7 +263,7 @@ export function createSettingsMenu(
             const label = meta.id === "openExtensionSettings"
                 ? settingsMenuTitle(productName)
                 : t(meta.title);
-            addEntry(label, action, meta.id);
+            addEntry(label, menuActions[meta.id] as () => void, meta.id);
         }
 
         // A menu with no group boundary after the layout rows would never reach

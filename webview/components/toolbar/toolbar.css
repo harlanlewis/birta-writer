@@ -1038,17 +1038,33 @@ body:is(.files-open, .files-overlay-open) .tb-files-btn {
     color: var(--vscode-inputOption-activeForeground);
 }
 
-/* Pressed WHILE the panel is out, keyed off the classes the panel itself sets
-   to position (see components/toc). The button holds no copy of that state, so
-   it cannot come to disagree with the panel it opens. */
-body:is(.toc-open, .toc-overlay-open) .tb-toc-btn {
-    background: var(--vscode-inputOption-activeBackground);
-    color: var(--vscode-inputOption-activeForeground);
+/* Out WHILE the panel is out, keyed off the classes the panel itself sets to
+   position (see components/toc). The button holds no copy of that state, so it
+   cannot come to disagree with the panel it opens.
+
+   What says so is the PANE, inked (`IconPanelLeftFilled`), rather than a wash
+   behind the whole glyph. The wash is what every other toolbar button wears
+   for "this option is on", and that is the difference: the other buttons are
+   options, and this one is a picture of the window. A filled pane says which
+   half of that picture is showing, in the mark itself, and it reads at a
+   glance from across the band where a tint the width of a button does not.
+
+   Both glyphs are in the DOM and one is shown (index.ts). A swap in CSS rather
+   than in JavaScript, because the state is already a body class and the
+   button deliberately listens to nothing. */
+.tb-toc-btn svg:nth-of-type(2),
+body:is(.toc-open, .toc-overlay-open) .tb-toc-btn svg:nth-of-type(1) {
+    display: none;
+}
+
+body:is(.toc-open, .toc-overlay-open) .tb-toc-btn svg:nth-of-type(2) {
+    display: block;
 }
 
 /* One glyph for both docks: the sidebar mark is symmetric about its own centre,
    so the right-hand dock is the left-hand one mirrored. Drawing it this way
-   keeps the button's side and the panel's side reading from a single fact. */
+   keeps the button's side and the panel's side reading from a single fact, and
+   it flips both states together because it names neither. */
 body.toc-right .tb-toc-btn svg {
     transform: scaleX(-1);
 }

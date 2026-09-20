@@ -63,6 +63,40 @@ describe("the Mac titlebar's pane glyph against the page's", () => {
         expect(pageGlyph()).toContain(`<path d="M${swiftNumber("dividerX")} ${inset}v${side}"/>`);
     });
 
+    it("the filled state should be the same frame and divider with the pane inked", () => {
+        // Two states of ONE mark, which is the whole reason the outline is
+        // repeated verbatim rather than a second drawing of the same idea: a
+        // frame that moved between the states would make the button flinch as
+        // the panel opened.
+        const filled = iconsSource.slice(iconsSource.indexOf("export const IconPanelLeftFilled"));
+        const outline = pageGlyph();
+        const inset = swiftNumber("frameInset");
+        const side = swiftNumber("viewBox") - inset * 2;
+        expect(filled).toContain(
+            `<rect x="${inset}" y="${inset}" width="${side}" height="${side}" rx="${swiftNumber("cornerRadius")}"/>`,
+        );
+        expect(filled).toContain(`<path d="M${swiftNumber("dividerX")} ${inset}v${side}"/>`);
+        expect(outline).toContain(`rx="${swiftNumber("cornerRadius")}"`);
+        // The ink stops at the divider and is clipped to the frame's corners,
+        // which is what Swift gets by clipping rather than by arcs of its own.
+        expect(filled).toMatch(/fill="currentColor" stroke="none"/);
+        expect(filled).toContain(`M${swiftNumber("dividerX")} ${inset}H`);
+        expect(swiftSource).toContain("frame.addClip()");
+    });
+
+    it("the Swift stroke should straddle its path, as an SVG stroke does", () => {
+        // The failure this exists for: every number can match and the mark
+        // still be drawn one stroke width smaller on every side, because a
+        // stroke inset inside the path is a different picture from a stroke
+        // centred on it. That is not visible in any number, so it is asserted
+        // as the absence of the inset arithmetic and confirmed on the pixels
+        // by `TitlebarSymbolsTests`.
+        const box = swiftSource.slice(swiftSource.indexOf("let box = NSRect"), swiftSource.indexOf("let frame ="));
+        expect(box).toContain("frameInset * scale");
+        expect(box).not.toMatch(/stroke\s*\/\s*2/);
+        expect(swiftSource).toContain("xRadius: cornerRadius * scale");
+    });
+
     it("the trailing mark should stay the page's, drawn by nothing here", () => {
         // The band's other pane toggle is the outline's, and it is the page's
         // own button mirrored in CSS for a right-hand dock. Swift drawing a
@@ -71,7 +105,7 @@ describe("the Mac titlebar's pane glyph against the page's", () => {
         // Asserted on the DECLARATION rather than on the word: this file's own
         // prose says why there is no trailing case, and a guard that banned
         // the word would be broken by the sentence explaining it.
-        expect(swiftSource).toContain("static func image() -> NSImage");
+        expect(swiftSource).toContain("static func image(paneFilled: Bool = false) -> NSImage");
         expect(swiftSource).not.toMatch(/case\s+trailing/);
         // ...and the page really is where the mirror happens, so the sentence
         // above is about this codebase rather than about an idea of it.
