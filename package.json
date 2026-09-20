@@ -2682,6 +2682,13 @@
                     "scope": "application",
                     "markdownDescription": "**Display only — your file never changes.** Show Linear links as cards. Issue cards. Built from the link alone, so it needs no network and requests nothing. Requires `#birta.embeds.enabled#`. Turn this off to leave Linear links looking like ordinary links."
                 },
+                "birta.embeds.providers.asana": {
+                    "order": 105.425,
+                    "type": "boolean",
+                    "default": true,
+                    "scope": "application",
+                    "markdownDescription": "**Display only — your file never changes.** Show Asana links as cards. Task cards, built from the link alone, so they need no network and request nothing; connect Asana and the card also shows the task's name, assignee, due date and whether it is done. Requires `#birta.embeds.enabled#`. Turn this off to leave Asana links looking like ordinary links."
+                },
                 "birta.embeds.providers.codepen": {
                     "order": 105.43,
                     "type": "boolean",

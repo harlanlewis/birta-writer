@@ -29,6 +29,7 @@ const IDS: Record<EmbedKind, string> = {
     googlefile: "document/1AbCdEfGhIjKlMnOpQrStUvWxYz01234",
     miro: "uXjVO5X2CWo=",
     linear: "birta/issue/MAR-186/embed-provider-roadmap",
+    asana: "0/1201234567890123/1207654321098765",
     codepen: "chriscoyier/AbCdEf",
     codesandbox: "new-react-sandbox-abc123",
     stackblitz: "vitejs-vite-abc123",
@@ -52,7 +53,7 @@ afterEach(() => {
     document.body.innerHTML = "";
 });
 
-// 15 providers, one real Milkdown editor each. Measured cost is dominated by
+// One real Milkdown editor per provider. Measured cost is dominated by
 // editor construction, not by the assertions; a per-describe timeout keeps the
 // project default from being raised for everyone else.
 describe("the per-provider roster at collectEmbeds", { timeout: budget(60_000) }, () => {
@@ -105,7 +106,7 @@ describe("the per-provider roster at collectEmbeds", { timeout: budget(60_000) }
 
         expect(unreachable, "providers the sweep could not build a card for").toEqual([]);
         expect(covered).toHaveLength(EMBED_KINDS.length);
-        expect(covered.length).toBeGreaterThanOrEqual(15);
+        expect(covered.length).toBeGreaterThanOrEqual(16);
     });
 
     it("a document of many providers should lose only the one switched off", async () => {

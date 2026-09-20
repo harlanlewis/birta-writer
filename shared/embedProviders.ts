@@ -33,6 +33,7 @@ export type EmbedKind =
     | "googlefile"
     | "miro"
     | "linear"
+    | "asana"
     | "codepen"
     | "codesandbox"
     | "stackblitz";
@@ -44,8 +45,9 @@ export interface EmbedMatch {
      * Provider-specific id. A YouTube/Loom video id; a Figma `type/fileKey`
      * composite; a GitHub `owner/repo[/pull|issues/N | /blob/ref/path…]` path;
      * a Google `product/fileId` composite; a Linear `org/issue/KEY[/slug]`
-     * path. Opaque outside this module, except the exported *CardParts
-     * re-parsers (githubCardParts, googleFileCardParts, linearCardParts).
+     * path; an Asana task path. Opaque outside this module, except the
+     * exported *CardParts re-parsers (githubCardParts, googleFileCardParts,
+     * linearCardParts, asanaCardParts).
      */
     id: string;
 }
@@ -601,6 +603,91 @@ export function linearCardParts(id: string): LinearCardParts {
     return slug ? { org, key, slug } : { org, key };
 }
 
+/**
+ * An Asana object id (Asana calls it a "gid"): a decimal string.
+ *
+ * Digits only is the whole charset, which is what makes every Asana path
+ * segment this module accepts safe by construction: `.` and `..` cannot match
+ * it, so unlike the GitHub and Linear extractors there is no separate dot
+ * rejection to keep honest. Bounded rather than open so a pathological path
+ * segment cannot ride through as an id.
+ */
+const ASANA_GID = /^\d{1,20}$/;
+
+/**
+ * Extract a joined-path id from an Asana TASK URL, or null.
+ *
+ * Three accepted shapes, each ending in the task's gid:
+ *   app.asana.com/0/<project>/<task>[/f]                     the classic permalink
+ *   app.asana.com/1/<workspace>/project/<project>/task/<task>
+ *   app.asana.com/1/<workspace>/task/<task>
+ *
+ * Nothing else: a project view, a portfolio, an inbox and a goal all stay
+ * plain links, because the connector has exactly one endpoint behind it and a
+ * card it cannot fill is worse than no card.
+ *
+ * The id is the accepted segments joined, which is `linearId`'s composite and
+ * for the same reason: `canonicalEmbedUrl` rebuilds the URL from it rather
+ * than reconstructing a permalink shape this module would have to guess at.
+ * The one thing dropped is the classic shape's trailing `/f`, a view flag that
+ * names no different task, so two links to one task share one id and one cache
+ * entry. Exported for testing.
+ */
+export function asanaId(raw: string): string | null {
+    const url = hostUrl(raw, "app.asana.com");
+    if (!url) {
+        return null;
+    }
+    const segments = pathSegments(url);
+    const [first, second, third, fourth, fifth, sixth] = segments;
+    if (first === "0") {
+        // `/f` is a view flag on the same task, so it collapses away; a fifth
+        // segment, or a fourth that is anything else, is a different page.
+        // There is deliberately no lower bound here: a short path fails the
+        // gid tests below, and a bound that nothing can reach is decoration.
+        if (segments.length > 4 || (segments.length === 4 && fourth !== "f")) {
+            return null;
+        }
+        return ASANA_GID.test(second ?? "") && ASANA_GID.test(third ?? "")
+            ? `0/${second}/${third}`
+            : null;
+    }
+    if (first !== "1" || !ASANA_GID.test(second ?? "")) {
+        return null;
+    }
+    if (segments.length === 6 && third === "project" && fifth === "task") {
+        return ASANA_GID.test(fourth ?? "") && ASANA_GID.test(sixth ?? "")
+            ? `1/${second}/project/${fourth}/task/${sixth}`
+            : null;
+    }
+    if (segments.length === 4 && third === "task") {
+        return ASANA_GID.test(fourth ?? "") ? `1/${second}/task/${fourth}` : null;
+    }
+    return null;
+}
+
+/** The display pieces of an Asana card, from an asanaId composite. */
+export interface AsanaCardParts {
+    /**
+     * The task's own gid. The ONLY part any request is built from, and
+     * re-validated at that site rather than trusted from here.
+     */
+    taskGid: string;
+    /** The project the URL named, when it named one. */
+    projectGid?: string;
+}
+
+/** Re-parse an asanaId composite into its display pieces. Pure; unit-tested. */
+export function asanaCardParts(id: string): AsanaCardParts {
+    const segments = id.split("/");
+    if (segments[0] === "0") {
+        return { taskGid: segments[2], projectGid: segments[1] };
+    }
+    return segments[2] === "project"
+        ? { taskGid: segments[5], projectGid: segments[3] }
+        : { taskGid: segments[3] };
+}
+
 /** GitHub path segments: the conservative charset of owners/repos/refs. */
 const GITHUB_SEGMENT = /^[A-Za-z0-9_.-]+$/;
 
@@ -701,6 +788,7 @@ const EXTRACTORS: readonly { kind: EmbedKind; extract: (url: string) => string |
     { kind: "googlefile", extract: googleFileId },
     { kind: "miro", extract: miroId },
     { kind: "linear", extract: linearId },
+    { kind: "asana", extract: asanaId },
     { kind: "codepen", extract: codepenId },
     { kind: "codesandbox", extract: codesandboxId },
     { kind: "stackblitz", extract: stackblitzId },
@@ -781,6 +869,9 @@ export function canonicalEmbedUrl(kind: EmbedKind, id: string): string {
         }
         case "miro": return `https://miro.com/app/board/${id}/`;
         case "linear": return `https://linear.app/${id}`;
+        // The composite IS the accepted path, so this joins rather than
+        // reconstructing a permalink shape from pieces.
+        case "asana": return `https://app.asana.com/${id}`;
         case "codepen": {
             const { owner, slug } = codepenIdParts(id);
             return `https://codepen.io/${owner}/pen/${slug}`;
@@ -829,6 +920,7 @@ export function oembedEndpoint(kind: EmbedKind, canonicalUrl: string): string | 
         case "googlesheets":
         case "googlefile":
         case "linear":
+        case "asana":
         case "codesandbox":
         case "stackblitz":
             return null;

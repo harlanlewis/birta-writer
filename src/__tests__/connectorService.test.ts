@@ -17,10 +17,12 @@ import * as vscode from "vscode";
 import { _resetErrorSinkForTests } from "../errorSink";
 import { _setDnsLookupForTests } from "../utils/urlGuard";
 import { ConnectorService } from "../connectors/connectorService";
+import { CONNECTORS } from "../../shared/connectors";
 
 const REPO = "https://github.com/birtalabs/birta-writer";
 const PR = "https://github.com/birtalabs/birta-writer/pull/316";
 const TOKEN = "gho_secret_token_value";
+const TASK = "https://app.asana.com/0/1201234567890123/1207654321098765";
 
 /** An in-memory SecretStorage, with the real one's async surface. */
 function fakeSecrets(seed: Record<string, string> = {}) {
@@ -451,7 +453,11 @@ describe("ConnectorService", () => {
             // only what is connected would be indistinguishable from one that
             // forgot a connector, which is the thing this test is named for.
             const service = new ConnectorService(fakeSecrets({ "birta.connector.github": CONNECTED }).api);
-            expect(await service.connectionStates()).toEqual({ github: true, linear: false });
+            expect(await service.connectionStates()).toEqual({
+                github: true,
+                linear: false,
+                asana: false,
+            });
         });
 
         it("an unreadable keychain should degrade to locked, never to a throw", async () => {
@@ -470,6 +476,200 @@ describe("ConnectorService", () => {
             const service = new ConnectorService(secrets.api);
             expect(await service.resolveCard(REPO)).toEqual({ state: "locked", connector: "github" });
             expect(fetchSpy).toHaveBeenCalledTimes(1);
+        });
+    });
+
+    /**
+     * The `token` rung (MAR-186). Until Asana this strategy had no provider
+     * behind it, so nothing here had ever run: `connect` refused it outright
+     * and `credential` returned a stored token no path could ever have stored.
+     * These are the cases that make it a live code path rather than a shape.
+     */
+    describe("the token rung", () => {
+        const PAT = "1/1100000000000001:abcdefabcdefabcdefabcdefabcdef";
+        const RECORDED = JSON.stringify({ auth: "token", token: PAT });
+
+        /** What the box hands back, or undefined for a dismissal. */
+        function mockPaste(value: string | undefined): void {
+            (vscode.window.showInputBox as unknown as ReturnType<typeof vi.fn>)
+                .mockResolvedValue(value);
+        }
+
+        const taskBody = (fields: Record<string, unknown> = {}) => jsonResponse({
+            data: { gid: "1207654321098765", name: "Ship the token rung", completed: false, ...fields },
+        });
+
+        it("a provider that answers nothing anonymously should ask NOTHING until connected", async () => {
+            // The other half of `anonymousReads: false`, and the half that is
+            // about privacy rather than about the card: an unconnected Asana
+            // read could only 401, so making it would put the document's task
+            // ids on the wire in exchange for a failure.
+            const fetchSpy = vi.fn();
+            vi.stubGlobal("fetch", fetchSpy);
+            const service = new ConnectorService(fakeSecrets().api);
+            expect(await service.resolveCard(TASK)).toEqual({ state: "locked", connector: "asana" });
+            expect(fetchSpy).not.toHaveBeenCalled();
+        });
+
+        it("connecting should open the provider's own instructions, not a page we wrote", async () => {
+            mockPaste(PAT);
+            vi.stubGlobal("fetch", vi.fn(async () => jsonResponse({ data: { gid: "1" } })));
+            await new ConnectorService(fakeSecrets().api).connect("asana");
+            const [uri] = (vscode.env.openExternal as unknown as ReturnType<typeof vi.fn>)
+                .mock.calls[0] as unknown as [{ toString(): string }];
+            expect(uri.toString()).toBe(CONNECTORS.asana.tokenHelpUrl);
+            // A browser destination, and deliberately not a host the
+            // credential may be sent to.
+            expect(CONNECTORS.asana.apiHosts).not.toContain(
+                new URL(CONNECTORS.asana.tokenHelpUrl!).hostname,
+            );
+        });
+
+        it("the paste box should be masked and should survive the user leaving VS Code", async () => {
+            // Minting a token means going to the browser. A box that closes on
+            // focus loss cannot be completed by anyone who did not already
+            // have a token on the clipboard, which is nearly everyone.
+            mockPaste(PAT);
+            vi.stubGlobal("fetch", vi.fn(async () => jsonResponse({ data: { gid: "1" } })));
+            await new ConnectorService(fakeSecrets().api).connect("asana");
+            const [options] = (vscode.window.showInputBox as unknown as ReturnType<typeof vi.fn>)
+                .mock.calls[0] as unknown as [vscode.InputBoxOptions];
+            expect(options.password).toBe(true);
+            expect(options.ignoreFocusOut).toBe(true);
+            // The full cost of the credential, where the user is deciding.
+            // There is no consent screen of ours after this one, so a prompt
+            // that omitted it would leave "read-only" as the last thing said
+            // about a token that is nothing of the kind.
+            expect(options.prompt).toContain(CONNECTORS.asana.scopeNote);
+            // The validator refuses an empty submission rather than letting
+            // the flow proceed to a verify that could only fail.
+            expect(options.validateInput?.("   ", {} as never)).toBeTruthy();
+            expect(options.validateInput?.(PAT, {} as never)).toBeNull();
+        });
+
+        it("connecting should verify the pasted token before recording it", async () => {
+            const fetchSpy = vi.fn(async () => jsonResponse({ data: { gid: "1", name: "Me" } }));
+            vi.stubGlobal("fetch", fetchSpy);
+            mockPaste(PAT);
+            const secrets = fakeSecrets();
+            const service = new ConnectorService(secrets.api);
+            expect(await service.connect("asana")).toEqual({ ok: true });
+            const [url, init] = fetchSpy.mock.calls[0] as unknown as [string, RequestInit];
+            expect(url).toBe("https://app.asana.com/api/1.0/users/me");
+            expect((init.headers as Record<string, string>).authorization).toBe(`Bearer ${PAT}`);
+            expect(secrets.store.get("birta.connector.asana")).toBe(RECORDED);
+        });
+
+        it("a token the provider rejects should NOT be recorded as a connection", async () => {
+            vi.stubGlobal("fetch", vi.fn(async () => new Response("{}", { status: 401 })));
+            mockPaste(PAT);
+            const secrets = fakeSecrets();
+            const service = new ConnectorService(secrets.api);
+            const result = await service.connect("asana");
+            expect(result?.ok).toBe(false);
+            expect(secrets.store.has("birta.connector.asana")).toBe(false);
+            expect(await service.isConnected("asana")).toBe(false);
+        });
+
+        it("dismissing the box should record nothing and ask nothing", async () => {
+            const fetchSpy = vi.fn();
+            vi.stubGlobal("fetch", fetchSpy);
+            mockPaste(undefined);
+            const secrets = fakeSecrets();
+            // Silence, not a warning: a deliberate no is not news.
+            expect(await new ConnectorService(secrets.api).connect("asana")).toBeNull();
+            expect(secrets.store.size).toBe(0);
+            expect(fetchSpy).not.toHaveBeenCalled();
+        });
+
+        it("a box that comes back empty should be a cancellation, never a stored blank", async () => {
+            const fetchSpy = vi.fn();
+            vi.stubGlobal("fetch", fetchSpy);
+            const secrets = fakeSecrets();
+            const service = new ConnectorService(secrets.api);
+            for (const blank of ["", "   ", "\n\t"]) {
+                mockPaste(blank);
+                expect(await service.connect("asana")).toBeNull();
+            }
+            expect(secrets.store.size).toBe(0);
+            expect(fetchSpy).not.toHaveBeenCalled();
+        });
+
+        it("a pasted token should be trimmed before it is sent OR stored", async () => {
+            // Copying a token out of a web page routinely brings a newline
+            // with it, and an untrimmed bearer header is refused by the
+            // provider for a reason the user cannot see.
+            const fetchSpy = vi.fn(async () => jsonResponse({ data: { gid: "1" } }));
+            vi.stubGlobal("fetch", fetchSpy);
+            mockPaste(`  ${PAT}\n`);
+            const secrets = fakeSecrets();
+            await new ConnectorService(secrets.api).connect("asana");
+            const [, init] = fetchSpy.mock.calls[0] as unknown as [string, RequestInit];
+            expect((init.headers as Record<string, string>).authorization).toBe(`Bearer ${PAT}`);
+            expect(secrets.store.get("birta.connector.asana")).toBe(RECORDED);
+        });
+
+        it("connecting with the master network switch OFF should refuse before asking for a token", async () => {
+            mockGates({ network: false });
+            const fetchSpy = vi.fn();
+            vi.stubGlobal("fetch", fetchSpy);
+            const result = await new ConnectorService(fakeSecrets().api).connect("asana");
+            expect(result?.ok).toBe(false);
+            expect(vscode.window.showInputBox).not.toHaveBeenCalled();
+            expect(vscode.env.openExternal).not.toHaveBeenCalled();
+            expect(fetchSpy).not.toHaveBeenCalled();
+        });
+
+        it("a recorded token should reach the pinned host and build the card", async () => {
+            const fetchSpy = vi.fn(async () => taskBody({ assignee: { name: "Jane Doe" } }));
+            vi.stubGlobal("fetch", fetchSpy);
+            const service = new ConnectorService(fakeSecrets({ "birta.connector.asana": RECORDED }).api);
+            expect(await service.resolveCard(TASK)).toEqual({
+                state: "ready",
+                connector: "asana",
+                card: { title: "Ship the token rung", subtitle: "Jane Doe", status: "Open" },
+            });
+            const [url, init] = fetchSpy.mock.calls[0] as unknown as [string, RequestInit];
+            expect(new URL(url).hostname).toBe("app.asana.com");
+            expect((init.headers as Record<string, string>).authorization).toBe(`Bearer ${PAT}`);
+        });
+
+        it("a recorded token the provider now rejects should answer expired, not locked", async () => {
+            vi.stubGlobal("fetch", vi.fn(async () => new Response("{}", { status: 401 })));
+            const service = new ConnectorService(fakeSecrets({ "birta.connector.asana": RECORDED }).api);
+            expect(await service.resolveCard(TASK)).toEqual({ state: "expired", connector: "asana" });
+        });
+
+        it("a task this grant cannot see should be an error, not an offer to connect again", async () => {
+            // Asana has one grant and no broader tier to offer, so a 404 to a
+            // connected caller has nothing for the reader to act on. Offering
+            // a connection there would be a suggestion that cannot work.
+            vi.stubGlobal("fetch", vi.fn(async () => new Response("{}", { status: 404 })));
+            const service = new ConnectorService(fakeSecrets({ "birta.connector.asana": RECORDED }).api);
+            expect(await service.resolveCard(TASK)).toEqual({ state: "error", connector: "asana" });
+        });
+
+        it("no reply should carry the token, in any state", async () => {
+            // The webview renders third-party content, so nothing crossing to
+            // it may contain a credential. Asserted over the states the token
+            // rung can reach, with the token deliberately echoed back in the
+            // body of the one that succeeds.
+            const cases: Array<() => Response> = [
+                () => taskBody({ name: PAT === "" ? "x" : "A task", notes: PAT }),
+                () => new Response("{}", { status: 401 }),
+                () => new Response("{}", { status: 500 }),
+            ];
+            let checked = 0;
+            for (const respond of cases) {
+                vi.stubGlobal("fetch", vi.fn(async () => respond()));
+                const service = new ConnectorService(fakeSecrets({ "birta.connector.asana": RECORDED }).api);
+                const result = await service.resolveCard(TASK);
+                expect(result).not.toBeNull();
+                expect(JSON.stringify(result)).not.toContain(PAT);
+                checked += 1;
+            }
+            // A loop that reached nothing would pass while asserting nothing.
+            expect(checked).toBe(cases.length);
         });
     });
 });
