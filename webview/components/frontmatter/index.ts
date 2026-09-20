@@ -42,6 +42,7 @@ import {
 import type { FmEntry, FmListItem, FmNested, FmNestedItem, FmNestedLeaf } from "../../../shared/frontmatterTable";
 import { closeActiveFmSuggestMenu, openFmChipSuggestMenu, openFmSuggestMenu } from "./suggestMenu";
 import type { FmSuggestController } from "./suggestMenu";
+import { createProvenanceLabel } from "./provenance";
 
 // The pure parsing core lives in shared/frontmatterTable.ts (also used by the
 // Extension side); re-export it so existing consumers keep their import paths.
@@ -1398,6 +1399,13 @@ function renderFmContent(frontmatter: string): void {
         });
         addBtn.innerHTML = `${IconPlus} <span>${t('Add field')}</span>`;
         addRow.appendChild(addBtn);
+
+        // Provenance rides in the bottom row rather than the table so it
+        // survives the panel collapsing, and after the buttons so the row's
+        // controls keep their positions whether or not a block carries any.
+        const provenance = createProvenanceLabel(tabular, Date.now());
+        if (provenance) { addRow.appendChild(provenance); }
+
         panel.appendChild(addRow);
     } else {
         // Raw mode: complex YAML is edited as-is; the table and Add-field UI are hidden.
