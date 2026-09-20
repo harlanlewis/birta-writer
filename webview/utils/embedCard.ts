@@ -24,6 +24,7 @@
  */
 import {
     providerFor,
+    asanaCardParts,
     githubCardParts,
     googleFileCardParts,
     linearCardParts,
@@ -472,6 +473,13 @@ function infoCardText(provider: EmbedProvider, id: string): { title: string; det
         // The slug is the issue title, hyphenated: humanize it. A slugless
         // URL falls back to the workspace name, which still orients.
         return { title: parts.key, detail: parts.slug ? parts.slug.replace(/-/g, " ") : parts.org };
+    }
+    if (provider.kind === "asana") {
+        // The URL discloses numbers and nothing else, so the rung-0 card says
+        // what the link IS and carries the task's own gid as the only thing
+        // telling two unresolved Asana cards apart. The connector replaces
+        // both the moment it answers.
+        return { title: t("Asana task"), detail: asanaCardParts(id).taskGid ?? "" };
     }
     if (provider.kind === "googlefile") {
         // An ordinary Docs/Slides/Sheets URL: the product is all the URL
