@@ -4,10 +4,19 @@
 
 ## [Unreleased]
 
+### Added
+
+- Asana task cards. A bare Asana task link on its own line renders as a card of the task's name, its assignee, its due date and whether it is done. It needs a connection, because Asana answers nothing without one, so an unconnected card is built from the link alone, requests nothing, and says it needs connecting rather than going blank. `birta.embeds.providers.asana` turns the provider off; the card needs `birta.embeds.enabled`, and the connected card needs `birta.network.enabled`.
+- Connecting a service by pasting a personal access token, which is how Asana connects. Birta opens the provider's own instructions, takes the token in a masked box that stays open while you go and fetch it, checks it with one call before recording anything, and keeps it in your keychain rather than in a settings file. The box states what the token covers: a personal access token carries everything your own account can do, and Asana issues no read-only kind.
+
 ### Changed
 
 - The button that shows and hides the table of contents says so by inking the pane in its own mark, rather than by tinting the whole button. The mark is a picture of the window, so a filled pane says which half of it is showing, which reads from further away than a wash the width of a button and does not borrow the look every other toolbar button wears for "this option is on".
 - Spelling, grammar and style checks are now Proofreading, a submenu of the toolbar's gear, rather than a button of their own on the bar. Every row is the same and every command is unchanged, so Check Spelling, Check Grammar, Check Style, the style sub-checks and Highlight Note Markers still run from the command palette and the slash menu exactly as before. The bar loses a permanent control for a set of modes most readers set once, and the submenu is named for what it checks, which is what the Mac app's own View menu already calls the same rows.
+
+### Fixed
+
+- The `/ai` composer now offers a model for Gemini CLI, opencode and Qwen Code, and a reasoning effort for GitHub Copilot CLI, Cline and aider. Birta reads what a harness accepts from that harness's own `--help`, and it was not reading the shapes those CLIs print, so the pickers were silently absent and Cline's effort menu opened with nothing in it. Where a harness names a reasoning flag without documenting its levels, as aider does, the effort picker now takes a typed value the way the model picker always has.
 
 ### Removed
 

@@ -722,7 +722,21 @@ export interface HarnessCapabilities {
      * meant is a command that fails rather than a request that differs.
      */
     effortFlag?: string;
-    /** Effort values the help ENUMERATES, in its own order. Empty when it lists none. */
+    /**
+     * Effort values the help ENUMERATES, in its own order. Empty when it lists
+     * none, and empty is load-bearing rather than merely uninformative: it is
+     * what makes the composer offer a typed effort instead of a menu. A
+     * harness that names a reasoning flag and documents no levels, as aider
+     * does, reaches the user through that row and through nothing else, so a
+     * reader who fills this in from somewhere other than the help is taking
+     * the row away.
+     *
+     * The asymmetry with `modelExamples` is deliberate. A help text quotes
+     * models as EXAMPLES, so one absent from the list may still work and free
+     * text is always reachable; these are an ENUMERATION the flag's own
+     * formatter prints exhaustively, so a value outside it is a command that
+     * fails rather than a request that differs.
+     */
     efforts: readonly string[];
     /** Model names the help quotes as examples. Suggestions, never a catalog. */
     modelExamples: readonly string[];
