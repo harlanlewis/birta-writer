@@ -17,7 +17,7 @@ Nothing goes into a shared session narrative, and this file is not one: a docume
 
 ## Gates
 
-- Per commit: `pnpm test`, `pnpm typecheck`, `pnpm build`, plus `pnpm test:e2e` if `webview/` was touched. One harness at a time.
+- Per commit: `pnpm test`, `pnpm typecheck`, `pnpm build`, plus `pnpm test:e2e` if `webview/` was touched. A `mac/` change runs `bash mac/scripts/test.sh` AND `pnpm test`: the guards that read Swift as text (`shared/__tests__/firstRunGates.test.ts`, `e2e/firstRunTour`) are TypeScript, and a Swift-only lane that skips them ships their reds to the next lane. One harness at a time.
 - Merge gate: `pnpm test && pnpm typecheck`
 - Visual pass: /verify for runtime behavior beyond jsdom.
 
