@@ -28,12 +28,12 @@ import {
 } from "../../../shared/fontPresets";
 import {
     CONTENT_WIDTH_MODES,
-    DEFAULT_CONTENT_WIDTH_MODE,
     DEFAULT_MAX_WIDTH_CH,
     normalizeContentWidthMode,
     clampMaxWidthCh,
     type ContentWidthMode,
 } from "../../../shared/contentWidth";
+import { bootContentWidthMode } from "@/contentWidth";
 import { type BlockHandlesMode } from "../../../shared/blockHandles";
 
 export interface TypographyControl {
@@ -167,12 +167,10 @@ export function createTypographyControl(): TypographyControl {
     // Full Width (fills the pane) / Fixed (capped at the maxContentWidth ch
     // setting), chosen via a segmented control. The active mode echoes back
     // from the extension after the settings write, re-syncing the segments.
-    // Without a measure to choose, the answer is always full: the host's own
-    // window is the measure, and a stored "fixed" from a host that had the
-    // control would otherwise cap the text at a width nothing can change.
-    let currentContentWidth: ContentWidthMode = hostHas("contentMeasure")
-        ? normalizeContentWidthMode(window.__i18n?.contentWidth ?? DEFAULT_CONTENT_WIDTH_MODE)
-        : "full";
+    // The mode itself is the document's rather than this menu's, and the page
+    // has already put it on the document (webview/contentWidth.ts); the
+    // segments only have to agree with it.
+    let currentContentWidth: ContentWidthMode = bootContentWidthMode();
     // Kept in sync with the extension's authoritative resolution so the
     // optimistic apply on a Fixed click never flashes a stale width after the
     // setting changes elsewhere.
@@ -384,12 +382,9 @@ export function createTypographyControl(): TypographyControl {
     }
 
     // The document's own state, applied once and independently of any menu.
+    // The width is NOT here: it is the page's, applied at boot for every host
+    // whether or not this toolbar exists (webview/contentWidth.ts).
     applyFontFamily(currentFontPreset, currentFontStacks);
-    if (!hostHas("contentMeasure")) {
-        // Such a host has no control to set it later and its boot page carries
-        // no width style, so full width has to be put on the document here.
-        applyContentWidthLive();
-    }
 
     // WHERE the rows live is the surface's choice, and it is exclusive: a DOM
     // node has one parent, so the item and the gear rows can never both exist.

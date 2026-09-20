@@ -24,7 +24,13 @@
   .editor-topbar { min-height: 40px; box-sizing: border-box; }
 </style>
 <script>
-  document.addEventListener("DOMContentLoaded", () => document.body.classList.add("editor-width-auto", "vscode-dark"));
+  // Only the theme class, deliberately. The app's own page carries no width
+  // style, so the bundle is what has to put both halves of it on the document
+  // (webview/contentWidth.ts). A harness page that hand-applies
+  // `editor-width-auto` cannot express a bundle that stops doing that, and
+  // what is lost then is the margin clearing a docked drawer: the document is
+  // drawn under the file list.
+  document.addEventListener("DOMContentLoaded", () => document.body.classList.add("vscode-dark"));
   const PARAMS = new URLSearchParams(location.search);
   const WITH_ROOT = PARAMS.get("root") !== "0";
   const LEFT_TOC = PARAMS.get("toc") === "left";
@@ -45,7 +51,7 @@
   // Mac app's own withdrawal is what e2e/macHost asserts.
   const ARRANGEMENTS = ["typographyInGearMenu", "formattingInSecondRow", "fixedToolbarLayout", "barMenusOnClick", "nativeFindBar", "nativeDatePicker", "fixedTocSide", "tocToggleInBar"]
     .filter((a) => !LEFT_TOC || (a !== "fixedTocSide" && a !== "tocToggleInBar"));
-  window.__i18n = { translations: {}, isMac: true, toolbar: { placements: {}, order: [] }, tocAutoHideThreshold: 3, tocVisibility: "hidden", host: { capabilities: ["spellAndGrammar", "imageUpload", "toc", "appPreferences", "agent", "projectFiles"], arrangements: ARRANGEMENTS, shortcuts: [] } };
+  window.__i18n = { translations: {}, isMac: true, toolbar: { placements: {}, order: [] }, tocAutoHideThreshold: 3, tocVisibility: "hidden", host: { capabilities: ["spellAndGrammar", "imageUpload", "toc", "appPreferences", "agent", "projectFiles", "contentMeasure"], arrangements: ARRANGEMENTS, shortcuts: [] } };
   window.__posted = [];
   const CONTENT = "# One\n\nSome text.\n\n```js\nconst x = 1;\n```\n\n## Two\n\ntext\n";
   const d = (name, hidden = false) => ({ name, kind: "dir", openable: true, hidden });

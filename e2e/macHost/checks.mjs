@@ -711,6 +711,18 @@ export async function run({ page, check, baseUrl }) {
         gear.hasWidthRow, JSON.stringify({ labels: gear.labels, hasWidthRow: gear.hasWidthRow }));
     check("mac: the size stepper came with them", gear.hasSizeRow, JSON.stringify(gear.kinds));
 
+    // And the width the segments SHOW is on the document, put there by the
+    // bundle: this page carries no width style, exactly as the app's own page
+    // carries none, so if the bundle stops applying it nothing else will. The
+    // two halves go together or the margins that clear a docked drawer are
+    // lost outright (webview/contentWidth.ts).
+    const bootWidth = await page.evaluate(() => ({
+        auto: document.body.classList.contains("editor-width-auto"),
+        maxWidth: getComputedStyle(document.documentElement).getPropertyValue("--editor-max-width").trim(),
+    }));
+    check("mac: the declared width is on the document at boot, both halves of it",
+        bootWidth.auto && bootWidth.maxWidth === "none", JSON.stringify(bootWidth));
+
     // The formatting row's switch: it ASKS the host and applies nothing.
     //
     // Both halves matter and only a real click can show either. The page owns
