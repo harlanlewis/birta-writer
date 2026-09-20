@@ -131,7 +131,7 @@ describe("family dropdowns under a narrowed target", () => {
         expect(rowLabels(topbar, "quote")).toEqual(["Blockquote"]);
 
         declare(ALL_SYNTAX_SETS);
-        tb.applySyntaxSets();
+        tb.refreshOfferedItems();
         expect(rowLabels(topbar, "quote")).toContain("Note");
         expect(rowLabels(topbar, "listMenu")).toContain("Task List");
     });
@@ -158,7 +158,7 @@ describe("family dropdowns under a narrowed target", () => {
         // method the bar does not expose.
         runEditorCommand("customizeToolbar", () => editor);
         declare([]);
-        tb.applySyntaxSets();
+        tb.refreshOfferedItems();
         // Deferred while the tray is open: the drag state is the DOM's, and a
         // rebuild mid-session would drop it.
         expect(placed()).toContain("table");
@@ -183,7 +183,7 @@ describe("family dropdowns under a narrowed target", () => {
         expect(placed()).toContain("table");
 
         declare([]);
-        tb.applySyntaxSets();
+        tb.refreshOfferedItems();
         expect(placed()).not.toContain("table");
         expect(placed()).toContain("listMenu");
     });

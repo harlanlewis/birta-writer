@@ -233,6 +233,29 @@ export const ALL_HOST_CAPABILITIES: readonly HostCapability[] = [
  */
 export const APP_ONLY_CAPABILITIES: readonly HostCapability[] = ["appPreferences", "projectFiles", "stripTooltip"];
 
+/**
+ * The capabilities a host may withdraw or offer while the page is UP, handed
+ * over as `hostCapabilitiesChanged` (shared/messages.ts) rather than by
+ * reloading the page to boot it again.
+ *
+ * Almost none can. A profile is what the surface IS, so it is settled before
+ * the page exists and the page is free to bake decisions on it. `agent` is the
+ * exception, and it is one because a user moves it: Settings, AI Agent, Enable
+ * /ai commands is a switch, and the host provides an agent or does not
+ * according to it. The page used to be reloaded for that, which tore the
+ * editor down and rebuilt it under whoever was looking at it in order to move
+ * two menu rows.
+ *
+ * The constraint on membership, and the reason this is a list rather than a
+ * sentence in a comment: a toolbar ITEM gated on a capability is built once,
+ * at panel construction (`hostAvailableItems` in
+ * webview/components/toolbar/registry.ts), so a capability that arrives later
+ * would find no item to place and the bar would be quietly missing a control
+ * for the rest of the session. A member here must therefore gate no toolbar
+ * item; `toolbarRegistry.test.ts` is what refuses the pair.
+ */
+export const LIVE_HOST_CAPABILITIES: readonly HostCapability[] = ["agent"];
+
 export const HOST_PROFILES = {
     vscode: ALL_HOST_CAPABILITIES.filter(
         (c) => !APP_ONLY_CAPABILITIES.includes(c),
@@ -463,6 +486,27 @@ export function hostProfile(): HostProfile {
         arrangements: declared.arrangements ?? [],
         shortcuts: declared.shortcuts ?? [],
     };
+}
+
+/**
+ * Replace the capabilities the page is running under, for a host that has
+ * moved one (`LIVE_HOST_CAPABILITIES`).
+ *
+ * Here rather than at the message handler because this file is the one reader
+ * of the declaration and has to stay its one writer: a handler reaching into
+ * `window.__i18n.host` itself would be a second place that knows the shape,
+ * which is what gathering the facts under one key exists to stop.
+ *
+ * The rest of the profile is carried over from what the page is running
+ * under, which is `hostProfile()`'s answer rather than the raw field: a page
+ * that declared nothing is running under the VS Code profile, and writing
+ * only the capabilities onto a blob with no `host` would leave it declaring
+ * an empty profile instead, which is a different claim from silence.
+ */
+export function setHostCapabilities(capabilities: readonly HostCapability[]): void {
+    const blob = (globalThis as HostDeclaration).__i18n;
+    if (blob === undefined) { return; }
+    blob.host = { ...hostProfile(), capabilities: [...capabilities] };
 }
 
 /** Whether the host wants layout `arrangement`. */

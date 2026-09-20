@@ -1411,6 +1411,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding, 
                 refusedSummonCombo: { [weak self] in self?.windows.refusedSummonCombo },
                 onChange: { [weak self] work in self?.front?.preferencesChanged(beforeReload: work) },
                 onChangeEverywhere: { [weak self] in self?.windows.preferencesChangedEverywhere() },
+                onHostCapabilitiesChange: { [weak self] in
+                    self?.windows.applyHostCapabilitiesEverywhere()
+                },
                 onReset: { [weak self] in self?.windows.settingsWereReset() },
                 onShowWelcome: { [weak self] in self?.showWelcome() },
                 onCheckForUpdates: { [weak self] in self?.menuCheckForUpdates() },

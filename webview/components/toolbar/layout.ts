@@ -57,7 +57,7 @@ export interface ToolbarLayout {
     /** Rebuild the zones for a changed placement config (deferred while dragging). */
     applyConfig: (config: ToolbarConfig) => void;
     /** Re-place the items after a syntax-target change (shared/syntaxSets.ts). */
-    applySyntaxSets: () => void;
+    refreshOfferedItems: () => void;
     /** Enter the drag-and-drop customize mode. */
     startCustomize: () => void;
     /** Show or hide the whole bar, writing the setting through. */
@@ -138,7 +138,7 @@ export function createToolbarLayout(deps: ToolbarLayoutDeps): ToolbarLayout {
     // minus what the reader's syntax target does not spell
     // (shared/syntaxSets.ts). NOT read once, unlike the two facts below it: the
     // host declaration is baked at panel load, and the target is a setting the
-    // reader changes with the editor open, so `applySyntaxSets` recomputes this
+    // reader changes with the editor open, so `refreshOfferedItems` recomputes this
     // and re-renders rather than leaving the bar on the target the document was
     // opened under.
     let available = offeredItems();
@@ -470,7 +470,7 @@ export function createToolbarLayout(deps: ToolbarLayoutDeps): ToolbarLayout {
             // Same as debug: the right zone's width changed.
             overflow?.update(availableWidth());
         },
-        applySyntaxSets(): void {
+        refreshOfferedItems(): void {
             // The set of items the target spells has changed. Everything is
             // already built (the build-time question is the host's, and that
             // has not moved), so this is a re-placement: recompute which of

@@ -14,7 +14,7 @@ import {
 import type { ToolbarItemId } from "../components/toolbar/registry";
 import type { ToolbarConfig, ToolbarPlacements } from "../../shared/messages";
 import { EDITOR_COMMANDS } from "../../shared/editorCommands";
-import type { HostCapability } from "../../shared/hostProfile";
+import { LIVE_HOST_CAPABILITIES, type HostCapability } from "../../shared/hostProfile";
 import { commandMutates } from "../readOnly";
 
 /** Build a config from a placements map (order defaults to empty). */
@@ -306,6 +306,23 @@ describe("ITEM_HOST_CAPABILITY against the command metadata (MAR-373)", () => {
         expect(buckets.gated).toBeGreaterThanOrEqual(3);
         expect(buckets.mixed).toBeGreaterThanOrEqual(2);
         expect(buckets.free).toBeGreaterThanOrEqual(3);
+    });
+
+    it("a capability a host can move while the page is up should gate no item", () => {
+        // A gated item is BUILT once, from the declaration the page booted
+        // with (`hostAvailableItems`), so a capability that arrives later
+        // finds nothing to place and the bar is quietly missing a control for
+        // the rest of the session. `LIVE_HOST_CAPABILITIES` is the list of
+        // capabilities a host may move (`hostCapabilitiesChanged`), and this
+        // is the pairing it cannot be in.
+        //
+        // The arm below is what stops this passing on an empty intersection
+        // of two empty lists: both sides have to have something in them for
+        // the comparison to have asked anything.
+        expect(LIVE_HOST_CAPABILITIES.length).toBeGreaterThan(0);
+        const gated = TOOLBAR_ITEM_IDS.map((id) => ITEM_HOST_CAPABILITY[id]).filter((c) => c !== null);
+        expect(gated.length).toBeGreaterThan(0);
+        expect(gated.filter((cap) => LIVE_HOST_CAPABILITIES.includes(cap!))).toEqual([]);
     });
 });
 

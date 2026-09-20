@@ -31,24 +31,55 @@ final class CommandRowTests: XCTestCase {
             .appendingPathComponent("command-row-\(UUID().uuidString)/bin/bwr")
     }
 
-    func testTheRowShouldBeOnTheGeneralPane() {
+    func testTheRowShouldBeOnTheAdvancedPane() {
         let controller = makeController()
-        controller.selectTabForTesting("general")
+        controller.selectTabForTesting("advanced")
         XCTAssertNotNil(controller.rowForTesting(.commandLine),
                         "the terminal command row was not drawn")
+        XCTAssertNotNil(controller.rowForTesting(.commandName),
+                        "the command name row was not drawn")
     }
 
-    /// Before it is installed the row says what the click would do, and where.
-    /// A person deciding whether to press it is deciding about a file in a
-    /// directory of theirs, so the directory is named.
-    func testWithNothingInstalledTheRowShouldSayWhatWouldBeAdded() {
+    /// The name row is drawn only while the command is installed, which is
+    /// what the switch above it reports. Both arms, because a row that is
+    /// always hidden would satisfy the first on its own.
+    func testTheNameRowShouldFollowTheSwitchAboveIt() {
+        let controller = makeController()
+        defer { controller.window?.close() }
+        controller.selectTabForTesting("advanced")
+        guard let row = controller.rowForTesting(.commandName) else {
+            return XCTFail("the command name row was not drawn")
+        }
+        controller.showCommandNameForTesting(installed: false)
+        XCTAssertTrue(row.isHidden, "the name row was drawn with no command installed")
+        controller.showCommandNameForTesting(installed: true)
+        XCTAssertFalse(row.isHidden, "the name row stayed away with the command installed")
+    }
+
+    /// The sentence under the field says what the switch does and where, and
+    /// names the directory: a person deciding whether to press it is deciding
+    /// about a file in a directory of theirs.
+    func testTheHelpSentenceShouldSayWhatIsAddedAndWhere() {
+        let link = self.link
+        let help = SettingsWindowController.commandHelp(name: "bwr", link: link)
+        XCTAssertTrue(help.contains("bwr"), help)
+        XCTAssertTrue(help.contains(link.deletingLastPathComponent().lastPathComponent), help)
+    }
+
+    /// One sentence whatever the command's standing is: the row it sits under
+    /// is drawn only while the command is installed, so a second wording for
+    /// the other state would be a wording nobody can reach. The switch row is
+    /// what reports a problem, and `testARefusalShouldReplaceWhateverElse`
+    /// below is where that is asked.
+    func testTheSwitchRowShouldSayNothingWhenNothingIsWrong() {
         let controller = makeController()
         let link = self.link
-        let availability = controller.commandAvailability(name: "bwr", link: link, installed: false)
-        XCTAssertFalse(availability.isProblem)
-        XCTAssertTrue(availability.note.contains("bwr"), availability.note)
-        XCTAssertTrue(availability.note.contains(link.deletingLastPathComponent().lastPathComponent),
-                      availability.note)
+        let onPath = "/usr/bin:/bin:" + link.deletingLastPathComponent().path
+        for installed in [false, true] {
+            let availability = controller.commandAvailability(name: "bwr", link: link,
+                                                              installed: installed, path: onPath)
+            XCTAssertEqual(availability.note, "", "installed: \(installed)")
+        }
     }
 
     /// The pairing this row exists for: the link is there and the name still
@@ -92,9 +123,18 @@ final class CommandRowTests: XCTestCase {
     /// The name is the row's, so a renamed command is the one the sentence
     /// talks about rather than the default it no longer is.
     func testTheSentenceShouldNameTheCommandTheRowIsAbout() {
-        let controller = makeController()
-        let availability = controller.commandAvailability(name: "notes", link: link, installed: false)
-        XCTAssertTrue(availability.note.contains("notes"), availability.note)
-        XCTAssertFalse(availability.note.contains("bwr"), availability.note)
+        let help = SettingsWindowController.commandHelp(name: "notes", link: link)
+        XCTAssertTrue(help.contains("notes"), help)
+        XCTAssertFalse(help.contains("bwr"), help)
+    }
+
+    /// The sentence follows the FIELD rather than the stored name, because
+    /// the name is committed when the edit finishes: a sentence reading the
+    /// preference would name the old command for the whole of an edit.
+    func testAnEmptyFieldShouldBeReadAsTheDefaultName() {
+        let field = NSTextField(string: "  ")
+        XCTAssertEqual(SettingsWindowController.typedName(in: field), Prefs.defaultCommandName)
+        field.stringValue = " notes "
+        XCTAssertEqual(SettingsWindowController.typedName(in: field), "notes")
     }
 }

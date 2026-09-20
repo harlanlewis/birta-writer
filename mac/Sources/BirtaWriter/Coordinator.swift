@@ -289,6 +289,21 @@ final class Coordinator {
         host.send(.setLineNumbers(enabled))
     }
 
+    /// What this host provides moved under the page: hand the page this
+    /// window's own list rather than loading it again.
+    ///
+    /// The list is per window, which is why it is taken from this window's
+    /// boot config rather than from a shared one: `projectFiles` is withdrawn
+    /// for a window on a loose file, and a message carrying some other
+    /// window's answer would offer this page an explorer it has no folder for.
+    /// A page not yet warm needs no telling, because the config it is about to
+    /// boot with is read at that moment.
+    func applyHostCapabilities() {
+        guard state == .warm else { return }
+        host.send(.hostCapabilities(
+            Prefs.bootConfig(viewState: nil, explorerRoot: explorerRoot).hostCapabilities))
+    }
+
     /// Run `body` with the system's automatic tabbing off for this window,
     /// so a show inside it opens a window whatever "Prefer tabs" says. Only
     /// the show is affected: the window is back to `.automatic` afterwards,

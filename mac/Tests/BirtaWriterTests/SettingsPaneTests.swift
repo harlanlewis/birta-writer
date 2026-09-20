@@ -393,18 +393,36 @@ final class SettingsPaneTests: XCTestCase {
     }
 
     /// The AI Agent pane, built and laid out, with its three agent controls.
-    /// Every switch on the Markdown pane, in the order the form places them.
+    /// Every switch in the Markdown pane's FIRST card, in the order the form
+    /// places them: the floor and the publishing targets.
+    ///
+    /// The card, not the pane. Rich link previews and embeds is a switch on
+    /// this pane too and is not a target, so a walk of the whole pane counts
+    /// it and reports one target more than the vocabulary has. Which card is
+    /// read off the layout rather than named, the way every other helper here
+    /// reads the live pane.
     private func syntaxSwitches(of controller: SettingsWindowController) -> [NSSwitch] {
         controller.selectTabForTesting("markdown")
         guard let content = controller.window?.contentView else { return [] }
         content.layoutSubtreeIfNeeded()
+        guard let card = firstCard(in: content) else { return [] }
         var found: [NSSwitch] = []
         func walk(_ view: NSView) {
             if let sw = view as? NSSwitch { found.append(sw) }
             view.subviews.forEach(walk)
         }
-        walk(content)
+        walk(card)
         return found
+    }
+
+    /// The first settings card in `view`: the rounded, unstroked box
+    /// `SettingsWindowController.group` builds.
+    private func firstCard(in view: NSView) -> NSBox? {
+        if let box = view as? NSBox, box.boxType == .custom { return box }
+        for subview in view.subviews {
+            if let found = firstCard(in: subview) { return found }
+        }
+        return nil
     }
 
     /// A publishing target reaches EVERY window, not the front one.
@@ -555,16 +573,15 @@ final class SettingsPaneTests: XCTestCase {
         XCTAssertNotEqual(pane.popup.title, AgentPreset.codex.title)
     }
 
-    // MARK: what reloads the editor, and what does not
+    // MARK: what reaches the editor, and what does not
 
-    /// Choosing a tool must not tear the editor down and rebuild it.
+    /// Choosing a tool must not tell the pages anything at all.
     ///
     /// The page is booted with the host's capabilities, so a change to what
-    /// this host PROVIDES has to be handed to it again, and a reload is the
-    /// only way to do that. Swapping one working command for another changes
-    /// nothing the page was told, and the reload was visible: the note the
-    /// person was reading blinked out and came back because a menu was used.
-    func testSwappingOneWorkingCommandForAnotherShouldNotReloadThePage() {
+    /// this host PROVIDES has to be handed to it again. Swapping one working
+    /// command for another changes nothing the page was told, and the message
+    /// would make every window re-place its bar for a change that is not one.
+    func testSwappingOneWorkingCommandForAnotherShouldNotReachThePage() {
         let command = Prefs.agentCommand
         let enabled = Prefs.agentEnabled
         defer { Prefs.agentCommand = command; Prefs.agentEnabled = enabled }
@@ -573,9 +590,11 @@ final class SettingsPaneTests: XCTestCase {
         // that writes afterwards is asking about a disagreement no launch has.
         Prefs.agentEnabled = true
         Prefs.agentCommand = AgentPreset.codex.template
+        var told = 0
         var reloads = 0
         let controller = SettingsWindowController(flavour: .release, onHotkeyChange: { 0 },
                                                   onChange: { _ in reloads += 1 }, onChangeEverywhere: {},
+                                                  onHostCapabilitiesChange: { told += 1 },
                                                   onShowWelcome: {}, onCheckForUpdates: {})
         defer { controller.window?.close() }
         guard let pane = agentPane(of: controller) else {
@@ -583,6 +602,7 @@ final class SettingsPaneTests: XCTestCase {
         }
 
         typeIn(AgentPreset.claudeCode.template, pane.field, on: controller)
+        XCTAssertEqual(told, 0, "typing a working command reached the editor")
         XCTAssertEqual(reloads, 0, "typing a working command reloaded the editor")
 
         // And through the pull-down, which is the gesture the report was
@@ -591,13 +611,72 @@ final class SettingsPaneTests: XCTestCase {
         _ = NSApp.sendAction(pane.popup.action!, to: pane.popup.target, from: pane.popup)
         XCTAssertEqual(Prefs.agentCommand, AgentPreset.gemini.template,
                        "the pull-down did not write the command, so this checked nothing")
+        XCTAssertEqual(told, 0, "choosing a tool reached the editor")
         XCTAssertEqual(reloads, 0, "choosing a tool reloaded the editor")
+    }
+
+    /// The switch itself, which is the gesture somebody actually makes: the
+    /// page is told what this host provides now, and is not rebuilt.
+    ///
+    /// The reload was what a reader saw when they turned `/ai` on: the note
+    /// they were reading blinked out and came back. Both counters, because
+    /// the failure is not "nothing happened", it is "the wrong one of the two
+    /// happened", and a check counting only the message would pass on a
+    /// toggle that also reloaded.
+    func testMovingTheAgentSwitchShouldTellThePageRatherThanReloadIt() {
+        let enabled = Prefs.agentEnabled
+        let command = Prefs.agentCommand
+        defer { Prefs.agentEnabled = enabled; Prefs.agentCommand = command }
+        // A command that runs, so the capability follows the switch alone.
+        Prefs.agentEnabled = false
+        Prefs.agentCommand = AgentPreset.claudeCode.template
+        var told = 0
+        var reloads = 0
+        let controller = SettingsWindowController(flavour: .release, onHotkeyChange: { 0 },
+                                                  onChange: { _ in reloads += 1 }, onChangeEverywhere: {},
+                                                  onHostCapabilitiesChange: { told += 1 },
+                                                  onShowWelcome: {}, onCheckForUpdates: {})
+        defer { controller.window?.close() }
+        controller.selectTabForTesting("aiAgent")
+        guard let content = controller.window?.contentView,
+              let toggle = firstSwitch(in: content) else {
+            return XCTFail("the AI Agent pane drew no switch")
+        }
+
+        toggle.state = .on
+        _ = NSApp.sendAction(toggle.action!, to: toggle.target, from: toggle)
+
+        XCTAssertTrue(Prefs.agentAvailable,
+                      "the switch did not write the setting, so this checked nothing")
+        XCTAssertEqual(told, 1, "the page was never told the agent arrived")
+        XCTAssertEqual(reloads, 0, "turning /ai on reloaded the editor")
+
+        toggle.state = .off
+        _ = NSApp.sendAction(toggle.action!, to: toggle.target, from: toggle)
+
+        XCTAssertFalse(Prefs.agentAvailable)
+        XCTAssertEqual(told, 2, "the page was never told the agent went away")
+        XCTAssertEqual(reloads, 0, "turning /ai off reloaded the editor")
+    }
+
+    /// The first switch anywhere in `view`.
+    private func firstSwitch(in view: NSView) -> NSSwitch? {
+        if let found = view as? NSSwitch { return found }
+        for subview in view.subviews {
+            if let found = firstSwitch(in: subview) { return found }
+        }
+        return nil
     }
 
     /// The other half, and the one that must not be lost while fixing the
     /// first: emptying the field withdraws the capability, and the page is
     /// still offering `/ai` until it is told.
-    func testEmptyingAndRefillingTheCommandShouldReloadThePageEachWay() {
+    ///
+    /// Told, never reloaded, which is what this pins on the way past: the
+    /// capability is handed over live (`hostCapabilitiesChanged`), so the
+    /// reload count staying at zero is as much the claim here as the message
+    /// count reaching one.
+    func testEmptyingAndRefillingTheCommandShouldReachThePageEachWay() {
         let command = Prefs.agentCommand
         let enabled = Prefs.agentEnabled
         defer { Prefs.agentCommand = command; Prefs.agentEnabled = enabled }
@@ -606,9 +685,11 @@ final class SettingsPaneTests: XCTestCase {
         // that writes afterwards is asking about a disagreement no launch has.
         Prefs.agentEnabled = true
         Prefs.agentCommand = AgentPreset.codex.template
+        var told = 0
         var reloads = 0
         let controller = SettingsWindowController(flavour: .release, onHotkeyChange: { 0 },
                                                   onChange: { _ in reloads += 1 }, onChangeEverywhere: {},
+                                                  onHostCapabilitiesChange: { told += 1 },
                                                   onShowWelcome: {}, onCheckForUpdates: {})
         defer { controller.window?.close() }
         guard let pane = agentPane(of: controller) else {
@@ -617,16 +698,17 @@ final class SettingsPaneTests: XCTestCase {
 
         typeIn("", pane.field, on: controller)
         XCTAssertFalse(Prefs.agentAvailable)
-        XCTAssertEqual(reloads, 1, "an empty command left the page still offering /ai")
+        XCTAssertEqual(told, 1, "an empty command left the page still offering /ai")
 
         // Whitespace is still nothing to run, so it must not count as a second
         // change back.
         typeIn("   ", pane.field, on: controller)
-        XCTAssertEqual(reloads, 1)
+        XCTAssertEqual(told, 1)
 
         typeIn(AgentPreset.claudeCode.template, pane.field, on: controller)
         XCTAssertTrue(Prefs.agentAvailable)
-        XCTAssertEqual(reloads, 2, "a command typed into an empty field never reached the page")
+        XCTAssertEqual(told, 2, "a command typed into an empty field never reached the page")
+        XCTAssertEqual(reloads, 0, "the capability was handed over by reloading the editor")
     }
 
     /// The reason this file exists, stated as its own check: every row the

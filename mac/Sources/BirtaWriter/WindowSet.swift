@@ -664,6 +664,17 @@ final class WindowSet {
         windows.forEach { $0.applyFormattingRowExpanded(expanded) }
     }
 
+    /// A capability this host provides changed (Settings, AI Agent): every
+    /// window's page, not the front one.
+    ///
+    /// The same rule a publishing target keeps, and for a sharper reason
+    /// here: the capability decides whether `/ai` is offered at all, so a back
+    /// window left on the old answer would keep a slash row the settings had
+    /// just switched off, and run it.
+    func applyHostCapabilitiesEverywhere() {
+        windows.forEach { $0.applyHostCapabilities() }
+    }
+
     /// View > Line Numbers: the app's one setting, and every window's page.
     func setLineNumbers(_ enabled: Bool) {
         Prefs.lineNumbers = enabled
