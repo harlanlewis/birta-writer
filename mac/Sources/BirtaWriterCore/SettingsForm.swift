@@ -12,10 +12,10 @@ public enum SettingsRow: String, CaseIterable, Sendable {
     // the command's name is the one thing on the row somebody can change and a
     // label carrying it would go stale the moment they did.
     case commandLine = "Open from Terminal"
-    // The name the command is installed under, which exists only while it is
-    // installed: the row above is the question, and this is the one property
-    // of the answer. A name for a command that is not there would be a
-    // setting for a file nobody has.
+    // The name the command is installed under: the row above is the question,
+    // and this is the one property of the answer, so it comes and goes with
+    // it (`SettingsWindowController.showsCommandName`). A name for a command
+    // that is not there would be a setting for a file nobody has.
     case commandName = "Command name"
     case storeInICloud = "Store in iCloud Drive"
     case location = "Location"
