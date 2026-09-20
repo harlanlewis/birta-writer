@@ -69,7 +69,7 @@ export async function run({ page, check, baseUrl }) {
     // The type-along's own prose, so a document that mounted something else
     // entirely cannot satisfy the construct checks below by accident.
     check("its opening instruction is on screen",
-        shape.text.includes("Press the same keys again"), shape.text.slice(0, 60));
+        shape.text.includes("press it again and it is back"), shape.text.slice(0, 60));
 
     // ── The checklist, which is the first thing it asks for ───────────────
     const tasks = await page.evaluate(() => {
