@@ -1,5 +1,6 @@
 /**
- * MAR-430 — the verify worker, in a real browser under the provider's CSP.
+ * MAR-430/MAR-432 — the sync worker, in a real browser under the provider's
+ * CSP.
  *
  * jsdom has no Worker, so the unit suite drives the off-thread path with an
  * injected oracle and can say nothing about whether a real worker starts
@@ -8,12 +9,14 @@
  *
  *   - on a document past the off-thread floor, an edit's update carries the
  *     edit, exactly one worker was started, and every `merge` pass the burst
- *     stamped reparsed off the main thread (`mainReparses` zero, `reparses`
- *     at least one: the fixture is spelled so the reparse cannot short-circuit);
+ *     stamped did its serialize and its reparses off the main thread
+ *     (`mainSerializes` and `mainReparses` zero, `reparses` at least one: the
+ *     fixture is spelled so the reparse cannot short-circuit);
  *   - the bytes the update carries keep the file's own spelling, so the
- *     answer was a verdict and not a fallback;
- *   - a document below the floor starts no worker and reparses on the main
- *     thread, so the floor is a floor and not a switch that fell.
+ *     answer was a verdict and not a fallback, and the protection the page
+ *     computed reached the worker;
+ *   - a document below the floor starts no worker and does all of it on the
+ *     main thread, so the floor is a floor and not a switch that fell.
  */
 
 const marked = (page, name) =>
@@ -70,6 +73,7 @@ export async function run({ page, check, baseUrl }) {
     const work = await mergeWork(page);
     check("at least one sync pass reparsed", (work.passes ?? 0) >= 1 && (work.reparses ?? 0) >= 1, JSON.stringify(work));
     check("and none of those reparses ran on the main thread", work.mainReparses === 0, JSON.stringify(work));
+    check("and no pass serialized on the main thread", work.mainSerializes === 0, JSON.stringify(work));
 
     // A second edit after the first answered: the worker is warm and reused,
     // not restarted, and the ordering rule let the first commit.
@@ -90,4 +94,5 @@ export async function run({ page, check, baseUrl }) {
     const smallWork = await mergeWork(page);
     check("and its reparse ran on the main thread, as before",
         (smallWork.reparses ?? 0) >= 1 && smallWork.mainReparses === smallWork.reparses, JSON.stringify(smallWork));
+    check("and so did its serialize", smallWork.mainSerializes === smallWork.passes, JSON.stringify(smallWork));
 }
