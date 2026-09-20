@@ -6,6 +6,7 @@
 
 ### Added
 
+- Frontmatter carrying Open Knowledge Format provenance shows a quiet label at the bottom of the metadata panel: the `status` it declares, whether a person or only a machine countersigned it (from `generated` and `verified`), and the day a `stale_after` deadline passed. It is read from the block and never written back, it stays readable while the panel is collapsed, and a block the panel can only show as raw YAML gets no label. Ordinary frontmatter with none of those fields is unchanged.
 - While an `/ai` request runs in the background, a line in the corner says what your agent is doing: the tool it called, the file it read, or that it is thinking. It replaces itself in place and goes when the run does. Where your agent prints nothing Birta can read, the line names the agent and, after a few seconds, counts, so you can see the run is still there and how long it has been. The gutter marker is still what stops a run.
 
 ### Changed
