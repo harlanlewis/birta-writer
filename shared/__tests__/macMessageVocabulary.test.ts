@@ -280,6 +280,34 @@ describe("the Mac app's parse table against the page's outbound vocabulary", () 
         }
     });
 
+    /**
+     * THE OUTBOUND HALF, for every message rather than one pair's fields.
+     *
+     * The checks above read the page's vocabulary against the Mac app's PARSE
+     * table, so they say nothing at all about the names the app SENDS. Those
+     * are string literals in `jsonObject()` with no reader on this side: the
+     * page dispatches on `type` through a map whose members are optional, so a
+     * name that is not a `ToWebviewMessage` is not an error anywhere. It is
+     * dropped, silently, and the app goes on believing it told the page
+     * something. That is the same shape as the `proofreading` capability the
+     * Swift kept spelling after the rename, which held a whole feature off on
+     * that surface and looked deliberate.
+     *
+     * Every emitted name, not a list kept here: the scrape is what a new
+     * message joins by existing, and its own floor is what stops this passing
+     * on a reader that found none.
+     */
+    it("every message type the Mac app sends should be one the page can receive", () => {
+        const toPage = unionMessageTypes("ToWebviewMessage");
+        const swift = readFileSync(bridgePath, "utf8");
+        const sent = [...new Set([...swift.matchAll(/"type": "([a-zA-Z_]+)"/g)].map((m) => m[1]!))];
+
+        expect(toPage.length, "the union derivation reached nothing").toBeGreaterThan(40);
+        expect(sent.length, "the scrape found no sent types; fix the reader").toBeGreaterThan(20);
+        expect(sent.filter((t) => !toPage.includes(t)),
+               "the page has no such message, so it drops these without a word").toEqual([]);
+    });
+
     /** A type cannot be both parsed and declined; that is an unread reason. */
     it("no type should be both parsed and listed as declined", () => {
         const both = parsed.filter((t) => t in DELIBERATELY_UNPARSED || t in KNOWN_GAPS);

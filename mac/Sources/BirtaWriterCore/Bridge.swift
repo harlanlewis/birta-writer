@@ -476,7 +476,7 @@ public enum HostMessage: Equatable {
     /// editor under whoever was looking at it in order to add or remove two
     /// menu rows. The list, never a delta, because the list is what a host
     /// declares.
-    case hostCapabilities([String])
+    case hostCapabilitiesChanged([String])
     /// One report about an `/ai` run. `status` drives the gutter marker the
     /// page already draws for the extension.
     case agentRun(requestId: String, status: String, harness: String?, text: String?, message: String?)
@@ -608,7 +608,7 @@ public enum HostMessage: Equatable {
             return ["type": "setLineNumbers", "enabled": enabled]
         case .requestPaletteCommands:
             return ["type": "requestPaletteCommands"]
-        case let .hostCapabilities(capabilities):
+        case let .hostCapabilitiesChanged(capabilities):
             return ["type": "hostCapabilitiesChanged", "capabilities": capabilities]
         case let .editorCommand(command, arg):
             var row: [String: Any] = ["type": "editorCommand", "command": command]

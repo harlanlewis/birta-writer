@@ -19,7 +19,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import "./setup";
 import { createMessageHandlers, type MessageHandlerDeps, type ToolbarController } from "../messageHandlers";
 import { commandAvailable } from "../../shared/commandAvailability";
-import { hostHas, HOST_PROFILES, LIVE_HOST_CAPABILITIES } from "../../shared/hostProfile";
+import { hostHas, ALL_HOST_CAPABILITIES, HOST_PROFILES, LIVE_HOST_CAPABILITIES } from "../../shared/hostProfile";
 
 function stubDeps(topbarTb: ToolbarController | null): MessageHandlerDeps {
     return {
@@ -152,11 +152,16 @@ describe("a live host-capability change", () => {
         expect(hostHas("agent")).toBe(false);
     });
 
-    it("should be the capability the shipped hosts actually move", () => {
-        // The list is what `toolbarRegistry.test.ts` gates on, so an entry
-        // added there without the wire to carry it, or the wire built for a
-        // capability nothing moves, both read as a live update that never
-        // happens.
-        expect([...LIVE_HOST_CAPABILITIES]).toEqual(["agent"]);
+    it("should name capabilities a host actually has, or it withdraws nothing", () => {
+        // A member that is not a capability gates nothing and can be sent by
+        // nobody; a member no profile declares is a capability that is never
+        // there to withdraw. Both read as a live update that never happens,
+        // and neither is visible from a green run of the wire above.
+        expect(LIVE_HOST_CAPABILITIES.length).toBeGreaterThan(0);
+        const declaredSomewhere = new Set(Object.values(HOST_PROFILES).flat());
+        for (const cap of LIVE_HOST_CAPABILITIES) {
+            expect(ALL_HOST_CAPABILITIES, `${cap} is not a capability`).toContain(cap);
+            expect([...declaredSomewhere], `${cap} is declared by no host`).toContain(cap);
+        }
     });
 });

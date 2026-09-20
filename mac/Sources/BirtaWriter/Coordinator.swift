@@ -300,7 +300,7 @@ final class Coordinator {
     /// boot with is read at that moment.
     func applyHostCapabilities() {
         guard state == .warm else { return }
-        host.send(.hostCapabilities(
+        host.send(.hostCapabilitiesChanged(
             Prefs.bootConfig(viewState: nil, explorerRoot: explorerRoot).hostCapabilities))
     }
 

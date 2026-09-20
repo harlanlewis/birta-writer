@@ -40,9 +40,9 @@ final class CommandRowTests: XCTestCase {
                         "the command name row was not drawn")
     }
 
-    /// The name row is drawn only while the command is installed, which is
-    /// what the switch above it reports. Both arms, because a row that is
-    /// always hidden would satisfy the first on its own.
+    /// The drawing follows the answer it is given. Both arms, because a row
+    /// that is always hidden would satisfy the first on its own; which answer
+    /// it is given is `showsCommandName`, asked below.
     func testTheNameRowShouldFollowTheSwitchAboveIt() {
         let controller = makeController()
         defer { controller.window?.close() }
@@ -50,10 +50,82 @@ final class CommandRowTests: XCTestCase {
         guard let row = controller.rowForTesting(.commandName) else {
             return XCTFail("the command name row was not drawn")
         }
-        controller.showCommandNameForTesting(installed: false)
+        controller.showCommandNameForTesting(shown: false)
         XCTAssertTrue(row.isHidden, "the name row was drawn with no command installed")
-        controller.showCommandNameForTesting(installed: true)
+        controller.showCommandNameForTesting(shown: true)
         XCTAssertFalse(row.isHidden, "the name row stayed away with the command installed")
+    }
+
+    /// A refusal keeps the field, and this is the dead end it exists to stop.
+    ///
+    /// A refusal is usually ABOUT the name (something else already answers to
+    /// it) and leaves nothing installed. Going by the link alone would take
+    /// the field away at exactly that moment, so the stored name would be
+    /// stuck at the one that cannot be installed and every retry would be
+    /// refused for the same reason with nothing to edit.
+    func testARefusalShouldKeepTheNameRowEvenThoughNothingIsInstalled() {
+        let controller = makeController()
+        defer { controller.window?.close() }
+        controller.selectTabForTesting("advanced")
+        guard let row = controller.rowForTesting(.commandName) else {
+            return XCTFail("the command name row was not drawn")
+        }
+        // The rule, both arms, asked of the predicate rather than of the disk:
+        // whoever is running this may have the command installed, and reading
+        // the real directory would answer about their machine.
+        XCTAssertFalse(SettingsWindowController.showsCommandName(installed: false, refusal: nil),
+                       "the row is drawn with nothing installed and nothing refused")
+        XCTAssertTrue(SettingsWindowController.showsCommandName(
+            installed: false, refusal: "A file of that name is already there."),
+                      "a refusal takes away the field that answers it")
+        XCTAssertTrue(SettingsWindowController.showsCommandName(installed: true, refusal: nil))
+
+        // And the drawing follows the answer, so the rule above reaches a row.
+        controller.showCommandNameForTesting(
+            shown: SettingsWindowController.showsCommandName(
+                installed: false, refusal: "A file of that name is already there."))
+
+        XCTAssertFalse(row.isHidden, "a refusal took away the field that answers it")
+    }
+
+    /// The sentence the drawn row actually carries, and that it follows the
+    /// field as it is typed in.
+    ///
+    /// `commandHelp` is a pure function and is asked directly below, which
+    /// says nothing about whether anything calls it: the name is committed
+    /// only when the edit finishes, so a caption wired to the stored
+    /// preference would pass every check there is and still name the old
+    /// command for the whole of an edit.
+    func testTheSentenceUnderTheFieldShouldFollowWhatIsTyped() {
+        let controller = makeController()
+        defer { controller.window?.close() }
+        controller.selectTabForTesting("advanced")
+        guard let content = controller.window?.contentView,
+              let row = controller.rowForTesting(.commandName),
+              let field = monospacedField(in: content) else {
+            return XCTFail("the command name row was not drawn")
+        }
+
+        field.stringValue = "notes"
+        controller.controlTextDidChange(
+            Notification(name: NSControl.textDidChangeNotification, object: field))
+
+        XCTAssertEqual(row.caption?.stringValue,
+                       SettingsWindowController.commandHelp(name: "notes", link: Prefs.commandLink),
+                       "the row's sentence did not follow the field")
+        // Nothing was written: the name belongs to the edit's end.
+        XCTAssertNotEqual(Prefs.commandName, "notes")
+    }
+
+    /// The command field, which is the one monospaced editable field on the
+    /// Advanced pane.
+    private func monospacedField(in view: NSView) -> NSTextField? {
+        if let found = view as? NSTextField, found.isEditable,
+           found.font?.fontName.contains("Mono") == true { return found }
+        for subview in view.subviews {
+            if let found = monospacedField(in: subview) { return found }
+        }
+        return nil
     }
 
     /// The sentence under the field says what the switch does and where, and
@@ -66,11 +138,10 @@ final class CommandRowTests: XCTestCase {
         XCTAssertTrue(help.contains(link.deletingLastPathComponent().lastPathComponent), help)
     }
 
-    /// One sentence whatever the command's standing is: the row it sits under
-    /// is drawn only while the command is installed, so a second wording for
-    /// the other state would be a wording nobody can reach. The switch row is
-    /// what reports a problem, and `testARefusalShouldReplaceWhateverElse`
-    /// below is where that is asked.
+    /// The switch row says nothing when nothing is wrong, whether or not the
+    /// command is installed. What installing gets you is the name row's
+    /// sentence; this row is for problems, and
+    /// `testARefusalShouldReplaceWhateverElse` below is where that is asked.
     func testTheSwitchRowShouldSayNothingWhenNothingIsWrong() {
         let controller = makeController()
         let link = self.link

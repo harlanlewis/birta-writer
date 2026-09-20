@@ -167,14 +167,16 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     private let commandSwitch = NSSwitch()
     private let commandField = NSTextField(string: Prefs.commandName)
     /// The sentence under the SWITCH, which carries a problem and nothing
-    /// else. What the row is for is said under the field below it, and the
-    /// split is load-bearing rather than tidy: a refused install puts the
-    /// switch back off, which takes the name row away with it, so a refusal
-    /// written there would disappear along with the row reporting it.
+    /// else.
+    ///
+    /// The switch is the INSTALL, so what can go wrong with installing
+    /// belongs to it: a refusal, and a link that nothing on `PATH` can
+    /// reach. What the command is for is said under the field below, where
+    /// the name it names is.
     private let commandCaption = Caption("")
     /// The sentence under the FIELD: what installing does and where, with the
-    /// name being typed in it. Drawn only while the command is installed,
-    /// because the row it belongs to is.
+    /// name being typed in it. Drawn with its row, which comes and goes
+    /// (`showsCommandName`).
     private let commandNameCaption = Caption("")
     /// Whether the last install or removal failed, and what it said.
     ///
@@ -645,7 +647,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     /// not, without a link on disk to install: the filesystem half is
     /// `CommandInstallTests`'s, and what is asked here is whether the row
     /// follows the answer.
-    func showCommandNameForTesting(installed: Bool) { showCommandName(installed: installed) }
+    func showCommandNameForTesting(shown: Bool) { showCommandName(shown: shown) }
 
     /// Show a pane by name, for `BIRTA_MAC_OPEN_SETTINGS`. Unknown names are
     /// ignored rather than fatal: the variable is a probe, and a typo in it
@@ -998,31 +1000,49 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         // the one place that reads the disk.
         commandLinkedName = installed ? name : nil
         rowViews[.commandLine]?.apply(commandAvailability(name: name, link: link, installed: installed))
-        showCommandName(installed: installed)
+        // While the command is there, and also while the last attempt was
+        // REFUSED. A refusal is usually ABOUT the name (something else already
+        // answers to it), and the refused attempt leaves nothing installed, so
+        // a row that went by the link alone would take away the one control
+        // that can answer the sentence beside it: the name would be stuck at
+        // the one that cannot be installed, and every retry would be refused
+        // for the same reason with no way to edit it.
+        showCommandName(shown: Self.showsCommandName(installed: installed, refusal: commandRefusal))
     }
 
-    /// The name row exists only while the command does.
+    /// Whether the name row is drawn at all.
+    ///
+    /// A value rather than a branch inside the drawing, so both answers can be
+    /// asked for without a link on disk: whoever runs the checks may have the
+    /// command installed, and a check that read the real directory would be
+    /// answering about their machine rather than about this rule.
+    static func showsCommandName(installed: Bool, refusal: String?) -> Bool {
+        installed || refusal != nil
+    }
+
+    /// Draw the name row, or take it away.
     ///
     /// Off is not "on but ignored", the same rule the agent command row keeps:
     /// with no link on disk there is no command to name, and a field sitting
-    /// there would be a setting for a file nobody has.
-    private func showCommandName(installed: Bool) {
+    /// there would be a setting for a file nobody has. `showsCommandName` is
+    /// the rule, refusal included.
+    private func showCommandName(shown: Bool) {
         showCommandHelp()
         guard let commandGroup else { return }
         SettingsWindowController.setRowHidden(
             commandGroup,
             row: SettingsForm.index(of: .commandName,
                                     inPane: SettingsForm.advanced(showsWelcomeScreen: true)) ?? 1,
-            hidden: !installed)
+            hidden: !shown)
         fitWindowToPane()
     }
 
     /// The sentence under the field.
     ///
-    /// One sentence whatever the command's standing is, because the row it
-    /// sits under is drawn only while the command is installed: a second
-    /// wording for the other state would be a wording nobody can reach. What
-    /// is wrong, when something is, is the switch row's to say.
+    /// One sentence whatever the command's standing is. What the row says is
+    /// what installing the name in the field gets you, which is the same
+    /// sentence before and after the link exists; what is WRONG, when
+    /// something is, is the switch row's to say.
     ///
     /// Read off the FIELD rather than out of `Prefs`, because the name is
     /// committed when the edit finishes: a sentence reading the preference
@@ -1052,10 +1072,9 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     /// What the SWITCH row says, given what is on disk: a problem, or nothing.
     ///
     /// Nothing is the ordinary answer, and that is the split this row keeps.
-    /// What the switch does is said under the field below it
-    /// (`commandHelp`), which is drawn only while the command is installed;
-    /// what is WRONG has to be said here, because a refused install puts the
-    /// switch back off and takes that row away.
+    /// What the switch is FOR is said under the field below it
+    /// (`commandHelp`), beside the name it is about; what can go wrong with
+    /// installing belongs to the switch, which is the control that installs.
     ///
     /// A refusal wins over everything else: the one thing this row must not do
     /// is say the command is ready when the click meant to install it was
