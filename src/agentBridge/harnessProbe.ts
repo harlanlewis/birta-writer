@@ -67,6 +67,12 @@ export function cachedCapabilities(template: string): HarnessCapabilities | unde
  * string the user configured, and running it here (rather than composing a
  * request) would execute their agent for no reason. `execFile` with an
  * argument array is what keeps the rest of the template inert.
+ *
+ * The cost of that rule is that a harness documenting its flags on the
+ * subcommand rather than the root is read as documenting nothing: Crush puts
+ * `--model` on `crush run` and its root help has none. Reaching those would
+ * mean executing a second word of the user's template, which is a larger
+ * promise than this module currently makes.
  */
 export async function probeHarness(
     context: vscode.ExtensionContext,

@@ -18,13 +18,14 @@
  *   - whether a flag exists, and its exact spelling: reliable.
  *   - the values of an ENUMERATED flag (`--effort <level>` documents
  *     `(low, medium, high, xhigh, max)`): reliable when the help lists them.
- *   - the set of models: whatever the help gives, which for the one harness
- *     this was checked against (Claude Code) is prose examples rather than a
- *     list. That is an observation about that CLI, not a law about CLIs, so
- *     the model paragraph is read by the SAME two passes as any other: an
- *     enumeration if it has one, quoted examples otherwise. A harness that
- *     does publish its models therefore gets a real list for free, and one
- *     that does not is not misrepresented as having given one.
+ *   - the set of models: whatever the help gives, which across every harness
+ *     surveyed so far is prose examples or nothing at all, never a catalog
+ *     (the survey and its provenance are in `docs/AGENT_BRIDGE.md`). That is
+ *     an observation about those CLIs, not a law about CLIs, so the model
+ *     paragraph is read by the SAME two passes as any other: an enumeration
+ *     if it has one, quoted examples otherwise. A harness that does publish
+ *     its models therefore gets a real list for free, and one that does not
+ *     is not misrepresented as having given one.
  *
  * That last distinction is the one thing here that must not be flattened.
  * `modelExamples` is named for the weaker case because the weaker case is
@@ -41,47 +42,101 @@ import type { HarnessCapabilities } from "../../shared/messages";
 export type { HarnessCapabilities };
 
 /**
- * The help paragraph belonging to `flag`, or null when the flag is absent.
+ * The short-alias prefix, which clap prints as `-m, --model <MODEL>` and
+ * argparse as `-m MESSAGE, --message MESSAGE`, so the alias may carry a
+ * metavar of its own. Without this the long flag is not at the start of its
+ * own line and the paragraph is missed entirely, which is how Codex reported
+ * no model support while documenting one.
  *
+ * The comma is required. A formatter that separates the two with a space
+ * (`-m --model`, which Charm's fang prints) is not read, because a pattern
+ * loose enough to accept it also accepts one long flag standing in front of
+ * another and would attribute the wrong paragraph.
+ */
+const ALIAS_PREFIX = `(?:-[^\\s,]+(?:[ =][^\\s,]+)?,[ \\t]*)*`;
+
+/**
+ * The metavar, in the three shapes help formatters print. Angled is
+ * commander and clap (`<model>`); BARE UPPERCASE is argparse and click
+ * (`MODEL`, `TEXT`), which is most of the Python ecosystem and matched
+ * nothing at all until it was added; bracketed is optional arguments
+ * (`[search]`). Uppercase must be the WHOLE token, or a description
+ * beginning with an ordinary capitalised word ("Use open-source provider")
+ * would be eaten as the flag's metavar.
+ */
+const METAVAR = `[ =](?:<[^>]+>|\\[[^\\]]+\\]|[A-Z][A-Z0-9_]*(?![a-z]))`;
+
+/**
+ * yargs prints NO metavar: the description follows the flag across padding,
+ * and the type is annotated at the end of the paragraph instead. The flag
+ * alone therefore says nothing about whether it takes a value, so the
+ * annotation is what says so, and `YARGS_VALUE_TYPE` below is the reader.
+ * Two spaces, because one would let a description's first word be mistaken
+ * for the flag's own continuation.
+ */
+const NO_METAVAR = `(?=[ \\t]{2,})`;
+
+/**
  * A flag's paragraph runs from its own line until the next flag line, the
  * next unindented line (help sections start at column 0 while a flag's
- * continuation lines are indented), or the end of the text. That is the
- * shape every commander/clap/cobra CLI prints.
- *
- * Anchored at line start with leading whitespace so `--model` does not match
- * inside `--fallback-model`: the two are different flags, and reading one as
- * the other would set the wrong thing.
+ * continuation lines are indented), or the end of the text.
  *
  * The end-of-text alternative is `(?![\s\S])` rather than `$` because `m` is
  * needed for the leading anchor, and under `m` a `$` matches the end of
  * every LINE, which ends each paragraph at its first line and quietly loses
  * the values and examples that are the point of reading it.
  */
+const PARAGRAPH = `[.]*(.*?)(?=\\n\\s*-{1,2}[\\w-]|\\n\\S|(?![\\s\\S]))`;
+
+/**
+ * yargs' own word for what a flag accepts, printed at the end of its
+ * paragraph. A flag annotated with none of these is not a yargs flag at all,
+ * so requiring one of them POSITIVELY is what keeps every commander and clap
+ * switch out.
+ *
+ * `[boolean]` and `[count]` are both absent on purpose, and for the same
+ * reason rather than only the obvious one: a switch takes no value, and a
+ * counter is raised by repeating the flag rather than by giving it one, so a
+ * picker writing a value at either is a command that fails.
+ */
+const YARGS_VALUE_TYPE = /\[(?:string|number|array)\]/;
+
+/** One paragraph's worth of help, unwrapped onto a single line. */
+function unwrap(text: string | undefined): string {
+    return (text ?? "").split(/\s+/).join(" ").trim();
+}
+
+/**
+ * The help paragraph belonging to `flag`, or null when the flag is absent.
+ *
+ * Anchored at line start with leading whitespace so `--model` does not match
+ * inside `--fallback-model`: the two are different flags, and reading one as
+ * the other would set the wrong thing.
+ *
+ * Two passes, metavar first. A metavar is the strong evidence that a flag
+ * takes a value, and commander, clap, argparse and click all print one. The
+ * second pass exists for yargs, which prints none: `-m, --model  Model
+ * [string]` reads as a switch to the first pass, so the first pass found no
+ * flags AT ALL in the whole of gemini-cli, opencode or qwen, and each was
+ * offered no model picker with nothing anywhere to say why.
+ */
 export function helpParagraph(help: string, flag: string): string | null {
     const escaped = flag.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const re = new RegExp(
-        // The short-alias prefix, which clap prints as `-m, --model <MODEL>`
-        // and argparse as `-m MESSAGE, --message MESSAGE`, so the alias may
-        // carry a metavar of its own. Without this the long flag is not at
-        // the start of its own line and the paragraph is missed entirely,
-        // which is how Codex reported no model support while documenting one.
-        `^[ \\t]+(?:-[^\\s,]+(?:[ =][^\\s,]+)?,[ \\t]*)*${escaped}` +
-        // The metavar, in the three shapes help formatters print. Angled is
-        // commander and clap (`<model>`); BARE UPPERCASE is argparse and
-        // click (`MODEL`, `TEXT`), which is most of the Python ecosystem and
-        // matched nothing at all until it was added; bracketed is optional
-        // arguments (`[search]`). Uppercase must be the WHOLE token, or a
-        // description beginning with an ordinary capitalised word ("Use
-        // open-source provider") would be eaten as the flag's metavar.
-        `[ =](?:<[^>]+>|\\[[^\\]]+\\]|[A-Z][A-Z0-9_]*(?![a-z]))` +
-        `[.]*(.*?)(?=\\n\\s*-{1,2}[\\w-]|\\n\\S|(?![\\s\\S]))`,
-        "ms",
-    );
-    const m = re.exec(help);
+    const head = `^[ \\t]+${ALIAS_PREFIX}${escaped}`;
+    const withMetavar = new RegExp(`${head}${METAVAR}${PARAGRAPH}`, "ms").exec(help);
     // The description may sit on the flag's own line (commander, pi) or on the
     // following indented lines (clap). Both land in the same capture, because
     // the group runs to the next flag or the next unindented line either way.
-    return m ? (m[1] ?? "").split(/\s+/).join(" ").trim() : null;
+    if (withMetavar) { return unwrap(withMetavar[1]); }
+    const bare = new RegExp(`${head}${NO_METAVAR}${PARAGRAPH}`, "ms").exec(help);
+    if (!bare) { return null; }
+    const paragraph = unwrap(bare[1]);
+    // Without a metavar the only thing separating a value-taking flag from a
+    // switch is yargs' type annotation, so a paragraph carrying none is a
+    // flag this pass must not claim: `--help` and `--yolo` are shaped exactly
+    // like `--model` here, and offering a picker that writes one of those is
+    // a command that fails rather than a request that differs.
+    return YARGS_VALUE_TYPE.test(paragraph) ? paragraph : null;
 }
 
 /**
@@ -127,6 +182,14 @@ export const MODEL_FLAGS = ["--model"] as const;
  * speculative belongs here; an unverified guess is the same n-of-1 error as
  * a parser written against one CLI, and `effortFlagFromValues` below is the
  * path that does not need the name at all.
+ *
+ * `--reasoning-effort` is verified on real binaries and is still deliberately
+ * absent, which is the one entry to understand before adding another. Where
+ * it enumerates its rungs (GitHub Copilot CLI) the shape rule already finds
+ * it and the name buys nothing. Where it does not (aider), naming it turns
+ * the picker on with nothing in it, because the effort menu carries no
+ * free-text row the way the model menu does. So the panel gains that row
+ * first, and this list gains the name second.
  */
 export const EFFORT_FLAGS = ["--effort", "--thinking"] as const;
 
@@ -139,11 +202,16 @@ export const EFFORT_FLAGS = ["--effort", "--thinking"] as const;
  */
 export function allFlags(help: string): Array<{ flag: string; paragraph: string }> {
     const out: Array<{ flag: string; paragraph: string }> = [];
-    // Same alias prefix and same three metavar shapes as helpParagraph; the
-    // two must agree, or a flag found here has no paragraph and one found
-    // there is absent from the sweep that hunts for the effort scale.
-    const flagLine =
-        /^[ \t]+(?:-[^\s,]+(?:[ =][^\s,]+)?,[ \t]*)*(--[\w-]+)[ =](?:<[^>]+>|\[[^\]]+\]|[A-Z][A-Z0-9_]*(?![a-z]))/gm;
+    // Built from the same pieces as helpParagraph, and offering the same two
+    // shapes; the two must agree, or a flag found here has no paragraph and
+    // one found there is absent from the sweep that hunts for the effort
+    // scale. This sweep deliberately does NOT repeat the yargs value-type
+    // test: it admits every metavar-free flag and lets helpParagraph refuse
+    // the switches below, so the rule lives in exactly one place.
+    const flagLine = new RegExp(
+        `^[ \\t]+${ALIAS_PREFIX}(--[\\w-]+)(?:${METAVAR}|${NO_METAVAR})`,
+        "gm",
+    );
     for (const m of help.matchAll(flagLine)) {
         const flag = m[1]!;
         if (out.some((f) => f.flag === flag)) { continue; }
@@ -185,20 +253,36 @@ export function effortFlagFromValues(
 }
 
 /**
- * Values a paragraph enumerates as `(a, b, c)`. Three or more, lowercase
- * words: a pair in parentheses is far more often prose than a value list,
- * and a wrong scale in front of the user is worse than no scale.
+ * Values a paragraph enumerates. Three or more, lowercase words: a pair in
+ * parentheses is far more often prose than a value list, and a wrong scale
+ * in front of the user is worse than no scale.
  */
 export function enumeratedValues(paragraph: string): string[] {
-    // Two shapes, both seen in the wild: parenthesised, as Claude Code prints
-    // `(low, medium, high, xhigh, max)`, and trailing after a colon, as pi
-    // prints `Set thinking level: off, minimal, low, ...`. The colon form has
-    // to run to the end of the paragraph, or it would stop at the first comma
-    // and report a list of two.
-    const parens = /\(([a-z0-9][a-z0-9-]*(?:,\s*[a-z0-9][a-z0-9-]*){2,})\)/.exec(paragraph);
-    const colon = /:\s*([a-z0-9][a-z0-9-]*(?:,\s*[a-z0-9][a-z0-9-]*){2,})\s*$/.exec(paragraph);
-    const m = parens ?? colon;
-    return m ? m[1]!.split(",").map((v) => v.trim()).filter(Boolean) : [];
+    // Four shapes, all seen on real binaries. LABELLED is the formatter
+    // saying outright that these are the values: clap prints `[possible
+    // values: none, minimal, low, ...]` and yargs `[choices: "a", "b", "c"]`,
+    // and it is read first because it is the only one that is not an
+    // inference. Missing it cost GitHub Copilot CLI its whole seven-rung
+    // effort scale, which the colon shape could not reach past the closing
+    // bracket. PIPED is a run of alternatives anywhere in the paragraph, as
+    // Cline prints `Set reasoning effort: none|low|medium|high|xhigh.`; it
+    // needs no anchor because a pipe between lowercase words is a value list
+    // and never prose. Then PARENTHESISED, as Claude Code prints `(low,
+    // medium, high, xhigh, max)`, and trailing after a COLON, as pi prints
+    // `Set thinking level: off, minimal, low, ...`; the comma-after-colon
+    // form has to run to the end of the paragraph, or it would stop at the
+    // first comma and report a list of two.
+    const list = `[a-z0-9][a-z0-9-]*`;
+    const quoted = `"?${list}"?`;
+    const labelled = new RegExp(`\\[(?:possible values|choices):\\s*(${quoted}(?:,\\s*${quoted}){2,})\\]`)
+        .exec(paragraph);
+    const piped = new RegExp(`\\b(${list}(?:\\|${list}){2,})\\b`).exec(paragraph);
+    const parens = new RegExp(`\\((${list}(?:,\\s*${list}){2,})\\)`).exec(paragraph);
+    const colon = new RegExp(`:\\s*(${list}(?:,\\s*${list}){2,})\\s*$`).exec(paragraph);
+    const m = labelled ?? piped ?? parens ?? colon;
+    return m
+        ? m[1]!.split(/[,|]/).map((v) => v.trim().replace(/^"|"$/g, "")).filter(Boolean)
+        : [];
 }
 
 /**
