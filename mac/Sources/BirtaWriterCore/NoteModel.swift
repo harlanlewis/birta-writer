@@ -185,20 +185,44 @@ public enum AgentPreset: String, CaseIterable, Sendable {
     /// and a preset that shipped with one would be making that choice for
     /// everybody who picked a tool from a list.
     ///
-    /// Codex needs both of its flags to run at all here, and neither is
+    /// Codex needs both of its sandbox flags to run at all here, and neither is
     /// optional: `codex exec` refuses outside a git repository, and a notes
     /// folder is not one; and without a sandbox naming a writable workspace it
     /// may only read, which is not what `/ai` is for.
     ///
-    /// A flag is the part of this most likely to move under us, and nothing
-    /// here can notice when one does: a preset is a string, and the tool that
-    /// rejects it is not on this machine. What that costs is the Test button
+    /// The two the extension also offers ask their CLI for STRUCTURED events,
+    /// which is what the corner notice reads while a run is live
+    /// (`AgentProgress.swift`). A template that asks for none still runs, and
+    /// its notice is the page's own clock: one line at the end of a silence.
+    /// Birta never adds a flag to a command somebody else wrote, so what it
+    /// offers here is the only place it can ask, and those two are held equal
+    /// to `CLAUDE_BACKGROUND_TEMPLATE` and `CODEX_BACKGROUND_TEMPLATE` in
+    /// `src/agentBridge/askAgent.ts` by `shared/__tests__/agentBackgroundTemplates.test.ts`.
+    ///
+    /// `--verbose` is not the verbosity the paragraph above rules out. It is
+    /// the PREREQUISITE of `--output-format stream-json`, which Claude Code
+    /// refuses to run without: its help does not say so and only its error
+    /// does, so the two travel together and removing either is a command that
+    /// fails rather than one that says less.
+    ///
+    /// A flag is the part of this most likely to move under us, and the guard
+    /// above cannot notice when the TOOL moves one: it holds the two lists to
+    /// each other, and a preset is still a string whose CLI is not on this
+    /// machine. What that costs is the Test button
     /// saying it did not work, with the tool's own usage message underneath,
     /// which is the case that button is for.
+    ///
+    /// Changing a string here changes what a FRESH install runs and nothing
+    /// else. `Prefs.agentCommand` falls back to `fallback.template` only when
+    /// the defaults domain holds no command at all, and the two writers are
+    /// both gestures (the popup, and typing in the field), so a command
+    /// somebody already chose is never rewritten under them.
     public var template: String {
         switch self {
-        case .claudeCode: return "claude -p {prompt} --permission-mode acceptEdits"
-        case .codex: return "codex exec --sandbox workspace-write --skip-git-repo-check {prompt}"
+        case .claudeCode:
+            return "claude -p {prompt} --permission-mode acceptEdits --output-format stream-json --verbose"
+        case .codex:
+            return "codex exec --json --sandbox workspace-write --skip-git-repo-check {prompt}"
         case .cursor: return "cursor-agent -p {prompt}"
         case .gemini: return "gemini -p {prompt}"
         case .copilot: return "copilot -p {prompt}"

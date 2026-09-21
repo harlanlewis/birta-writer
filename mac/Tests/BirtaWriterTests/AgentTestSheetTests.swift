@@ -65,6 +65,66 @@ final class AgentTestSheetTests: XCTestCase {
         XCTAssertFalse(transcript(of: alert)?.contains("status 1") ?? true)
     }
 
+    // MARK: a structured command's transcript
+
+    /// One real event, as `claude --output-format stream-json --verbose`
+    /// prints it. Captured with the rest in
+    /// `shared/__fixtures__/agentProgressCases.json`.
+    private let spoke = "{\"type\":\"assistant\",\"message\":{\"role\":\"assistant\",\"content\":"
+        + "[{\"type\":\"text\",\"text\":\"Hello! How can I help?\"}]},"
+        + "\"session_id\":\"b96cf965-8bfd-4959-9102-fe31e7e1867d\"}"
+
+    /// The preset a fresh install runs now asks its CLI for events, so the
+    /// transcript of a test that WORKED is JSON. The box is for the sentence,
+    /// not the envelope it came in.
+    func testAStructuredTranscriptShouldShowWhatTheToolSaidRatherThanItsEvents() throws {
+        let alert = SettingsWindowController.agentTestAlert(
+            name: "Claude Code",
+            result: AgentProbeResult(succeeded: true, transcript: spoke + "\n", failure: nil))
+
+        XCTAssertEqual(transcript(of: alert), "Hello! How can I help?")
+    }
+
+    /// Reduced, never replaced. A command that printed prose is shown exactly
+    /// as it printed it, which is every preset that asks for no events and
+    /// every command somebody wrote themselves.
+    func testAPlainTranscriptShouldReachTheBoxUnchanged() throws {
+        let alert = SettingsWindowController.agentTestAlert(
+            name: "Amp",
+            result: AgentProbeResult(succeeded: true,
+                                     transcript: "Hello!\nAnything else?\n", failure: nil))
+
+        XCTAssertEqual(transcript(of: alert), "Hello!\nAnything else?")
+    }
+
+    /// A structured run that failed says why in prose, on stderr, after its
+    /// events. That sentence is the whole reason the failure arm exists, and
+    /// the corner's own rule would drop it.
+    func testAStructuredFailureShouldKeepTheToolsOwnErrorUnderneathItsEvents() throws {
+        let alert = SettingsWindowController.agentTestAlert(
+            name: "Claude Code",
+            result: AgentProbeResult(
+                succeeded: false,
+                transcript: spoke + "\nError: credit balance is too low\n",
+                failure: "The command exited with status 1."))
+
+        let shown = try XCTUnwrap(transcript(of: alert))
+        XCTAssertTrue(shown.contains("credit balance is too low"), shown)
+        XCTAssertFalse(shown.contains("session_id"), "the envelope is not the answer")
+    }
+
+    /// Showing LESS than the child printed is the one way this could cost
+    /// somebody the line they needed, so a structured run whose events all
+    /// said nothing keeps its transcript.
+    func testAStructuredTranscriptThatSaidNothingShouldFallBackToWhatWasPrinted() throws {
+        let silent = "{\"type\":\"system\",\"subtype\":\"init\",\"session_id\":\"s\"}"
+        let alert = SettingsWindowController.agentTestAlert(
+            name: "Claude Code",
+            result: AgentProbeResult(succeeded: true, transcript: silent + "\n", failure: nil))
+
+        XCTAssertEqual(transcript(of: alert), silent)
+    }
+
     /// The transcript is selectable, so a failure can be copied into a search,
     /// and scrollable, so a long answer does not make a sheet taller than the
     /// screen.

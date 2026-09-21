@@ -102,6 +102,107 @@ final class AgentProgressTests: XCTestCase {
         XCTAssertTrue(clamped.hasSuffix("…"))
         XCTAssertFalse(clamped.contains("\u{FFFD}"))
     }
+
+    // MARK: a finished transcript
+
+    /// The whole of what a run printed, as `AgentRunner` collects it: both
+    /// streams, interleaved in the order their chunks arrived.
+    private func transcript(_ c: Case) -> String {
+        c.feed.map { String(repeating: $0.chunk, count: $0.repeatCount ?? 1) }.joined()
+    }
+
+    /// The captured Claude Code run, read the way the Test sheet reads it
+    /// rather than the way the corner does.
+    ///
+    /// Every step is kept, in order, where the corner shows only the newest;
+    /// the two `Thinking` events in a row collapse to one, which is the
+    /// throttle's rule; and a narration is kept whole rather than clamped.
+    func testAStructuredTranscriptShouldReduceToEveryStepInOrder() throws {
+        let c = try XCTUnwrap(try loadCases().first { $0.name == "claude-code-2.1.278-stream-json" },
+                              "the shared fixture lost the captured Claude Code run")
+        XCTAssertEqual(AgentProgressReader.transcriptLines(transcript(c)), [
+            "Thinking",
+            "I'll read the file and then append 'ok' to it.",
+            "Read note.md",
+            "Done. I've appended 'ok' to note.md.",
+        ])
+    }
+
+    func testTheCapturedCodexRunShouldReduceToItsOwnSteps() throws {
+        let c = try XCTUnwrap(try loadCases().first { $0.name == "codex-0.149.0-json" },
+                              "the shared fixture lost the captured Codex run")
+        let lines = try XCTUnwrap(AgentProgressReader.transcriptLines(transcript(c)))
+        XCTAssertGreaterThan(lines.count, 2, "\(lines)")
+        XCTAssertEqual(lines.last, "Appended `ok` to note2.md.")
+        XCTAssertTrue(lines.contains("Editing note2.md"), "\(lines)")
+    }
+
+    /// The difference this reduction exists to make, and the one that could
+    /// cost somebody the only line they can act on.
+    ///
+    /// The corner SILENCES prose once a stream has proved structured, because
+    /// a glance showing stray output beside events reads as noise. A run that
+    /// emitted events and then failed says why in exactly that prose, so a
+    /// transcript keeps it. `prose-silenced-after-event` is the same input
+    /// asserted the other way one test up, which is what makes this one
+    /// discriminate rather than agree with itself.
+    func testProseAfterAnEventShouldSurviveIntoATranscript() throws {
+        let c = try XCTUnwrap(try loadCases().first { $0.name == "prose-silenced-after-event" })
+        XCTAssertEqual(play(c).shown, [ "Read note.md", nil ], "the corner still silences it")
+        XCTAssertEqual(AgentProgressReader.transcriptLines(transcript(c)),
+                       ["Read note.md", "[2/7] tokens"])
+    }
+
+    /// A narration is kept WHOLE, which the captured runs cannot show: every
+    /// answer in them is one short line, so the corner's clamped opening and
+    /// the harness's own words are the same string and a test over them would
+    /// pass either way.
+    ///
+    /// This is a real answer to `AgentRequest.probePrompt` from Claude Code
+    /// 2.1.278, which is two lines with a blank between them. The corner shows
+    /// the first; a sheet shows what was said.
+    func testANarrationShouldReachATranscriptWholeRatherThanClampedToItsOpening() {
+        let spoke = "{\"type\":\"assistant\",\"message\":{\"role\":\"assistant\",\"content\":"
+            + "[{\"type\":\"text\",\"text\":\"Hello! 👋\\n\\nWhat can I help you with today?\"}]},"
+            + "\"session_id\":\"a0d0fa2b-0068-4c92-a5ec-e6432a329485\"}\n"
+        XCTAssertEqual(AgentProgressReader.transcriptLines(spoke),
+                       ["Hello! 👋\n\nWhat can I help you with today?"])
+        // The same event through the corner, which wants one line.
+        XCTAssertEqual(AgentProgressReader().read(spoke, stream: .stdout), "Hello! 👋")
+    }
+
+    /// A long answer is not cut either. The corner's 72 characters are what
+    /// fits beside a document; a scrollable sheet has no such bound, and an
+    /// answer ending in `…` is one the reader has to go and run again to see.
+    func testALongAnswerShouldNotBeClampedIntoATranscript() {
+        let long = String(repeating: "word ", count: 40).trimmingCharacters(in: .whitespaces)
+        let spoke = "{\"type\":\"assistant\",\"message\":{\"role\":\"assistant\",\"content\":"
+            + "[{\"type\":\"text\",\"text\":\"\(long)\"}]},\"session_id\":\"s\"}\n"
+        XCTAssertEqual(AgentProgressReader.transcriptLines(spoke), [long])
+        XCTAssertGreaterThan(long.utf16.count, AgentProgressReader.lineMax,
+                             "the fixture is too short to tell a clamp from none")
+    }
+
+    /// Nil, not an empty list and not a reconstruction: a caller holding a
+    /// plain transcript has to show the bytes the child printed.
+    func testATranscriptWithNoEventsInItShouldNotBeReduced() {
+        XCTAssertNil(AgentProgressReader.transcriptLines("Hello!\nAnything else?\n"))
+        XCTAssertNil(AgentProgressReader.transcriptLines(""))
+        XCTAssertNil(AgentProgressReader.transcriptLines(
+            "{\"level\":\"debug\",\"msg\":\"cache warm\"}\nready\n"),
+                     "JSON in a shape no reader knows is prose, not an event")
+    }
+
+    /// A structured run whose every event says nothing reduces to no lines at
+    /// all. The caller has to be able to tell that from a plain transcript,
+    /// because showing an empty box is the one outcome worse than showing the
+    /// events.
+    func testAStructuredTranscriptThatSaidNothingShouldReduceToNoLines() {
+        let session = "\"session_id\":\"s\""
+        let events = "{\"type\":\"system\",\"subtype\":\"init\",\(session)}\n"
+            + "{\"type\":\"result\",\"subtype\":\"success\",\(session)}\n"
+        XCTAssertEqual(AgentProgressReader.transcriptLines(events), [])
+    }
 }
 
 /// The one-line-per-window rule `askAgent.ts`'s `sendProgress` keeps, as a
