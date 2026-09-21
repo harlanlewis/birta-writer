@@ -156,6 +156,28 @@ if [ "$(traces "diskdrift reread")" -le "$before_rereads" ]; then
 fi
 expect_bytes "coordinated change" "noticing a coordinated change writes nothing"
 
+echo "a coordinated change after a typing burst"
+# The same notification, with this window's own autosave just behind it. The
+# app has to tell "my write is still in flight" from "my write landed and
+# nothing has looked since", and only the first is a reason to stand down: a
+# latch on the second drops every notification until the next summon, and the
+# panel sits on stale bytes with the file open in front of the reader.
+post '{"type":"__testInsertText","text":"burst "}'; sleep 1.5
+checks=$((checks + 1))
+case "$(cat "$NOTE")" in
+    *burst*) ;;
+    *) fail "the typing never reached the file, so this arm measures nothing: '$(cat "$NOTE")'" ;;
+esac
+before_rereads=$(traces "diskdrift reread")
+swift "$DIR/coordinated-write.swift" "$NOTE" "changed after the burst
+" || fail "the coordinated write itself failed"
+sleep 2.5
+checks=$((checks + 1))
+if [ "$(traces "diskdrift reread")" -le "$before_rereads" ]; then
+    fail "a coordinated change after a typing burst was not noticed"
+fi
+expect_bytes "changed after the burst" "noticing it writes nothing"
+
 echo "an edited buffer, changed outside while it is up"
 show_panel
 printf 'changed again\n' > "$NOTE"
@@ -250,7 +272,7 @@ echo
 # stops running takes its assertions with it and leaves a green line with a
 # smaller number in it, which nobody reads as a failure. Raise this when arms
 # are added; a drop is the thing it exists to catch.
-EXPECTED_CHECKS=20
+EXPECTED_CHECKS=23
 if [ "$checks" -lt "$EXPECTED_CHECKS" ]; then
     echo "check-external-change: only $checks checks ran, expected at least $EXPECTED_CHECKS." >&2
     echo "  An arm stopped running. Nothing below its own assertions was measured." >&2

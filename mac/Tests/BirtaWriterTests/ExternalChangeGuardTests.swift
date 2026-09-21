@@ -178,6 +178,34 @@ final class ExternalChangeGuardTests: XCTestCase {
                       + "tick waits for the write before it on the thread the keystrokes arrive on")
     }
 
+    /// Both places that decline to look ask the WRITER whether anything is in
+    /// flight, and neither asks this window's own pending flag.
+    ///
+    /// The two predicates read alike and differ in the one way that matters.
+    /// `writer.isIdle` stops being false the moment the bytes land;
+    /// `pendingWrite` stays set until this window next accounts for its own
+    /// write, which the autosave path never does, so declining on it declines
+    /// for ever. Both of these functions were written with the flag first and
+    /// both had to be fixed, which is why this is pinned by name rather than
+    /// left to a reader to notice: nothing in either function's behaviour
+    /// shows the difference until a notification is dropped or a check is
+    /// skipped, and the one instrument that sees either is a shell script
+    /// somebody has to run.
+    func testTheTwoPlacesThatDeclineToLookShouldAskTheWriterRatherThanAFlag() throws {
+        let text = try source()
+        for name in ["reconcileWithDisk", "noteChangedOnDisk"] {
+            let body = try functionBody(named: name, in: text)
+            let code = body.components(separatedBy: "\n")
+                .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
+                .joined(separator: "\n")
+            XCTAssertTrue(code.contains("writer.isIdle"),
+                          "\(name) no longer asks the writer whether a write is in flight")
+            XCTAssertFalse(code.contains("pendingWrite == nil") || code.contains("pendingWrite != nil"),
+                           "\(name) decides on a flag that stays set until the next reconcile, so it "
+                           + "stops looking altogether after a typing burst")
+        }
+    }
+
     /// The other side of the same rule: a summon is where a stale panel is
     /// corrected and the only place there is a window to put the question on.
     func testTheSummonShouldReconcileToo() throws {
