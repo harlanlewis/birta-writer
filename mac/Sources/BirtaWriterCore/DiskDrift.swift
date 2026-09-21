@@ -124,10 +124,10 @@ public enum DiskDrift: Equatable, Sendable {
     /// What each answer does, because both lose something and neither is the
     /// obvious default.
     public static let detail =
-        "It changed on disk while this window had edits of its own. Reload from Disk shows the other version and drops the edits here; Keep What Is Here saves this version over it."
+        "It changed on disk while this window had edits of its own. Reload from Disk shows the other version and drops the edits here; Keep My Changes saves this version over it."
 
     public static let reloadTitle = "Reload from Disk"
-    public static let keepTitle = "Keep What Is Here"
+    public static let keepTitle = "Keep My Changes"
 
     /// What the person said.
     public enum Answer: Equatable, Sendable {

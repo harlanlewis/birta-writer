@@ -174,7 +174,7 @@ expect_bytes "changed again" "Reload from Disk leaves the file as the outside to
 post '{"type":"__birtaSaveNow"}'; sleep 1.5
 expect_bytes "changed again" "after Reload from Disk the buffer IS the file, so a save changes nothing"
 
-echo "answered: Keep What Is Here"
+echo "answered: Keep My Changes"
 printf 'changed a third time\n' > "$NOTE"
 post '{"type":"__testInsertText","text":"kept "}'; sleep 1.5
 post '{"type":"__birtaSaveNow"}'; sleep 1.5
@@ -183,7 +183,7 @@ post '{"type":"__birtaAnswerDiskDrift","answer":"keep"}'; sleep 1.5
 checks=$((checks + 1))
 case "$(cat "$NOTE")" in
     *kept*) ;;
-    *) fail "Keep What Is Here writes the buffer: the file holds '$(cat "$NOTE")'" ;;
+    *) fail "Keep My Changes writes the buffer: the file holds '$(cat "$NOTE")'" ;;
 esac
 
 echo "an unchanged file is still not written"

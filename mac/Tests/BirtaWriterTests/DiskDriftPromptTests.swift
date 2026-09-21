@@ -69,7 +69,7 @@ final class DiskDriftPromptTests: XCTestCase {
         window.endSheet(sheet, returnCode: .alertThirdButtonReturn)
     }
 
-    /// An assertion that Escape does not reach Keep What Is Here belongs here
+    /// An assertion that Escape does not reach Keep My Changes belongs here
     /// and is deliberately absent, for the reason `UnsavedChangesPromptTests`
     /// gives about its own: removing the line in `present` that clears that
     /// key equivalent leaves this file green, because AppKit assigns none to

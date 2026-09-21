@@ -1,7 +1,7 @@
 import AppKit
 import BirtaWriterCore
 
-/// The Reload from Disk / Keep What Is Here sheet, shown when the bound file
+/// The Reload from Disk / Keep My Changes sheet, shown when the bound file
 /// changed outside the app and the buffer holds something the file does not.
 ///
 /// A sheet on the panel for the reasons `UnsavedChangesPrompt` gives, and
