@@ -130,6 +130,32 @@ expect_trace "diskdrift reread" 1 "the summon re-read the file"
 hide_panel
 expect_bytes "changed outside" "hiding after the re-read does not write the old buffer back"
 
+echo "a coordinated change, while the panel is up and nobody summons"
+# The presenter's own path, which the `printf` above deliberately cannot
+# reach: a write made through `NSFileCoordinator` is what an editor that
+# coordinates its saves makes, and it is the only kind a presenter hears. What
+# this asks is that the note re-reads itself with nobody touching the app.
+cat > "$DIR/coordinated-write.swift" <<'SWIFT'
+import Foundation
+let url = URL(fileURLWithPath: CommandLine.arguments[1])
+let text = CommandLine.arguments[2]
+var error: NSError?
+NSFileCoordinator().coordinate(writingItemAt: url, options: [], error: &error) { target in
+    try? text.write(to: target, atomically: false, encoding: .utf8)
+}
+if let error { FileHandle.standardError.write(Data("\(error)\n".utf8)); exit(1) }
+SWIFT
+show_panel
+before_rereads=$(traces "diskdrift reread")
+swift "$DIR/coordinated-write.swift" "$NOTE" "coordinated change
+" || fail "the coordinated write itself failed"
+sleep 2.5
+checks=$((checks + 1))
+if [ "$(traces "diskdrift reread")" -le "$before_rereads" ]; then
+    fail "a coordinated change was not noticed while the panel was up"
+fi
+expect_bytes "coordinated change" "noticing a coordinated change writes nothing"
+
 echo "an edited buffer, changed outside while it is up"
 show_panel
 printf 'changed again\n' > "$NOTE"
