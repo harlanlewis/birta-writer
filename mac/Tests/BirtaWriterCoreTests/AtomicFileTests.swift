@@ -242,6 +242,39 @@ final class AtomicFileTests: XCTestCase {
         XCTAssertEqual(again.stamp, DiskStamp.of(target))
     }
 
+    /// `isIdle` is a fact about NOW: false while a write is on the queue, true
+    /// once it has landed.
+    ///
+    /// It is what a caller asks when it must not block and still wants the
+    /// answer where there is nothing to wait for, and the "once it has landed"
+    /// half is the load-bearing one. A predicate that stayed false after the
+    /// write finished would be a latch, and a caller declining on a latch
+    /// declines for ever: that is the shape of the defect this writer's two
+    /// callers (`Coordinator.reconcileWithDisk`, `noteChangedOnDisk`) exist
+    /// around.
+    func testIsIdleShouldBeFalseWhileAWriteIsInFlightAndTrueOnceItHasLanded() throws {
+        let target = dir.appendingPathComponent("idle.md")
+        let writer = CoalescingWriter(onError: { _ in })
+        XCTAssertTrue(writer.isIdle, "nothing has been submitted yet")
+        let inside = DispatchSemaphore(value: 0)
+        let release = DispatchSemaphore(value: 0)
+        AtomicFile.afterPublishForTests = {
+            inside.signal()
+            release.wait()
+        }
+        defer { AtomicFile.afterPublishForTests = nil }
+        writer.submit("some text", to: target)
+        // The write is held inside `AtomicFile`, so this is not a race with
+        // it: the queue cannot go idle until the semaphore below is signalled.
+        XCTAssertEqual(inside.wait(timeout: .now() + 5), .success,
+                       "the write never reached the seam; nothing was held and this asserts nothing")
+        XCTAssertFalse(writer.isIdle, "a write is on the queue")
+        release.signal()
+        writer.drain()
+        XCTAssertTrue(writer.isIdle, "the write landed, so there is nothing left to wait for")
+        XCTAssertEqual(try String(contentsOf: target, encoding: .utf8), "some text")
+    }
+
     /// A write that threw leaves the previous answer standing. Reporting the
     /// submission instead would have a caller comparing against bytes no file
     /// holds, and the file's real contents would then read as somebody else's

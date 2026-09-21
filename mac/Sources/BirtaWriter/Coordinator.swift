@@ -2698,15 +2698,22 @@ final class Coordinator {
     /// The presenter says the file's contents changed: look, unless what it is
     /// reporting is this window's own write still on its way to the disk.
     ///
-    /// A write submitted and not yet landed is far and away the likeliest
-    /// thing a notification means, and reconciling would `drain()` for it on
-    /// the main thread, which is the wait the autosave path is written to
-    /// avoid (`writeLatest`'s `waiting`). Nothing is lost by declining: an
-    /// outside change that really did arrive in that window is found by the
-    /// next write or the next summon, which is the floor this whole path is
-    /// built on rather than a gap in it.
+    /// A write still on the writer's queue is far and away the likeliest thing
+    /// a notification means, and reconciling would `drain()` for it on the
+    /// main thread, which is the wait the autosave path is written to avoid
+    /// (`writeLatest`'s `waiting`). Nothing is lost by declining: an outside
+    /// change that really did arrive in that window is found by the next write
+    /// or the next summon, which is the floor this whole path is built on
+    /// rather than a gap in it.
+    ///
+    /// Asked of the WRITER, for the reason `reconcileWithDisk` gives at the
+    /// same predicate: `pendingWrite` is a flag this window clears when it
+    /// next accounts for its own write, which the autosave path never does, so
+    /// declining on it declines for ever. The panel would then sit on stale
+    /// bytes with the file open in front of the reader until the next summon,
+    /// which is the whole of what the presenter is here to prevent.
     private func noteChangedOnDisk() {
-        guard pendingWrite == nil else { return }
+        guard writer.isIdle else { return }
         reconcileWithDisk(asking: true)
     }
 
