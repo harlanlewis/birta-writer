@@ -75,6 +75,10 @@ const NOT_COLLECTED = [
     ["listeners on the editor's own elements", "el.addEventListener on a node the editor made is scoped by the node. Only `document` and `window` registrations are page state."],
     ["nested CSS", "a selector below the top level of a stylesheet is already scoped by its parent. Only depth-0 selectors can match outside the editor's subtree."],
     ["comment-only lines", "a line whose trimmed form starts with //, /* or * is dropped before the TypeScript patterns run, so prose about `document.body` is not an occurrence."],
+    ["a local binding named `window`", `the identifier can be shadowed, and this tree shadows it: webview/plugins/proofread.ts holds a visible range in a field called \`window\`, so \`window.from\` and \`window.to\` there are its own object. Those two property names are skipped by name (SHADOWED_WINDOW_PROPS), which is the narrowest exclusion that works; nothing else is assumed about whether a bare \`window\` is the global.`],
+    ["`globalThis` in a type position", "`globalThis.Node` in webview/index.ts annotates a parameter. It names a type and reads nothing."],
+    ["the verify worker's own scope", "webview/workers/ runs with no document at all, so its `globalThis` is a worker scope rather than a page. It is not an inline case and has no host to impose on."],
+    ["window teardown", "window.removeEventListener pairs with a registration already counted, so counting it again would double every listener."],
 ];
 
 // ─── Scan: TypeScript ────────────────────────────────────────────────────────
@@ -88,11 +92,27 @@ const NOT_COLLECTED = [
 const DOC = String.raw`(?:(?<=\.\.\.)|(?<![.\w$]))document`;
 const WIN = String.raw`(?:(?<=\.\.\.)|(?<![.\w$]))window`;
 
+/** See NOT_COLLECTED: the one place a bare `window` in this tree is a local. */
+const SHADOWED_WINDOW_PROPS = ["from", "to"];
+
 /**
- * Each entry: a kind, a regex, and how to read the refinement out of the match.
+ * Each entry: a kind, a regex, and how to read the refinement out of the match,
+ * which is handed the whole line so a shape spelled more than one way can be
+ * told apart. A refinement of `null` drops the match, which is how the stated
+ * exclusions above are applied rather than left to a rule.
+ *
  * Order matters only where two patterns could claim one line; the first wins and
  * the rest are tried against the remainder of the line's matches independently,
  * so a line with two distinct shapes yields two occurrences.
+ *
+ * The window and globalThis patterns are OPEN: they take whatever property name
+ * follows rather than a list of names the author thought of. That is deliberate,
+ * and the first version of this script got it wrong in exactly the way the scan
+ * is built to prevent. A closed list cannot produce residue, because a name not
+ * on it yields no occurrence at all, and a shape that yields no occurrence is
+ * invisible rather than raised. The closed list missed the page's scroll
+ * position and its scrolling commands, the editor's use of the window as an
+ * event bus, and every `globalThis` cast.
  */
 const TS_PATTERNS = [
     { kind: "doc-listener", re: new RegExp(DOC + String.raw`\.addEventListener\(\s*["'](\w+)["']`, "g"), refine: (m) => m[1] },
@@ -109,7 +129,31 @@ const TS_PATTERNS = [
     { kind: "doc-query", re: new RegExp(DOC + String.raw`\.(getElementById|querySelector|querySelectorAll|getElementsBy\w+)`, "g"), refine: (m) => m[1] },
     { kind: "doc-focus", re: new RegExp(DOC + String.raw`\.(activeElement|hasFocus)`, "g"), refine: (m) => m[1] },
     { kind: "doc-misc", re: new RegExp(DOC + String.raw`\.(elementFromPoint|elementsFromPoint|execCommand|visibilityState|styleSheets|dispatchEvent|getSelection|title|referrer|cookie|write|open|close)`, "g"), refine: (m) => m[1] },
-    { kind: "win-global", re: new RegExp(WIN + String.raw`\.(parent|top|opener|location|frameElement|focus|name|postMessage|__i18n|getSelection|print|close|open)`, "g"), refine: (m) => m[1] },
+    { kind: "win-listener", re: new RegExp(WIN + String.raw`\.addEventListener\(\s*(?!["'])([A-Za-z_$][\w$]*)`, "g"), refine: () => "custom-event" },
+    {
+        kind: "win-global",
+        re: new RegExp(WIN + String.raw`\.([A-Za-z_$][\w$]*)`, "g"),
+        refine: (m) => {
+            if (m[1] === "addEventListener" || m[1] === "removeEventListener") return null;
+            if (SHADOWED_WINDOW_PROPS.includes(m[1])) return null;
+            return m[1];
+        },
+    },
+    {
+        kind: "global-scope",
+        re: /(?<![.\w$])globalThis/g,
+        refine: (m, line, next) => {
+            // A cast's first key names what the site is reaching for, and the
+            // brace is often the end of the line, so the following line counts.
+            const rest = line.slice(m.index) + "\n" + next;
+            const dotted = rest.match(/^globalThis\s*\.\s*([A-Za-z_$][\w$]*)/);
+            if (dotted) return dotted[1] === "Node" ? null : dotted[1];
+            const cast = rest.match(/^globalThis\s+as\s+(?:unknown\s+as\s+)?\{\s*([A-Za-z_$][\w$]*)/);
+            if (cast) return cast[1];
+            if (/^globalThis\s+as\s+Record</.test(rest)) return "computed-key";
+            return "cast";
+        },
+    },
     { kind: "fixed-position-js", re: /\.position\s*=\s*["']fixed["']|position:\s*fixed/g, refine: () => "fixed" },
 ];
 
@@ -126,14 +170,18 @@ function scanTypeScript(file, text) {
         const line = lines[i];
         if (isCommentLine(line)) continue;
         for (const p of TS_PATTERNS) {
+            // See NOT_COLLECTED: a worker's global scope is not a page.
+            if (p.kind === "global-scope" && file.startsWith("webview/workers/")) continue;
             p.re.lastIndex = 0;
             let m;
             while ((m = p.re.exec(line)) !== null) {
+                const refinement = p.refine(m, line, lines[i + 1] ?? "");
+                if (refinement === null) continue;
                 out.push({
                     file,
                     line: i + 1,
                     kind: p.kind,
-                    refinement: p.refine(m),
+                    refinement,
                     text: line.trim().slice(0, 160),
                 });
             }
@@ -391,6 +439,9 @@ const RULES = [
     ["win-listener", "message",
         OWNS_PAGE,
         "The host protocol arrives as a message event on the editor's own window, and the editor applies what arrives. That is safe exactly because the window is the editor's: inside VS Code only the extension can post to it. Inline the window is the host's and any script on the page can post the editor a document, a read-only flip or an external update. Scoping does not fix it, because there is nothing narrower than the window to listen on; the transport has to change, to a MessagePort handed over at boot. docs/HOSTING.md already says the frame page is inside the host's trust boundary, and inline there is no boundary left to be inside."],
+    ["win-listener", ["custom-event", "theme-changed"],
+        SCOPE,
+        "The receiving half of the editor's own event bus. Several modules talk to each other by dispatching a CustomEvent on the window and listening for it there, under names held in shared constants (the safe-area change, the note highlight, the proofread findings). Inline the bus runs through the host's window: the host hears every message the editor sends itself, and two editors on one page hear each other's. The fix is mechanical, a bus of the editor's own or an element it dispatches on, and it is the same prerequisite as everything else in this bucket, because the element it would dispatch on is the root that does not exist."],
     ["win-listener", "*",
         SCOPE,
         "A window event with no rule of its own. Read the registration before trusting this verdict."],
@@ -474,12 +525,48 @@ const RULES = [
     ["win-global", "__i18n",
         SCOPE,
         "The boot blob, read directly off the window wherever a setting is wanted. It is one decision and many edits, which is the pair worth keeping apart when this family's number is read: the host has to give up one global name, and the port has to touch every read site, because there is no seam between them today. docs/HOSTING.md already names this key as what a page declares, and a mount API would take the same object as an argument instead."],
+    ["win-global", ["scrollTo", "scrollBy", "scroll"],
+        OWNS_PAGE,
+        "The editor scrolls the page. Restoring a remembered position, following the caret, bringing a heading to the top, auto-scrolling during a drag: all of them command the window, because the window IS the editor's scroller, which is the same claim the viewport-sized layout makes from the CSS side. Inline this scrolls the host's page out from under whatever else is on it. Scoping it means the editor stops being what scrolls, which is a change to its layout model rather than a re-rooting."],
+    ["win-global", ["scrollY", "scrollX", "pageYOffset", "pageXOffset"],
+        SCOPE,
+        "The page's scroll position read as the editor's own. Inline the two are different numbers. It is a read and it moves with the scroller, so it is the cheap half of the pair above."],
+    ["win-global", ["innerWidth", "innerHeight", "outerWidth", "outerHeight", "visualViewport", "devicePixelRatio"],
+        SCOPE,
+        "The viewport's size read as the editor's available size, which is the same occurrence as the documentElement metrics and is far more common than them. Inline the editor's box is not the viewport whenever the host gives it less than the whole window. The mount's own rect is the fix."],
+    ["win-global", "dispatchEvent",
+        OWNS_PAGE,
+        "webview/components/toolbar/layout.ts fires a real `resize` Event at the window so that everything geometry-bound re-measures after the toolbar is shown or hidden. Inline that runs the host's resize handlers too, and scoping it would not do what it is for, since what it wants is exactly for everything to re-measure. The other dispatches in this family are the editor's own bus under names of its own; this one borrows a platform event on purpose.",
+        /^webview\/components\/toolbar\/layout\.ts$/],
+    ["win-global", "dispatchEvent",
+        SCOPE,
+        "The sending half of the editor's own event bus. See the win-listener rule for the receiving half; the two move together."],
+    ["win-global", "frames",
+        OWNS_PAGE,
+        "`isHostMessage` walks the window's direct child frames to decide whether an arriving message came from an embed inside the editor's own page rather than from its host. That reasoning is about a frame tree the editor is the top of. Inline there is no such tree, and the trust question it answers has to be answered another way, which is the same change the message transport needs."],
+    ["win-global", "getComputedStyle",
+        PORTABLE,
+        "A style read against an element the caller already holds. The window is only the namespace the function lives in."],
+    ["win-global", ["setTimeout", "setInterval", "clearTimeout", "clearInterval", "requestAnimationFrame", "cancelAnimationFrame", "requestIdleCallback", "cancelIdleCallback", "queueMicrotask"],
+        PORTABLE,
+        "A platform scheduling call. Every occupant of a page shares the same timers and none of them can claim one."],
     ["win-global", ["location", "name", "print", "close", "open", "getSelection"],
         SCOPE,
         "A window-level global read or write. Inline it is the host's window."],
-    ["win-global", "*",
+
+    // ── globalThis ───────────────────────────────────────────────────────────
+    ["global-scope", "__i18n",
         SCOPE,
-        "A window global with no rule of its own. Read the site before trusting this verdict."],
+        "The boot blob read through a raw `globalThis` cast rather than off `window`. Same decision as the window spelling and the same port, and it is worth seeing separately because AGENTS.md already records this cast as how a host fact once got read without going through the profile's one reader. A scan that looked only for `window` could not see it at all."],
+    ["global-scope", ["__perfInit", "__birtaPerf"],
+        SCOPE,
+        "A global name the perf harness sets and the editor answers on. Inline it is a name in the host's namespace, and a second editor on the page would answer for the first."],
+    ["global-scope", "computed-key",
+        SCOPE,
+        "webview/utils/plantUmlLoader.ts writes a bridge function onto the shared global under a constant key, because the wasm engine reaches for it there, and deletes it when the render is done. Inline the key sits in the host's namespace for the life of that render. The key is already a constant, so naming it per instance is the fix."],
+    ["global-scope", ["requestIdleCallback", "cancelIdleCallback", "requestAnimationFrame", "platform"],
+        PORTABLE,
+        "A feature test for a platform scheduling call, cast because the type is not in the lib the build targets. It reads and writes nothing of the page's."],
     ["fixed-position-js", "*",
         PORTABLE,
         "Chrome positioned against the viewport in script. This looks like a page claim and is not one: an anchored popup is placed from its anchor's getBoundingClientRect, which is in viewport coordinates wherever the anchor sits, so fixed positioning travels to an inline mount unchanged. What it depends on is the portal, which is where the scope change actually is, and on the host not putting the portal container inside an element with transform, filter, perspective or contain, any of which makes a fixed descendant position against that element instead of the viewport."],
@@ -551,7 +638,16 @@ export function classify(occ) {
 const FLOORS = {
     tsFiles: 200,
     cssFiles: 20,
-    anchors: ["doc-listener", "win-listener", "body-class", "body-child", "root-custom-prop", "head-inject", "highlight-registry", "doc-query", "css-selector", "css-fixed"],
+    // Every family a run finds, not a sample of them. A sample leaves the
+    // unanchored families free to stop matching in silence, which is the same
+    // hole the scan itself is built to close, one level up: the first version of
+    // this list held ten of the eighteen, and the two largest were outside it.
+    anchors: [
+        "body-child", "body-class", "body-style", "css-fixed", "css-selector",
+        "css-viewport-unit", "doc-focus", "doc-listener", "doc-misc", "doc-query",
+        "fixed-position-js", "global-scope", "head-inject", "highlight-registry",
+        "root-custom-prop", "root-style", "viewport-metric", "win-global", "win-listener",
+    ],
 };
 
 /**
