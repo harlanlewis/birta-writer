@@ -196,8 +196,9 @@ enum PaletteSources {
                 catalog.register(.theme(theme.id), for: item.id)
                 return item
             }
-            // A separator a slug cannot contain (`ThemeStore.slug` is letters,
-            // digits and dashes), so a theme named Add cannot take this id.
+            // A separator no theme id can contain: a slug is letters, digits
+            // and dashes, and a shipped theme's id is that under a `default_`
+            // prefix. So a theme named Add cannot take this id either way.
             let add = PaletteItem(id: "theme/add", title: ThemesMenu.addTitle, section: section, kind: .command)
             catalog.register(.setting(pane: "appearance", row: .theme), for: add.id)
             return PaletteItem(id: menuId(row), title: row.title, section: section, kind: .group,
