@@ -170,6 +170,30 @@ public final class CoalescingWriter {
     /// whose content already matched the file on disk is not counted, because
     /// nothing was written.
     public private(set) var writeCount = 0
+    /// The file as this writer left it, stamped on the writing queue rather
+    /// than by whoever submitted: a write lands after `submit` returns, so the
+    /// submitter cannot stat the result without racing its own write.
+    ///
+    /// It is what keeps the app's own writes from reading as somebody else's
+    /// change (`DiskDrift`), and it is only ever a shortcut: a caller that
+    /// cannot match it reads the bytes instead and reaches the same answer.
+    private var landed: (url: URL, content: String, stamp: DiskStamp?)?
+
+    /// The stamp this writer produced for `content` at `url`, or nil when the
+    /// last write it landed was something else.
+    ///
+    /// The size is checked against the bytes asked for because the stat is
+    /// taken just after the rename rather than inside it: a file replaced
+    /// again in that window would otherwise hand back a stamp describing
+    /// somebody else's write as ours.
+    public func landedStamp(for url: URL, content: String) -> DiskStamp? {
+        lock.lock()
+        defer { lock.unlock() }
+        guard let landed, landed.url == url, landed.content == content,
+              let stamp = landed.stamp, stamp.size == content.utf8.count
+        else { return nil }
+        return stamp
+    }
 
     public init(onError: @escaping (Error) -> Void) {
         self.onError = onError
@@ -195,9 +219,12 @@ public final class CoalescingWriter {
             pending = nil
             lock.unlock()
             do {
-                if try AtomicFile.writeString(job.content, to: job.url) {
-                    lock.lock(); writeCount += 1; lock.unlock()
-                }
+                let wrote = try AtomicFile.writeString(job.content, to: job.url)
+                let stamp = DiskStamp.of(job.url)
+                lock.lock()
+                if wrote { writeCount += 1 }
+                landed = (job.url, job.content, stamp)
+                lock.unlock()
             } catch {
                 onError(error)
             }
