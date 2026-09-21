@@ -123,7 +123,7 @@ src/searchNavigation.ts                       Catches a search-hit/goto target o
 src/webviewMessaging.ts                       Typed extension-to-webview send funnel
 src/webviewHtml.ts                            Webview HTML/CSP construction
 src/utils/getNonce.ts                         CSP nonce generation
-src/utils/imageService.ts                     Local image save (MD5 dedup) + server upload
+src/utils/imageService.ts                     Local image save (MD5 dedup); nothing leaves the machine
 webview/index.ts                              WebView entry
 webview/pm.ts                                 THE ProseMirror import funnel (raw @milkdown/prose surface + getView/getState); guarded by pmFunnel.test.ts
 webview/editor.ts                             Editor composition root (chrome plugins + the injected FormatModule)
