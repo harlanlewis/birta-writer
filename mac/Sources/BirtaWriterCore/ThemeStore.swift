@@ -296,7 +296,25 @@ public struct ThemeStore: Sendable {
 
     // MARK: the themes the app ships with
 
+    /// Which of `defaults` a launch has never been given, decided from the
+    /// record alone.
+    ///
+    /// The whole of the decision, and it is taken before anything is read.
+    /// An install with every shipped theme recorded answers with nothing
+    /// without the folder being opened, which is what `seedDefaults` leans on.
+    public static func defaultsToSeed(seeded: Set<String>,
+                                      defaults: [DefaultThemes.Bundled] = DefaultThemes.all)
+        -> [DefaultThemes.Bundled] {
+        defaults.filter { !seeded.contains($0.id) }
+    }
+
     /// Which of `defaults` the folder does not hold right now.
+    ///
+    /// Held means LISTED, which is stricter than a file being there: `list()`
+    /// drops a file it cannot parse, so a shipped theme whose copy is corrupt
+    /// counts as missing and Restore writes a good one over it. That is the
+    /// only repair for such a file, because the seed record says it has
+    /// already been given and a launch will not offer it again.
     public func missingDefaults(_ defaults: [DefaultThemes.Bundled] = DefaultThemes.all) -> [DefaultThemes.Bundled] {
         let held = Set(list().map(\.id))
         return defaults.filter { !held.contains($0.id) }
@@ -345,13 +363,24 @@ public struct ThemeStore: Sendable {
     /// A default whose file the bundle does not carry is left OUT of the
     /// record, so a build assembled without the folder (a test host is one)
     /// does not spend the one chance each theme gets.
+    ///
+    /// `heldIds` is the seam a check counts through; production passes
+    /// nothing and gets the folder.
     public func seedDefaults(from resources: URL?, seeded: Set<String>,
-                             defaults: [DefaultThemes.Bundled] = DefaultThemes.all)
+                             defaults: [DefaultThemes.Bundled] = DefaultThemes.all,
+                             heldIds: (() -> Set<String>)? = nil)
         -> (added: [ThemeSummary], seeded: Set<String>) {
-        let held = Set(list().map(\.id))
+        let candidates = Self.defaultsToSeed(seeded: seeded, defaults: defaults)
+        // Nothing to seed, so nothing to read. This is the exit every launch
+        // but the first takes, and it is the reason the decision is made
+        // before the folder is opened: `list()` reads and parses every theme
+        // in there, the user's imports included, so asking it whether there
+        // is work costs more the more themes they have and buys nothing.
+        guard !candidates.isEmpty else { return ([], seeded) }
+        let held = heldIds?() ?? Set(list().map(\.id))
         var record = seeded
         var added: [ThemeSummary] = []
-        for bundled in defaults where !seeded.contains(bundled.id) {
+        for bundled in candidates {
             // Already there, and never recorded: an install that had the
             // theme before the record existed. Nothing to write, and the one
             // chance is spent, because it has plainly been given.
