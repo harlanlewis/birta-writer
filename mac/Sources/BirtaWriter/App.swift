@@ -202,6 +202,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding, 
         // tour is never written. `FirstRunWiringTests` holds the order.
         let firstLaunch = Prefs.isFirstLaunch
         launchWasFirst = firstLaunch
+        // AFTER that reading, and the ordering is the point rather than an
+        // arrangement: seeding stores a key, and `Prefs.isFirstLaunch` is the
+        // absence of EVERY stored key, so a seed above this line would make
+        // every launch an existing install. Before the windows, because the
+        // first one resolves the appearance against the library and a theme
+        // arriving afterwards would be a slot reading as the system's for as
+        // long as the launch took. `ThemeSeedWiringTests` holds both ends.
+        seedDefaultThemes()
         NotesMoveOffer.offerAtLaunch()
         // Before any Coordinator exists, so a launch that came from Open With
         // mounts against the file it was asked for rather than mounting the
@@ -940,6 +948,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding, 
     /// first run does on its own authority, register the login item and write
     /// the tour, both gate on this and on nothing read later.
     private var launchWasFirst = false
+
+    /// Put the themes the app ships with into the library, once each.
+    ///
+    /// The whole of the launch's part in it. `ThemeStore.seedDefaults` holds
+    /// the decision: which of the four have never been given, what the record
+    /// of them becomes, and why a build whose bundle carries no theme folder
+    /// leaves that record alone. Nothing is applied and no setting moves; the
+    /// themes are in the library and picking one is the reader's.
+    private func seedDefaultThemes() {
+        let result = windows.themeStore.seedDefaults(
+            from: Bundle.main.resourceURL, seeded: Prefs.seededDefaultThemes)
+        guard result.seeded != Prefs.seededDefaultThemes else { return }
+        Prefs.seededDefaultThemes = result.seeded
+    }
 
     /// Teach the summon by having it made.
     ///

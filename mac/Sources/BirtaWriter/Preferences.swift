@@ -82,6 +82,7 @@ enum Prefs {
         case accentColor
         case tintColor
         case sidebarTransparent
+        case seededDefaultThemes
         // Written only while the table of contents is NOT transparent, which
         // is the departure from the default; absent is the default here as
         // it is for every other key.
@@ -106,8 +107,16 @@ enum Prefs {
     /// `lastScratchpadFile`: the same record, one level down. A rename moves
     /// the folder and renames the note inside it, and the folder alone cannot
     /// say which of the carried files was the scratchpad.
+    ///
+    /// `seededDefaultThemes`: not a setting either, but the record of which
+    /// shipped themes this install has already been given (`DefaultThemes`).
+    /// A reset touches no file on disk, which is the promise the sheet makes,
+    /// so it leaves the theme library exactly as it is; clearing this would
+    /// make the NEXT launch write four theme files back into a folder the
+    /// reset had said it would not touch, and put back the defaults somebody
+    /// removed on purpose. Restoring them is its own control, in Appearance.
     private static let survivesReset: Set<Key> = [
-        .hasSeenWelcome, .lastNotesDirectory, .lastScratchpadFile,
+        .hasSeenWelcome, .lastNotesDirectory, .lastScratchpadFile, .seededDefaultThemes,
     ]
 
     /// Put every setting back to its default, and touch no file on disk.
@@ -664,6 +673,19 @@ enum Prefs {
             if newValue.transparentToc { d.removeObject(forKey: Key.tocSidebarOpaque.rawValue) }
             else { d.set(true, forKey: Key.tocSidebarOpaque.rawValue) }
         }
+    }
+
+    /// Which of the themes the app ships with this install has already been
+    /// given, by id (`DefaultThemes`).
+    ///
+    /// The record of an OFFER, not of the folder. A default removed is gone
+    /// from the folder and still named here, which is what stops the next
+    /// launch putting it back and makes the remove button mean what it says.
+    /// It only grows, so a theme added to a later version is seeded the first
+    /// time that version runs.
+    static var seededDefaultThemes: Set<String> {
+        get { Set(d.stringArray(forKey: Key.seededDefaultThemes.rawValue) ?? []) }
+        set { d.set(newValue.sorted(), forKey: Key.seededDefaultThemes.rawValue) }
     }
 
     /// The palette rows picked lately, most recent first, by item id
