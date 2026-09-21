@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+---
+
+## [2026.921.0] - 2026, September 21
+
 ### Added
 
 - Frontmatter carrying Open Knowledge Format provenance shows a quiet label at the bottom of the metadata panel: the `status` it declares, whether a person or only a machine countersigned it (from `generated` and `verified`), and the day a `stale_after` deadline passed. It is read from the block and never written back, it stays readable while the panel is collapsed, and a block the panel can only show as raw YAML gets no label. Ordinary frontmatter with none of those fields is unchanged.

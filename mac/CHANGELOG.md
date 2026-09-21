@@ -12,6 +12,10 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ## [Unreleased]
 
+---
+
+## [2026.921.0] - 2026, September 21
+
 ### Added
 
 - Birta Writer for Mac ships with four colour themes: Birta Terracotta Light, Birta Terracotta Dark, Birta Terminal Green and Birta Terminal Amber. They arrive in your theme library on first launch and behave like any theme you added yourself: pick one per mode in Settings, Appearance, or from View, Theme.
