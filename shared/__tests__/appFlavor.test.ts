@@ -234,5 +234,13 @@ describe("app flavours", () => {
         const dev = readFileSync(join(REPO, "mac/Resources", icons.dev!));
         expect(dev.length).toBeGreaterThan(0);
         expect(release.equals(dev), "the two flavours' icons are the same bytes").toBe(false);
+        // Unequal bytes are not provenance: the light mark exported at another
+        // size satisfies that and is the wrong icon. Which artwork each one is
+        // cut from is written in one place, so hold the pairing there.
+        const iconScript = readFileSync(join(REPO, "mac/scripts/make-icons.sh"), "utf8");
+        expect(iconScript).toContain('icns birta-writer-mac-logo-light.svg "$OUT_ICNS"');
+        expect(iconScript).toContain('icns birta-writer-mac-logo-dark.svg "$OUT_ICNS_DEV"');
+        expect(iconScript).toContain(`OUT_ICNS_DEV="$RES/${icons.dev}"`);
+        expect(iconScript).toContain(`OUT_ICNS="$RES/${icons.release}"`);
     });
 });

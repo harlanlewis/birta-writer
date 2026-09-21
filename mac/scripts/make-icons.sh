@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Regenerate the app's two icons from the marks in mac/Resources/.
+# Regenerate the app's icons from the marks in mac/Resources/.
 #
 #   bash mac/scripts/make-icons.sh
 #
-# Outputs, both checked in and both read by build-app.sh:
+# Outputs, all committed and all read by build-app.sh:
 #
 #   mac/Resources/AppIcon.icns          the app icon, every size macOS asks for
 #   mac/Resources/AppIconDev.icns       the DEVELOPMENT flavour's icon, the dark mark
