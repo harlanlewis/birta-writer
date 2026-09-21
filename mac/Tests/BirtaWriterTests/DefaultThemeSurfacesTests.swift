@@ -74,6 +74,24 @@ final class DefaultThemeSurfacesTests: XCTestCase {
         return url
     }
 
+    /// Give the library's copy of a shipped theme a paper the bundled file
+    /// does not have.
+    ///
+    /// What makes "left exactly as it is" observable at all. A shipped theme
+    /// rewritten from the bundle comes back byte for byte, so every check
+    /// that reads its name, its kind or its presence passes whether Restore
+    /// touched it or not; only a copy that DIFFERS can report the difference.
+    private func alter(_ bundled: DefaultThemes.Bundled, to paper: String) throws {
+        let file = store.directory.appendingPathComponent(bundled.id).appendingPathExtension("json")
+        var object = try XCTUnwrap(JSONSerialization.jsonObject(with: try Data(contentsOf: file)) as? [String: Any])
+        var colors = try XCTUnwrap(object["colors"] as? [String: Any])
+        colors["editor.background"] = paper
+        object["colors"] = colors
+        try JSONSerialization.data(withJSONObject: object).write(to: file)
+        XCTAssertEqual(store.theme(id: bundled.id)?.colors["editor.background"], paper,
+                       "the alteration did not take, so nothing below is measuring anything")
+    }
+
     /// Where a theme comes from is one menu, and Restore is the last way in.
     /// The index is what `addTheme(_:)` dispatches on, so it is asserted
     /// rather than assumed.
@@ -91,13 +109,18 @@ final class DefaultThemeSurfacesTests: XCTestCase {
     /// one of somebody's own, one shipped theme removed, then Restore.
     ///
     /// The assertion is the library BEFORE and AFTER, not that the call
-    /// returned: a restore that does nothing is the failure this is written
-    /// against.
+    /// returned: a restore that does nothing is one failure this is written
+    /// against, and a restore that rewrites every shipped theme rather than
+    /// the missing one is the other. `kept` is altered first because that
+    /// second one is invisible otherwise, the rewrite being byte for byte
+    /// what was already there.
     func testRestoreShouldPutBackOnlyTheRemovedShippedThemeAndLeaveEverythingElse() throws {
         _ = store.seedDefaults(from: resources, seeded: [])
         try store.importThemes(from: try write(
             ##"{ "name": "Mine", "type": "dark", "colors": { "editor.background": "#010203" } }"##, to: "mine.json"))
         let gone = DefaultThemes.all[1]
+        let kept = DefaultThemes.all[3]
+        try alter(kept, to: "#123456")
         Prefs.appearance = AppearanceSettings(lightTheme: "mine", darkTheme: gone.id, accent: "#ff5257")
         Prefs.seededDefaultThemes = Set(DefaultThemes.all.map(\.id))
 
@@ -121,6 +144,8 @@ final class DefaultThemeSurfacesTests: XCTestCase {
         XCTAssertEqual(after.count, 5)
         XCTAssertEqual(store.theme(id: "mine")?.colors["editor.background"], "#010203",
                        "the theme somebody added themselves is byte for byte what it was")
+        XCTAssertEqual(store.theme(id: kept.id)?.colors["editor.background"], "#123456",
+                       "a built-in theme still in the library was written over, which Restore promises not to do")
         XCTAssertEqual(Prefs.appearance, settingsBefore,
                        "restoring one theme is a library being filled, never a theme being picked")
         XCTAssertEqual(Prefs.appearance.accent, "#ff5257", "and no other setting moved either")

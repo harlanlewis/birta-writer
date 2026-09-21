@@ -38,6 +38,23 @@ final class DefaultThemesTests: XCTestCase {
         return url
     }
 
+    /// Give the library's copy of a shipped theme a paper the bundled file
+    /// does not have, so a later assertion can see whether it was rewritten.
+    ///
+    /// Without this every "was it left alone" check is satisfied by a rewrite
+    /// with identical bytes, which is exactly what the mistake it guards
+    /// against would produce.
+    private func alter(_ bundled: DefaultThemes.Bundled, to paper: String) throws {
+        let file = store.directory.appendingPathComponent(bundled.id).appendingPathExtension("json")
+        var object = try XCTUnwrap(JSONSerialization.jsonObject(with: try Data(contentsOf: file)) as? [String: Any])
+        var colors = try XCTUnwrap(object["colors"] as? [String: Any])
+        colors["editor.background"] = paper
+        object["colors"] = colors
+        try JSONSerialization.data(withJSONObject: object).write(to: file)
+        XCTAssertEqual(store.theme(id: bundled.id)?.colors["editor.background"], paper,
+                       "the alteration did not take, so nothing below is measuring anything")
+    }
+
     // MARK: the list and the folder are one thing
 
     /// Both directions, which is the whole point of asking: a file copied in
@@ -126,6 +143,31 @@ final class DefaultThemesTests: XCTestCase {
         XCTAssertEqual(seeded, Set(DefaultThemes.all.map(\.id)), "the record only grows")
     }
 
+    /// An install that had a shipped theme before the record existed keeps
+    /// the copy it has: nothing is written over it, and the id is recorded
+    /// because it has plainly been given.
+    ///
+    /// The file has to DIFFER from the bundled one or the assertion cannot
+    /// see its own subject: a rewrite with identical bytes leaves a name and
+    /// a kind that match whether the branch ran or not.
+    func testAShippedThemeAlreadyInTheFolderShouldBeRecordedAndNotRewritten() throws {
+        _ = store.seedDefaults(from: resources, seeded: [])
+        let present = DefaultThemes.all[2]
+        try alter(present, to: "#123456")
+
+        // The record wiped, which is the pre-record install: every shipped
+        // theme is a candidate and three of them really are absent.
+        try store.remove(id: DefaultThemes.all[0].id)
+        let result = store.seedDefaults(from: resources, seeded: [])
+
+        XCTAssertEqual(result.added.map(\.id), [DefaultThemes.all[0].id],
+                       "only the one that was actually gone was written")
+        XCTAssertEqual(result.seeded, Set(DefaultThemes.all.map(\.id)),
+                       "a theme already there is recorded as given, or the next launch offers it again")
+        XCTAssertEqual(store.theme(id: present.id)?.colors["editor.background"], "#123456",
+                       "the copy that was already there was overwritten")
+    }
+
     /// A theme added to a later version is seeded when that version first
     /// runs, without disturbing the three already there.
     func testAThemeAddedToTheListLaterShouldBeSeededOnItsFirstLaunch() {
@@ -133,6 +175,37 @@ final class DefaultThemesTests: XCTestCase {
         let result = store.seedDefaults(from: resources, seeded: earlier)
         XCTAssertEqual(result.added.map(\.id), [DefaultThemes.all.last!.id])
         XCTAssertEqual(result.seeded, Set(DefaultThemes.all.map(\.id)))
+    }
+
+    /// Every launch after the first decides there is nothing to do WITHOUT
+    /// opening the folder.
+    ///
+    /// The folder holds whatever the reader has imported and every theme in
+    /// it is read and parsed by `list()`, so asking it whether there is work
+    /// costs more the more themes they have and, in the steady state, answers
+    /// nothing every time. This is on the launch path ahead of the windows.
+    ///
+    /// The counter is asserted in both directions: a zero from an instrument
+    /// that was never going to fire says nothing at all.
+    func testALaunchWithNothingLeftToSeedShouldNotReadTheLibrary() {
+        _ = store.seedDefaults(from: resources, seeded: [])
+        let full = Set(DefaultThemes.all.map(\.id))
+
+        var readsWhenFull = 0
+        let quiet = store.seedDefaults(from: resources, seeded: full,
+                                       heldIds: { readsWhenFull += 1; return full })
+        XCTAssertEqual(readsWhenFull, 0, "the folder was read to discover there was nothing to do")
+        XCTAssertEqual(quiet.added, [])
+        XCTAssertEqual(quiet.seeded, full, "and the record comes back untouched")
+
+        var readsWhenShort = 0
+        _ = store.seedDefaults(from: resources, seeded: full.subtracting([DefaultThemes.all[0].id]),
+                               heldIds: { readsWhenShort += 1; return full })
+        XCTAssertEqual(readsWhenShort, 1,
+                       "the counter never fires, so the zero above was a measurement of nothing")
+
+        XCTAssertEqual(ThemeStore.defaultsToSeed(seeded: full), [])
+        XCTAssertEqual(ThemeStore.defaultsToSeed(seeded: []).count, DefaultThemes.all.count)
     }
 
     /// A bundle with no theme folder leaves the record alone, so the one
@@ -177,6 +250,10 @@ final class DefaultThemesTests: XCTestCase {
         try store.importThemes(from: custom)
         let gone = DefaultThemes.all[0]
         let kept = DefaultThemes.all[3]
+        // Altered so that "was not rewritten" has something to measure: a
+        // rewrite from the bundle is byte for byte what is already there, so
+        // a name or a kind read back cannot tell the two apart.
+        try alter(kept, to: "#123456")
         try store.remove(id: gone.id)
 
         let before = store.list()
@@ -194,8 +271,35 @@ final class DefaultThemesTests: XCTestCase {
                        "restoring added exactly the one that was missing")
         XCTAssertEqual(store.theme(id: "mine")?.colors["editor.background"], "#010203",
                        "the custom theme is byte for byte what it was")
-        XCTAssertEqual(store.theme(id: kept.id)?.name, kept.name, "a default still there was not rewritten")
+        XCTAssertEqual(store.theme(id: kept.id)?.colors["editor.background"], "#123456",
+                       "a shipped theme still there was rewritten from the bundle")
         XCTAssertEqual(store.missingDefaults(), [], "nothing left to restore")
+    }
+
+    /// A shipped theme whose copy cannot be parsed is MISSING, not present.
+    ///
+    /// `list()` drops a file it cannot read, so such a theme is absent from
+    /// the library and still named in the record, which means no launch will
+    /// offer it again. Restore is the only thing that repairs it, and the
+    /// last two assertions are the ones that say so.
+    func testACorruptedShippedThemeShouldReadAsMissingAndBeRepairedByRestore() throws {
+        _ = store.seedDefaults(from: resources, seeded: [])
+        let broken = DefaultThemes.all[1]
+        let file = store.directory.appendingPathComponent(broken.id).appendingPathExtension("json")
+        try "{ this is not a theme".write(to: file, atomically: true, encoding: .utf8)
+
+        XCTAssertNil(store.theme(id: broken.id))
+        XCTAssertFalse(store.list().map(\.id).contains(broken.id))
+        XCTAssertEqual(store.missingDefaults().map(\.id), [broken.id])
+
+        let relaunch = store.seedDefaults(from: resources, seeded: Set(DefaultThemes.all.map(\.id)))
+        XCTAssertEqual(relaunch.added, [], "the record says it has been given, so a launch leaves it alone")
+        XCTAssertNil(store.theme(id: broken.id))
+
+        let result = store.installDefaults(store.missingDefaults(), from: resources)
+        XCTAssertEqual(result.added.map(\.id), [broken.id])
+        XCTAssertEqual(store.theme(id: broken.id)?.name, broken.name, "Restore did not write over the bad file")
+        XCTAssertEqual(store.missingDefaults(), [])
     }
 
     /// With nothing missing there is nothing to add, which is what lets the

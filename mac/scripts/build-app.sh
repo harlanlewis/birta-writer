@@ -108,7 +108,12 @@ cp mac/Resources/WelcomeHeroDark.png "$APP/Contents/Resources/WelcomeHeroDark.pn
 # a fresh install an empty library rather than break; `DefaultThemes.swift`
 # declares the four and `DefaultThemesTests` fails when this folder and that
 # list disagree in either direction.
-cp -R mac/Resources/DefaultThemes "$APP/Contents/Resources/DefaultThemes"
+# The trailing slash on the SOURCE is what makes this the contents rather than
+# the folder: without it a second copy into an existing bundle would nest
+# DefaultThemes/DefaultThemes and the app would find no themes at all. Correct
+# today only because `rm -rf "$APP"` runs above, and that is too far away to be
+# the reason this line is safe.
+cp -R mac/Resources/DefaultThemes/ "$APP/Contents/Resources/DefaultThemes"
 # The whole webview build: the entry, its stylesheet, the host palette, the
 # lazy chunks and every sibling asset they resolve (katex.css, the harper wasm).
 cp -R dist/. "$APP/Contents/Resources/web/dist/"
