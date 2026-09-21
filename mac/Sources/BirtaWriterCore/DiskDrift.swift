@@ -1,5 +1,10 @@
 import Foundation
 
+/// The C `stat`, through a typed reference because the bare spelling resolves
+/// to the STRUCT of that name rather than to the function that fills it.
+/// `AtomicFile.existingFile` names the same trap and takes the other way out.
+private let statPath: (UnsafePointer<CChar>, UnsafeMutablePointer<stat>) -> Int32 = stat
+
 /// What the file system says about a file, cheaply: which file it is, when it
 /// last changed and how long it is.
 ///
@@ -8,9 +13,17 @@ import Foundation
 /// empty one. It is a FILTER, never the verdict: a stamp that matches means
 /// nothing has touched the file, and a stamp that does not match means only
 /// that something might have, which `DiskDrift.judge` settles by reading.
-/// That split is what lets the app's own writes need no bookkeeping to be
-/// correct: `AtomicFile.write` publishes a new inode every time, so the stamp
-/// always moves under our own write, and the bytes then say it was ours.
+///
+/// The identity half is what makes it reliable. Anything that replaces a file
+/// rather than rewriting it, which is what an atomic save is and what this app
+/// does too, publishes a new inode, and no clock is involved in noticing that.
+/// A rewrite IN PLACE is caught by the modification time instead, and that
+/// half is only as good as the volume's clock: `DiskDriftTests` holds that two
+/// same-length rewrites back to back stamp differently, which is a statement
+/// about the volume the tests run on rather than about every file system. On
+/// one whose times are coarse (a FAT volume, some network mounts), a same-size
+/// in-place rewrite inside one tick reads as no change at all. Nothing here
+/// can fix that; a host that had to would compare the bytes every time.
 public struct DiskStamp: Equatable, Sendable {
     public let device: Int
     public let inode: Int
@@ -24,18 +37,44 @@ public struct DiskStamp: Equatable, Sendable {
         self.size = size
     }
 
+    /// From the file system's own answer, and the ONLY way a stamp is made, so
+    /// that a stamp taken from a path and one taken from an open file are
+    /// comparable.
+    ///
+    /// `FileManager` must not become a second source. Its modification date
+    /// and a `Date` built from the same `timespec` agree to every digit either
+    /// will print and still compare unequal, so a stamp made through it would
+    /// match nothing made here, and a baseline that never matches turns every
+    /// look into a whole-file read. `AtomicFileTests` holds a write's stamp
+    /// equal to the stamp of the path it wrote.
+    init(_ st: stat) {
+        device = Int(st.st_dev)
+        inode = Int(st.st_ino)
+        modified = Date(timeIntervalSince1970: TimeInterval(st.st_mtimespec.tv_sec)
+                        + TimeInterval(st.st_mtimespec.tv_nsec) / 1_000_000_000)
+        size = Int(st.st_size)
+    }
+
     /// The stamp of the file at `url`, following a symlink the way
     /// `AtomicFile.write` does, or nil when there is no regular file there.
     public static func of(_ url: URL) -> DiskStamp? {
-        let path = url.resolvingSymlinksInPath().path
-        guard let a = try? FileManager.default.attributesOfItem(atPath: path),
-              (a[.type] as? FileAttributeType) == .typeRegular,
-              let device = (a[.systemNumber] as? NSNumber)?.intValue,
-              let inode = (a[.systemFileNumber] as? NSNumber)?.intValue,
-              let modified = a[.modificationDate] as? Date,
-              let size = (a[.size] as? NSNumber)?.intValue
+        var st = stat()
+        guard statPath(url.resolvingSymlinksInPath().path, &st) == 0,
+              st.st_mode & S_IFMT == S_IFREG
         else { return nil }
-        return DiskStamp(device: device, inode: inode, modified: modified, size: size)
+        return DiskStamp(st)
+    }
+
+    /// The stamp of a file that is OPEN, which is the only way to describe the
+    /// file a write published rather than whatever is at its path afterwards.
+    ///
+    /// A descriptor names an inode, so this answers about the bytes just
+    /// written even if something replaces the path a moment later, which is
+    /// exactly the case a stat after the rename cannot tell apart.
+    public static func ofOpenFile(_ descriptor: Int32) -> DiskStamp? {
+        var st = stat()
+        guard fstat(descriptor, &st) == 0, st.st_mode & S_IFMT == S_IFREG else { return nil }
+        return DiskStamp(st)
     }
 }
 

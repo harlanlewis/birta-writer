@@ -1661,6 +1661,12 @@ final class Coordinator {
         // it both the moment a stale panel is worth correcting and the only
         // moment there is a window to put a question on (MAR-469).
         reconcileWithDisk(asking: true)
+        // ...and where a buffer went that could not be written to its own file
+        // when a window went. Here because this is the first moment there is
+        // anywhere to say it; the run that kept the file had no window left.
+        if let kept = Prefs.takeRescuedBuffer() {
+            statusOverlay.flash("Your unsaved text is in \(kept.lastPathComponent).")
+        }
         // Summoned under a pointer that never moved: no enter event fires, so
         // the window has to ask where the pointer is.
         contentView.syncHoverFromPointer()
@@ -2622,9 +2628,18 @@ final class Coordinator {
     /// - Parameter asking: whether a conflict may put the question now. A hide
     ///   passes true and is refused by the panel being off screen; the next
     ///   summon asks.
+    /// - Parameter mayWait: whether this caller can stand on the main thread
+    ///   while a write already in flight finishes. The autosave tick cannot:
+    ///   it runs on the thread every keystroke arrives on, and the write it
+    ///   would wait for is a whole-file copy, an `fsync` and a rename, which
+    ///   is the cost `writeLatest`'s `waiting` exists to keep off that thread.
+    ///   It declines instead, and what it declines to notice is an outside
+    ///   change that arrived while this window's own write was in flight: that
+    ///   write is already on its way over those bytes, so waiting would not
+    ///   have saved them, and the next write or summon finds what is there.
     /// - Returns: whether a write may go ahead.
     @discardableResult
-    private func reconcileWithDisk(asking: Bool) -> Bool {
+    private func reconcileWithDisk(asking: Bool, mayWait: Bool = true) -> Bool {
         // The same three states that stop a write stop a comparison, and for
         // the same reasons: nothing has been read yet, the file is gone, or
         // the first-run screen owns the window. `reloadFromDisk` is the
@@ -2635,11 +2650,26 @@ final class Coordinator {
         // its own reconciliation (`AgentLandingPolicy`, and the copy it keeps
         // beside the note). A question in the middle of one would be asking
         // about the file the app has just asked somebody to edit.
+        //
+        // It stands down for EVERY change while a run is in flight, not only
+        // the run's own, because nothing here can tell them apart: a third
+        // program editing the same file during a run is the case this gives
+        // up, and autosave goes on writing through it. `docs/PERSISTENCE.md`
+        // says so under the table rather than leaving it to be discovered.
         guard !agent.hasRunsInFlight else { return true }
         // A write decided earlier may still be on the writer's queue, and the
         // disk is what this compares against, so it has to hold everything the
-        // app has already decided to put there. Free when the queue is quiet,
-        // which it is except in the half-second after a keystroke.
+        // app has already decided to put there.
+        //
+        // The question is asked of the WRITER, not of `pendingWrite`. Those
+        // are different facts: the flag says this window has a write it has
+        // not accounted for, which stays true until a reconcile consumes it,
+        // and the writer says whether anything is actually in flight right
+        // now, which stops being true as soon as the bytes land. Declining on
+        // the flag switches the whole check off for every autosave after the
+        // first, which is the check not running at all rather than running
+        // late (measured: the panel wrote over an outside change again).
+        guard mayWait || writer.isIdle else { return true }
         writer.drain()
         takeWriterBaseline()
         let current = DiskStamp.of(boundURL)
@@ -2758,17 +2788,32 @@ final class Coordinator {
     /// The same answer as a note deleted underneath us: a numbered file next
     /// to the original, never over it. Quitting is the end of the only copy
     /// those bytes have, and there is nobody left to ask.
+    /// Beside the file first, because that is where its owner will look for
+    /// it. A folder that refuses the write is what the second attempt is for:
+    /// somebody else's directory can be read only, full or gone, and these
+    /// bytes have nowhere else to be. The app's own notes folder is a place it
+    /// creates and owns, so if that fails too there was nothing to be done.
     private func rescueDriftedBuffer() {
         guard driftUnresolved, !noteMissing, !latest.isBlank else { return }
-        let directory = boundURL.deletingLastPathComponent()
         let stem = DiskDrift.unsavedStem(for: boundURL.deletingPathExtension().lastPathComponent)
         let ext = boundURL.pathExtension.isEmpty ? DocumentTypes.written : boundURL.pathExtension
-        let target = Coordinator.unusedURL(in: directory, stem: stem, extension: ext)
-        do {
-            try AtomicFile.writeString(latest, to: target)
-            NSLog("Birta Writer: \(boundURL.lastPathComponent) changed outside the app; this window's text is in \(target.path)")
-        } catch {
-            NSLog("Birta Writer: could not keep the unwritten text beside \(boundURL.path): \(error)")
+        var tried: [String] = []
+        for directory in [boundURL.deletingLastPathComponent(), Prefs.notesDirectory]
+        where !tried.contains(directory.standardizedFileURL.path) {
+            tried.append(directory.standardizedFileURL.path)
+            let target = Coordinator.unusedURL(in: directory, stem: stem, extension: ext)
+            do {
+                try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+                try AtomicFile.writeString(latest, to: target)
+                // Said at the next summon rather than now: this window is on
+                // its way out, and a path written only to the log is a path
+                // nobody reads.
+                Prefs.rememberRescuedBuffer(at: target)
+                NSLog("Birta Writer: \(boundURL.lastPathComponent) changed outside the app; this window's text is in \(target.path)")
+                return
+            } catch {
+                NSLog("Birta Writer: could not keep the unwritten text in \(directory.path): \(error)")
+            }
         }
     }
 
@@ -2787,6 +2832,11 @@ final class Coordinator {
     /// Nothing after an autosave reads the file, and the writer keeps the
     /// newest content and runs one write at a time, so the bytes land in the
     /// same order either way.
+    ///
+    /// It says the same thing to the check below, which is the other place a
+    /// write can end up waiting for the disk: a tick that finds this window's
+    /// previous write still in flight goes ahead rather than standing on the
+    /// main thread for it (`reconcileWithDisk`'s `mayWait`).
     private func writeLatest(_ reason: StaticString, waiting: Bool = true) {
         // `noteMissing` alongside `hasLoaded`, and both are about the same
         // thing: a path this write would create rather than update.
@@ -2826,7 +2876,7 @@ final class Coordinator {
         // last thing before the bytes go, so there is as little room as
         // possible between the question and the answer being acted on
         // (MAR-469).
-        guard reconcileWithDisk(asking: true) else { return }
+        guard reconcileWithDisk(asking: true, mayWait: waiting) else { return }
         writer.submit(latest, to: boundURL)
         // Not the baseline yet: what the buffer is based on changes when the
         // bytes LAND, which the writer reports (`takeWriterBaseline`).

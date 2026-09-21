@@ -128,29 +128,58 @@ final class DiskDriftTests: XCTestCase {
                        .unavailable)
     }
 
-    /// Every combination the three inputs can take, so the cases above are a
-    /// reading of the rule rather than a sample of it: a verdict that writes
-    /// (`inStep`) is reachable only where nothing on disk would be lost.
-    func testNoCombinationShouldWriteOverBytesTheBufferHasNotSeen() {
+    /// Every combination the three inputs can take, in its two halves, so the
+    /// cases above are a reading of the rule rather than a sample of it.
+    ///
+    /// The halves are different claims and must not be run together. While the
+    /// stamp matches, the contract is that the FILTER answers alone: in step,
+    /// with the file unread, whatever the reader would have said. Once the
+    /// stamp has moved, the contract is about loss: writing is allowed only
+    /// where the disk holds what the baseline holds (so there is nothing new
+    /// there) or what the buffer holds (so the write changes nothing).
+    ///
+    /// Asserting the disjunction of both halves at once is what makes this
+    /// kind of sweep vacuous: it is then a restatement of the implementation,
+    /// true of any rearrangement of the same branches, and the stamp-matching
+    /// half excuses every fixture it was written to forbid.
+    func testWhileTheStampMatchesTheRuleShouldAnswerWithoutReadingTheFile() {
         let texts = ["base", "theirs", "mine"]
         var covered = 0
         for disk in texts {
             for buffer in texts {
-                for matching in [true, false] {
-                    let known = stamp()
-                    let current = matching ? known : stamp(1, 9, 2_000, disk.utf8.count)
-                    let verdict = DiskDrift.judge(
-                        baseline: DiskBaseline(stamp: known, content: "base"),
-                        current: current, read: { .contents(disk) }, buffer: buffer)
-                    covered += 1
-                    guard case .inStep = verdict else { continue }
-                    XCTAssertTrue(matching || disk == "base" || disk == buffer,
-                                  "in step with \(disk) on disk and \(buffer) in the buffer would "
-                                  + "write over bytes nobody here has seen")
-                }
+                let known = stamp()
+                let reader = Reader(.contents(disk))
+                let verdict = DiskDrift.judge(baseline: DiskBaseline(stamp: known, content: "base"),
+                                              current: known, read: reader.read, buffer: buffer)
+                covered += 1
+                XCTAssertEqual(verdict, .inStep(DiskBaseline(stamp: known, content: "base")),
+                               "the stamp settles it for disk=\(disk) buffer=\(buffer)")
+                XCTAssertEqual(reader.reads, 0, "the file was read although the stamp matched")
             }
         }
-        XCTAssertEqual(covered, 18, "every combination was judged")
+        XCTAssertEqual(covered, 9, "every combination was judged")
+    }
+
+    func testOnceTheStampHasMovedNoCombinationShouldWriteOverUnseenBytes() {
+        let texts = ["base", "theirs", "mine"]
+        var covered = 0
+        var wrote = 0
+        for disk in texts {
+            for buffer in texts {
+                let current = stamp(1, 9, 2_000, disk.utf8.count)
+                let verdict = DiskDrift.judge(baseline: DiskBaseline(stamp: stamp(), content: "base"),
+                                              current: current, read: { .contents(disk) },
+                                              buffer: buffer)
+                covered += 1
+                guard case .inStep = verdict else { continue }
+                wrote += 1
+                XCTAssertTrue(disk == "base" || disk == buffer,
+                              "writing with \(disk) on disk and \(buffer) in the buffer loses bytes "
+                              + "nobody here has seen")
+            }
+        }
+        XCTAssertEqual(covered, 9, "every combination was judged")
+        XCTAssertGreaterThan(wrote, 0, "no combination reached the verdict this is about")
     }
 
     // ── The stamp ─────────────────────────────────────────────────────────

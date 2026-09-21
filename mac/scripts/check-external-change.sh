@@ -219,6 +219,16 @@ else
 fi
 
 echo
+# A count with nothing to compare it against is not a reading. An arm that
+# stops running takes its assertions with it and leaves a green line with a
+# smaller number in it, which nobody reads as a failure. Raise this when arms
+# are added; a drop is the thing it exists to catch.
+EXPECTED_CHECKS=18
+if [ "$checks" -lt "$EXPECTED_CHECKS" ]; then
+    echo "check-external-change: only $checks checks ran, expected at least $EXPECTED_CHECKS." >&2
+    echo "  An arm stopped running. Nothing below its own assertions was measured." >&2
+    failures=$((failures + 1))
+fi
 if [ "$failures" -eq 0 ]; then
     echo "check-external-change: $checks checks, all green"
 else

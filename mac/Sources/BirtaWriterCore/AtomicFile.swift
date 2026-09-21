@@ -48,14 +48,52 @@ public enum AtomicFile {
     ///   for documents this app holds.
     @discardableResult
     public static func write(_ data: Data, to url: URL) throws -> Bool {
+        try writeReporting(data, to: url).wrote
+    }
+
+    /// What a write put on disk: whether it wrote, and WHICH file it left
+    /// there.
+    ///
+    /// The stamp is taken from the descriptor while the bytes are still a temp
+    /// file, before the rename publishes them. Taking it afterwards, by
+    /// stat'ing the path, describes whatever is at that path at that instant,
+    /// which is not the same claim: another program replacing the file in the
+    /// moment between the rename and the stat hands back ITS file as ours, and
+    /// a caller holding that stamp as its baseline (`DiskDrift`) then finds
+    /// the file unchanged and writes over bytes nobody read. Measured with
+    /// that window widened by hand: our bytes, their stamp, every time.
+    public struct WriteResult: Equatable, Sendable {
+        /// Bytes were written, rather than the target already holding them.
+        public let wrote: Bool
+        /// The file this call is about: the one it published, or the one that
+        /// already held these bytes. Nil only when the file system refused to
+        /// describe it.
+        public let stamp: DiskStamp?
+    }
+
+    /// Test seam: run after the bytes are published and before this call
+    /// returns, which is the window another program's write can land in.
+    ///
+    /// Here rather than in the test because the window is inside this
+    /// function, and a test that cannot get into it can only assert the
+    /// arrangement rather than the behaviour: taking the stamp from the path
+    /// afterwards passes every check that stays outside. `AtomicFileTests` is
+    /// the only thing that sets it, and it is nil in the app.
+    nonisolated(unsafe) static var afterPublishForTests: (() -> Void)?
+
+    public static func writeReporting(_ data: Data, to url: URL) throws -> WriteResult {
         // Resolve BEFORE anything derives a path from the target, so the temp
         // file, the directory creation and the rename all speak about the real
         // file rather than about a link to it.
         let target = url.resolvingSymlinksInPath()
+        // Before the comparison below reads the file, so a stamp this returns
+        // can only be older than the bytes it was compared against. The other
+        // order records a file as unchanged that has already moved on.
+        let before = DiskStamp.of(target)
         let existing = existingFile(at: target)
 
         if let existing, existing.isRegularFile, contentsEqual(target, data, size: existing.size) {
-            return false
+            return WriteResult(wrote: false, stamp: before)
         }
 
         let dir = target.deletingLastPathComponent()
@@ -92,6 +130,10 @@ public enum AtomicFile {
             }
         }
         if ok { ok = fsync(fd) == 0 }
+        // While it is still open, and therefore still a claim about THIS file
+        // rather than about whatever ends up at the path. The mode and owner
+        // above are already on it, and a rename changes none of the three.
+        let published = DiskStamp.ofOpenFile(fd)
         close(fd)
         guard ok else {
             unlink(tmp.path)
@@ -101,12 +143,17 @@ public enum AtomicFile {
             unlink(tmp.path)
             throw WriteError.renameFailed(target.path)
         }
-        return true
+        afterPublishForTests?()
+        return WriteResult(wrote: true, stamp: published)
     }
 
     @discardableResult
     public static func writeString(_ text: String, to url: URL) throws -> Bool {
         try write(Data(text.utf8), to: url)
+    }
+
+    public static func writeStringReporting(_ text: String, to url: URL) throws -> WriteResult {
+        try writeReporting(Data(text.utf8), to: url)
     }
 
     // ── The target's identity, as the file system reports it ──────────────
@@ -188,16 +235,13 @@ public final class CoalescingWriter {
     /// comparing the buffer against bytes no file holds, and the file's real
     /// contents then read as somebody else's change.
     ///
-    /// The size is checked against the bytes because the stat is taken just
-    /// after the rename rather than inside it: a file replaced again in that
-    /// window would otherwise hand back a stamp describing somebody else's
-    /// write as ours.
+    /// The stamp is the write's own (`AtomicFile.WriteResult`), taken from the
+    /// descriptor before the rename, so it describes the file this writer
+    /// published and not whatever is at the path by the time anybody asks.
     public func lastLanded(for url: URL) -> (content: String, stamp: DiskStamp)? {
         lock.lock()
         defer { lock.unlock() }
-        guard let landed, landed.url == url, let stamp = landed.stamp,
-              stamp.size == landed.content.utf8.count
-        else { return nil }
+        guard let landed, landed.url == url, let stamp = landed.stamp else { return nil }
         return (landed.content, stamp)
     }
 
@@ -225,16 +269,29 @@ public final class CoalescingWriter {
             pending = nil
             lock.unlock()
             do {
-                let wrote = try AtomicFile.writeString(job.content, to: job.url)
-                let stamp = DiskStamp.of(job.url)
+                let result = try AtomicFile.writeStringReporting(job.content, to: job.url)
                 lock.lock()
-                if wrote { writeCount += 1 }
-                landed = (job.url, job.content, stamp)
+                if result.wrote { writeCount += 1 }
+                landed = (job.url, job.content, result.stamp)
                 lock.unlock()
             } catch {
                 onError(error)
             }
         }
+    }
+
+    /// Whether a `drain()` would return without waiting for a write.
+    ///
+    /// For a caller that must not stand on the main thread but still wants the
+    /// baseline when there is nothing to wait for. It is a FACT ABOUT NOW, so
+    /// a caller acts on it and does not remember it: a write submitted a
+    /// moment later makes it false again, and one in flight makes it true
+    /// again the moment it lands, which is what keeps a caller that declines
+    /// from declining for ever.
+    public var isIdle: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return !inFlight && pending == nil
     }
 
     /// Wait until every submitted write has landed.
