@@ -193,6 +193,55 @@ final class AtomicFileTests: XCTestCase {
                      "the answer is about one file")
     }
 
+    /// The stamp a write reports is the file it PUBLISHED, not whatever is at
+    /// the path once it has published it.
+    ///
+    /// The two are the same except in one window, and that window is the whole
+    /// point: another program replacing the file between our rename and a stat
+    /// of the path hands back its file as ours, the baseline then matches the
+    /// disk, and the next write goes over bytes nobody has read. Same-size
+    /// bytes, because a length check is what a stat-afterwards design reaches
+    /// for and it does not catch this.
+    ///
+    /// Driven through `afterPublishForTests`, since the window is inside the
+    /// write and a check standing outside it cannot tell the two designs
+    /// apart.
+    func testAWriteReportsTheFileItPublishedRatherThanThePathAfterwards() throws {
+        let target = dir.appendingPathComponent("published.md")
+        let ours = "ours!!-0001"
+        let theirs = "theirs-0002"
+        XCTAssertEqual(ours.utf8.count, theirs.utf8.count)
+        try AtomicFile.writeString("before", to: target)
+        var replaced = false
+        AtomicFile.afterPublishForTests = {
+            guard !replaced else { return }
+            replaced = true
+            try? AtomicFile.writeString(theirs, to: target)
+        }
+        defer { AtomicFile.afterPublishForTests = nil }
+        let result = try AtomicFile.writeStringReporting(ours, to: target)
+        XCTAssertTrue(replaced, "the window was entered; without that this test asserts nothing")
+        XCTAssertEqual(try String(contentsOf: target, encoding: .utf8), theirs,
+                       "their write is the one on disk now")
+        let stamp = try XCTUnwrap(result.stamp)
+        XCTAssertNotEqual(stamp, DiskStamp.of(target),
+                          "reporting the path's stamp would call their file ours")
+        XCTAssertEqual(stamp.size, ours.utf8.count)
+    }
+
+    /// Undisturbed, the two ways of asking agree, which is what lets a stamp
+    /// from a write be compared with a stamp from a path at all.
+    func testAnUndisturbedWriteReportsTheStampThePathHas() throws {
+        let target = dir.appendingPathComponent("agree.md")
+        let result = try AtomicFile.writeStringReporting("some text", to: target)
+        XCTAssertEqual(result.stamp, DiskStamp.of(target))
+        XCTAssertTrue(result.wrote)
+        // The skip path describes the file that already held the bytes.
+        let again = try AtomicFile.writeStringReporting("some text", to: target)
+        XCTAssertFalse(again.wrote)
+        XCTAssertEqual(again.stamp, DiskStamp.of(target))
+    }
+
     /// A write that threw leaves the previous answer standing. Reporting the
     /// submission instead would have a caller comparing against bytes no file
     /// holds, and the file's real contents would then read as somebody else's

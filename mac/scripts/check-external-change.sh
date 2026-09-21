@@ -218,7 +218,44 @@ else
     esac
 fi
 
+echo "the next summon says where that text went"
+# The other half of keeping it: a path written only to the log is a path
+# nobody reads. The app records it, and the next summon says it and forgets
+# it. Read through `defaults` because the message itself is drawn in a window
+# and a shell cannot see it; what this pins is the state the message is made
+# from, on both sides.
+checks=$((checks + 1))
+RECORDED="$(defaults read "$BIRTA_MAC_DEFAULTS_SUITE" rescuedBufferPath 2>/dev/null || true)"
+case "$RECORDED" in
+    *"(unsaved)"*) ;;
+    *) fail "the kept file was not recorded for the next launch: '$RECORDED'" ;;
+esac
+READY_BEFORE=$(marks ready)
+BIRTA_MAC_MEASURE=1 "$APP" 2>>"$LOG" &
+PID=$!
+n=0
+while [ "$(marks ready)" -le "$READY_BEFORE" ]; do
+    sleep 0.2; n=$((n+1))
+    if [ $n -gt 100 ]; then echo "the second launch never became ready" >&2; exit 1; fi
+done
+show_panel
+end_app
+checks=$((checks + 1))
+if defaults read "$BIRTA_MAC_DEFAULTS_SUITE" rescuedBufferPath >/dev/null 2>&1; then
+    fail "a summon did not clear the kept file's path, so every later launch would say it again"
+fi
+
 echo
+# A count with nothing to compare it against is not a reading. An arm that
+# stops running takes its assertions with it and leaves a green line with a
+# smaller number in it, which nobody reads as a failure. Raise this when arms
+# are added; a drop is the thing it exists to catch.
+EXPECTED_CHECKS=20
+if [ "$checks" -lt "$EXPECTED_CHECKS" ]; then
+    echo "check-external-change: only $checks checks ran, expected at least $EXPECTED_CHECKS." >&2
+    echo "  An arm stopped running. Nothing below its own assertions was measured." >&2
+    failures=$((failures + 1))
+fi
 if [ "$failures" -eq 0 ]; then
     echo "check-external-change: $checks checks, all green"
 else

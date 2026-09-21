@@ -45,6 +45,7 @@ enum Prefs {
         case saveAsDirectory
         case autosave
         case agentCommand
+        case rescuedBufferPath
         case showInDock
         case showInMenuBar
         case openToBlankNote
@@ -766,6 +767,26 @@ enum Prefs {
         // the command a fresh install holds.
         get { d.string(forKey: Key.agentCommand.rawValue) ?? AgentPreset.fallback.template }
         set { d.set(newValue, forKey: Key.agentCommand.rawValue) }
+    }
+
+    /// Where a buffer went that could not be written to its own file.
+    ///
+    /// Set when a window goes with a file somebody else changed underneath it
+    /// and nobody to answer the question (`Coordinator.rescueDriftedBuffer`),
+    /// and read once by the next summon, which is the first moment there is
+    /// anywhere to say it. Stored rather than announced on the spot because
+    /// the window saying it is on its way out; a path in a log file is a path
+    /// nobody reads.
+    static func rememberRescuedBuffer(at url: URL) {
+        d.set(url.path, forKey: Key.rescuedBufferPath.rawValue)
+    }
+
+    /// That path, once. Clearing it here is what keeps the message to the run
+    /// that earned it rather than to every launch afterwards.
+    static func takeRescuedBuffer() -> URL? {
+        guard let path = d.string(forKey: Key.rescuedBufferPath.rawValue), !path.isEmpty else { return nil }
+        d.removeObject(forKey: Key.rescuedBufferPath.rawValue)
+        return URL(fileURLWithPath: path)
     }
 
     /// What the shell command Settings installs is CALLED.
