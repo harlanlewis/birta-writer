@@ -6,17 +6,20 @@
 #   bash mac/scripts/update.sh v2026.818.0  # a specific one
 #
 # On a machine with no checkout, fetch this file, read it, then run it. Piping
-# it straight into a shell is deliberately not suggested: the whole subject of
-# this script is that the app cannot yet prove who built it, and running an
-# unread script from the network is the same trust question one level up.
+# it straight into a shell is deliberately not suggested: running an unread
+# script from the network is the same trust question this script is about, one
+# level up.
 #
-# READ THIS BEFORE RUNNING IT ELSEWHERE. The app is ad-hoc signed: there is no
-# Apple Developer ID behind it and it is not notarized, so macOS cannot tell
-# you who built it. This script clears the download quarantine, which is the
-# check that would otherwise stop it. That is a reasonable trade on a machine
-# whose owner also owns the source; it is not one to ask of anybody else, and
-# it is why the app is not offered to other people yet. Notarization is what
-# replaces this, and it needs a paid Apple Developer account.
+# A release signed with Developer ID and carrying a stapled notarization
+# ticket is one macOS can attribute to whoever built it, and it installs here
+# with its quarantine left alone, because the quarantine is what makes macOS
+# ask and a build that survives the question has no reason to dodge it.
+#
+# A release from before that, or one cut without the signing secrets, is
+# ad-hoc signed and cannot be attributed to anyone. This script REFUSES those
+# rather than clearing the quarantine on your behalf. BIRTA_ALLOW_UNSIGNED=1
+# installs one anyway, and is meant for a machine whose owner also owns the
+# source.
 set -euo pipefail
 
 REPO="${BIRTA_MAC_REPO:-harlanlewis/birta-writer}"
@@ -135,10 +138,31 @@ else
     echo "note: lipo is not installed, so the app's architecture was not checked (this Mac is $MACHINE)."
 fi
 
-# Clear the download quarantine. See the warning at the top of this file: an
-# ad-hoc signature is not one Gatekeeper can attribute to anyone, so without
-# this the app refuses to open at all.
-xattr -dr com.apple.quarantine "$APP" 2>/dev/null || true
+# Gatekeeper's own verdict on what was just downloaded, asked before anything
+# is moved into /Applications. This is the same assessment a first launch
+# makes, and the stapled ticket is what lets it be answered with no network.
+#
+# Asking here rather than clearing the quarantine is the whole change: the
+# quarantine flag is what makes macOS check at all, and a build that can
+# withstand the check gains nothing from having it removed.
+ASSESS="$(spctl --assess --type exec -vv "$APP" 2>&1)" && ATTRIBUTED=yes || ATTRIBUTED=no
+if [ "$ATTRIBUTED" = yes ]; then
+    printf '%s\n' "$ASSESS" | sed 's/^/    /'
+elif [ "${BIRTA_ALLOW_UNSIGNED:-0}" = 1 ]; then
+    echo "→ macOS cannot say who built this release, and BIRTA_ALLOW_UNSIGNED=1 says install it anyway:"
+    printf '%s\n' "$ASSESS" | sed 's/^/    /'
+    # Only on this path, and only because the person running it said so.
+    xattr -dr com.apple.quarantine "$APP" 2>/dev/null || true
+else
+    echo "macOS cannot say who built this release:" >&2
+    printf '%s\n' "$ASSESS" | sed 's/^/    /' >&2
+    echo >&2
+    echo "Releases cut before Developer ID signing are ad-hoc signed and cannot pass this" >&2
+    echo "check. Pass a newer tag, or set BIRTA_ALLOW_UNSIGNED=1 to install this one" >&2
+    echo "anyway, which is a reasonable trade only on a machine whose owner also owns the" >&2
+    echo "source. Nothing was installed." >&2
+    exit 1
+fi
 
 DEST_DIR=/Applications
 if [ ! -w "$DEST_DIR" ]; then

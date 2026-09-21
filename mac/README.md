@@ -16,7 +16,9 @@ Neither update path will install a build this Mac cannot launch. The in-app upda
 
 ## Build and run
 
-Building needs Swift 6, on a Mac meeting the floor above. The Command Line Tools are enough to build; `swift test` needs Xcode for XCTest, and `mac/scripts/test.sh` points at `/Applications/Xcode.app` when it is installed. No Apple developer account: the app is ad-hoc signed, which is fine on machines you own and is not fine to hand to anyone else (see "Other machines" below).
+Building needs Swift 6, on a Mac meeting the floor above. The Command Line Tools are enough to build; `swift test` needs Xcode for XCTest, and `mac/scripts/test.sh` points at `/Applications/Xcode.app` when it is installed.
+
+A local build is ad-hoc signed and needs no Apple developer account, which is right for a machine you own and is not something to hand to anyone else (see "Other machines" below). `BIRTA_CODESIGN_IDENTITY` names a real identity instead, by its SHA-1 rather than by name, because two Developer ID certificates of one team share a common name and codesign fails on the ambiguity rather than choosing. The release job sets it. Either way the build signs the nested `bwr` binary before the bundle that seals it, and applies the hardened runtime, so a local build exercises the same runtime restrictions a released one does.
 
 ```bash
 pnpm mac:build     # production esbuild, swift build, assemble mac/build/Birta Writer.app
@@ -39,7 +41,9 @@ Replacing a running copy is the part worth knowing about. `mac/scripts/install-a
 
 `bash mac/scripts/update.sh` fetches the app attached to the newest GitHub Release, checks it against the checksum published beside it, and installs it the same way. The nightly `Release` workflow builds and attaches it (`mac-app` in `.github/workflows/release.yml`), so a machine that never builds anything can stay current.
 
-Read the warning at the top of that script before running it anywhere. The app is ad-hoc signed, with no Apple Developer ID behind it and no notarization, so macOS cannot tell you who built it, and the script clears the download quarantine that would otherwise stop it opening. That is a reasonable trade on a machine whose owner also owns the source, and it is not one to ask of anybody else. Notarization is what replaces it, and it needs a paid Apple Developer account; until then the app is not distributed to other people.
+A release built with the signing secrets in place is signed with Developer ID and carries a stapled notarization ticket, so macOS can say who built it and can say so offline. The script installs one of those with its download quarantine left alone, and prints Gatekeeper's own verdict on the way past.
+
+A release cut before that, or one built without the secrets, is ad-hoc signed and cannot be attributed to anyone. The script refuses it, naming what it asked and what it got, rather than clearing the quarantine on your behalf. `BIRTA_ALLOW_UNSIGNED=1` installs one anyway and does clear the quarantine, which is a reasonable trade on a machine whose owner also owns the source and is not one to ask of anybody else.
 
 ## Updating itself
 

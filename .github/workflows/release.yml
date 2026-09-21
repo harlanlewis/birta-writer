@@ -503,20 +503,28 @@ jobs:
   # (Swift, codesign) and it must not be able to hold up the tag, the release
   # or the extension. A failure here costs the app download for one release.
   #
-  # The app is AD-HOC SIGNED, not Developer ID signed and not notarized, so
-  # Gatekeeper will refuse it on a machine that did not build it until the
-  # download quarantine is cleared. mac/scripts/update.sh does that
-  # deliberately and says so; a stranger should not run either. This is the
-  # personal-machines rung of the ladder, and the honest name for it is "not
-  # distributed to other people yet".
+  # Developer ID signed and notarized when the secrets exist, ad-hoc when they
+  # do not. Dormant-until-the-secret-exists is the same shape as HAS_OVSX and
+  # HAS_AZURE above, and it is what stops a fork's nightly failing on
+  # credentials it was never going to have. The difference reaches the user:
+  # an ad-hoc build is the personal-machines rung, and mac/scripts/update.sh
+  # refuses to install one rather than clearing the quarantine on its behalf.
   mac-app:
     name: Attach Birta Writer to the release
     needs: release
-    timeout-minutes: 20
+    # Longer than the other jobs because notarization waits on Apple. The
+    # `--wait` below carries its own 30m cap, so this bound is the outer one.
+    timeout-minutes: 45
     if: needs.release.outputs.release == 'true'
     runs-on: macos-latest
     permissions:
       contents: write # attach an asset to the release this workflow just cut
+    env:
+      # Both halves or neither. A certificate with no notary credentials would
+      # produce a signed build that Gatekeeper still refuses on a first launch
+      # without network, which is the confusing middle state rather than a
+      # useful one.
+      HAS_SIGNING: ${{ secrets.MAC_CERT_P12_BASE64 != '' && secrets.MAC_NOTARY_KEY_BASE64 != '' }}
     steps:
       # The tag, not the branch: the release job pushes a CHANGELOG stamp
       # commit to main afterwards, so main and the tagged tree differ.
@@ -534,21 +542,130 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build the app
-        run: pnpm mac:build
+      # The signing identity goes into a keychain belonging to this job, never
+      # the runner's login keychain, and the private key is deleted from disk
+      # the moment it is imported.
+      - name: Import the signing identity
+        if: env.HAS_SIGNING == 'true'
+        env:
+          CERT_P12_BASE64: ${{ secrets.MAC_CERT_P12_BASE64 }}
+          CERT_P12_PASSWORD: ${{ secrets.MAC_CERT_P12_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.MAC_KEYCHAIN_PASSWORD }}
+        run: |
+          KEYCHAIN="$RUNNER_TEMP/signing.keychain-db"
+          CERT="$RUNNER_TEMP/cert.p12"
+          echo -n "$CERT_P12_BASE64" | base64 --decode -o "$CERT"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security import "$CERT" -P "$CERT_P12_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN"
+          rm -f "$CERT"
+          # Without the partition list, codesign blocks on a GUI prompt for
+          # permission to use the key. There is nobody to answer it, so the
+          # job hangs until its timeout rather than failing with a reason.
+          security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          # APPEND to the search list rather than replacing it, which is what
+          # passing a single keychain to -s does and would drop the runner's
+          # own login and System keychains out from under everything else.
+          security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d ' "')
+          # A runner is a fresh Mac, and a fresh Mac does not carry the G2
+          # intermediate that a current Developer ID certificate chains
+          # through. Without it codesign cannot build the chain and fails with
+          # errSecInternalComponent, which names neither the missing
+          # certificate nor the chain; `security find-identity` compounds it by
+          # listing only identities it CAN chain, so the identity looks absent
+          # rather than unusable (MAR-378).
+          curl -fsSL -o "$RUNNER_TEMP/DeveloperIDG2CA.cer" \
+            https://www.apple.com/certificateauthority/DeveloperIDG2CA.cer
+          security add-certificates -k "$KEYCHAIN" "$RUNNER_TEMP/DeveloperIDG2CA.cer"
+          # Sign by hash, never by name. Two Developer ID certificates of the
+          # same team carry the identical common name, so a name match is
+          # ambiguous the moment a second one reaches a keychain, and codesign
+          # fails rather than choosing.
+          IDENTITY="$(security find-identity -v -p codesigning "$KEYCHAIN" \
+            | grep -oE '\b[0-9A-F]{40}\b' | head -1)"
+          if [ -z "$IDENTITY" ]; then
+            echo "the imported keychain holds no usable codesigning identity" >&2
+            security find-identity -v -p codesigning "$KEYCHAIN" >&2
+            exit 1
+          fi
+          echo "BIRTA_CODESIGN_IDENTITY=$IDENTITY" >> "$GITHUB_ENV"
 
-      # The version the release is stamped with, so a downloaded copy can say
-      # what it is. package.json stays 0.0.0 in the tree for the same reason it
-      # does for the extension: the release job is the only version authority.
-      - name: Stamp the bundle version
+      # The script, not `pnpm mac:build`, because this one takes an argument
+      # and pnpm claims `--version` for itself before a script ever sees it.
+      #
+      # BIRTA_CODESIGN_IDENTITY reaches the script from the step above through
+      # GITHUB_ENV, or is unset, in which case the build signs ad-hoc and says
+      # so. The version is stamped inside the build, before signing, so there
+      # is no plist edit here to invalidate a signature.
+      - name: Build the app
         env:
           VERSION: ${{ needs.release.outputs.version }}
         run: |
-          PLIST="mac/build/Birta Writer.app/Contents/Info.plist"
-          /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" "$PLIST"
-          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $VERSION" "$PLIST"
-          # Editing the plist invalidates the signature the build applied.
-          codesign --force --deep --sign - "mac/build/Birta Writer.app"
+          node esbuild.mjs --production
+          bash mac/scripts/build-app.sh --version "$VERSION"
+
+      # Notarization, then stapling, and the order is the whole point. The
+      # notary service accepts a zip but cannot staple a ticket to one, so the
+      # ticket goes onto the .app and the archive that ships is made AFTER
+      # that. Shipping the submitted archive instead would ship a bundle with
+      # no ticket inside it, which opens only while the machine opening it can
+      # reach Apple, and fails offline on a first launch.
+      - name: Notarize and staple
+        if: env.HAS_SIGNING == 'true'
+        env:
+          NOTARY_KEY_BASE64: ${{ secrets.MAC_NOTARY_KEY_BASE64 }}
+          NOTARY_KEY_ID: ${{ secrets.MAC_NOTARY_KEY_ID }}
+          NOTARY_ISSUER_ID: ${{ secrets.MAC_NOTARY_ISSUER_ID }}
+        run: |
+          KEY="$RUNNER_TEMP/notary.p8"
+          echo -n "$NOTARY_KEY_BASE64" | base64 --decode -o "$KEY"
+          cd mac/build
+          ditto -c -k --keepParent "Birta Writer.app" submission.zip
+          set +e
+          OUT="$(xcrun notarytool submit submission.zip \
+            --key "$KEY" --key-id "$NOTARY_KEY_ID" --issuer "$NOTARY_ISSUER_ID" \
+            --wait --timeout 30m 2>&1)"
+          RC=$?
+          set -e
+          printf '%s\n' "$OUT"
+          # The log carries warnings even when the submission is accepted, and
+          # it is the only place that says WHICH binary was rejected when one
+          # is. Fetch it either way rather than only on the exit code.
+          ID="$(printf '%s\n' "$OUT" | awk '/^ *id: / { print $2; exit }')"
+          if [ -n "$ID" ]; then
+            xcrun notarytool log "$ID" \
+              --key "$KEY" --key-id "$NOTARY_KEY_ID" --issuer "$NOTARY_ISSUER_ID" \
+              || echo "(could not fetch the notarization log)"
+          fi
+          rm -f "$KEY" submission.zip
+          if [ $RC -ne 0 ] || ! printf '%s\n' "$OUT" | grep -q "status: Accepted"; then
+            echo "notarization did not succeed" >&2
+            exit 1
+          fi
+          xcrun stapler staple "Birta Writer.app"
+          xcrun stapler validate "Birta Writer.app"
+
+      # What almost shipped broken: `bwr` is a second Mach-O in Contents/MacOS
+      # and needs its own signature, which the bundle's does not supply. It is
+      # asserted separately here because a bundle whose nested binary is
+      # unsigned verifies fine right up until the notary service reads it.
+      - name: Verify the signature
+        run: |
+          APP="mac/build/Birta Writer.app"
+          codesign --verify --strict --verbose=2 "$APP"
+          codesign --verify --strict --verbose=2 "$APP/Contents/MacOS/bwr"
+          codesign -dvv "$APP" 2>&1 | grep -q 'flags=.*runtime' \
+            || { echo "the app is not signed with the hardened runtime" >&2; exit 1; }
+          if [ "$HAS_SIGNING" = 'true' ]; then
+            # "Timestamp=" is the SECURE timestamp from Apple's server.
+            # "Signed Time=" is the local clock and is what appears when
+            # --timestamp was not honoured, so matching the wrong one here
+            # would pass on exactly the build this check exists to catch.
+            codesign -dvv "$APP" 2>&1 | grep -q '^Timestamp=' \
+              || { echo "the signature carries no secure timestamp" >&2; exit 1; }
+            xcrun stapler validate "$APP"
+          fi
 
       # ditto, not zip: it preserves the bundle's symlinks and extended
       # attributes, and a zip(1) archive of an .app can arrive unopenable.
