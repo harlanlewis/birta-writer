@@ -45,6 +45,7 @@ enum Prefs {
         case saveAsDirectory
         case autosave
         case agentCommand
+        case rescuedBufferPath
         case showInDock
         case showInMenuBar
         case openToBlankNote
@@ -82,6 +83,7 @@ enum Prefs {
         case accentColor
         case tintColor
         case sidebarTransparent
+        case seededDefaultThemes
         // Written only while the table of contents is NOT transparent, which
         // is the departure from the default; absent is the default here as
         // it is for every other key.
@@ -106,8 +108,16 @@ enum Prefs {
     /// `lastScratchpadFile`: the same record, one level down. A rename moves
     /// the folder and renames the note inside it, and the folder alone cannot
     /// say which of the carried files was the scratchpad.
+    ///
+    /// `seededDefaultThemes`: not a setting either, but the record of which
+    /// shipped themes this install has already been given (`DefaultThemes`).
+    /// A reset touches no file on disk, which is the promise the sheet makes,
+    /// so it leaves the theme library exactly as it is; clearing this would
+    /// make the NEXT launch write four theme files back into a folder the
+    /// reset had said it would not touch, and put back the defaults somebody
+    /// removed on purpose. Restoring them is its own control, in Appearance.
     private static let survivesReset: Set<Key> = [
-        .hasSeenWelcome, .lastNotesDirectory, .lastScratchpadFile,
+        .hasSeenWelcome, .lastNotesDirectory, .lastScratchpadFile, .seededDefaultThemes,
     ]
 
     /// Put every setting back to its default, and touch no file on disk.
@@ -666,6 +676,19 @@ enum Prefs {
         }
     }
 
+    /// Which of the themes the app ships with this install has already been
+    /// given, by id (`DefaultThemes`).
+    ///
+    /// The record of an OFFER, not of the folder. A default removed is gone
+    /// from the folder and still named here, which is what stops the next
+    /// launch putting it back and makes the remove button mean what it says.
+    /// It only grows, so a theme added to a later version is seeded the first
+    /// time that version runs.
+    static var seededDefaultThemes: Set<String> {
+        get { Set(d.stringArray(forKey: Key.seededDefaultThemes.rawValue) ?? []) }
+        set { d.set(newValue.sorted(), forKey: Key.seededDefaultThemes.rawValue) }
+    }
+
     /// The palette rows picked lately, most recent first, by item id
     /// (`PaletteModel.recording` keeps the list and its cap). What puts a row
     /// somebody keeps reaching for at the top of its section.
@@ -744,6 +767,26 @@ enum Prefs {
         // the command a fresh install holds.
         get { d.string(forKey: Key.agentCommand.rawValue) ?? AgentPreset.fallback.template }
         set { d.set(newValue, forKey: Key.agentCommand.rawValue) }
+    }
+
+    /// Where a buffer went that could not be written to its own file.
+    ///
+    /// Set when a window goes with a file somebody else changed underneath it
+    /// and nobody to answer the question (`Coordinator.rescueDriftedBuffer`),
+    /// and read once by the next summon, which is the first moment there is
+    /// anywhere to say it. Stored rather than announced on the spot because
+    /// the window saying it is on its way out; a path in a log file is a path
+    /// nobody reads.
+    static func rememberRescuedBuffer(at url: URL) {
+        d.set(url.path, forKey: Key.rescuedBufferPath.rawValue)
+    }
+
+    /// That path, once. Clearing it here is what keeps the message to the run
+    /// that earned it rather than to every launch afterwards.
+    static func takeRescuedBuffer() -> URL? {
+        guard let path = d.string(forKey: Key.rescuedBufferPath.rawValue), !path.isEmpty else { return nil }
+        d.removeObject(forKey: Key.rescuedBufferPath.rawValue)
+        return URL(fileURLWithPath: path)
     }
 
     /// What the shell command Settings installs is CALLED.

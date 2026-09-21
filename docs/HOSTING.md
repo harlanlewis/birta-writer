@@ -8,7 +8,7 @@ The editor ships one bundle and one composition root. What differs per host is d
 
 In a frame, the editor gets a page of its own, and the page is the editor's. The host application talks to it over `postMessage` and never reaches into it. Everything the editor assumes about owning a page (body classes as a state channel, custom properties on the root, document-level listeners, one global `[hidden]` rule) holds inside the frame and touches nothing outside it. This is the supported shape, and the rest of this document describes it.
 
-Mounted inline, in a page the host also draws in, none of that holds. The editor would share a body, a root and a document with chrome it knows nothing about, and the count of places where that matters has not been classified (MAR-450). Nothing here should be read as support for it.
+Mounted inline, in a page the host also draws in, none of that holds. The editor would share a body, a root and a document with chrome it knows nothing about. [`PAGE_OWNERSHIP.md`](PAGE_OWNERSHIP.md) is the audit of what that costs, occurrence by occurrence, with the enumeration behind it re-runnable. Nothing here should be read as support for it.
 
 ## The frame page
 

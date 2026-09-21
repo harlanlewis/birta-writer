@@ -23,16 +23,119 @@ final class AgentRunnerTests: XCTestCase {
 
     /// Runs one request to completion and returns every report it made.
     private func run(template: String, in directory: URL) -> [AgentRunStatus] {
+        drive(template: template, in: directory).reports
+    }
+
+    /// The same, keeping the corner lines and whether any of them arrived
+    /// after the run had reported its end.
+    @discardableResult
+    private func drive(template: String, in directory: URL)
+        -> (reports: [AgentRunStatus], progress: [String], afterTheEnd: [String]) {
         let runner = AgentRunner()
         var seen: [AgentRunStatus] = []
+        var lines: [String] = []
+        var late: [String] = []
+        var ended = false
         let finished = expectation(description: "the run reports a terminal status")
         runner.run(requestId: "r1", line: "rewrite the body", template: template,
-                   workingDirectory: directory) { status in
+                   workingDirectory: directory,
+                   progress: { line in
+                       lines.append(line)
+                       if ended { late.append(line) }
+                   }) { status in
             seen.append(status)
-            if status.status != "running" { finished.fulfill() }
+            if status.status != "running" {
+                ended = true
+                finished.fulfill()
+            }
         }
         wait(for: [finished], timeout: 30)
-        return seen
+        // Past one throttle window, so a line queued just before the end has
+        // had its chance to post late.
+        let settled = expectation(description: "a window passes with the run over")
+        settled.isInverted = true
+        wait(for: [settled], timeout: AgentProgressThrottle.window * 3)
+        return (seen, lines, late)
+    }
+
+    /// One Claude Code stream-json event, as a `printf` argument.
+    private func event(_ json: String) -> String {
+        // The template is expanded into `/bin/sh -c`, so the single quotes are
+        // the shell's and the JSON's double quotes pass through untouched.
+        "printf '\(json)\\n' ; "
+    }
+
+    /// The corner line a live run shows: read out of the harness's own
+    /// structured output, which is the whole point of MAR-474.
+    ///
+    /// Driven through a real child process rather than asserted about the
+    /// reducer, because what this pins is the wiring: two pipes, a reader fed
+    /// off their queues, and a throttle whose lines reach the report callback.
+    func testARunPrintingStructuredEventsShouldReportWhatItIsDoing() throws {
+        let dir = try makeNote("# Note\n")
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let toolEvent = #"{"type":"assistant","session_id":"s","message":{"content":[{"type":"tool_use","name":"Read","input":{"file_path":"/tmp/probe/note.md"}}]}}"#
+        let textEvent = #"{"type":"assistant","session_id":"s","message":{"content":[{"type":"text","text":"Done. I rewrote the body."}]}}"#
+
+        // A third event on the second's heels, so one line is still queued
+        // behind the throttle when the run ends and the corner has something
+        // to say after `done` if nothing stops it.
+        let lastEvent = #"{"type":"assistant","session_id":"s","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"git status"}}]}}"#
+
+        let driven = drive(
+            // The sleeps are what make this deterministic, and they are two
+            // different lengths for two different reasons. Past a window
+            // between the first two, so the second is shown rather than
+            // queued behind the first; inside one before the third, so it is
+            // queued rather than shown, and so it is a chunk of its own: two
+            // events printed back to back arrive in ONE pipe read, of which
+            // only the last line is ever shown.
+            template: "true {prompt} ; " + event(toolEvent) + "sleep 0.5 ; "
+                + event(textEvent) + "sleep 0.2 ; " + event(lastEvent),
+            in: dir)
+
+        XCTAssertEqual(driven.reports.last?.status, "done")
+        XCTAssertEqual(driven.progress, ["Read note.md", "Done. I rewrote the body."])
+        XCTAssertEqual(driven.afterTheEnd, [], "a line posted after the run had ended")
+    }
+
+    /// A harness with no structured output at all still says something, and
+    /// the corner falls back to the page's clock only when nothing is read.
+    func testARunPrintingOnlyProseShouldReportItsLastLine() throws {
+        let dir = try makeNote("# Note\n")
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let driven = drive(
+            template: "true {prompt} ; printf 'Searching the repository\\n' >&2", in: dir)
+
+        XCTAssertEqual(driven.reports.last?.status, "done")
+        XCTAssertEqual(driven.progress, ["Searching the repository"])
+    }
+
+    /// A harness printing nothing reports nothing, which is what leaves the
+    /// page's own clock as the whole notice.
+    func testARunPrintingNothingShouldReportNoLine() throws {
+        let dir = try makeNote("# Note\n")
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        XCTAssertEqual(drive(template: "true {prompt}", in: dir).progress, [])
+    }
+
+    /// A structured run's transcript ends in JSON, so its failure quotes what
+    /// the harness said rather than handing the page an event.
+    func testAStructuredRunThatFailedShouldQuoteWhatTheHarnessSaid() throws {
+        let dir = try makeNote("# Note\n")
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let textEvent = #"{"type":"assistant","session_id":"s","message":{"content":[{"type":"text","text":"I cannot reach the API."}]}}"#
+        let resultEvent = #"{"type":"result","subtype":"error","session_id":"s"}"#
+
+        let reports = run(
+            template: "true {prompt} ; " + event(textEvent) + event(resultEvent) + "exit 3",
+            in: dir)
+
+        let final = try XCTUnwrap(reports.last)
+        XCTAssertEqual(final.status, "failed")
+        XCTAssertEqual(final.message, "I cannot reach the API.")
     }
 
     func testARunThatPrintedAndRewroteTheFileShouldReportNoDocumentBytes() throws {
@@ -72,9 +175,11 @@ final class AgentRunnerTests: XCTestCase {
     }
 
     /// Runs one probe to completion and returns what it found.
-    private func probe(template: String, childPath: (() -> String?)? = nil) -> AgentProbeResult? {
+    private func probe(template: String, childPath: (() -> String?)? = nil,
+                       timeout: TimeInterval? = nil) -> AgentProbeResult? {
         let runner = AgentRunner()
         if let childPath { runner.childPath = childPath }
+        if let timeout { runner.probeTimeout = timeout }
         var result: AgentProbeResult?
         let finished = expectation(description: "the probe reports")
         runner.probe(template: template) {
@@ -141,6 +246,70 @@ final class AgentRunnerTests: XCTestCase {
         // never ran.
         XCTAssertFalse(FileManager.default.fileExists(atPath: directory),
                        "the probe left \(directory) on disk")
+    }
+
+    /// A harness is not obliged to print UTF-8, and one byte that is not must
+    /// not cost the reader everything the tool said.
+    ///
+    /// `\xe9` is a latin-1 `é`, which is what an error message naming a file
+    /// carries on a machine whose filenames are not UTF-8. A strict decode
+    /// answers nil for the whole buffer, so the Test box went empty and the
+    /// sheet said only that the command exited: the failure the button exists
+    /// to show, hidden by the reading of it.
+    func testAnInvalidByteShouldNotEmptyTheTranscript() throws {
+        let result = try XCTUnwrap(probe(
+            template: #"true {prompt} ; printf 'error: cannot read caf\xe9.md\n' >&2 ; exit 4"#))
+
+        XCTAssertFalse(result.succeeded)
+        XCTAssertTrue(result.transcript.contains("error: cannot read"), result.transcript)
+        // The invalid byte itself is repaired rather than carried, which is
+        // what makes the rest of the line readable at all.
+        XCTAssertTrue(result.transcript.contains("\u{FFFD}"), result.transcript)
+    }
+
+    /// The same bytes through a RUN, where the loss is the reported message.
+    func testAFailedRunWithAnInvalidByteShouldStillQuoteTheToolsOwnError() throws {
+        let dir = try makeNote("# Note\n")
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let reports = run(
+            template: #"true {prompt} ; printf 'error: cannot read caf\xe9.md\n' >&2 ; exit 4"#,
+            in: dir)
+
+        let final = try XCTUnwrap(reports.last)
+        XCTAssertEqual(final.status, "failed")
+        XCTAssertTrue(final.message?.hasPrefix("error: cannot read") ?? false,
+                      final.message ?? "no message")
+    }
+
+    /// A tool that printed something useful and then hung: the timeout is our
+    /// own account of how it ended, and the transcript is still the tool's.
+    ///
+    /// Before this, the timeout reported an empty transcript and won the race
+    /// against the report that carried the bytes, so the sheet showed the
+    /// sentence alone and the line saying what the tool was waiting for was
+    /// lost. The timeout is driven rather than waited out: ninety seconds is
+    /// what the app runs with, and `probeTimeout` is the seam for a check.
+    func testAProbeThatTimedOutShouldStillShowWhatTheToolPrinted() throws {
+        let result = try XCTUnwrap(probe(
+            template: "true {prompt} ; printf 'waiting for you to log in\\n' ; sleep 30",
+            timeout: 1.5))
+
+        XCTAssertFalse(result.succeeded)
+        XCTAssertTrue(result.failure?.contains("did not answer within") ?? false,
+                      result.failure ?? "no failure")
+        XCTAssertTrue(result.transcript.contains("waiting for you to log in"), result.transcript)
+    }
+
+    /// And a tool that printed NOTHING before hanging still reports, with our
+    /// sentence and nothing pretending to be its output.
+    func testAProbeThatTimedOutSilentlyShouldReportOurOwnAccount() throws {
+        let result = try XCTUnwrap(probe(template: "true {prompt} ; sleep 30", timeout: 1.5))
+
+        XCTAssertFalse(result.succeeded)
+        XCTAssertTrue(result.failure?.contains("did not answer within") ?? false,
+                      result.failure ?? "no failure")
+        XCTAssertEqual(result.transcript.trimmingCharacters(in: .whitespacesAndNewlines), "")
     }
 
     /// A tool that asks a question sees EOF rather than a terminal, so it

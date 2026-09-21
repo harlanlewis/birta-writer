@@ -265,6 +265,12 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     static let addThemeFromFileTitle = "Choose File or Folder…"
     static let addThemeFromVSCodeTitle = "Add Themes Installed in VS Code"
     static let browseThemesTitle = "Browse Open VSX…"
+    /// Put back the themes the app ships with that are no longer in the
+    /// library. On this menu because this is where a theme comes FROM, and
+    /// the shipped ones are one more place to get one; not a row of its own,
+    /// which would be a control with nothing to do on nearly every Mac it is
+    /// drawn on.
+    static let restoreDefaultThemesTitle = "Restore Built-in Themes"
     /// The presets the page offers this host (`typography.ts` withholds the
     /// editor font where the host declares no `editorFont`), each with the
     /// editor command that picks it.
@@ -371,6 +377,12 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     private let onCheckForUpdates: () -> Void
     /// The themes the app holds, for the Appearance pane to list and add to.
     private let themeStore: ThemeStore
+
+    /// The bundle Resources folder the shipped themes are copied from, for
+    /// Restore. A parameter for the reason `themeStore` is: an xctest host's
+    /// Resources are the runner's, so a check would be pressing a control
+    /// with nothing behind it.
+    private let bundledThemes: URL?
     /// Store the settings and put them on every window, live. The app's
     /// rather than the front window's, because a theme is what the app
     /// looks like (`WindowSet.setAppearance`).
@@ -410,12 +422,14 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
          onShowWelcome: @escaping () -> Void,
          onCheckForUpdates: @escaping () -> Void,
          themeStore: ThemeStore = .installed,
+         bundledThemes: URL? = Bundle.main.resourceURL,
          onAppearanceChange: @escaping (AppearanceSettings) -> Void = { _ in },
          onThemesChanged: @escaping () -> Void = {},
          onEditorCommand: @escaping (String) -> Void = { _ in },
          onFormattingRowChange: @escaping (Bool) -> Void = { _ in }) {
         self.flavour = flavour
         self.themeStore = themeStore
+        self.bundledThemes = bundledThemes
         self.onAppearanceChange = onAppearanceChange
         self.onThemesChanged = onThemesChanged
         self.onEditorCommand = onEditorCommand
@@ -2112,13 +2126,35 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         // What the tool said, and where it said nothing, our own account of
         // how it ended. Never both: two explanations of one failure read as
         // two failures.
-        let body = result.transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+        let body = readable(result.transcript)
         alert.accessoryView = transcript(body.isEmpty ? (result.failure ?? "") : body)
         // Acknowledge and nothing else. A test that has finished leaves
         // nothing to decide, so a second button would be a question with no
         // question behind it.
         alert.addButton(withTitle: "Close")
         return alert
+    }
+
+    /// What goes in the box: what the tool SAID, which for a command asking
+    /// its CLI for structured events is not what it printed.
+    ///
+    /// Two presets now carry those flags (`AgentPreset.template`), so the
+    /// transcript of a test that WORKED is JSON, and the sentence the reader
+    /// came for is one field inside an event that is itself wider than
+    /// `transcriptSize`. The headline above already answers whether it worked;
+    /// this box exists for what the tool said underneath, so a structured
+    /// transcript is reduced by the same reader the corner notice uses
+    /// (`BirtaWriterCore.AgentProgressReader.transcriptLines`).
+    ///
+    /// Reduced, never replaced: a transcript with no events in it is shown
+    /// exactly as the child printed it, and so is one whose events all said
+    /// nothing, because showing LESS than the tool printed is the one way this
+    /// could cost somebody the line they needed.
+    private static func readable(_ transcript: String) -> String {
+        guard let lines = AgentProgressReader.transcriptLines(transcript), !lines.isEmpty else {
+            return transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        return lines.joined(separator: "\n")
     }
 
     /// How big the transcript box is: wide enough for a wrapped shell line,
@@ -2446,7 +2482,8 @@ extension SettingsWindowController {
         addThemeButton.controlSize = .small
         addThemeButton.removeAllItems()
         addThemeButton.addItems(withTitles: [ThemesMenu.addTitle, Self.addThemeFromFileTitle,
-                                             Self.addThemeFromVSCodeTitle, Self.browseThemesTitle])
+                                             Self.addThemeFromVSCodeTitle, Self.browseThemesTitle,
+                                             Self.restoreDefaultThemesTitle])
         addThemeButton.target = self
         addThemeButton.action = #selector(addTheme(_:))
 
@@ -2578,6 +2615,8 @@ extension SettingsWindowController {
     // MARK: read back
 
     var themeChoicesForTesting: [String] { lightStrip.titlesForTesting }
+    /// Which card the light strip rings, by the name it is drawn under.
+    var themeSelectionForTesting: String? { lightStrip.selectedTitleForTesting }
     var darkThemeChoicesForTesting: [String] { darkStrip.titlesForTesting }
     var heldThemeChoicesForTesting: [String] { heldStrip.titlesForTesting }
     var heldThemeSelectionForTesting: String? { heldStrip.selectedTitleForTesting }
@@ -2719,8 +2758,66 @@ extension SettingsWindowController {
         case 1: chooseThemeFiles()
         case 2: importInstalledThemes()
         case 3: browseThemes()
+        case 4: restoreDefaultThemes()
         default: break
         }
+    }
+
+    /// Put back the shipped themes that are no longer in the library.
+    ///
+    /// NOT a reset, and every part of it says so: only the defaults the
+    /// folder is missing are written, a default still there is left alone,
+    /// and no theme anybody added and no other setting is touched. Nothing is
+    /// picked either, which is why this does not go through the single-theme
+    /// arm of `themesChanged`: restoring one theme is a library being filled,
+    /// not somebody asking to look at it.
+    ///
+    /// With nothing missing it says so rather than doing nothing, since a
+    /// control that answers a press with an unchanged window is one somebody
+    /// presses again.
+    /// `announce` is off for a check, which wants the answer rather than a
+    /// sheet; every arm's decision is in the answer, so nothing is skipped
+    /// with it off but the drawing.
+    @discardableResult
+    private func restoreDefaultThemes(announce: Bool = true)
+        -> (restored: [ThemeSummary], missing: Int, failures: [String]) {
+        let missing = themeStore.missingDefaults()
+        guard !missing.isEmpty else {
+            if announce, let window {
+                let alert = NSAlert()
+                alert.messageText = Self.nothingToRestoreTitle
+                alert.informativeText = Self.nothingToRestoreBody
+                alert.beginSheetModal(for: window)
+            }
+            return ([], 0, [])
+        }
+        let result = themeStore.installDefaults(missing, from: bundledThemes)
+        // The record only grows, so a default restored on a build whose
+        // bundle carries it is marked given even where the seed never could.
+        Prefs.seededDefaultThemes = Prefs.seededDefaultThemes.union(result.added.map(\.id))
+        themesChanged(added: result.added, failures: announce ? result.failures : [], picking: false)
+        return (result.added, missing.count, result.failures)
+    }
+
+    static let nothingToRestoreTitle = "All built-in themes are installed"
+    static let nothingToRestoreBody = "Nothing was added. The themes Birta Writer ships with are "
+        + "all in your theme library."
+
+    /// One press of Restore, with no sheet.
+    @discardableResult
+    func restoreDefaultThemesForTesting() -> (restored: [ThemeSummary], missing: Int, failures: [String]) {
+        restoreDefaultThemes(announce: false)
+    }
+
+    /// What the Add Theme pull-down offers, in its own order.
+    var addThemeChoicesForTesting: [String] { addThemeButton.itemTitles }
+
+    /// Pick one of its rows the way the pointer does, so which row runs which
+    /// way in is pinned rather than assumed: `addTheme(_:)` dispatches on the
+    /// index, and a row inserted above one moves it silently.
+    func pressAddThemeItemForTesting(_ index: Int) {
+        addThemeButton.selectItem(at: index)
+        addTheme(addThemeButton)
     }
 
     private func chooseThemeFiles() {
@@ -2833,9 +2930,14 @@ extension SettingsWindowController {
     /// is a theme somebody wants to see now, where a batch is a library
     /// being filled and picking from it for them would be a guess; and say
     /// what could not be added.
-    private func themesChanged(added: [ThemeSummary], failures: [String]) {
+    ///
+    /// `picking` is what the one caller that adds without being asked for a
+    /// theme turns off: Restore puts back what the app ships with, and a
+    /// library restored to four themes must not change which one is drawn
+    /// just because three of them were already there.
+    private func themesChanged(added: [ThemeSummary], failures: [String], picking: Bool = true) {
         onThemesChanged()
-        if added.count == 1, let theme = added.first {
+        if picking, added.count == 1, let theme = added.first {
             let settings = Prefs.appearance
             apply(settings.setting(theme.id, for: settings.effectiveKind(systemIsDark: WindowSet.systemIsDark)))
         } else {

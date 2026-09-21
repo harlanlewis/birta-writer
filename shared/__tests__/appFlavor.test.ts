@@ -217,4 +217,30 @@ describe("app flavours", () => {
                 .not.toContain("AppFlavor.current");
         }
     });
+
+    it("the development build should wear its own icon, installed under the release icon's name", () => {
+        // The flavours are told apart in the Dock by the icon alone, since
+        // both names truncate to the same "Birta Writer" there. The build
+        // copies the flavour's file in as `AppIcon.icns`, the one name
+        // `CFBundleIconFile` holds, so a regression reads as the two builds
+        // quietly wearing one mark again rather than as a missing icon.
+        const icons = byFlavour(buildScript, "ICON");
+        expect(icons.release).toBe("AppIcon.icns");
+        expect(icons.dev).toBe("AppIconDev.icns");
+        expect(buildScript).toContain('cp "mac/Resources/$ICON" "$APP/Contents/Resources/AppIcon.icns"');
+        const plist = readFileSync(join(REPO, "mac/Resources/Info.plist"), "utf8");
+        expect(plist).toMatch(/<key>CFBundleIconFile<\/key>\s*<string>AppIcon(\.icns)?<\/string>/);
+        const release = readFileSync(join(REPO, "mac/Resources", icons.release!));
+        const dev = readFileSync(join(REPO, "mac/Resources", icons.dev!));
+        expect(dev.length).toBeGreaterThan(0);
+        expect(release.equals(dev), "the two flavours' icons are the same bytes").toBe(false);
+        // Unequal bytes are not provenance: the light mark exported at another
+        // size satisfies that and is the wrong icon. Which artwork each one is
+        // cut from is written in one place, so hold the pairing there.
+        const iconScript = readFileSync(join(REPO, "mac/scripts/make-icons.sh"), "utf8");
+        expect(iconScript).toContain('icns birta-writer-mac-logo-light.svg "$OUT_ICNS"');
+        expect(iconScript).toContain('icns birta-writer-mac-logo-dark.svg "$OUT_ICNS_DEV"');
+        expect(iconScript).toContain(`OUT_ICNS_DEV="$RES/${icons.dev}"`);
+        expect(iconScript).toContain(`OUT_ICNS="$RES/${icons.release}"`);
+    });
 });

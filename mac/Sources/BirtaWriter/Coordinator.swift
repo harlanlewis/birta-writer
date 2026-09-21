@@ -608,6 +608,42 @@ final class Coordinator {
     /// re-showing it from Settings does not lose what the switches are showing.
     private var welcome: WelcomeView?
 
+    /// The bound file as the app last knew it: the bytes it read or wrote, and
+    /// the stamp the file had then (`BirtaWriterCore.DiskDrift`).
+    ///
+    /// Everything that puts bytes in the buffer or on the disk sets this, and
+    /// nothing else does: it is the ONE record of what this window's buffer is
+    /// based on, and a path that moves either side without saying so makes the
+    /// next comparison a claim about a file nobody read.
+    private var baseline = DiskBaseline(stamp: nil, content: "")
+    /// Bytes handed to the writer whose landing has not been accounted for
+    /// yet. Nil once `takeWriterBaseline` has seen them arrive, or once
+    /// anything fresher has rebased the buffer.
+    private var pendingWrite: String?
+    /// The stamp taken immediately BEFORE the last read of the bound file, so
+    /// a change landing during the read leaves a stamp older than the bytes
+    /// rather than newer.
+    private var lastReadStamp: DiskStamp?
+    /// A conflict that nobody has answered: both the file and the buffer have
+    /// moved since the app last knew them, so nothing may be written.
+    ///
+    /// The question needs a panel on screen, and the write that found the
+    /// conflict is often a hide, so this outlives the attempt: the next summon
+    /// asks, and a quit that arrives first keeps the buffer beside the file
+    /// rather than losing it.
+    private var driftUnresolved = false
+    /// Whether that question is on the panel right now, so a second write does
+    /// not stack a second sheet on top of it.
+    private var driftQuestionIsUp = false
+    /// The version the question is about, held so an answer can be applied to
+    /// the file that was actually shown. A file changed AGAIN while the sheet
+    /// was up is a new question rather than an answered one.
+    private var driftShown: DiskBaseline?
+    /// Set while this window is being closed or the app is quitting: there is
+    /// nobody to answer a question, so a conflict keeps the buffer beside the
+    /// file instead of asking.
+    private var isClosing = false
+
     private let watcher = NoteWatcher()
     private let missingFileScreen = MissingFileScreen()
     /// Whether this path has ever been observed to hold the note.
@@ -957,6 +993,7 @@ final class Coordinator {
         titleBar.titleView.onPointedAtChange = { [weak self] in self?.applyChromeVisibility() }
         watcher.onMoved = { [weak self] url in self?.noteMovedOnDisk(to: url) }
         watcher.onDeleted = { [weak self] trashed in self?.noteDeletedOnDisk(trashedTo: trashed) }
+        watcher.onChanged = { [weak self] in self?.noteChangedOnDisk() }
         startWatching()
         contentView.onLayout = { [weak self] in
             MainActor.assumeIsolated {
@@ -1285,6 +1322,16 @@ final class Coordinator {
                 flushThen { [weak self] in self?.write(.explicitSave) }
                 return
             }
+            // The answer to the question a file changed underneath the app
+            // puts (`DiskDriftPrompt`). A sheet's buttons are not something a
+            // script can click, and the arms that matter are what each answer
+            // DOES to the file, which only the running app can show.
+            if obj["type"] as? String == "__birtaAnswerDiskDrift" {
+                measure.mark("debug-answer-disk-drift")
+                answerDriftQuestionForMeasurement(
+                    obj["answer"] as? String == "keep" ? .keep : .reload)
+                return
+            }
             // The missing-note bar's Save It Back button, without the button.
             // It is native chrome that only appears once the bound file has
             // gone, so a script can reach the state and not the control.
@@ -1609,6 +1656,17 @@ final class Coordinator {
         // summoned is the natural moment to ask again, and it is bounded by
         // the user doing it.
         if noteUnreadable { retryUnreadableNote() }
+        // ...and whether anything else changed the file while the panel was
+        // away. A summon is when somebody comes back to the note, which makes
+        // it both the moment a stale panel is worth correcting and the only
+        // moment there is a window to put a question on (MAR-469).
+        reconcileWithDisk(asking: true)
+        // ...and where a buffer went that could not be written to its own file
+        // when a window went. Here because this is the first moment there is
+        // anywhere to say it; the run that kept the file had no window left.
+        if let kept = Prefs.takeRescuedBuffer() {
+            statusOverlay.flash("Your unsaved text is in \(kept.lastPathComponent).")
+        }
         // Summoned under a pointer that never moved: no enter event fires, so
         // the window has to ask where the pointer is.
         contentView.syncHoverFromPointer()
@@ -2188,6 +2246,10 @@ final class Coordinator {
     }
 
     private func readActiveNote() -> NoteRead {
+        // BEFORE the read, so the stamp can only be older than the bytes it
+        // will be paired with. The other order records a file as read that is
+        // already newer than what was read, and the change is never seen.
+        lastReadStamp = DiskStamp.of(boundURL)
         let result = NoteRead.read(at: boundURL)
         if case .unreadable(.notDownloaded) = result {
             try? FileManager.default.startDownloadingUbiquitousItem(at: boundURL)
@@ -2213,6 +2275,7 @@ final class Coordinator {
         noteUnreadable = false
         hasLoaded = true
         latest = text
+        rebase(on: DiskBaseline(stamp: lastReadStamp, content: text))
         isEdited = false
         if state == .warm {
             pushDocument(text, syncVersion: guardState.bumpVersion())
@@ -2234,6 +2297,7 @@ final class Coordinator {
         case .contents(let text):
             noteUnreadable = false
             latest = text
+            rebase(on: DiskBaseline(stamp: lastReadStamp, content: text))
             // The file was there and had the note in it, which is what makes a
             // later disappearance a deletion rather than a first write.
             everSeenOnDisk = true
@@ -2251,6 +2315,10 @@ final class Coordinator {
             // every finished agent run as a way to lose the note.
             if noteMissing { return hasLoaded }
             latest = ""
+            // Nothing is there, so there is nothing to be in step with: the
+            // rule answers `.unavailable` for an absent file and the first
+            // write creates it.
+            rebase(on: DiskBaseline(stamp: nil, content: ""))
             return true
         case .unreadable:
             noteUnreadable = true
@@ -2382,10 +2450,15 @@ final class Coordinator {
         // that wrote as it landed would put the bytes on disk before the sheet
         // was even on screen, so Don't Save would be answering a question the
         // app had already settled.
+        // Nobody is going to answer a question on a window that is going, so a
+        // file changed underneath this one is settled by keeping the buffer
+        // beside it rather than by asking (`rescueDriftedBuffer`).
+        isClosing = true
         flushThen(persisting: false) { [weak self] in
             guard let self else { done(true); return }
             self.decideFinalWrite { answer in
                 guard answer != .cancel else {
+                    self.isClosing = false
                     // A refused quit leaves nothing decided. The flag exists
                     // so the last-chance write on the way out does not undo an
                     // answer, and a `true` left over from a quit that never
@@ -2400,7 +2473,10 @@ final class Coordinator {
                 // Not for a buffer somebody has just said to throw away: this
                 // writes it beside the deleted file, which is the opposite of
                 // the answer they gave.
-                if answer != .discard { self.rescueMissingNote() }
+                if answer != .discard {
+                    self.rescueMissingNote()
+                    self.rescueDriftedBuffer()
+                }
                 done(true)
             }
         }
@@ -2505,6 +2581,249 @@ final class Coordinator {
         write(.terminating)
     }
 
+    // MARK: the file changing underneath us
+
+    /// Record what the buffer is now based on, and forget any conflict that
+    /// record settles. The one writer of `baseline`.
+    ///
+    /// A submission still in flight is forgotten too: this is fresher than
+    /// whatever that write was based on, and adopting the older landing
+    /// afterwards would undo it.
+    private func rebase(on settled: DiskBaseline) {
+        baseline = settled
+        pendingWrite = nil
+        driftUnresolved = false
+        driftShown = nil
+    }
+
+    /// Take what the writer actually landed as what the buffer is based on.
+    ///
+    /// The app's own write is the commonest reason the file stops matching the
+    /// stamp, and the writer is the only thing that knows both what went on
+    /// disk and what the file looked like afterwards: `submit` returns before
+    /// the bytes land, so the submitting side can neither stat the result nor
+    /// tell a write that landed from one that threw. Recording the submission
+    /// instead would leave a failed write looking like a file that some other
+    /// program had changed, and the buffer would be replaced by the contents
+    /// of the file the write never reached.
+    ///
+    /// Only ever the bytes THIS window has just submitted and not yet
+    /// accounted for (`pendingWrite`), so a landing from before a read cannot
+    /// be taken as newer than the read. Call with the queue drained, or this
+    /// reads the write before last.
+    private func takeWriterBaseline() {
+        guard let pending = pendingWrite else { return }
+        pendingWrite = nil
+        guard let landed = writer.lastLanded(for: boundURL), landed.content == pending else { return }
+        rebase(on: DiskBaseline(stamp: landed.stamp, content: landed.content))
+    }
+
+    /// Whether the bound file is still the one the buffer was based on, and
+    /// what to do when it is not.
+    ///
+    /// Asked at every summon and immediately before every write, which is the
+    /// floor `docs/PERSISTENCE.md` sets for a host that writes: know what you
+    /// are writing against. Nothing here is a poll; both moments are gestures.
+    ///
+    /// - Parameter asking: whether a conflict may put the question now. A hide
+    ///   passes true and is refused by the panel being off screen; the next
+    ///   summon asks.
+    /// - Parameter mayWait: whether this caller can stand on the main thread
+    ///   while a write already in flight finishes. The autosave tick cannot:
+    ///   it runs on the thread every keystroke arrives on, and the write it
+    ///   would wait for is a whole-file copy, an `fsync` and a rename, which
+    ///   is the cost `writeLatest`'s `waiting` exists to keep off that thread.
+    ///   It declines instead, and what it declines to notice is an outside
+    ///   change that arrived while this window's own write was in flight: that
+    ///   write is already on its way over those bytes, so waiting would not
+    ///   have saved them, and the next write or summon finds what is there.
+    /// - Returns: whether a write may go ahead.
+    @discardableResult
+    private func reconcileWithDisk(asking: Bool, mayWait: Bool = true) -> Bool {
+        // The same three states that stop a write stop a comparison, and for
+        // the same reasons: nothing has been read yet, the file is gone, or
+        // the first-run screen owns the window. `reloadFromDisk` is the
+        // fourth: a read is already queued for the next `ready`, and the
+        // baseline until then describes the file this window is leaving.
+        guard hasLoaded, !noteMissing, !isWelcoming, !reloadFromDisk else { return true }
+        // An agent run writes the bound file itself, and a finished run has
+        // its own reconciliation (`AgentLandingPolicy`, and the copy it keeps
+        // beside the note). A question in the middle of one would be asking
+        // about the file the app has just asked somebody to edit.
+        //
+        // It stands down for EVERY change while a run is in flight, not only
+        // the run's own, because nothing here can tell them apart: a third
+        // program editing the same file during a run is the case this gives
+        // up, and autosave goes on writing through it. `docs/PERSISTENCE.md`
+        // says so under the table rather than leaving it to be discovered.
+        guard !agent.hasRunsInFlight else { return true }
+        // A write decided earlier may still be on the writer's queue, and the
+        // disk is what this compares against, so it has to hold everything the
+        // app has already decided to put there.
+        //
+        // The question is asked of the WRITER, not of `pendingWrite`. Those
+        // are different facts: the flag says this window has a write it has
+        // not accounted for, which stays true until a reconcile consumes it,
+        // and the writer says whether anything is actually in flight right
+        // now, which stops being true as soon as the bytes land. Declining on
+        // the flag switches the whole check off for every autosave after the
+        // first, which is the check not running at all rather than running
+        // late (measured: the panel wrote over an outside change again).
+        guard mayWait || writer.isIdle else { return true }
+        writer.drain()
+        takeWriterBaseline()
+        let current = DiskStamp.of(boundURL)
+        switch DiskDrift.judge(baseline: baseline, current: current,
+                               read: { [boundURL] in NoteRead.read(at: boundURL) },
+                               buffer: latest) {
+        case .inStep(let settled):
+            rebase(on: settled)
+            return true
+        case .reread(let settled):
+            measure.trace("diskdrift reread at=\(boundURL.lastPathComponent)")
+            rebase(on: settled)
+            adoptFromDisk(settled.content)
+            statusOverlay.flash("Reloaded: another app changed this file.")
+            return false
+        case .conflict(let disk, let stamp):
+            measure.trace("diskdrift conflict at=\(boundURL.lastPathComponent)")
+            driftUnresolved = true
+            if asking { askAboutDrift(disk: disk, stamp: stamp) }
+            return false
+        case .unavailable:
+            return true
+        }
+    }
+
+    /// The presenter says the file's contents changed: look, unless what it is
+    /// reporting is this window's own write still on its way to the disk.
+    ///
+    /// A write still on the writer's queue is far and away the likeliest thing
+    /// a notification means, and reconciling would `drain()` for it on the
+    /// main thread, which is the wait the autosave path is written to avoid
+    /// (`writeLatest`'s `waiting`). Nothing is lost by declining: an outside
+    /// change that really did arrive in that window is found by the next write
+    /// or the next summon, which is the floor this whole path is built on
+    /// rather than a gap in it.
+    ///
+    /// Asked of the WRITER, for the reason `reconcileWithDisk` gives at the
+    /// same predicate: `pendingWrite` is a flag this window clears when it
+    /// next accounts for its own write, which the autosave path never does, so
+    /// declining on it declines for ever. The panel would then sit on stale
+    /// bytes with the file open in front of the reader until the next summon,
+    /// which is the whole of what the presenter is here to prevent.
+    private func noteChangedOnDisk() {
+        guard writer.isIdle else { return }
+        reconcileWithDisk(asking: true)
+    }
+
+    /// Put the file's bytes in the buffer and on the page.
+    private func adoptFromDisk(_ text: String) {
+        latest = text
+        isEdited = false
+        everSeenOnDisk = true
+        if state == .warm {
+            pushDocument(text, syncVersion: guardState.bumpVersion())
+        }
+    }
+
+    /// Ask which version wins, when there is somewhere to ask.
+    ///
+    /// Refusing to ask costs nothing here, because nothing was written: the
+    /// conflict stands (`driftUnresolved`), and the next summon is another
+    /// chance to put the same question with the panel on screen.
+    private func askAboutDrift(disk: String, stamp: DiskStamp?) {
+        guard !driftQuestionIsUp, !isClosing, isOnScreen else { return }
+        guard AutosavePolicy.canAsk(panelIsUp: promptWindow.isVisible,
+                                    firstRunScreenIsUp: isWelcoming,
+                                    anotherSheetIsUp: promptWindow.attachedSheet != nil) else { return }
+        driftQuestionIsUp = true
+        driftShown = DiskBaseline(stamp: stamp, content: disk)
+        measure.trace("diskdrift asked at=\(boundURL.lastPathComponent)")
+        DiskDriftPrompt.present(document: boundURL.lastPathComponent,
+                                on: promptWindow) { [weak self] answer in
+            guard let self else { return }
+            self.driftQuestionIsUp = false
+            guard let answer else { return }
+            self.answerDrift(answer, shown: self.driftShown)
+        }
+    }
+
+    /// Do what the answer says.
+    ///
+    /// The version they were SHOWN becomes what the app knows, and the two
+    /// answers then go through the ordinary paths rather than writing or
+    /// reading anything of their own. That is what makes a file changed AGAIN
+    /// while the sheet was up a fresh question instead of a silent overwrite:
+    /// Keep goes through `writeLatest`, which asks this rule again.
+    ///
+    /// `shown` is nil when something settled the conflict while the sheet was
+    /// up, which is the one thing that clears it. The answer is still carried
+    /// out, against what the app knows now: an answer dropped on the floor is
+    /// a sheet that did nothing.
+    private func answerDrift(_ answer: DiskDrift.Answer, shown: DiskBaseline?) {
+        measure.trace("diskdrift answer=\(answer) at=\(boundURL.lastPathComponent)")
+        if let shown { rebase(on: shown) }
+        switch answer {
+        case .reload:
+            reloadFromDiskIntoBuffer()
+            statusOverlay.flash("Reloaded from disk.")
+        case .keep:
+            writeLatest("driftKeep")
+        }
+    }
+
+    /// End the question the way a click would, for `mac/scripts/measure.sh`
+    /// and `mac/scripts/check-external-change.sh`.
+    ///
+    /// Through `endSheet` rather than by calling `answerDrift` directly, for
+    /// the reason `answerQuitPromptUnattended` gives: the sheet's own
+    /// completion is the one place an answer becomes an action, and a probe
+    /// that went round it would be checking a second copy of the decision.
+    func answerDriftQuestionForMeasurement(_ answer: DiskDrift.Answer) {
+        guard driftQuestionIsUp, let sheet = promptWindow.attachedSheet else {
+            measure.trace("diskdrift answer=none at=\(boundURL.lastPathComponent)")
+            return
+        }
+        promptWindow.endSheet(sheet, returnCode: answer == .reload
+                              ? .alertFirstButtonReturn : .alertSecondButtonReturn)
+    }
+
+    /// Keep the buffer beside the file when the window is going and a conflict
+    /// is still unanswered.
+    ///
+    /// The same answer as a note deleted underneath us: a numbered file next
+    /// to the original, never over it. Quitting is the end of the only copy
+    /// those bytes have, and there is nobody left to ask.
+    /// Beside the file first, because that is where its owner will look for
+    /// it. A folder that refuses the write is what the second attempt is for:
+    /// somebody else's directory can be read only, full or gone, and these
+    /// bytes have nowhere else to be. The app's own notes folder is a place it
+    /// creates and owns, so if that fails too there was nothing to be done.
+    private func rescueDriftedBuffer() {
+        guard driftUnresolved, !noteMissing, !latest.isBlank else { return }
+        let stem = DiskDrift.unsavedStem(for: boundURL.deletingPathExtension().lastPathComponent)
+        let ext = boundURL.pathExtension.isEmpty ? DocumentTypes.written : boundURL.pathExtension
+        var tried: [String] = []
+        for directory in [boundURL.deletingLastPathComponent(), Prefs.notesDirectory]
+        where !tried.contains(directory.standardizedFileURL.path) {
+            tried.append(directory.standardizedFileURL.path)
+            let target = Coordinator.unusedURL(in: directory, stem: stem, extension: ext)
+            do {
+                try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+                try AtomicFile.writeString(latest, to: target)
+                // Said at the next summon rather than now: this window is on
+                // its way out, and a path written only to the log is a path
+                // nobody reads.
+                Prefs.rememberRescuedBuffer(at: target)
+                NSLog("Birta Writer: \(boundURL.lastPathComponent) changed outside the app; this window's text is in \(target.path)")
+                return
+            } catch {
+                NSLog("Birta Writer: could not keep the unwritten text in \(directory.path): \(error)")
+            }
+        }
+    }
+
     /// Write `latest` to the bound file. Nothing is written before the file
     /// has been read once (`hasLoaded`): before the first `ready`, or forever
     /// when the web assets are missing, `latest` is the empty string and
@@ -2520,6 +2839,11 @@ final class Coordinator {
     /// Nothing after an autosave reads the file, and the writer keeps the
     /// newest content and runs one write at a time, so the bytes land in the
     /// same order either way.
+    ///
+    /// It says the same thing to the check below, which is the other place a
+    /// write can end up waiting for the disk: a tick that finds this window's
+    /// previous write still in flight goes ahead rather than standing on the
+    /// main thread for it (`reconcileWithDisk`'s `mayWait`).
     private func writeLatest(_ reason: StaticString, waiting: Bool = true) {
         // `noteMissing` alongside `hasLoaded`, and both are about the same
         // thing: a path this write would create rather than update.
@@ -2554,8 +2878,20 @@ final class Coordinator {
             noteDeletedOnDisk()
             return
         }
+        // The file may have been changed by something else since the app last
+        // read or wrote it, and this write would replace what that left. The
+        // last thing before the bytes go, so there is as little room as
+        // possible between the question and the answer being acted on
+        // (MAR-469).
+        guard reconcileWithDisk(asking: true, mayWait: waiting) else { return }
         writer.submit(latest, to: boundURL)
-        if waiting { writer.drain() }
+        // Not the baseline yet: what the buffer is based on changes when the
+        // bytes LAND, which the writer reports (`takeWriterBaseline`).
+        pendingWrite = latest
+        if waiting {
+            writer.drain()
+            takeWriterBaseline()
+        }
         everSeenOnDisk = true
         // The one place the buffer and the file come back into step, so the
         // one place the title stops saying Edited. Guarded by `hasLoaded`
@@ -2694,7 +3030,10 @@ final class Coordinator {
             let reference = "\(self.boundURL.lastPathComponent)#L1"
             let line = AgentRequest.compose(prompt: request, reference: reference)
             self.agent.run(requestId: id, line: line, template: command,
-                           workingDirectory: directory) { [weak self] status in
+                           workingDirectory: directory,
+                           progress: { [weak self] progressLine in
+                               self?.reportAgentProgress(requestId: id, line: progressLine)
+                           }) { [weak self] status in
                 guard let self else { return }
                 if status.status == "done" {
                     self.finishAgentRun(requestId: id, status, handoff: handoff, handoffURL: handoffURL)
@@ -2730,6 +3069,11 @@ final class Coordinator {
             return
         }
         let landing = AgentLandingPolicy.landing(handoff: handoff, onDisk: onDisk, buffer: latest)
+        // The run's own edit is not a change made behind the app's back: this
+        // window asked for it, and the landing below is the reconciliation.
+        // Without this the next write would find a file the app never read,
+        // and ask about bytes the page is already merging (MAR-469).
+        rebase(on: DiskBaseline(stamp: lastReadStamp, content: onDisk))
         if landing.reloadsBuffer { reloadFromDiskIntoBuffer() }
         if let diskText = landing.pageText {
             // Written BEFORE the page is told, not after it answers. The page
@@ -2778,6 +3122,15 @@ final class Coordinator {
         try? FileManager.default.removeItem(at: target)
     }
 
+    /// What the run is doing, for the corner notice, while it is doing it.
+    ///
+    /// Advisory and transient, like the notice itself: nothing is stored here
+    /// and a page that is not up is simply not told.
+    private func reportAgentProgress(requestId: String, line: String) {
+        guard state == .warm else { return }
+        host.send(.agentProgress(requestId: requestId, line: line))
+    }
+
     private func reportAgent(requestId: String, _ status: AgentRunStatus) {
         guard state == .warm else { return }
         host.send(.agentRun(requestId: requestId, status: status.status,
@@ -2806,6 +3159,10 @@ final class Coordinator {
         }
         let onDisk: String
         if case .contents(let text) = read { onDisk = text } else { onDisk = "" }
+        // Before the guard below, not after it: the buffer already holding
+        // these bytes is a reason not to redraw the page, never a reason to go
+        // on comparing later writes against a file this window has re-read.
+        rebase(on: DiskBaseline(stamp: lastReadStamp, content: onDisk))
         guard onDisk != latest else { return }
         latest = onDisk
         isEdited = false
@@ -2917,6 +3274,9 @@ final class Coordinator {
         cancelPendingAutosave()
         boundURL = url
         latest = content
+        // The caller has just put these bytes at this path, so the file and
+        // the buffer are in step and the next write compares against them.
+        rebase(on: DiskBaseline(stamp: DiskStamp.of(url), content: content))
         // The caller has just written this file and is handing back its bytes,
         // so the buffer IS the file. Both read-side embargoes are facts about
         // the path being left, and carrying them across is how a fresh note
@@ -4335,20 +4695,6 @@ final class Coordinator {
     func runEditorCommandInPlace(_ command: String, arg: String? = nil) {
         guard state == .warm else { return }
         host.send(.editorCommand(command, arg: arg))
-    }
-
-    /// Put `content` in the editor and the file, keeping the mounted editor
-    /// (an `externalUpdate` is a cursor-preserving diff, and it re-baselines
-    /// without echoing an `update`, so the write here is the only one).
-    private func replaceBuffer(with content: String) {
-        latest = content
-        writer.submit(content, to: boundURL)
-        // Handed to the writer, so the buffer is no longer ahead of where the
-        // file is going. Same claim `writeLatest` makes at the same moment.
-        isEdited = false
-        if state == .warm {
-            pushDocument(content, syncVersion: guardState.bumpVersion())
-        }
     }
 
     static func suggestedFileName(for content: String) -> String {

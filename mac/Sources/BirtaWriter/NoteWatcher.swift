@@ -23,6 +23,20 @@ import BirtaWriterCore
 final class NoteWatcher: NSObject {
     /// The file moved, and it is the same file: rebind and follow it.
     var onMoved: ((URL) -> Void)?
+    /// The file's CONTENTS changed under us. Say so, while the panel is open,
+    /// rather than leaving it to the next summon or the next write.
+    ///
+    /// A nicety on top of the stat, never the mechanism: a presenter hears
+    /// coordinated writes, which most editors make and `printf >` in a
+    /// terminal does not, so the floor has to be the check at the summon and
+    /// before the write (`Coordinator.reconcileWithDisk`). What this buys is
+    /// the case the reader is watching: the note re-reads itself while they
+    /// look at it.
+    ///
+    /// The app's own writes reach this too, since they land on the file a
+    /// presenter is registered for; they cost a stat and a comparison that
+    /// says the bytes are ours.
+    var onChanged: (() -> Void)?
     /// The file is gone. Stop writing and say so.
     ///
     /// The argument is where it went, when that is known: a trashed file is
@@ -46,6 +60,11 @@ final class NoteWatcher: NSObject {
         }()
         var onMove: ((URL) -> Void)?
         var onDelete: ((URL?) -> Void)?
+        var onChange: (() -> Void)?
+
+        func presentedItemDidChange() {
+            onChange?()
+        }
 
         func presentedItemDidMove(to newURL: URL) {
             // `NSFilePresenter`'s contract: the presented URL follows the item,
@@ -83,6 +102,9 @@ final class NoteWatcher: NSObject {
         }
         presenter.onDelete = { [weak self] trashed in
             Task { @MainActor in self?.onDeleted?(trashed) }
+        }
+        presenter.onChange = { [weak self] in
+            Task { @MainActor in self?.onChanged?() }
         }
         NSFileCoordinator.addFilePresenter(presenter)
         self.presenter = presenter

@@ -480,6 +480,10 @@ public enum HostMessage: Equatable {
     /// One report about an `/ai` run. `status` drives the gutter marker the
     /// page already draws for the extension.
     case agentRun(requestId: String, status: String, harness: String?, text: String?, message: String?)
+    /// One short line of what a live `/ai` run is doing, for the corner notice
+    /// the page draws while it works. Advisory and transient: nothing is
+    /// persisted, and the page drops a line for a run it has already settled.
+    case agentProgress(requestId: String, line: String)
     /// Ask the page to draw a tooltip for a control the SHELL draws, or to
     /// take one away (`text` nil).
     ///
@@ -540,6 +544,8 @@ public enum HostMessage: Equatable {
             if let text { o["text"] = text }
             if let message { o["message"] = message }
             return o
+        case let .agentProgress(requestId, line):
+            return ["type": "agentProgress", "requestId": requestId, "line": line]
         case let .lintResults(id, results):
             return ["type": "lintResults", "id": id, "results": results.map(\.json)]
         case let .flushSave(id):

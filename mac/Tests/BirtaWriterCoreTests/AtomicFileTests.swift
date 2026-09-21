@@ -177,6 +177,125 @@ final class AtomicFileTests: XCTestCase {
         XCTAssertTrue(errors.isEmpty)
     }
 
+    /// What the writer landed, which is the only honest answer to "what does
+    /// the file hold now" for a caller whose write happens after `submit`
+    /// returns (`Coordinator.takeWriterBaseline`).
+    func testCoalescingWriterReportsTheBytesAndStampItLanded() throws {
+        let target = dir.appendingPathComponent("landed.md")
+        let w = CoalescingWriter(onError: { _ in })
+        XCTAssertNil(w.lastLanded(for: target), "nothing has been written yet")
+        w.submit("landed text", to: target)
+        w.drain()
+        let landed = try XCTUnwrap(w.lastLanded(for: target))
+        XCTAssertEqual(landed.content, "landed text")
+        XCTAssertEqual(landed.stamp, DiskStamp.of(target))
+        XCTAssertNil(w.lastLanded(for: dir.appendingPathComponent("other.md")),
+                     "the answer is about one file")
+    }
+
+    /// The stamp a write reports is the file it PUBLISHED, not whatever is at
+    /// the path once it has published it.
+    ///
+    /// The two are the same except in one window, and that window is the whole
+    /// point: another program replacing the file between our rename and a stat
+    /// of the path hands back its file as ours, the baseline then matches the
+    /// disk, and the next write goes over bytes nobody has read. Same-size
+    /// bytes, because a length check is what a stat-afterwards design reaches
+    /// for and it does not catch this.
+    ///
+    /// Driven through `afterPublishForTests`, since the window is inside the
+    /// write and a check standing outside it cannot tell the two designs
+    /// apart.
+    func testAWriteReportsTheFileItPublishedRatherThanThePathAfterwards() throws {
+        let target = dir.appendingPathComponent("published.md")
+        let ours = "ours!!-0001"
+        let theirs = "theirs-0002"
+        XCTAssertEqual(ours.utf8.count, theirs.utf8.count)
+        try AtomicFile.writeString("before", to: target)
+        var replaced = false
+        AtomicFile.afterPublishForTests = {
+            guard !replaced else { return }
+            replaced = true
+            try? AtomicFile.writeString(theirs, to: target)
+        }
+        defer { AtomicFile.afterPublishForTests = nil }
+        let result = try AtomicFile.writeStringReporting(ours, to: target)
+        XCTAssertTrue(replaced, "the window was entered; without that this test asserts nothing")
+        XCTAssertEqual(try String(contentsOf: target, encoding: .utf8), theirs,
+                       "their write is the one on disk now")
+        let stamp = try XCTUnwrap(result.stamp)
+        XCTAssertNotEqual(stamp, DiskStamp.of(target),
+                          "reporting the path's stamp would call their file ours")
+        XCTAssertEqual(stamp.size, ours.utf8.count)
+    }
+
+    /// Undisturbed, the two ways of asking agree, which is what lets a stamp
+    /// from a write be compared with a stamp from a path at all.
+    func testAnUndisturbedWriteReportsTheStampThePathHas() throws {
+        let target = dir.appendingPathComponent("agree.md")
+        let result = try AtomicFile.writeStringReporting("some text", to: target)
+        XCTAssertEqual(result.stamp, DiskStamp.of(target))
+        XCTAssertTrue(result.wrote)
+        // The skip path describes the file that already held the bytes.
+        let again = try AtomicFile.writeStringReporting("some text", to: target)
+        XCTAssertFalse(again.wrote)
+        XCTAssertEqual(again.stamp, DiskStamp.of(target))
+    }
+
+    /// `isIdle` is a fact about NOW: false while a write is on the queue, true
+    /// once it has landed.
+    ///
+    /// It is what a caller asks when it must not block and still wants the
+    /// answer where there is nothing to wait for, and the "once it has landed"
+    /// half is the load-bearing one. A predicate that stayed false after the
+    /// write finished would be a latch, and a caller declining on a latch
+    /// declines for ever: that is the shape of the defect this writer's two
+    /// callers (`Coordinator.reconcileWithDisk`, `noteChangedOnDisk`) exist
+    /// around.
+    func testIsIdleShouldBeFalseWhileAWriteIsInFlightAndTrueOnceItHasLanded() throws {
+        let target = dir.appendingPathComponent("idle.md")
+        let writer = CoalescingWriter(onError: { _ in })
+        XCTAssertTrue(writer.isIdle, "nothing has been submitted yet")
+        let inside = DispatchSemaphore(value: 0)
+        let release = DispatchSemaphore(value: 0)
+        AtomicFile.afterPublishForTests = {
+            inside.signal()
+            release.wait()
+        }
+        defer { AtomicFile.afterPublishForTests = nil }
+        writer.submit("some text", to: target)
+        // The write is held inside `AtomicFile`, so this is not a race with
+        // it: the queue cannot go idle until the semaphore below is signalled.
+        XCTAssertEqual(inside.wait(timeout: .now() + 5), .success,
+                       "the write never reached the seam; nothing was held and this asserts nothing")
+        XCTAssertFalse(writer.isIdle, "a write is on the queue")
+        release.signal()
+        writer.drain()
+        XCTAssertTrue(writer.isIdle, "the write landed, so there is nothing left to wait for")
+        XCTAssertEqual(try String(contentsOf: target, encoding: .utf8), "some text")
+    }
+
+    /// A write that threw leaves the previous answer standing. Reporting the
+    /// submission instead would have a caller comparing against bytes no file
+    /// holds, and the file's real contents would then read as somebody else's
+    /// change.
+    func testCoalescingWriterDoesNotReportAWriteThatFailed() throws {
+        let target = dir.appendingPathComponent("landed.md")
+        var errors: [Error] = []
+        let w = CoalescingWriter(onError: { errors.append($0) })
+        w.submit("first", to: target)
+        w.drain()
+        let before = try XCTUnwrap(w.lastLanded(for: target))
+        // Nothing can be written over a directory, so this submission throws.
+        let blocked = dir.appendingPathComponent("isdir2")
+        try FileManager.default.createDirectory(at: blocked, withIntermediateDirectories: true)
+        w.submit("second", to: blocked)
+        w.drain()
+        XCTAssertEqual(errors.count, 1)
+        XCTAssertEqual(w.lastLanded(for: target)?.content, before.content)
+        XCTAssertNil(w.lastLanded(for: blocked), "a write that threw landed nothing")
+    }
+
     func testCoalescingWriterReportsErrors() {
         var errors: [Error] = []
         let w = CoalescingWriter(onError: { errors.append($0) })
