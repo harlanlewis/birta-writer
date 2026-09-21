@@ -70,6 +70,7 @@ const KNOWN_FAMILIES = [
     "doc-misc",
     "doc-query",
     "fixed-position-js",
+    "global-scope",
     "head-inject",
     "highlight-registry",
     "root-custom-prop",
