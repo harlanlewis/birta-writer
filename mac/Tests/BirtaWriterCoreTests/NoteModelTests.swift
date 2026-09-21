@@ -100,4 +100,42 @@ final class NoteModelTests: XCTestCase {
         XCTAssertTrue(AgentPreset.fallback.template.contains("{prompt}"),
                       "the shipped command has no placeholder, so /ai would run it without the request")
     }
+
+    /// The corner notice is read out of structured events, and the only place
+    /// Birta can ask for them is a template it offers itself. A preset that
+    /// asks for none is a run that says one line after a silence, which is
+    /// what shipped until this was pinned.
+    ///
+    /// The flags are held to the extension's by
+    /// `shared/__tests__/agentBackgroundTemplates.test.ts`, which is what
+    /// stops the two lists drifting. This is the Swift-side half: that the
+    /// preset a fresh install runs asks at all, expressed as the shape the
+    /// reader recognises rather than as a copy of the string.
+    func testTheShippedPresetsShouldAskTheirCliForStructuredEvents() {
+        XCTAssertTrue(AgentPreset.claudeCode.template.contains("--output-format stream-json"),
+                      AgentPreset.claudeCode.template)
+        XCTAssertTrue(AgentPreset.claudeCode.template.contains("--verbose"),
+                      "stream-json is refused without it; the two travel together")
+        XCTAssertTrue(AgentPreset.codex.template.contains("--json"),
+                      AgentPreset.codex.template)
+        // The default is one of them, so a fresh install gets a live line
+        // rather than a clock.
+        XCTAssertEqual(AgentPreset.fallback, AgentPreset.claudeCode)
+    }
+
+    /// Editing a template must not change what the popup says a stored command
+    /// is running.
+    ///
+    /// The menu reads the command back program to program
+    /// (`AgentPreset.matching`), which is what lets somebody who chose Claude
+    /// Code before these flags existed keep their own line and still see it
+    /// named. A match that compared the whole string would have called every
+    /// such command Custom the day this changed.
+    func testACommandStoredBeforeTheFlagsChangedShouldStillNameItsTool() {
+        XCTAssertEqual(AgentPreset.matching(command: "claude -p {prompt} --permission-mode acceptEdits"),
+                       .claudeCode)
+        XCTAssertEqual(
+            AgentPreset.matching(command: "codex exec --sandbox workspace-write --skip-git-repo-check {prompt}"),
+            .codex)
+    }
 }

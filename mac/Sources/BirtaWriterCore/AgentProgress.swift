@@ -18,6 +18,13 @@ import Foundation
 /// REASONING CONTENT IS NEVER RENDERED. A thinking step is the word `Thinking`,
 /// never its text. The corner is not a transcript.
 ///
+/// One thing here is NOT part of the port and must not be looked for on the
+/// other side: `transcriptLines`, which reads a FINISHED transcript for the
+/// Mac app's Settings Test button. The extension has no such button, so there
+/// is nothing there for it to drift from. It reuses the port's own reading
+/// whole (`classify`) and only takes a different view of the answer, which is
+/// what keeps the recognition written once.
+///
 /// Where the port differs, and why the cases cannot see it:
 /// - Partial lines are held as BYTES and split on the CR and LF bytes, which
 ///   never occur inside a multi-byte UTF-8 sequence, so a character split
@@ -82,17 +89,82 @@ public final class AgentProgressReader {
         return latest
     }
 
-    private func reduce(_ raw: String) -> String? {
+    /// One line of a harness's output, told apart ONCE.
+    ///
+    /// The corner and a finished transcript read the same output and want
+    /// different things from it, and the part that must not be written twice
+    /// is the recognition: which shapes exist, and what an event of one says.
+    /// What each caller then does with the answer is its own policy.
+    private enum Reduced {
+        /// A structured event in a shape this reader knows: the line it is
+        /// worth showing (nil for an event that says nothing), and the
+        /// harness's own words where it spoke, unclamped and uncut.
+        case event(line: String?, said: String?)
+        /// Anything else, with the terminal's own drawing already taken out.
+        case plain(String)
+    }
+
+    /// Classify one raw line, or nil when there was nothing on it.
+    private func classify(_ raw: String) -> Reduced? {
         let text = Self.plainLine(raw)
         if text.isEmpty { return nil }
         if text.hasPrefix("{"), let event = Self.parse(text),
            let shape = Shape.allCases.first(where: { $0.recognizes(event) }) {
             isStructured = true
-            return shape.display(event) { said in
+            var spoken: String?
+            let line = shape.display(event) { said in
+                spoken = said
                 self.lastSaid = Self.clamp(said, Self.saidMax)
             }
+            return .event(line: line, said: spoken)
         }
-        return isStructured ? nil : Self.clamp(text, Self.lineMax)
+        return .plain(text)
+    }
+
+    private func reduce(_ raw: String) -> String? {
+        switch classify(raw) {
+        case .none: return nil
+        case let .event(line, _): return line
+        case let .plain(text): return isStructured ? nil : Self.clamp(text, Self.lineMax)
+        }
+    }
+
+    /// A FINISHED transcript as a person reads it, or nil when it carried no
+    /// structured event and what the harness printed is already prose.
+    ///
+    /// For the Mac app's Settings Test button, which prints what a command
+    /// said and now runs commands that print events. The corner's reading is
+    /// reused whole; three things differ, each because a sheet is not a
+    /// glance:
+    ///
+    /// - every line is kept, not only the newest of a chunk;
+    /// - a text block is kept WHOLE rather than cut to its opening line and
+    ///   clamped, because what the tool said is what the reader came for;
+    /// - a plain line SURVIVES a structured stream instead of being dropped.
+    ///   That last one is load-bearing: a run that emitted events and then
+    ///   failed says why on stderr, in prose, and the corner's rule (a glance
+    ///   showing stray output beside events reads as noise) would throw away
+    ///   the one sentence the reader can act on.
+    ///
+    /// Nil rather than the lines, so a caller holding a plain transcript shows
+    /// the bytes the child printed rather than a reconstruction of them.
+    public static func transcriptLines(_ transcript: String) -> [String]? {
+        let reader = AgentProgressReader()
+        var lines: [String] = []
+        for raw in transcript.split(whereSeparator: \.isNewline) {
+            guard let reduced = reader.classify(String(raw)) else { continue }
+            let shown: String?
+            switch reduced {
+            case let .event(line, said): shown = said ?? line
+            case let .plain(text): shown = text
+            }
+            // Never the same line twice in a row, which is the throttle's own
+            // rule applied without a clock: three thinking events in a row are
+            // one `Thinking` to a reader either way.
+            guard let shown, !shown.isEmpty, shown != lines.last else { continue }
+            lines.append(shown)
+        }
+        return reader.isStructured ? lines : nil
     }
 
     // MARK: shapes

@@ -2112,13 +2112,35 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         // What the tool said, and where it said nothing, our own account of
         // how it ended. Never both: two explanations of one failure read as
         // two failures.
-        let body = result.transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+        let body = readable(result.transcript)
         alert.accessoryView = transcript(body.isEmpty ? (result.failure ?? "") : body)
         // Acknowledge and nothing else. A test that has finished leaves
         // nothing to decide, so a second button would be a question with no
         // question behind it.
         alert.addButton(withTitle: "Close")
         return alert
+    }
+
+    /// What goes in the box: what the tool SAID, which for a command asking
+    /// its CLI for structured events is not what it printed.
+    ///
+    /// Two presets now carry those flags (`AgentPreset.template`), so the
+    /// transcript of a test that WORKED is JSON, and the sentence the reader
+    /// came for is one field inside an event that is itself wider than
+    /// `transcriptSize`. The headline above already answers whether it worked;
+    /// this box exists for what the tool said underneath, so a structured
+    /// transcript is reduced by the same reader the corner notice uses
+    /// (`BirtaWriterCore.AgentProgressReader.transcriptLines`).
+    ///
+    /// Reduced, never replaced: a transcript with no events in it is shown
+    /// exactly as the child printed it, and so is one whose events all said
+    /// nothing, because showing LESS than the tool printed is the one way this
+    /// could cost somebody the line they needed.
+    private static func readable(_ transcript: String) -> String {
+        guard let lines = AgentProgressReader.transcriptLines(transcript), !lines.isEmpty else {
+            return transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        return lines.joined(separator: "\n")
     }
 
     /// How big the transcript box is: wide enough for a wrapped shell line,
