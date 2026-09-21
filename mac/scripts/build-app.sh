@@ -103,6 +103,12 @@ cp mac/Resources/MenuBarTemplate.pdf "$APP/Contents/Resources/MenuBarTemplate.pd
 # The first-run hero, both appearances. Committed outputs like the two above.
 cp mac/Resources/WelcomeHero.png "$APP/Contents/Resources/WelcomeHero.png"
 cp mac/Resources/WelcomeHeroDark.png "$APP/Contents/Resources/WelcomeHeroDark.png"
+# The colour themes the app ships with. A launch copies each one into the
+# theme library once and never again, so a build that left them out would give
+# a fresh install an empty library rather than break; `DefaultThemes.swift`
+# declares the four and `DefaultThemesTests` fails when this folder and that
+# list disagree in either direction.
+cp -R mac/Resources/DefaultThemes "$APP/Contents/Resources/DefaultThemes"
 # The whole webview build: the entry, its stylesheet, the host palette, the
 # lazy chunks and every sibling asset they resolve (katex.css, the harper wasm).
 cp -R dist/. "$APP/Contents/Resources/web/dist/"
