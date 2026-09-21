@@ -170,7 +170,28 @@ if [ "$(stat -f %i "$NOTE")" != "$before_ino" ]; then
     fail "a summon and a hide over an unchanged file replaced it (new inode)"
 fi
 
+echo "a window that goes before anybody answers"
+# The question needs somebody there, and quitting is when there is nobody. The
+# buffer goes beside the file rather than over it, which is the same answer the
+# app gives for a note deleted underneath it.
+printf 'changed a fourth time\n' > "$NOTE"
+post '{"type":"__testInsertText","text":"unanswered "}'; sleep 1.5
+expect_bytes "changed a fourth time" "the conflict is still refused"
 end_app
+expect_bytes "changed a fourth time" "quitting does not write the buffer over the outside change"
+checks=$((checks + 1))
+KEPT="$DIR/Note (unsaved).md"
+if [ ! -f "$KEPT" ]; then
+    fail "quitting with the question unanswered lost the buffer: no $KEPT"
+    ls -l "$DIR" >&2
+else
+    checks=$((checks + 1))
+    case "$(cat "$KEPT")" in
+        *unanswered*) ;;
+        *) fail "the kept file does not hold what was typed: '$(cat "$KEPT")'" ;;
+    esac
+fi
+
 echo
 if [ "$failures" -eq 0 ]; then
     echo "check-external-change: $checks checks, all green"

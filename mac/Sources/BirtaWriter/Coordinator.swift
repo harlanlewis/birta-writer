@@ -993,7 +993,7 @@ final class Coordinator {
         titleBar.titleView.onPointedAtChange = { [weak self] in self?.applyChromeVisibility() }
         watcher.onMoved = { [weak self] url in self?.noteMovedOnDisk(to: url) }
         watcher.onDeleted = { [weak self] trashed in self?.noteDeletedOnDisk(trashedTo: trashed) }
-        watcher.onChanged = { [weak self] in self?.reconcileWithDisk(asking: true) }
+        watcher.onChanged = { [weak self] in self?.noteChangedOnDisk() }
         startWatching()
         contentView.onLayout = { [weak self] in
             MainActor.assumeIsolated {
@@ -2665,6 +2665,21 @@ final class Coordinator {
         }
     }
 
+    /// The presenter says the file's contents changed: look, unless what it is
+    /// reporting is this window's own write still on its way to the disk.
+    ///
+    /// A write submitted and not yet landed is far and away the likeliest
+    /// thing a notification means, and reconciling would `drain()` for it on
+    /// the main thread, which is the wait the autosave path is written to
+    /// avoid (`writeLatest`'s `waiting`). Nothing is lost by declining: an
+    /// outside change that really did arrive in that window is found by the
+    /// next write or the next summon, which is the floor this whole path is
+    /// built on rather than a gap in it.
+    private func noteChangedOnDisk() {
+        guard pendingWrite == nil else { return }
+        reconcileWithDisk(asking: true)
+    }
+
     /// Put the file's bytes in the buffer and on the page.
     private func adoptFromDisk(_ text: String) {
         latest = text
@@ -2692,8 +2707,8 @@ final class Coordinator {
                                 on: promptWindow) { [weak self] answer in
             guard let self else { return }
             self.driftQuestionIsUp = false
-            guard let answer, let shown = self.driftShown else { return }
-            self.answerDrift(answer, shown: shown)
+            guard let answer else { return }
+            self.answerDrift(answer, shown: self.driftShown)
         }
     }
 
@@ -2704,9 +2719,14 @@ final class Coordinator {
     /// reading anything of their own. That is what makes a file changed AGAIN
     /// while the sheet was up a fresh question instead of a silent overwrite:
     /// Keep goes through `writeLatest`, which asks this rule again.
-    private func answerDrift(_ answer: DiskDrift.Answer, shown: DiskBaseline) {
+    ///
+    /// `shown` is nil when something settled the conflict while the sheet was
+    /// up, which is the one thing that clears it. The answer is still carried
+    /// out, against what the app knows now: an answer dropped on the floor is
+    /// a sheet that did nothing.
+    private func answerDrift(_ answer: DiskDrift.Answer, shown: DiskBaseline?) {
         measure.trace("diskdrift answer=\(answer) at=\(boundURL.lastPathComponent)")
-        rebase(on: shown)
+        if let shown { rebase(on: shown) }
         switch answer {
         case .reload:
             reloadFromDiskIntoBuffer()
