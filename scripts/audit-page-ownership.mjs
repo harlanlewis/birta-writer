@@ -9,7 +9,7 @@
  * Two halves, deliberately kept apart:
  *
  *   SCAN. Broad, and it knows nothing about the verdicts. It finds candidate
- *   sites by shape alone: any reference to `document`, `window`, `CSS.highlights`
+ *   sites by shape alone: any reference to `document`, `window`, `globalThis`, `CSS.highlights`
  *   or viewport-anchored positioning in product TypeScript, and any CSS selector
  *   at the top level of a stylesheet plus any fixed/viewport-unit declaration.
  *
