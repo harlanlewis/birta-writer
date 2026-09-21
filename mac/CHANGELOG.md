@@ -15,6 +15,7 @@ Versions are shared. Both files are stamped with the same release version, and a
 ### Added
 
 - A `bwr` command opens Birta Writer for Mac from a shell. Install it from Settings, Advanced, Open from Terminal, which links it into `~/.local/bin` and asks for no password. `bwr` brings the windows up, `bwr notes.md` opens a file where Open With would open it, `bwr new.md` creates the path and opens it, `bwr ~/notes/` opens a folder, `bwr a.md b.md` opens both, and `cat draft.md | bwr` puts what was piped in into a dated file and opens that. The command's name is yours to change, and the row says so when the directory it goes in is not on your `PATH`, or when something else already answers to that name. A development build installs `bwr-dev`, so the two can sit side by side.
+- Birta Writer for Mac says what a live `/ai` run is doing. While a run works, the corner line names the step as it happens, such as the tool the agent called or the file it read, instead of only the harness and the clock. It is read from what your agent command already prints, so a command that prints no structured events still shows the clock, exactly as before. A harness's thinking shows as the word `Thinking` and never its content, and nothing about the line is kept once the run ends.
 - `bwr --wait` is refused with a message rather than ignored, so `EDITOR='bwr --wait'` does not work yet.
 
 ### Changed
