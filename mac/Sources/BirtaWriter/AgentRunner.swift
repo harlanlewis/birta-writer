@@ -18,6 +18,8 @@ import Foundation
 final class AgentRunner {
     /// Runs in flight, so the panel can stop them and quitting can too.
     private var running: [String: Process] = [:]
+    /// Each live run's corner line, keyed like `running` and ended with it.
+    private var relays: [String: ProgressRelay] = [:]
 
     /// Whether a child process is still working.
     ///
@@ -48,48 +50,85 @@ final class AgentRunner {
     ///   - line: the composed request line, already including its reference.
     ///   - template: the command template from Settings.
     ///   - workingDirectory: the document's folder.
+    ///   - progress: one short line of what the run is doing, for the page's
+    ///     corner notice (`agentProgress`), on the main actor. Throttled, never
+    ///     repeated, and never called once the run has reported its end.
     ///   - report: status back to the page, on the main actor.
     func run(
         requestId: String,
         line: String,
         template: String,
         workingDirectory: URL,
+        progress: @escaping (String) -> Void = { _ in },
         report: @escaping (AgentRunStatus) -> Void
     ) {
         let command = AgentRequest.expand(
             template: template, quotedPrompt: AgentRequest.shellQuote(line))
         let harness = AgentRequest.harnessName(from: template)
 
-        let process = launch(command: command, workingDirectory: workingDirectory) {
-            [weak self] outcome in
+        // What the run is doing, read out of what the harness already prints
+        // and adding nothing to the user's command: `AgentProgress.swift`. The
+        // reader runs on the pipes' own queues, and only the lines it answers
+        // cross to the main actor, in the order they were read.
+        let feed = ProgressFeed()
+        let relay = ProgressRelay(post: progress)
+        let process = launch(
+            command: command, workingDirectory: workingDirectory,
+            // The relay is held weakly here as well, so the run's own
+            // `relays` entry is its only owner and letting go of that ends the
+            // line for good: see `ProgressRelay`.
+            onChunk: { [weak self, weak relay] data, stream in
+                guard let shown = feed.read(data, stream: stream) else { return }
+                DispatchQueue.main.async {
+                    MainActor.assumeIsolated {
+                        // A line for a run that has ended is not news, and one
+                        // arriving after `done` would put a working notice back
+                        // in the corner of a finished run.
+                        guard let self, let relay, self.relays[requestId] === relay else { return }
+                        relay.offer(shown)
+                    }
+                }
+            }
+        ) { [weak self] outcome in
             guard let self else { return }
             switch outcome {
             case let .couldNotStart(reason):
                 // Nearly always a harness that is not installed. Say that
                 // rather than the errno.
-                self.running.removeValue(forKey: requestId)
+                self.end(requestId)
                 report(.init(status: "failed", harness: harness, text: nil,
                              message: "Could not run \(harness ?? "the agent"): \(reason)"))
             case .signalled:
-                guard self.running.removeValue(forKey: requestId) != nil else { return }
+                guard self.end(requestId) != nil else { return }
                 report(.init(status: "cancelled", harness: harness, text: nil, message: nil))
             case let .exited(status, output):
                 // Already removed means `stop` reported it; a cancelled run
                 // must not also report done.
-                guard self.running.removeValue(forKey: requestId) != nil else { return }
+                guard self.end(requestId) != nil else { return }
                 if status == 0 {
                     report(.init(status: "done", harness: harness, text: nil, message: nil))
                 } else {
                     report(.init(
                         status: "failed", harness: harness, text: nil,
                         message: Self.failureMessage(status: status, output: output,
-                                                     harness: harness)))
+                                                     harness: harness, feed: feed)))
                 }
             }
         }
         guard let process else { return }
         running[requestId] = process
+        relays[requestId] = relay
         report(.init(status: "running", harness: harness, text: nil, message: nil))
+    }
+
+    /// Forget a run, which is also what stops its corner line: letting go of
+    /// the relay is what keeps a line queued behind the throttle from posting
+    /// after the run's end has been reported. Answers the process when the run
+    /// was still live.
+    @discardableResult
+    private func end(_ requestId: String) -> Process? {
+        relays.removeValue(forKey: requestId)
+        return running.removeValue(forKey: requestId)
     }
 
     /// Run the command once with a trivial prompt and hand back what it
@@ -137,7 +176,7 @@ final class AgentRunner {
             try? FileManager.default.removeItem(at: directory)
             report(result)
         }
-        let child = launch(command: command, workingDirectory: directory) { outcome in
+        let child = launch(command: command, workingDirectory: directory, onChunk: nil) { outcome in
             switch outcome {
             case let .exited(status, output):
                 once(AgentProbeResult(
@@ -185,8 +224,15 @@ final class AgentRunner {
     /// write; if the only reader waits for termination, termination never
     /// comes and the run hangs forever. An agent's transcript passes 64KB
     /// easily, so this is the ordinary case rather than a large one.
+    ///
+    /// `onChunk` sees every chunk of each stream as it arrives, tagged with the
+    /// stream it came from, OFF the main actor. The two streams are two pipes
+    /// rather than one for its sake: a progress reader keeps a partial line per
+    /// stream, and one pipe can splice a stderr write into the middle of a
+    /// stdout event line.
     @discardableResult
     private func launch(command: String, workingDirectory: URL,
+                        onChunk: ((Data, AgentProgressReader.Stream) -> Void)?,
                         finished: @escaping @MainActor (LaunchOutcome) -> Void) -> Process? {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/sh")
@@ -197,11 +243,13 @@ final class AgentRunner {
             environment["PATH"] = path
             process.environment = environment
         }
-        // Both streams to one pipe: the transcript is for the person reading
-        // the failure, and interleaving is how they read it.
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = pipe
+        // Two pipes, one transcript: the transcript is for the person reading
+        // the failure, and interleaving is how they read it, so both streams
+        // append to it in the order their chunks arrive.
+        let outPipe = Pipe()
+        let errPipe = Pipe()
+        process.standardOutput = outPipe
+        process.standardError = errPipe
         // Nothing to read from. A CLI that decides to ask a question wants an
         // answer from a terminal that is not there, and inheriting the app's
         // stdin means it waits for one forever with its marker still spinning;
@@ -210,21 +258,31 @@ final class AgentRunner {
         process.standardInput = FileHandle.nullDevice
 
         let collected = Collected()
-        pipe.fileHandleForReading.readabilityHandler = { handle in
-            let chunk = handle.availableData
-            // Zero bytes is EOF; clearing the handler here is what lets the
-            // file handle close rather than spinning on an empty pipe.
-            if chunk.isEmpty {
-                handle.readabilityHandler = nil
-                return
+        let streams: [(pipe: Pipe, stream: AgentProgressReader.Stream)] =
+            [(outPipe, .stdout), (errPipe, .stderr)]
+        for (pipe, stream) in streams {
+            pipe.fileHandleForReading.readabilityHandler = { handle in
+                let chunk = handle.availableData
+                // Zero bytes is EOF; clearing the handler here is what lets the
+                // file handle close rather than spinning on an empty pipe.
+                if chunk.isEmpty {
+                    handle.readabilityHandler = nil
+                    return
+                }
+                collected.append(chunk)
+                onChunk?(chunk, stream)
             }
-            collected.append(chunk)
         }
 
         process.terminationHandler = { ended in
             // Whatever arrived between the last readability callback and exit.
-            let tail = (try? pipe.fileHandleForReading.readToEnd()) ?? Data()
-            pipe.fileHandleForReading.readabilityHandler = nil
+            var tail = Data()
+            for (pipe, stream) in streams {
+                let rest = (try? pipe.fileHandleForReading.readToEnd()) ?? Data()
+                pipe.fileHandleForReading.readabilityHandler = nil
+                if !rest.isEmpty { onChunk?(rest, stream) }
+                tail.append(rest)
+            }
             let output = collected.take(appending: tail)
             let reason = ended.terminationReason
             let status = ended.terminationStatus
@@ -246,7 +304,7 @@ final class AgentRunner {
 
     /// Stop one run. SIGTERM, so the harness can clean up after itself.
     func stop(requestId: String, report: (AgentRunStatus) -> Void) {
-        guard let process = running.removeValue(forKey: requestId) else { return }
+        guard let process = end(requestId) else { return }
         process.terminate()
         report(.init(status: "cancelled", harness: nil, text: nil, message: nil))
     }
@@ -255,13 +313,95 @@ final class AgentRunner {
     func stopAll() {
         for (_, process) in running { process.terminate() }
         running.removeAll()
+        relays.removeAll()
     }
 
-    private static func failureMessage(status: Int32, output: String, harness: String?) -> String {
-        let tail = output.split(separator: "\n").last.map(String.init)?
-            .trimmingCharacters(in: .whitespaces) ?? ""
+    /// What a failed run says went wrong.
+    ///
+    /// A structured run prints its events on stdout, so the transcript's last
+    /// line is JSON rather than a reason. There the reason is stderr's last
+    /// line, which is where a run that failed before its first event has its
+    /// cause, and otherwise what the harness last SAID; the extension's
+    /// `askAgent` chooses between the same two. Anything else keeps the
+    /// transcript's last line.
+    private static func failureMessage(status: Int32, output: String, harness: String?,
+                                       feed: ProgressFeed) -> String {
+        let lastLine: (String) -> String = { text in
+            text.split(whereSeparator: \.isNewline).last.map(String.init)?
+                .trimmingCharacters(in: .whitespaces) ?? ""
+        }
+        let summary = feed.summary()
+        let tail = summary.structured
+            ? [lastLine(summary.stderr), summary.said ?? ""].first { !$0.isEmpty } ?? ""
+            : lastLine(output)
         let name = harness ?? "The agent"
         return tail.isEmpty ? "\(name) exited with status \(status)." : tail
+    }
+}
+
+/// One run's progress reader, fed from the two pipes' own queues.
+///
+/// The reader is not thread-safe and the two readability handlers can run at
+/// once, so every touch is under the lock. It also keeps stderr's tail, which
+/// a structured run's failure report quotes.
+private final class ProgressFeed {
+    private let lock = NSLock()
+    private let reader = AgentProgressReader()
+    private var stderrTail = Data()
+    /// Enough for a last line and no more: this lives as long as the run.
+    private static let tailBytes = 4096
+
+    func read(_ chunk: Data, stream: AgentProgressReader.Stream) -> String? {
+        lock.lock()
+        defer { lock.unlock() }
+        if stream == .stderr {
+            stderrTail.append(chunk)
+            if stderrTail.count > Self.tailBytes {
+                stderrTail = Data(stderrTail.suffix(Self.tailBytes))
+            }
+        }
+        return reader.read(chunk, stream: stream)
+    }
+
+    func summary() -> (structured: Bool, stderr: String, said: String?) {
+        lock.lock()
+        defer { lock.unlock() }
+        return (reader.isStructured, String(decoding: stderrTail, as: UTF8.self), reader.lastSaid)
+    }
+}
+
+/// One run's corner line on its way to the page: at most one per window,
+/// leading edge then trailing, and never the same line twice
+/// (`BirtaWriterCore.AgentProgressThrottle` holds that decision).
+///
+/// The run OWNS it, through `AgentRunner.relays`, and the window's timer holds
+/// it weakly. So dropping it is what stops the line: a run whose end has been
+/// reported has already let go, and the line queued behind the throttle dies
+/// with it rather than putting a working notice back in a finished run's
+/// corner. Nothing else keeps it alive, which is why that `weak` is the
+/// mechanism and not a precaution.
+@MainActor
+private final class ProgressRelay {
+    private var throttle = AgentProgressThrottle()
+    private let post: (String) -> Void
+
+    init(post: @escaping (String) -> Void) {
+        self.post = post
+    }
+
+    func offer(_ line: String) {
+        guard let now = throttle.offer(line) else { return }
+        send(now)
+    }
+
+    private func send(_ line: String) {
+        post(line)
+        DispatchQueue.main.asyncAfter(deadline: .now() + AgentProgressThrottle.window) { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self, let next = self.throttle.windowClosed() else { return }
+                self.send(next)
+            }
+        }
     }
 }
 

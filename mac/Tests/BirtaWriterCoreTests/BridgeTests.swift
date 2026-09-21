@@ -550,4 +550,15 @@ final class BridgeTests: XCTestCase {
         XCTAssertTrue(failed["path"] is NSNull)
         XCTAssertTrue(JSONSerialization.isValidJSONObject(failed))
     }
+
+    /// The corner line a live run posts, in the shape `shared/messages.ts`
+    /// declares (`AgentProgressMessage`): the run's own id, and the line as
+    /// the page shows it.
+    func testAgentProgressCarriesTheRunsIdAndItsLine() {
+        let object = HostMessage.agentProgress(requestId: "r1", line: "Read note.md").jsonObject()
+        XCTAssertEqual(object["type"] as? String, "agentProgress")
+        XCTAssertEqual(object["requestId"] as? String, "r1")
+        XCTAssertEqual(object["line"] as? String, "Read note.md")
+        XCTAssertTrue(JSONSerialization.isValidJSONObject(object))
+    }
 }

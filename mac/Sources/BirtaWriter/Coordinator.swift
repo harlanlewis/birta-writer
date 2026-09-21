@@ -2694,7 +2694,10 @@ final class Coordinator {
             let reference = "\(self.boundURL.lastPathComponent)#L1"
             let line = AgentRequest.compose(prompt: request, reference: reference)
             self.agent.run(requestId: id, line: line, template: command,
-                           workingDirectory: directory) { [weak self] status in
+                           workingDirectory: directory,
+                           progress: { [weak self] progressLine in
+                               self?.reportAgentProgress(requestId: id, line: progressLine)
+                           }) { [weak self] status in
                 guard let self else { return }
                 if status.status == "done" {
                     self.finishAgentRun(requestId: id, status, handoff: handoff, handoffURL: handoffURL)
@@ -2776,6 +2779,15 @@ final class Coordinator {
         }
         // Everything it wrote is in the document, so the copy is noise.
         try? FileManager.default.removeItem(at: target)
+    }
+
+    /// What the run is doing, for the corner notice, while it is doing it.
+    ///
+    /// Advisory and transient, like the notice itself: nothing is stored here
+    /// and a page that is not up is simply not told.
+    private func reportAgentProgress(requestId: String, line: String) {
+        guard state == .warm else { return }
+        host.send(.agentProgress(requestId: requestId, line: line))
     }
 
     private func reportAgent(requestId: String, _ status: AgentRunStatus) {
