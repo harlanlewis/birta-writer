@@ -2,7 +2,7 @@
 # Build "Birta Writer.app" from the SwiftPM package and the webview bundle.
 #
 #   pnpm mac:build            # production esbuild, then this
-#   bash mac/scripts/build-app.sh [--debug] [--dev] [--out DIR]
+#   bash mac/scripts/build-app.sh [--debug] [--dev] [--out DIR] [--version V]
 #
 # `--dev` builds the DEVELOPMENT flavour: "Birta Writer [DEV].app", bundle id
 # `com.birtalabs.birta-writer-dev`. It is meant to sit in /Applications beside the

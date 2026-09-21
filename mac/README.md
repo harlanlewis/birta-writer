@@ -41,9 +41,11 @@ Replacing a running copy is the part worth knowing about. `mac/scripts/install-a
 
 `bash mac/scripts/update.sh` fetches the app attached to the newest GitHub Release, checks it against the checksum published beside it, and installs it the same way. The nightly `Release` workflow builds and attaches it (`mac-app` in `.github/workflows/release.yml`), so a machine that never builds anything can stay current.
 
-A release built with the signing secrets in place is signed with Developer ID and carries a stapled notarization ticket, so macOS can say who built it and can say so offline. The script installs one of those with its download quarantine left alone, and prints Gatekeeper's own verdict on the way past.
+A release built with the signing secrets in place is signed with Developer ID and carries a stapled notarization ticket, so macOS can say who built it and can say so with no network. The script asks Gatekeeper about what it downloaded and prints the verdict on the way past.
 
-A release cut before that, or one built without the secrets, is ad-hoc signed and cannot be attributed to anyone. The script refuses it, naming what it asked and what it got, rather than clearing the quarantine on your behalf. `BIRTA_ALLOW_UNSIGNED=1` installs one anyway and does clear the quarantine, which is a reasonable trade on a machine whose owner also owns the source and is not one to ask of anybody else.
+A release cut before that, or one built without the secrets, is ad-hoc signed and cannot be attributed to anyone. The script refuses it, naming what it asked and what it got. `BIRTA_ALLOW_UNSIGNED=1` installs one anyway, which is a reasonable trade on a machine whose owner also owns the source and is not one to ask of anybody else.
+
+The unconditional quarantine strip this replaced was a no-op on this path, which is worth knowing before anybody reinstates it: `curl` sets `com.apple.provenance` and not `com.apple.quarantine`, so the flag was never on the bundle the script unpacks. It is the browser download from a release page that carries it, and notarization is what makes that one open.
 
 ## Updating itself
 

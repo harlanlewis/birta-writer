@@ -10,16 +10,16 @@
 # script from the network is the same trust question this script is about, one
 # level up.
 #
-# A release signed with Developer ID and carrying a stapled notarization
-# ticket is one macOS can attribute to whoever built it, and it installs here
-# with its quarantine left alone, because the quarantine is what makes macOS
-# ask and a build that survives the question has no reason to dodge it.
+# Before installing anything, this script asks Gatekeeper about the release it
+# just downloaded and refuses one macOS cannot attribute to anybody: a release
+# from before Developer ID signing, or one cut without the signing secrets.
+# BIRTA_ALLOW_UNSIGNED=1 installs one of those anyway, and is meant for a
+# machine whose owner also owns the source.
 #
-# A release from before that, or one cut without the signing secrets, is
-# ad-hoc signed and cannot be attributed to anyone. This script REFUSES those
-# rather than clearing the quarantine on your behalf. BIRTA_ALLOW_UNSIGNED=1
-# installs one anyway, and is meant for a machine whose owner also owns the
-# source.
+# This replaced an unconditional `xattr -dr com.apple.quarantine`, which read
+# as the script waving away a check and was in fact doing nothing: `curl` does
+# not set that flag. A browser download does, which is the route a release
+# page sends somebody down, and notarization is what makes that one open.
 set -euo pipefail
 
 REPO="${BIRTA_MAC_REPO:-harlanlewis/birta-writer}"
@@ -140,18 +140,23 @@ fi
 
 # Gatekeeper's own verdict on what was just downloaded, asked before anything
 # is moved into /Applications. This is the same assessment a first launch
-# makes, and the stapled ticket is what lets it be answered with no network.
+# makes, and a stapled ticket is what lets it be answered with no network.
 #
-# Asking here rather than clearing the quarantine is the whole change: the
-# quarantine flag is what makes macOS check at all, and a build that can
-# withstand the check gains nothing from having it removed.
+# The `xattr -dr com.apple.quarantine` this replaces was doing nothing on this
+# path, which is worth knowing before anybody puts it back. `curl` does not
+# quarantine what it writes: it sets `com.apple.provenance` and nothing else,
+# so the flag was never on the bundle this script unpacks. The line was aimed
+# at the browser download, where it IS set, and this script does not take that
+# route. Removing it changes no behaviour; the assessment below is the change.
 ASSESS="$(spctl --assess --type exec -vv "$APP" 2>&1)" && ATTRIBUTED=yes || ATTRIBUTED=no
 if [ "$ATTRIBUTED" = yes ]; then
     printf '%s\n' "$ASSESS" | sed 's/^/    /'
 elif [ "${BIRTA_ALLOW_UNSIGNED:-0}" = 1 ]; then
     echo "→ macOS cannot say who built this release, and BIRTA_ALLOW_UNSIGNED=1 says install it anyway:"
     printf '%s\n' "$ASSESS" | sed 's/^/    /'
-    # Only on this path, and only because the person running it said so.
+    # Belt and braces for a bundle that arrived carrying the flag some other
+    # way, since this path has already been told to install regardless. On a
+    # `curl` download there is nothing here to remove.
     xattr -dr com.apple.quarantine "$APP" 2>/dev/null || true
 else
     echo "macOS cannot say who built this release:" >&2

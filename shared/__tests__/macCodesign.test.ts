@@ -19,6 +19,15 @@
  * hand-kept list of binaries is a list a third binary never joins, which is
  * the same absence the defect came from. This reads the copies the script
  * makes into Contents/MacOS and requires each one to be accounted for.
+ *
+ * What it does NOT see, so that nobody reads more coverage into it than it
+ * has: it recognises `cp` into Contents/MacOS and nothing else. A binary put
+ * there by `install`, by `ditto`, or through a variable holding the whole
+ * destination path is invisible to it, and the sweep would go quiet rather
+ * than red. The floor on the target count below catches the whole shape being
+ * renamed away; it cannot catch one line changing tool. Adding a binary by
+ * another route means teaching `macOsCopyTargets` that route in the same
+ * commit.
  */
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
