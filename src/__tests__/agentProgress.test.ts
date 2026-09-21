@@ -43,7 +43,7 @@ describe("AgentProgressReader, over the shared cases", () => {
     it("the shared fixture should hold the cases both readers are held to", () => {
         // An unreadable or emptied fixture would otherwise pass this file in
         // silence, since every case below is generated from it.
-        expect(cases.length).toBeGreaterThanOrEqual(14);
+        expect(cases.length).toBeGreaterThanOrEqual(16);
     });
 
     it.each(cases.map((c) => [c.name, c] as const))("%s should show what the fixture says", (_name, c) => {
@@ -62,11 +62,24 @@ describe("AgentProgressReader, over the shared cases", () => {
         }
     });
 
-    it("a thinking block's content should never reach the line", () => {
-        // The fixture's expectation already says `Thinking`; this says why that
-        // is the property rather than a coincidence of the words.
-        const { shown } = play(byName("thinking-content-withheld"));
-        expect(shown.join(" ")).not.toContain("production");
+    it("a thinking block's content should never reach a line", () => {
+        // A token nothing else in the fixture can produce, carried by the one
+        // thinking block with text in it. Its absence is the assertion; its
+        // presence in the input is what stops that assertion being vacuous.
+        const TOKEN = "TINDALOS-HOUND-42";
+        const carriers = cases.filter((c) => c.feed.some((f) => f.chunk.includes(TOKEN)));
+        expect(carriers.length, "the shared fixture no longer carries the thinking token").toBe(1);
+        expect(play(carriers[0]!).shown.filter((s) => s !== null)).toEqual(["Thinking"]);
+
+        let checked = 0;
+        for (const c of cases) {
+            for (const line of play(c).shown) {
+                if (line === null) { continue; }
+                expect(line, `${c.name} showed thinking content`).not.toContain(TOKEN);
+                checked += 1;
+            }
+        }
+        expect(checked, "too few lines were read for this to mean anything").toBeGreaterThan(15);
     });
 
     it("a long line should be cut to something a corner can hold", () => {

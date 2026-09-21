@@ -128,12 +128,20 @@ describe("the /ai progress reader across TypeScript and Swift", () => {
         expect(compared).toBe(words.length);
     });
 
-    it("neither reader should render a thinking step's content", () => {
-        // The property the fixture cannot fully carry, because the captured
-        // thinking block arrived empty: what a thinking branch produces is the
-        // word, never the block's own text.
-        expect(read(TS_PATH)).not.toMatch(/block\.thinking/);
-        expect(read(SWIFT_PATH)).not.toMatch(/block\["thinking"\]/);
+    it("both suites should assert the thinking token is absent, over a fixture that carries it", () => {
+        // What a reader must never render is asserted BEHAVIOURALLY on both
+        // sides, over a token nothing else can produce; this holds the three
+        // halves of that together, because each is useless without the others.
+        // The arm this replaced was a negative text match on how the Swift
+        // spelled a dictionary lookup, which no refactor could fail and which
+        // said nothing about any line either reader produced.
+        const TOKEN = "TINDALOS-HOUND-42";
+        const carriers = (JSON.parse(read(FIXTURE)).cases as { feed: { chunk: string }[] }[])
+            .filter((c) => c.feed.some((f) => f.chunk.includes(TOKEN)));
+        expect(carriers.length, `${FIXTURE} no longer carries the thinking token`).toBe(1);
+        for (const suite of [TS_TEST, SWIFT_TEST]) {
+            expect(read(suite), `${suite} stopped asserting the thinking token's absence`).toContain(TOKEN);
+        }
     });
 
     it("both suites should still be reading the shared cases", () => {
@@ -143,7 +151,14 @@ describe("the /ai progress reader across TypeScript and Swift", () => {
         for (const suite of [TS_TEST, SWIFT_TEST]) {
             expect(read(suite), `${suite} no longer reads ${FIXTURE}`).toContain("agentProgressCases.json");
         }
-        const cases = JSON.parse(read(FIXTURE)).cases as unknown[];
-        expect(cases.length).toBeGreaterThanOrEqual(14);
+        const cases = JSON.parse(read(FIXTURE)).cases as { name: string }[];
+        expect(cases.length).toBeGreaterThanOrEqual(16);
+        // The two structural divergences between the readers, named rather
+        // than counted: each is a place the two arrive at one answer by
+        // different routes, so a case list without them proves nothing about
+        // either route.
+        for (const name of ["crlf-is-one-break", "event-split-across-chunks"]) {
+            expect(cases.map((c) => c.name), `${FIXTURE} lost ${name}`).toContain(name);
+        }
     });
 });

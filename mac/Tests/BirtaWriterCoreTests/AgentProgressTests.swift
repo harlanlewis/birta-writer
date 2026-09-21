@@ -57,7 +57,7 @@ final class AgentProgressTests: XCTestCase {
     func testEveryCaseInTheSharedFixtureShouldShowWhatItSays() throws {
         let cases = try loadCases()
         // An unreadable or emptied fixture would otherwise pass in silence.
-        XCTAssertGreaterThanOrEqual(cases.count, 14, "the shared fixture lost its cases")
+        XCTAssertGreaterThanOrEqual(cases.count, 16, "the shared fixture lost its cases")
         var played = 0
         for c in cases {
             let (shown, reader) = play(c)
@@ -77,11 +77,35 @@ final class AgentProgressTests: XCTestCase {
         }
     }
 
-    func testAThinkingBlocksContentShouldNeverReachTheLine() throws {
-        let c = try XCTUnwrap(try loadCases().first { $0.name == "thinking-content-withheld" })
-        let shown = play(c).shown.compactMap { $0 }.joined(separator: " ")
-        XCTAssertEqual(shown, "Thinking")
-        XCTAssertFalse(shown.contains("production"))
+    /// A token nothing else in the fixture can produce, carried by the one
+    /// thinking block that has text in it. Its absence is the assertion; its
+    /// presence in the input is what stops that assertion being vacuous.
+    private static let thinkingToken = "TINDALOS-HOUND-42"
+
+    func testAThinkingBlocksContentShouldNeverReachALine() throws {
+        let cases = try loadCases()
+        let carriers = cases.filter { c in
+            c.feed.contains { $0.chunk.contains(Self.thinkingToken) }
+        }
+        // The instrument reached the thinking content: a fixture that stopped
+        // carrying the token would make every assertion below true of nothing.
+        XCTAssertEqual(carriers.count, 1, "the shared fixture no longer carries the thinking token")
+        XCTAssertEqual(play(carriers[0]).shown.compactMap { $0 }, ["Thinking"])
+
+        // Every case, not only that one: the corner's lines and the sheet's.
+        var checked = 0
+        for c in cases {
+            for line in play(c).shown.compactMap({ $0 }) {
+                XCTAssertFalse(line.contains(Self.thinkingToken), "\(c.name) showed thinking content")
+                checked += 1
+            }
+            for line in AgentProgressReader.transcriptLines(transcript(c)) ?? [] {
+                XCTAssertFalse(line.contains(Self.thinkingToken),
+                               "\(c.name) put thinking content in a transcript")
+                checked += 1
+            }
+        }
+        XCTAssertGreaterThan(checked, 30, "too few lines were read for this to mean anything")
     }
 
     /// Not in the shared cases because the extension cannot pass it: it
@@ -181,6 +205,45 @@ final class AgentProgressTests: XCTestCase {
         XCTAssertEqual(AgentProgressReader.transcriptLines(spoke), [long])
         XCTAssertGreaterThan(long.utf16.count, AgentProgressReader.lineMax,
                              "the fixture is too short to tell a clamp from none")
+    }
+
+    /// A transcript breaks into lines where the STREAM does, at CR and LF, and
+    /// nowhere else.
+    ///
+    /// U+2028 is legal raw inside a JSON string and Swift's `isNewline` breaks
+    /// on it, which cut an event into two halves that parse as nothing: the
+    /// sheet then showed the JSON, having lost the sentence the corner was
+    /// showing all along. The corner is the control here, because it reads
+    /// bytes and never had the defect.
+    func testAnEventCarryingALineSeparatorShouldStayOneLine() {
+        // The separator either survives into the text or is stripped as a
+        // control, exactly as the extension's own reader treats it; what
+        // neither may do is end the line. `\u{000B}` and `\u{000C}` are inside
+        // the control class both readers strip, and the other two are not.
+        let cases = [("\u{2028}", "first\u{2028}second"), ("\u{0085}", "first\u{0085}second"),
+                     ("\u{000B}", "firstsecond"), ("\u{000C}", "firstsecond")]
+        for (separator, expected) in cases {
+            let spoke = "{\"type\":\"assistant\",\"session_id\":\"s\",\"message\":{\"content\":"
+                + "[{\"type\":\"text\",\"text\":\"first\(separator)second\"}]}}\n"
+            let code = String(format: "%04X", separator.unicodeScalars.first!.value)
+            XCTAssertEqual(AgentProgressReader.transcriptLines(spoke), [expected],
+                           "U+\(code) split the event")
+            // The corner reads bytes and never had the defect, so it is the
+            // control: an event it recognizes is one the sheet must recognize.
+            XCTAssertNotNil(AgentProgressReader().read(spoke, stream: .stdout), "U+\(code)")
+        }
+    }
+
+    /// And it still breaks where the stream does, so the sheet is not one long
+    /// line for a harness that ends its lines with CRLF.
+    func testATranscriptShouldStillBreakOnCarriageReturnsAndNewlines() {
+        let event = "{\"type\":\"assistant\",\"session_id\":\"s\",\"message\":{\"content\":"
+            + "[{\"type\":\"text\",\"text\":\"one\"}]}}"
+        let second = event.replacingOccurrences(of: "\"one\"", with: "\"two\"")
+        XCTAssertEqual(AgentProgressReader.transcriptLines("\(event)\r\n\(second)\r\n"),
+                       ["one", "two"])
+        XCTAssertEqual(AgentProgressReader.transcriptLines("\(event)\r\(second)\n"),
+                       ["one", "two"])
     }
 
     /// Nil, not an empty list and not a reconstruction: a caller holding a

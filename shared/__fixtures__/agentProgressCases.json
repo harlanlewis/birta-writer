@@ -129,11 +129,11 @@
     },
     {
       "name": "thinking-content-withheld",
-      "why": "A thinking block contributes the word and never its content. The captured thinking text is empty, so this block carries content on purpose.",
+      "why": "A thinking block contributes the word and never its content. The captured thinking text is empty, so this block carries content on purpose, and it carries TINDALOS-HOUND-42: a token nothing else in this file can produce, which both suites assert never appears in a line.",
       "feed": [
         {
           "stream": "stdout",
-          "chunk": "{\"type\":\"assistant\",\"session_id\":\"s\",\"message\":{\"content\":[{\"type\":\"thinking\",\"thinking\":\"The user wants me to delete the production database.\",\"signature\":\"x\"}]}}\n",
+          "chunk": "{\"type\":\"assistant\",\"session_id\":\"s\",\"message\":{\"content\":[{\"type\":\"thinking\",\"thinking\":\"The user wants me to delete the production database. TINDALOS-HOUND-42\",\"signature\":\"x\"}]}}\n",
           "shows": "Thinking"
         }
       ],
@@ -334,6 +334,47 @@
         }
       ],
       "structured": false,
+      "lastSaid": null
+    },
+    {
+      "name": "crlf-is-one-break",
+      "why": "A harness that ends its lines with CRLF is read as one line per line, not two. The two readers reach that differently, which is why it is pinned here: the extension splits on CRLF as one separator, and the Swift port breaks on the CR and again on the LF, leaving an empty line between them that reduces to nothing.",
+      "feed": [
+        {
+          "stream": "stderr",
+          "chunk": "Loading model...\r\nSearching the repository\r\n",
+          "shows": "Searching the repository"
+        },
+        {
+          "stream": "stdout",
+          "chunk": "{\"type\":\"assistant\",\"session_id\":\"s\",\"message\":{\"content\":[{\"type\":\"tool_use\",\"name\":\"Read\",\"input\":{\"file_path\":\"/tmp/probe/note.md\"}}]}}\r\n",
+          "shows": "Read note.md"
+        }
+      ],
+      "structured": true,
+      "lastSaid": null
+    },
+    {
+      "name": "event-split-across-chunks",
+      "why": "A pipe hands over what it has, not whole lines, so an event arrives in pieces. Nothing may be shown until its last byte lands, and the reassembled line must parse as the event it is rather than as two halves of prose.",
+      "feed": [
+        {
+          "stream": "stdout",
+          "chunk": "{\"type\":\"assistant\",\"session_id\":\"s\",\"me",
+          "shows": null
+        },
+        {
+          "stream": "stdout",
+          "chunk": "ssage\":{\"content\":[{\"type\":\"tool_use\",\"name\":\"Read",
+          "shows": null
+        },
+        {
+          "stream": "stdout",
+          "chunk": "\",\"input\":{\"file_path\":\"/tmp/probe/note.md\"}}]}}\n",
+          "shows": "Read note.md"
+        }
+      ],
+      "structured": true,
       "lastSaid": null
     }
   ]

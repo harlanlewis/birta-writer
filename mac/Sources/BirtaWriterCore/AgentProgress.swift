@@ -33,7 +33,9 @@ import Foundation
 ///   extension counts UTF-16 units; the two agree on ASCII.
 /// - `clamp` cuts at a character boundary, so it never splits a surrogate pair
 ///   the way a UTF-16 `slice` can; lengths are still counted in UTF-16, as the
-///   extension counts them.
+///   extension counts them. Its whitespace collapse is ICU's `\s` against the
+///   extension's JavaScript `\s`, which differ on two characters nobody's
+///   output has yet carried: ICU counts U+0085, JavaScript counts U+FEFF.
 public final class AgentProgressReader {
     /// A display line is a glance, not a transcript.
     public static let lineMax = 72
@@ -87,6 +89,23 @@ public final class AgentProgressReader {
         let remainder = Data(buffer[start..<buffer.endIndex])
         pending[stream] = remainder.count > Self.maxPending ? Data() : remainder
         return latest
+    }
+
+    /// Where a harness's output breaks into lines: at CR and at LF, and
+    /// nowhere else.
+    ///
+    /// The same rule `read` applies to bytes, so the corner and the Test sheet
+    /// cut the stream in the same places. Swift's own `isNewline` is the wrong
+    /// rule here and fails on real output: it also breaks on U+2028, U+0085,
+    /// U+000B and U+000C, and U+2028 is legal RAW inside a JSON string, so an
+    /// event carrying one arrives as two halves that parse as nothing and the
+    /// sheet shows the JSON a reader was never meant to see. Splitting by
+    /// `Character` is wrong in the other direction, because CRLF is one
+    /// Character and matches neither of the two this breaks on.
+    static func rawLines(_ text: String) -> [String] {
+        text.unicodeScalars
+            .split(omittingEmptySubsequences: false, whereSeparator: { $0 == "\n" || $0 == "\r" })
+            .map { String(String.UnicodeScalarView($0)) }
     }
 
     /// One line of a harness's output, told apart ONCE.
@@ -151,8 +170,8 @@ public final class AgentProgressReader {
     public static func transcriptLines(_ transcript: String) -> [String]? {
         let reader = AgentProgressReader()
         var lines: [String] = []
-        for raw in transcript.split(whereSeparator: \.isNewline) {
-            guard let reduced = reader.classify(String(raw)) else { continue }
+        for raw in Self.rawLines(transcript) {
+            guard let reduced = reader.classify(raw) else { continue }
             let shown: String?
             switch reduced {
             case let .event(line, said): shown = said ?? line

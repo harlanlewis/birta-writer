@@ -152,7 +152,11 @@ final class AgentRunner {
     /// backstop rather than a policy: what it catches is a command that never
     /// returns at all, which would otherwise leave the button saying Testing
     /// for the rest of the session.
-    static let probeTimeout: TimeInterval = 90
+    ///
+    /// A property rather than a constant so a check can drive the timeout
+    /// itself; ninety seconds is what the app runs with, and nothing else sets
+    /// it.
+    var probeTimeout: TimeInterval = 90
 
     func probe(template: String, report: @escaping (AgentProbeResult) -> Void) {
         let directory = URL(fileURLWithPath: NSTemporaryDirectory())
@@ -176,7 +180,14 @@ final class AgentRunner {
             try? FileManager.default.removeItem(at: directory)
             report(result)
         }
-        let child = launch(command: command, workingDirectory: directory, onChunk: nil) { outcome in
+        // What the child has printed so far, for the timeout below: `launch`
+        // keeps its own copy for the outcome, and a run that never reaches an
+        // outcome has no way to ask for it. A tool that says something useful
+        // and then hangs is the case this is for, and its sentence is exactly
+        // what the person who pressed Test needs.
+        let sofar = Collected()
+        let child = launch(command: command, workingDirectory: directory,
+                           onChunk: { data, _ in sofar.append(data) }) { outcome in
             switch outcome {
             case let .exited(status, output):
                 once(AgentProbeResult(
@@ -190,15 +201,23 @@ final class AgentRunner {
             }
         }
         guard let child else { return }
-        DispatchQueue.main.asyncAfter(deadline: .now() + Self.probeTimeout) {
+        let seconds = Int(probeTimeout)
+        DispatchQueue.main.asyncAfter(deadline: .now() + probeTimeout) {
             guard !reported, child.isRunning else { return }
-            // SIGTERM, so the tool can clean up after itself. Its own
-            // termination handler is what reports, through `once`.
+            // SIGTERM, so the tool can clean up after itself. The report is
+            // made here rather than left to the termination handler, because
+            // that handler reports the child's OWN account of how it ended and
+            // this is ours: it was still running and we stopped waiting.
+            //
+            // The transcript is what it printed before it stopped answering,
+            // not an empty string. Taking it here rather than racing the
+            // termination handler for it is the whole reason `sofar` exists:
+            // whichever report lands first, the bytes are in both.
             child.terminate()
             once(AgentProbeResult(
-                succeeded: false, transcript: "",
+                succeeded: false, transcript: sofar.snapshot(),
                 failure: "The command did not answer within "
-                    + "\(Int(Self.probeTimeout)) seconds, so Birta Writer stopped waiting."))
+                    + "\(seconds) seconds, so Birta Writer stopped waiting."))
         }
     }
 
@@ -278,8 +297,15 @@ final class AgentRunner {
             // Whatever arrived between the last readability callback and exit.
             var tail = Data()
             for (pipe, stream) in streams {
-                let rest = (try? pipe.fileHandleForReading.readToEnd()) ?? Data()
+                // Cleared BEFORE the read, not after: a callback that fires
+                // while this is reading appends its bytes behind the ones this
+                // is about to add, which reorders the transcript. Clearing
+                // first does not cancel a callback already in flight, so the
+                // window is narrowed rather than closed; what would close it
+                // is draining on the handlers' own queue, which is a larger
+                // change than the reordering is worth.
                 pipe.fileHandleForReading.readabilityHandler = nil
+                let rest = (try? pipe.fileHandleForReading.readToEnd()) ?? Data()
                 if !rest.isEmpty { onChunk?(rest, stream) }
                 tail.append(rest)
             }
@@ -321,9 +347,17 @@ final class AgentRunner {
     /// A structured run prints its events on stdout, so the transcript's last
     /// line is JSON rather than a reason. There the reason is stderr's last
     /// line, which is where a run that failed before its first event has its
-    /// cause, and otherwise what the harness last SAID; the extension's
-    /// `askAgent` chooses between the same two. Anything else keeps the
-    /// transcript's last line.
+    /// cause, and otherwise what the harness last SAID. Anything else keeps
+    /// the transcript's last line.
+    ///
+    /// The extension's `askAgent` chooses between the same two SOURCES and
+    /// quotes a different amount of the first: the whole trimmed tail it kept
+    /// of stderr, where this takes that tail's last line. Deliberate, and the
+    /// surfaces are why. The extension's sentence goes into a notification
+    /// with a Show Output button beside it, and this one is the page's own
+    /// report with nothing behind it, so a multi-line quote here is a wall of
+    /// text in a corner rather than a paragraph in a panel. The whole
+    /// transcript is what the Test button is for.
     private static func failureMessage(status: Int32, output: String, harness: String?,
                                        feed: ProgressFeed) -> String {
         let lastLine: (String) -> String = { text in
@@ -459,6 +493,26 @@ private final class Collected {
         data.append(tail)
         let all = data
         lock.unlock()
-        return String(data: all, encoding: .utf8) ?? ""
+        return Collected.text(all)
+    }
+
+    /// What has arrived so far, without ending the collection. The probe's
+    /// timeout reads this: the child is still running and its bytes are the
+    /// only thing that says what it was doing when it stopped answering.
+    func snapshot() -> String {
+        lock.lock()
+        let all = data
+        lock.unlock()
+        return Collected.text(all)
+    }
+
+    /// Decoded REPAIRING invalid bytes rather than refusing them. A harness is
+    /// not obliged to print UTF-8: one latin-1 filename in an error message is
+    /// enough for a strict decode to answer nil, and the caller then has an
+    /// empty transcript where the tool's own error was. That is the failure the
+    /// Test button exists to show, and the non-structured half of
+    /// `failureMessage` quotes the same bytes.
+    private static func text(_ data: Data) -> String {
+        String(decoding: data, as: UTF8.self)
     }
 }
