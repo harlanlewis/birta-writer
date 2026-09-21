@@ -179,20 +179,26 @@ public final class CoalescingWriter {
     /// cannot match it reads the bytes instead and reaches the same answer.
     private var landed: (url: URL, content: String, stamp: DiskStamp?)?
 
-    /// The stamp this writer produced for `content` at `url`, or nil when the
-    /// last write it landed was something else.
+    /// The bytes this writer last put at `url` and the stamp they landed
+    /// under, or nil when its last write was to another file or did not land.
     ///
-    /// The size is checked against the bytes asked for because the stat is
-    /// taken just after the rename rather than inside it: a file replaced
-    /// again in that window would otherwise hand back a stamp describing
-    /// somebody else's write as ours.
-    public func landedStamp(for url: URL, content: String) -> DiskStamp? {
+    /// A write that THREW leaves this at the previous answer, which is the
+    /// whole reason a caller asks the writer rather than assuming its own
+    /// submission reached the disk: believing a failed write leaves the app
+    /// comparing the buffer against bytes no file holds, and the file's real
+    /// contents then read as somebody else's change.
+    ///
+    /// The size is checked against the bytes because the stat is taken just
+    /// after the rename rather than inside it: a file replaced again in that
+    /// window would otherwise hand back a stamp describing somebody else's
+    /// write as ours.
+    public func lastLanded(for url: URL) -> (content: String, stamp: DiskStamp)? {
         lock.lock()
         defer { lock.unlock() }
-        guard let landed, landed.url == url, landed.content == content,
-              let stamp = landed.stamp, stamp.size == content.utf8.count
+        guard let landed, landed.url == url, let stamp = landed.stamp,
+              stamp.size == landed.content.utf8.count
         else { return nil }
-        return stamp
+        return (landed.content, stamp)
     }
 
     public init(onError: @escaping (Error) -> Void) {

@@ -26,9 +26,13 @@ enum DiskDriftPrompt {
         alert.alertStyle = .warning
         alert.addButton(withTitle: DiskDrift.reloadTitle)
         let keep = alert.addButton(withTitle: DiskDrift.keepTitle)
-        // AppKit gives the second button Escape, and Escape here would write
-        // the buffer over the other tool's file from a keystroke somebody used
-        // to dismiss what they took for a notification.
+        // Escape must not write the buffer over the other tool's file, which
+        // is what it would mean for somebody dismissing what they took for a
+        // notification. AppKit hands a second button Escape in some alert
+        // configurations (the three-button quit sheet is one) and, with two
+        // buttons, in none: removing this line leaves every check here
+        // passing, so it is a guard against that default rather than
+        // something a test can hold.
         keep.keyEquivalent = ""
 
         alert.beginSheetModal(for: window) { response in

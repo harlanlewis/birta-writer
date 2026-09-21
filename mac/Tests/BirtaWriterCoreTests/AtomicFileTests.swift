@@ -177,6 +177,43 @@ final class AtomicFileTests: XCTestCase {
         XCTAssertTrue(errors.isEmpty)
     }
 
+    /// What the writer landed, which is the only honest answer to "what does
+    /// the file hold now" for a caller whose write happens after `submit`
+    /// returns (`Coordinator.takeWriterBaseline`).
+    func testCoalescingWriterReportsTheBytesAndStampItLanded() throws {
+        let target = dir.appendingPathComponent("landed.md")
+        let w = CoalescingWriter(onError: { _ in })
+        XCTAssertNil(w.lastLanded(for: target), "nothing has been written yet")
+        w.submit("landed text", to: target)
+        w.drain()
+        let landed = try XCTUnwrap(w.lastLanded(for: target))
+        XCTAssertEqual(landed.content, "landed text")
+        XCTAssertEqual(landed.stamp, DiskStamp.of(target))
+        XCTAssertNil(w.lastLanded(for: dir.appendingPathComponent("other.md")),
+                     "the answer is about one file")
+    }
+
+    /// A write that threw leaves the previous answer standing. Reporting the
+    /// submission instead would have a caller comparing against bytes no file
+    /// holds, and the file's real contents would then read as somebody else's
+    /// change.
+    func testCoalescingWriterDoesNotReportAWriteThatFailed() throws {
+        let target = dir.appendingPathComponent("landed.md")
+        var errors: [Error] = []
+        let w = CoalescingWriter(onError: { errors.append($0) })
+        w.submit("first", to: target)
+        w.drain()
+        let before = try XCTUnwrap(w.lastLanded(for: target))
+        // Nothing can be written over a directory, so this submission throws.
+        let blocked = dir.appendingPathComponent("isdir2")
+        try FileManager.default.createDirectory(at: blocked, withIntermediateDirectories: true)
+        w.submit("second", to: blocked)
+        w.drain()
+        XCTAssertEqual(errors.count, 1)
+        XCTAssertEqual(w.lastLanded(for: target)?.content, before.content)
+        XCTAssertNil(w.lastLanded(for: blocked), "a write that threw landed nothing")
+    }
+
     func testCoalescingWriterReportsErrors() {
         var errors: [Error] = []
         let w = CoalescingWriter(onError: { errors.append($0) })

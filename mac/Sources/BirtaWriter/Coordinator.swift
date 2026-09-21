@@ -616,6 +616,10 @@ final class Coordinator {
     /// based on, and a path that moves either side without saying so makes the
     /// next comparison a claim about a file nobody read.
     private var baseline = DiskBaseline(stamp: nil, content: "")
+    /// Bytes handed to the writer whose landing has not been accounted for
+    /// yet. Nil once `takeWriterBaseline` has seen them arrive, or once
+    /// anything fresher has rebased the buffer.
+    private var pendingWrite: String?
     /// The stamp taken immediately BEFORE the last read of the bound file, so
     /// a change landing during the read leaves a stamp older than the bytes
     /// rather than newer.
@@ -2575,10 +2579,37 @@ final class Coordinator {
 
     /// Record what the buffer is now based on, and forget any conflict that
     /// record settles. The one writer of `baseline`.
+    ///
+    /// A submission still in flight is forgotten too: this is fresher than
+    /// whatever that write was based on, and adopting the older landing
+    /// afterwards would undo it.
     private func rebase(on settled: DiskBaseline) {
         baseline = settled
+        pendingWrite = nil
         driftUnresolved = false
         driftShown = nil
+    }
+
+    /// Take what the writer actually landed as what the buffer is based on.
+    ///
+    /// The app's own write is the commonest reason the file stops matching the
+    /// stamp, and the writer is the only thing that knows both what went on
+    /// disk and what the file looked like afterwards: `submit` returns before
+    /// the bytes land, so the submitting side can neither stat the result nor
+    /// tell a write that landed from one that threw. Recording the submission
+    /// instead would leave a failed write looking like a file that some other
+    /// program had changed, and the buffer would be replaced by the contents
+    /// of the file the write never reached.
+    ///
+    /// Only ever the bytes THIS window has just submitted and not yet
+    /// accounted for (`pendingWrite`), so a landing from before a read cannot
+    /// be taken as newer than the read. Call with the queue drained, or this
+    /// reads the write before last.
+    private func takeWriterBaseline() {
+        guard let pending = pendingWrite else { return }
+        pendingWrite = nil
+        guard let landed = writer.lastLanded(for: boundURL), landed.content == pending else { return }
+        rebase(on: DiskBaseline(stamp: landed.stamp, content: landed.content))
     }
 
     /// Whether the bound file is still the one the buffer was based on, and
@@ -2610,10 +2641,7 @@ final class Coordinator {
         // app has already decided to put there. Free when the queue is quiet,
         // which it is except in the half-second after a keystroke.
         writer.drain()
-        if baseline.stamp == nil,
-           let landed = writer.landedStamp(for: boundURL, content: baseline.content) {
-            baseline.stamp = landed
-        }
+        takeWriterBaseline()
         let current = DiskStamp.of(boundURL)
         switch DiskDrift.judge(baseline: baseline, current: current,
                                read: { [boundURL] in NoteRead.read(at: boundURL) },
@@ -2780,11 +2808,13 @@ final class Coordinator {
         // (MAR-469).
         guard reconcileWithDisk(asking: true) else { return }
         writer.submit(latest, to: boundURL)
-        // What the app is putting there, recorded before it lands: the stamp
-        // is the writer's to report, since the write happens after this
-        // returns.
-        rebase(on: DiskBaseline(stamp: nil, content: latest))
-        if waiting { writer.drain() }
+        // Not the baseline yet: what the buffer is based on changes when the
+        // bytes LAND, which the writer reports (`takeWriterBaseline`).
+        pendingWrite = latest
+        if waiting {
+            writer.drain()
+            takeWriterBaseline()
+        }
         everSeenOnDisk = true
         // The one place the buffer and the file come back into step, so the
         // one place the title stops saying Edited. Guarded by `hasLoaded`
@@ -4576,20 +4606,6 @@ final class Coordinator {
     func runEditorCommandInPlace(_ command: String, arg: String? = nil) {
         guard state == .warm else { return }
         host.send(.editorCommand(command, arg: arg))
-    }
-
-    /// Put `content` in the editor and the file, keeping the mounted editor
-    /// (an `externalUpdate` is a cursor-preserving diff, and it re-baselines
-    /// without echoing an `update`, so the write here is the only one).
-    private func replaceBuffer(with content: String) {
-        latest = content
-        writer.submit(content, to: boundURL)
-        // Handed to the writer, so the buffer is no longer ahead of where the
-        // file is going. Same claim `writeLatest` makes at the same moment.
-        isEdited = false
-        if state == .warm {
-            pushDocument(content, syncVersion: guardState.bumpVersion())
-        }
     }
 
     static func suggestedFileName(for content: String) -> String {
