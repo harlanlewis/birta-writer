@@ -27,6 +27,7 @@ import {
     harnessName,
     normalizeAgentMode,
     shellQuote,
+    skillPrefixFor,
     CLAUDE_BACKGROUND_TEMPLATE,
     CODEX_BACKGROUND_TEMPLATE,
     CHAT_OPEN_COMMAND,
@@ -113,6 +114,45 @@ describe("composeAgentRequest", () => {
         expect(composeAgentRequest("  rewrite\n\nthis   section ", "a.md#L1-L3")).toBe(
             "In a.md#L1-L3: rewrite this section",
         );
+    });
+});
+
+describe("composeAgentRequest with a skill (MAR-483)", () => {
+    it("a slash-form skill should prefix the line the way Claude Code invokes one", () => {
+        expect(composeAgentRequest("tighten this", "a.md#L4", { name: "house-style", form: "slash" })).toBe(
+            "/house-style In a.md#L4: tighten this",
+        );
+    });
+
+    it("a prose-form skill should name the skill in words before the line", () => {
+        expect(composeAgentRequest("tighten this", "a.md#L4", { name: "house-style", form: "prose" })).toBe(
+            "Use the house-style skill. In a.md#L4: tighten this",
+        );
+    });
+
+    it("no skill should compose exactly as before", () => {
+        expect(composeAgentRequest("x", "a.md#L1", undefined)).toBe("In a.md#L1: x");
+    });
+});
+
+describe("skillPrefixFor", () => {
+    it("Claude Code, by name or by path, should get the slash form", () => {
+        expect(skillPrefixFor("claude -p {prompt}", "house-style")).toEqual({ name: "house-style", form: "slash" });
+        expect(skillPrefixFor("/opt/bin/claude -p {prompt}", "house-style")).toEqual({ name: "house-style", form: "slash" });
+    });
+
+    it("a description-matching harness should get prose", () => {
+        expect(skillPrefixFor("codex exec {prompt}", "house-style")).toEqual({ name: "house-style", form: "prose" });
+    });
+
+    it("the Chat view must never see a leading slash, which it would read as its own command", () => {
+        expect(skillPrefixFor("chat", "house-style")).toEqual({ name: "house-style", form: "prose" });
+        expect(skillPrefixFor("clipboard", "house-style")).toEqual({ name: "house-style", form: "prose" });
+    });
+
+    it("no skill, or a blank one, should be no prefix", () => {
+        expect(skillPrefixFor("claude -p {prompt}", undefined)).toBeUndefined();
+        expect(skillPrefixFor("claude -p {prompt}", "  ")).toBeUndefined();
     });
 });
 

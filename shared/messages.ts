@@ -624,6 +624,14 @@ export type ToExtensionMessage =
         model?: string;
         effort?: string;
         attachments?: readonly string[];
+        /**
+         * An agent skill to run the request under, by name (MAR-483). A
+         * prefix on the composed line rather than a flag: the host spells it
+         * the way its harness reads a skill (`/name` for Claude Code, prose
+         * for the rest), and a name the harness does not know falls through
+         * to the plain request.
+         */
+        skill?: string;
     }
     // A pasted, dropped or picked file on its way to becoming a path the
     // agent can read. Bytes go to a session temp directory, never into the
@@ -712,6 +720,19 @@ export type ToExtensionMessage =
  * models", or that hides free entry because the list looks complete, is a
  * bug. The name is deliberately the weaker word.
  */
+/**
+ * One agent skill as the composer offers it: a `SKILL.md`'s `name` and
+ * `description` (the Agent Skills spec's two required fields), and where the
+ * scan found it. `description` is the file's own text and is drawn as text,
+ * never as markup.
+ */
+export interface AgentSkill {
+    name: string;
+    description: string;
+    /** `project`: under the workspace; `user`: under the home directory. */
+    scope: "project" | "user";
+}
+
 export interface HarnessCapabilities {
     /** The binary probed (`claude`), the template's first word. */
     harness: string;
@@ -930,6 +951,12 @@ export type ToWebviewMessage =
     // nothing, and the panel then offers no model or effort control rather
     // than guessing at either.
     | { type: "agentCapabilities"; capabilities?: HarnessCapabilities }
+    // The agent skills the host found on disk (src/agentBridge/agentSkills.ts),
+    // for the composer's skill picker. Sent with the capabilities, by a host
+    // declaring `agentSkills`. The list is what the scan reached and never
+    // "the skills": a plugin's or a synced skill is outside it, so free text
+    // stays reachable beside it.
+    | { type: "agentSkills"; skills: readonly AgentSkill[] }
     // Reply to agentAttachment: the path the bytes were written to, or null
     // when the write failed. `id` correlates with the request.
     | { type: "agentAttachmentSaved"; id: string; path: string | null }

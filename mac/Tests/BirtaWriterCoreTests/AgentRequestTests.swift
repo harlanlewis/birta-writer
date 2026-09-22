@@ -21,6 +21,29 @@ final class AgentRequestTests: XCTestCase {
             "In a.md#L1-L3: rewrite this section")
     }
 
+    func testASkillShouldPrefixTheLineAsASlashCommandForClaudeAndAsProseElsewhere() {
+        XCTAssertEqual(
+            AgentRequest.compose(prompt: "tighten this", reference: "a.md#L4",
+                                 skill: .init(name: "house-style", form: .slash)),
+            "/house-style In a.md#L4: tighten this")
+        XCTAssertEqual(
+            AgentRequest.compose(prompt: "tighten this", reference: "a.md#L4",
+                                 skill: .init(name: "house-style", form: .prose)),
+            "Use the house-style skill. In a.md#L4: tighten this")
+        XCTAssertEqual(AgentRequest.compose(prompt: "x", reference: "a.md#L1", skill: nil), "In a.md#L1: x")
+    }
+
+    func testTheSkillFormShouldFollowTheHarnessTheRouteRuns() {
+        XCTAssertEqual(AgentRequest.skillPrefix(route: "claude -p {prompt}", skill: "house-style"),
+                       .init(name: "house-style", form: .slash))
+        XCTAssertEqual(AgentRequest.skillPrefix(route: "/opt/bin/claude -p {prompt}", skill: "house-style"),
+                       .init(name: "house-style", form: .slash))
+        XCTAssertEqual(AgentRequest.skillPrefix(route: "codex exec {prompt}", skill: "house-style"),
+                       .init(name: "house-style", form: .prose))
+        XCTAssertNil(AgentRequest.skillPrefix(route: "claude -p {prompt}", skill: "  "))
+        XCTAssertNil(AgentRequest.skillPrefix(route: "claude -p {prompt}", skill: nil))
+    }
+
     func testShellQuoteShouldSingleQuoteAndEscapeEmbeddedSingleQuotes() {
         XCTAssertEqual(AgentRequest.shellQuote("it's $HOME `x`"), "'it'\\''s $HOME `x`'")
     }

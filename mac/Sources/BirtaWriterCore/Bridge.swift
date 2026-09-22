@@ -57,7 +57,7 @@ public enum WebviewMessage: Equatable {
     case openHostPreferences
     /// `/ai`: the request typed after the pill, with the id the page will
     /// match every `agentRun` report against.
-    case askAgent(prompt: String?, requestId: String?, model: String?, effort: String?)
+    case askAgent(prompt: String?, requestId: String?, model: String?, effort: String?, skill: String?)
     /// Cancel a run, from a click on its gutter marker. The wire name is
     /// `agentCancel`, which is what `notifyAgentCancel` posts; a case
     /// spelled anything else is a case nothing ever reaches.
@@ -233,8 +233,11 @@ public enum WebviewMessage: Equatable {
         case "openUrl": return str("url").map { .openUrl($0) } ?? .other(type: type)
         case "openHostPreferences": return .openHostPreferences
         case "askAgent", "askAgentAdvanced":
+            // `skill` is carried although this host declares no `agentSkills`
+            // (it scans no folder), so a host that grows the scan changes
+            // nothing here; the page never sends one until then.
             return .askAgent(prompt: str("prompt"), requestId: str("requestId"),
-                             model: str("model"), effort: str("effort"))
+                             model: str("model"), effort: str("effort"), skill: str("skill"))
         case "agentCancel":
             return str("requestId").map { .agentCancel(requestId: $0) } ?? .other(type: type)
         case "agentMergeResult":

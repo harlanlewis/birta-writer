@@ -114,6 +114,7 @@ export function notifyAskAgentAdvanced(request: {
     requestId: string;
     model?: string;
     effort?: string;
+    skill?: string;
     attachments: readonly string[];
 }): void {
     vscode.postMessage({ type: "askAgentAdvanced", ...request });

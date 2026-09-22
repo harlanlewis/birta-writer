@@ -1923,8 +1923,8 @@ final class Coordinator {
             if let u = URL(string: url) { NSWorkspace.shared.open(u) }
         case .openHostPreferences:
             openPreferences?()
-        case let .askAgent(prompt, requestId, model, effort):
-            runAgent(prompt: prompt, requestId: requestId, model: model, effort: effort)
+        case let .askAgent(prompt, requestId, model, effort, skill):
+            runAgent(prompt: prompt, requestId: requestId, model: model, effort: effort, skill: skill)
         case let .agentMergeResult(requestId, outcome):
             settleAgentRescue(requestId: requestId, outcome: outcome)
         case let .agentCancel(requestId):
@@ -3019,7 +3019,7 @@ final class Coordinator {
     /// place a write happens regardless of the autosave setting for a reason
     /// that is not about safety: an agent reading a stale file would rewrite
     /// the wrong text.
-    private func runAgent(prompt: String?, requestId: String?, model: String?, effort: String?) {
+    private func runAgent(prompt: String?, requestId: String?, model: String?, effort: String?, skill: String? = nil) {
         let id = requestId ?? UUID().uuidString
         let request = (prompt ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         guard !request.isEmpty else {
@@ -3056,7 +3056,8 @@ final class Coordinator {
             let handoffURL = self.boundURL
             let directory = self.boundURL.deletingLastPathComponent()
             let reference = "\(self.boundURL.lastPathComponent)#L1"
-            let line = AgentRequest.compose(prompt: request, reference: reference)
+            let line = AgentRequest.compose(prompt: request, reference: reference,
+                                            skill: AgentRequest.skillPrefix(route: command, skill: skill))
             self.agent.run(requestId: id, line: line, template: command,
                            workingDirectory: directory,
                            progress: { [weak self] progressLine in
