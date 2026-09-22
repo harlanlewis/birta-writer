@@ -67,7 +67,7 @@ import {
 import { acquireHarnessLock } from "./harnessLock.mjs";
 
 // A timing capture is worthless on a contended machine (e2e/harnessLock.mjs).
-acquireHarnessLock("perf:typing");
+acquireHarnessLock("perf:typing", { kind: "capture" });
 
 // Plain prose, no characters that trigger input rules ([, ^, #, *, `, $...),
 // so every keystroke measures the same "insert one character" transaction.

@@ -26,7 +26,7 @@ import { tmpdir } from "node:os";
 import { acquireHarnessLock } from "./harnessLock.mjs";
 
 // A timing capture is worthless on a contended machine (e2e/harnessLock.mjs).
-acquireHarnessLock("perf:ab");
+acquireHarnessLock("perf:ab", { kind: "capture" });
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const git = (...args) => execFileSync("git", args, { cwd: repoRoot, encoding: "utf8" }).trim();

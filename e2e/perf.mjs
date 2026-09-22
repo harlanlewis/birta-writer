@@ -29,7 +29,7 @@ import {
 import { acquireHarnessLock } from "./harnessLock.mjs";
 
 // A timing capture is worthless on a contended machine (e2e/harnessLock.mjs).
-acquireHarnessLock("perf");
+acquireHarnessLock("perf", { kind: "capture" });
 
 // End marks of the POST_PAINT_SPANS. `editor-painted` is not the end of a
 // launch: both of these are scheduled from the mount path onto idle and land in
