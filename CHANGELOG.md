@@ -4,19 +4,22 @@
 
 ## [Unreleased]
 
+### Added
+
+- The `/ai-advanced` composer offers your agent skills beside the model and effort pickers: the `SKILL.md` folders in this workspace (`.claude/skills`, `.agents/skills`) and on your machine (the same two under your home folder, plus the one your configured harness keeps for itself), grouped by where each came from, with a free-text row for a skill the scan cannot see. A picked skill goes at the front of the request in the form your harness reads (`/name` for Claude Code, in words for the rest and for the Chat view), never as a flag, and a name the harness does not know falls through to the plain request. Nothing is scanned until the composer opens.
+
+### Changed
+
+- The Backlinks and Graph tabs are off by default in VS Code, behind a new `birta.folderGraph` setting. With it off nothing in the folder is read and no file is watched for them; turn it on to get both tabs back exactly as they shipped, in the open editor too. The folder graph is a Birta Writer for Mac feature first, and in VS Code an extension built for it does the job better than a Markdown editor should try to.
+
 ---
 
 ## [2026.922.0] - 2026, September 22
 
 ### Added
 
-- The `/ai-advanced` composer offers your agent skills beside the model and effort pickers: the `SKILL.md` folders in this workspace (`.claude/skills`, `.agents/skills`) and on your machine (the same two under your home folder, plus the one your configured harness keeps for itself), grouped by where each came from, with a free-text row for a skill the scan cannot see. A picked skill goes at the front of the request in the form your harness reads (`/name` for Claude Code, in words for the rest and for the Chat view), never as a flag, and a name the harness does not know falls through to the plain request. Nothing is scanned until the composer opens.
-- A Backlinks tab in the review sidebar lists every note in the document's folder that links to it: by a Markdown link, a `[[wikilink]]`, or an Open Knowledge Format `sources` entry. A row opens the linking note at the line the link is on. Links are matched the way clicking them resolves them, so a note appears here only when its link would open this one. The tab shows only when something links to the note, and nothing in the folder is read until the sidebar has been opened. Off by default in VS Code: see `birta.folderGraph` under Changed.
-- A Graph tab draws the note with the notes it links to and the notes that link to it, on a ring around it, or two steps out. A dot's size says how connected a note is, its colour says its Open Knowledge Format `type`, an outlined dot is a link to no note in the folder, and clicking a dot opens its note. Whole folder opens the entire folder's graph over the page, with its most connected notes, the notes nothing links to, and the links that name no note listed beside it, each entry opening its note, and filters by name, path, tag, `type` and `status`. Off by default in VS Code, with the Backlinks tab.
-
-### Changed
-
-- The Backlinks and Graph tabs are off by default in VS Code, behind a new `birta.folderGraph` setting. With it off nothing in the folder is read and no file is watched for them; turn it on to get both tabs back exactly as above. The folder graph is a Birta Writer for Mac feature first, and in VS Code an extension built for it does the job better than a Markdown editor should try to.
+- A Backlinks tab in the review sidebar lists every note in the document's folder that links to it: by a Markdown link, a `[[wikilink]]`, or an Open Knowledge Format `sources` entry. A row opens the linking note at the line the link is on. Links are matched the way clicking them resolves them, so a note appears here only when its link would open this one. The tab shows only when something links to the note, and nothing in the folder is read until the sidebar has been opened.
+- A Graph tab draws the note with the notes it links to and the notes that link to it, on a ring around it, or two steps out. A dot's size says how connected a note is, its colour says its Open Knowledge Format `type`, an outlined dot is a link to no note in the folder, and clicking a dot opens its note. Whole folder opens the entire folder's graph over the page, with its most connected notes, the notes nothing links to, and the links that name no note listed beside it, each entry opening its note, and filters by name, path, tag, `type` and `status`.
 
 ### Fixed
 
