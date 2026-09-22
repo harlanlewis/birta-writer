@@ -105,12 +105,16 @@ final class AgentRunner {
                 // Already removed means `stop` reported it; a cancelled run
                 // must not also report done.
                 guard self.end(requestId) != nil else { return }
+                // A transcript cut short says nothing here, on purpose: a run
+                // shows no transcript, and the one sentence a failure quotes
+                // is the harness's own last line, which is still the harness's
+                // whether or not something it left behind was still writing.
                 if status == 0 {
                     report(.init(status: "done", harness: harness, text: nil, message: nil))
                 } else {
                     report(.init(
                         status: "failed", harness: harness, text: nil,
-                        message: Self.failureMessage(status: status, output: output,
+                        message: Self.failureMessage(status: status, output: output.text,
                                                      harness: harness, feed: feed)))
                 }
             }
@@ -191,10 +195,10 @@ final class AgentRunner {
             switch outcome {
             case let .exited(status, output):
                 once(AgentProbeResult(
-                    succeeded: status == 0, transcript: output,
+                    succeeded: status == 0, transcript: output.forReading,
                     failure: status == 0 ? nil : "The command exited with status \(status)."))
             case let .signalled(output):
-                once(AgentProbeResult(succeeded: false, transcript: output,
+                once(AgentProbeResult(succeeded: false, transcript: output.forReading,
                                       failure: "The command was stopped before it finished."))
             case let .couldNotStart(reason):
                 once(AgentProbeResult(succeeded: false, transcript: "", failure: reason))
@@ -223,32 +227,77 @@ final class AgentRunner {
 
     /// How a child process ended, as the three answers a caller can act on.
     enum LaunchOutcome {
-        /// Ran and exited. The status is the shell's; the string is both
-        /// streams, interleaved.
-        case exited(status: Int32, output: String)
+        /// Ran and exited. The status is the shell's.
+        case exited(status: Int32, output: Transcript)
         /// Killed by a signal, which for us means `stop` terminated it.
-        case signalled(output: String)
+        case signalled(output: Transcript)
         /// Never started, which is nearly always a command that is not on
         /// PATH. The reason is the localized error.
         case couldNotStart(reason: String)
     }
+
+    /// What a child printed, and whether the app stopped reading before the
+    /// child's pipes closed.
+    struct Transcript {
+        /// Both streams, interleaved in the order their chunks arrived.
+        let text: String
+        /// Reading stopped at `exitGrace` with a pipe still open: something the
+        /// child started outlived it holding its output, and whatever that
+        /// process printed afterwards is not here.
+        let cutShort: Bool
+
+        /// The line the transcript ends on when it was cut short. The Test
+        /// sheet shows the transcript whole, and a transcript that stops for a
+        /// reason the reader cannot see reads as the tool going quiet.
+        static let cutShortNote =
+            "\n[The command exited, but a process it started was still writing, "
+            + "so Birta Writer stopped reading here.]\n"
+
+        /// For a person: the text, and the note when there is one to make.
+        var forReading: String { cutShort ? text + Self.cutShortNote : text }
+    }
+
+    /// How long the readers go on after the child has exited, waiting for the
+    /// pipes to close.
+    ///
+    /// What this covers is the child's own last bytes: written before it
+    /// exited, held by the kernel, one scheduling hop from the read handler.
+    /// So when nothing but the child held the pipes, both close at once and
+    /// the report goes out on the exit itself; this is only the ceiling on
+    /// that hop under load. Past it, a pipe still open belongs to a process
+    /// the child left behind, which is not the app's to wait on: the readers
+    /// stop, the report goes out with what arrived, and `Transcript.cutShort`
+    /// says so. Half a second is well past a scheduling hop and well short of
+    /// a wait a person would notice; a bound that trips early costs a
+    /// transcript its tail and never the exit status. Waiting on the pipes
+    /// alone is not an option: a template ending in a backgrounded command
+    /// would keep the corner saying the run is live for as long as that
+    /// command lived (MAR-476).
+    static let exitGrace: TimeInterval = 0.5
 
     /// Start `/bin/sh -c command` and report how it ended, on the main actor.
     ///
     /// Returns the process for a caller that has to be able to stop it, and
     /// nil when it could not start, in which case `finished` has already run.
     ///
-    /// Output is drained WHILE the child runs, not in the termination handler.
-    /// A pipe holds about 64KB, and a child that fills it blocks on its next
-    /// write; if the only reader waits for termination, termination never
-    /// comes and the run hangs forever. An agent's transcript passes 64KB
-    /// easily, so this is the ordinary case rather than a large one.
+    /// Output is drained WHILE the child runs, never after it: `Drain` reads
+    /// both pipes on one queue of its own and is the only reader either pipe
+    /// has. A pipe holds about 64KB, and a child that fills it blocks on its
+    /// next write; if the only reader waited for termination, termination
+    /// would never come and the run would hang forever. An agent's transcript
+    /// passes 64KB easily, so this is the ordinary case rather than a large one.
+    ///
+    /// `finished` runs when the child has exited AND both pipes have closed,
+    /// or `exitGrace` after the exit, whichever is first. The child's exit is
+    /// the event, the pipes closing is how its last bytes are known to be in,
+    /// and the grace is what keeps a pipe held open by something else from
+    /// holding the report.
     ///
     /// `onChunk` sees every chunk of each stream as it arrives, tagged with the
-    /// stream it came from, OFF the main actor. The two streams are two pipes
-    /// rather than one for its sake: a progress reader keeps a partial line per
-    /// stream, and one pipe can splice a stderr write into the middle of a
-    /// stdout event line.
+    /// stream it came from, OFF the main actor and never after `finished`. The
+    /// two streams are two pipes rather than one for its sake: a progress
+    /// reader keeps a partial line per stream, and one pipe can splice a
+    /// stderr write into the middle of a stdout event line.
     @discardableResult
     private func launch(command: String, workingDirectory: URL,
                         onChunk: ((Data, AgentProgressReader.Stream) -> Void)?,
@@ -276,52 +325,24 @@ final class AgentRunner {
         // see and act on.
         process.standardInput = FileHandle.nullDevice
 
-        let collected = Collected()
-        let streams: [(pipe: Pipe, stream: AgentProgressReader.Stream)] =
-            [(outPipe, .stdout), (errPipe, .stderr)]
-        for (pipe, stream) in streams {
-            pipe.fileHandleForReading.readabilityHandler = { handle in
-                let chunk = handle.availableData
-                // Zero bytes is EOF; clearing the handler here is what lets the
-                // file handle close rather than spinning on an empty pipe.
-                if chunk.isEmpty {
-                    handle.readabilityHandler = nil
-                    return
-                }
-                collected.append(chunk)
-                onChunk?(chunk, stream)
-            }
-        }
+        let drain = Drain(stdout: outPipe, stderr: errPipe, onChunk: onChunk)
 
         process.terminationHandler = { ended in
-            // Whatever arrived between the last readability callback and exit.
-            var tail = Data()
-            for (pipe, stream) in streams {
-                // Cleared BEFORE the read, not after: a callback that fires
-                // while this is reading appends its bytes behind the ones this
-                // is about to add, which reorders the transcript. Clearing
-                // first does not cancel a callback already in flight, so the
-                // window is narrowed rather than closed; what would close it
-                // is draining on the handlers' own queue, which is a larger
-                // change than the reordering is worth.
-                pipe.fileHandleForReading.readabilityHandler = nil
-                let rest = (try? pipe.fileHandleForReading.readToEnd()) ?? Data()
-                if !rest.isEmpty { onChunk?(rest, stream) }
-                tail.append(rest)
-            }
-            let output = collected.take(appending: tail)
             let reason = ended.terminationReason
             let status = ended.terminationStatus
-            Task { @MainActor in
-                finished(reason == .uncaughtSignal
-                         ? .signalled(output: output)
-                         : .exited(status: status, output: output))
+            drain.childExited { output in
+                Task { @MainActor in
+                    finished(reason == .uncaughtSignal
+                             ? .signalled(output: output)
+                             : .exited(status: status, output: output))
+                }
             }
         }
 
         do {
             try process.run()
         } catch {
+            drain.abandon()
             finished(.couldNotStart(reason: error.localizedDescription))
             return nil
         }
@@ -446,7 +467,9 @@ private final class ProgressRelay {
 /// and it is nil exactly when the command exited cleanly.
 struct AgentProbeResult {
     let succeeded: Bool
-    /// Both streams, interleaved, exactly as the child printed them.
+    /// Both streams, interleaved, exactly as the child printed them, ending on
+    /// `AgentRunner.Transcript.cutShortNote` when the app stopped reading
+    /// before the child's pipes closed.
     let transcript: String
     /// How it went wrong, in our words. Nil on success.
     let failure: String?
@@ -474,10 +497,117 @@ struct AgentRunStatus {
 }
 
 
-/// A byte buffer two queues touch: the readability handler fills it off a
-/// background queue while the termination handler drains it on another. Small
-/// and lock-based on purpose; the alternative is an actor, and the readability
-/// handler is not async.
+/// One launch's two pipes, read until the child has exited and both have
+/// closed, or `AgentRunner.exitGrace` after the exit.
+///
+/// Every byte comes in through the pipes' readability handlers and lands on
+/// ONE serial queue, in the order it was read; nothing reads a pipe anywhere
+/// else. That is what makes the transcript's order the order of arrival: a
+/// second reader on another queue, taking the tail after exit, could add its
+/// bytes ahead of a chunk a handler had already read and not yet appended.
+/// There is no such reader. The exit and the grace are the same queue's
+/// events, so "done" is decided once, and a chunk that reaches the queue after
+/// it (a handler already running when the readers were stopped) is dropped:
+/// the report has gone out, and nothing is left to carry it to.
+///
+/// The handlers hold this and this holds the handles, a cycle every ending
+/// breaks by clearing the handlers, which is also what stops a closed pipe
+/// spinning: a handle at EOF stays readable until its handler is gone.
+private final class Drain {
+    typealias Stream = AgentProgressReader.Stream
+
+    private let queue = DispatchQueue(label: "com.birtalabs.birta-writer.agent-drain")
+    private let collected = Collected()
+    private let onChunk: ((Data, Stream) -> Void)?
+    private var handles: [Stream: FileHandle]
+    /// The streams whose pipe has not closed.
+    private var open: Set<Stream> = [.stdout, .stderr]
+    /// Set by the exit; nil until then, and nil again once called.
+    private var report: ((AgentRunner.Transcript) -> Void)?
+    private var done = false
+
+    init(stdout: Pipe, stderr: Pipe, onChunk: ((Data, Stream) -> Void)?) {
+        self.onChunk = onChunk
+        handles = [.stdout: stdout.fileHandleForReading, .stderr: stderr.fileHandleForReading]
+        for (stream, handle) in handles {
+            handle.readabilityHandler = { [self] handle in
+                let chunk = handle.availableData
+                // Zero bytes is EOF. Cleared here, on the handler's own turn,
+                // rather than on the queue, so no further turn is taken.
+                if chunk.isEmpty { handle.readabilityHandler = nil }
+                queue.async { self.receive(chunk, from: stream) }
+            }
+        }
+    }
+
+    /// On the queue: one read's worth of a stream, or its close.
+    private func receive(_ chunk: Data, from stream: Stream) {
+        guard !done else { return }
+        if chunk.isEmpty {
+            open.remove(stream)
+            finishIfClosed()
+            return
+        }
+        collected.append(chunk)
+        onChunk?(chunk, stream)
+    }
+
+    /// The child has exited. `report` runs once, off the main actor, with
+    /// everything read by then: at once if both pipes are already closed, on
+    /// the second close if that comes first, and otherwise at the grace.
+    func childExited(_ report: @escaping (AgentRunner.Transcript) -> Void) {
+        queue.async {
+            self.report = report
+            self.finishIfClosed()
+            self.queue.asyncAfter(deadline: .now() + AgentRunner.exitGrace) { self.finish() }
+        }
+    }
+
+    private func finishIfClosed() {
+        if open.isEmpty { finish() }
+    }
+
+    /// On the queue, at most once: stop reading, let go of the handles, and
+    /// report. `cutShort` is whether a pipe was still open when this ran, which
+    /// past the exit is only ever a process the child left behind.
+    ///
+    /// A pipe still open is CLOSED here, not merely left unread. The `Process`
+    /// keeps its pipes for as long as it lives, and an unread pipe is a 64KB
+    /// buffer followed by a writer blocked for the rest of the app's life:
+    /// stopped mid-work, invisible, never finishing. Closing the read end is
+    /// the pipe's own contract for a reader that has gone: the writer's next
+    /// write fails (SIGPIPE, or EPIPE where that is ignored) and it can act on
+    /// that, where it could never act on a full buffer. Whatever it prints is
+    /// not read by anything, so nothing is lost that was ever going to arrive.
+    private func finish() {
+        guard !done, let report else { return }
+        done = true
+        let cutShort = !open.isEmpty
+        stopReading(closing: open)
+        self.report = nil
+        report(AgentRunner.Transcript(text: collected.snapshot(), cutShort: cutShort))
+    }
+
+    /// For a child that never started: no exit is coming, so let go now.
+    func abandon() {
+        queue.async {
+            self.done = true
+            self.stopReading(closing: [])
+        }
+    }
+
+    private func stopReading(closing: Set<Stream>) {
+        for (stream, handle) in handles {
+            handle.readabilityHandler = nil
+            if closing.contains(stream) { try? handle.close() }
+        }
+        handles = [:]
+    }
+}
+
+/// A byte buffer two queues touch: the drain queue fills it while the probe's
+/// timeout reads it on main. Small and lock-based on purpose; the alternative
+/// is an actor, and the readability handler is not async.
 private final class Collected {
     private let lock = NSLock()
     private var data = Data()
@@ -488,16 +618,8 @@ private final class Collected {
         lock.unlock()
     }
 
-    func take(appending tail: Data) -> String {
-        lock.lock()
-        data.append(tail)
-        let all = data
-        lock.unlock()
-        return Collected.text(all)
-    }
-
     /// What has arrived so far, without ending the collection. The probe's
-    /// timeout reads this: the child is still running and its bytes are the
+    /// timeout reads this while the child is still running: its bytes are the
     /// only thing that says what it was doing when it stopped answering.
     func snapshot() -> String {
         lock.lock()
