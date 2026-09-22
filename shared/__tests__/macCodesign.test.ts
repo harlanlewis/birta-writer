@@ -10,10 +10,15 @@
  * deprecated for signing) on the strength of that sentence would have shipped
  * a bundle whose CLI carried no signature of its own.
  *
- * It fails LATE and far from its cause. `codesign --verify` on the bundle
- * passes, because the nested binary is sealed as a resource either way; the
- * first thing that objects is the notary service, minutes into a release job,
- * naming a path rather than the missing line that produced it.
+ * It fails LATE and far from its cause, and the reason is the linker. `bwr`
+ * comes out of `swift build` already carrying an ad-hoc signature, so a build
+ * that forgets to re-sign it hands codesign a nested binary that IS signed,
+ * just not by us. Sealing the bundle over it succeeds, and `codesign --verify
+ * --strict` on the result passes, validating `bwr` as signed subcomponent
+ * code. The first thing that objects is the notary service, minutes into a
+ * release job. A `bwr` with no signature at all would be refused by codesign
+ * at once, which is why this is not the failure to picture: the dangerous
+ * one is the plausible signature, not the missing one.
  *
  * So the enumeration is DERIVED from the script rather than written here. A
  * hand-kept list of binaries is a list a third binary never joins, which is
@@ -105,6 +110,26 @@ describe(".github/workflows/release.yml", () => {
         expect(staple).toBeGreaterThan(-1);
         expect(releaseZip).toBeGreaterThan(-1);
         expect(releaseZip).toBeGreaterThan(staple);
+    });
+
+    it("the signature check should ask the nested binary for the hardened runtime, not only verify it", () => {
+        // `codesign --verify --strict` passes a bundle whose `bwr` still
+        // carries the linker's ad-hoc signature, so a check that only
+        // verifies cannot catch the regression. The hardened-runtime flag,
+        // which the linker's signature lacks, is what tells them apart.
+        expect(releaseWorkflow).toMatch(/for BIN in "\$APP" "\$APP\/Contents\/MacOS\/bwr"/);
+        expect(releaseWorkflow).toMatch(/grep -q 'flags=\.\*runtime'/);
+    });
+
+    it("the signature should be checked before notarization spends a round trip", () => {
+        // After notarization, a forgotten `bwr` in a signed build is rejected
+        // by the notary service before this check ever runs, so it could only
+        // ever speak for the ad-hoc case.
+        const verify = releaseWorkflow.indexOf("- name: Verify the signature");
+        const notarize = releaseWorkflow.indexOf("- name: Notarize and staple");
+        expect(verify).toBeGreaterThan(-1);
+        expect(notarize).toBeGreaterThan(-1);
+        expect(verify).toBeLessThan(notarize);
     });
 
     it("the job should install the G2 intermediate, which a fresh runner does not carry", () => {

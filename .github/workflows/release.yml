@@ -605,6 +605,38 @@ jobs:
           node esbuild.mjs --production
           bash mac/scripts/build-app.sh --version "$VERSION"
 
+      # Every Mach-O in the bundle, asked the questions that tell a correct
+      # signature from a plausible one, BEFORE notarization spends minutes on
+      # a round trip that would reject the same thing with less to say.
+      #
+      # `codesign --verify --strict` is not one of those questions. `bwr`
+      # arrives from `swift build` already carrying an ad-hoc signature the
+      # linker put there, so a build that forgot to re-sign it seals the
+      # bundle over it without complaint and verifies clean, valid on disk
+      # and satisfying its designated requirement. What gives it away is what
+      # the linker's signature lacks: the hardened runtime, which the build
+      # applies to every binary in both modes, and with a real identity the
+      # Developer ID authority and a secure timestamp.
+      - name: Verify the signature
+        run: |
+          APP="mac/build/Birta Writer.app"
+          codesign --verify --strict --verbose=2 "$APP"
+          for BIN in "$APP" "$APP/Contents/MacOS/bwr"; do
+            INFO="$(codesign -dvv "$BIN" 2>&1)"
+            printf '%s\n' "$INFO" | grep -q 'flags=.*runtime' \
+              || { echo "$BIN is not signed with the hardened runtime" >&2; exit 1; }
+            if [ "$HAS_SIGNING" = 'true' ]; then
+              printf '%s\n' "$INFO" | grep -q '^Authority=Developer ID Application:' \
+                || { echo "$BIN is not signed with a Developer ID identity" >&2; exit 1; }
+              # "Timestamp=" is the SECURE timestamp from Apple's server.
+              # "Signed Time=" is the local clock and is what appears when
+              # --timestamp was not honoured, so matching the wrong one here
+              # would pass on exactly the build this check exists to catch.
+              printf '%s\n' "$INFO" | grep -q '^Timestamp=' \
+                || { echo "$BIN carries no secure timestamp" >&2; exit 1; }
+            fi
+          done
+
       # Notarization, then stapling, and the order is the whole point. The
       # notary service accepts a zip but cannot staple a ticket to one, so the
       # ticket goes onto the .app and the archive that ships is made AFTER
@@ -645,27 +677,6 @@ jobs:
           fi
           xcrun stapler staple "Birta Writer.app"
           xcrun stapler validate "Birta Writer.app"
-
-      # What almost shipped broken: `bwr` is a second Mach-O in Contents/MacOS
-      # and needs its own signature, which the bundle's does not supply. It is
-      # asserted separately here because a bundle whose nested binary is
-      # unsigned verifies fine right up until the notary service reads it.
-      - name: Verify the signature
-        run: |
-          APP="mac/build/Birta Writer.app"
-          codesign --verify --strict --verbose=2 "$APP"
-          codesign --verify --strict --verbose=2 "$APP/Contents/MacOS/bwr"
-          codesign -dvv "$APP" 2>&1 | grep -q 'flags=.*runtime' \
-            || { echo "the app is not signed with the hardened runtime" >&2; exit 1; }
-          if [ "$HAS_SIGNING" = 'true' ]; then
-            # "Timestamp=" is the SECURE timestamp from Apple's server.
-            # "Signed Time=" is the local clock and is what appears when
-            # --timestamp was not honoured, so matching the wrong one here
-            # would pass on exactly the build this check exists to catch.
-            codesign -dvv "$APP" 2>&1 | grep -q '^Timestamp=' \
-              || { echo "the signature carries no secure timestamp" >&2; exit 1; }
-            xcrun stapler validate "$APP"
-          fi
 
       # ditto, not zip: it preserves the bundle's symlinks and extended
       # attributes, and a zip(1) archive of an .app can arrive unopenable.
