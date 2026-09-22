@@ -24,6 +24,8 @@ import { wireRoving } from "../sidePanel/keyboardNav";
 import { initProofreadingList } from "./proofreadingList";
 import { initNotesList } from "./notesList";
 import { initLinksList } from "./linksList";
+import { initBacklinksList } from "./backlinksList";
+import { FOLDER_INDEX_CHANGED } from "@/links/folderIndex";
 import { PROOFREAD_FINDINGS_CHANGED, hasProofreadFindings } from "@/plugins/proofread";
 import { requestIdle } from "@/utils/idle";
 import { singleTextblockInlineEdit } from "@/utils/textblockEdit";
@@ -38,9 +40,10 @@ interface HeadingEntry {
     atDocRoot: boolean;
 }
 
-// 260 default / 240 floor: wide enough that the four tab labels + controls fit
-// on one row at the default, and the floor never crushes rows into ellipsis
-// soup (the old 150px floor did). The tab list wraps as the fallback below 290.
+// 260 default / 240 floor: the floor never crushes rows into ellipsis soup.
+// A review tab exists only while it has entries, so the strip usually holds
+// fewer tabs than it can; when the shown ones overflow the row, the strip
+// collapses to a select (syncTabOverflow).
 const TOC_DEFAULT_WIDTH = 260;
 const TOC_MIN_WIDTH = 240;
 const TOC_MAX_WIDTH = 600;
@@ -297,14 +300,14 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         },
     });
 
-    // ── Review tabs: Contents / Proofreading / Notes ────────────────────────
-    // The panel is a 3-tab review sidebar; all the drawer chrome (docked/overlay,
+    // ── Review tabs: Contents / Links / Backlinks / Notes / Proofreading ────
+    // The panel is a tabbed review sidebar; all the drawer chrome (docked/overlay,
     // flyout, resize, flip/hide) is shared and only the body switches. Contents
-    // is the heading outline (`list`); the other two read their data live and
+    // is the heading outline (`list`); the others read their data live and
     // ONLY while active — an inactive tab scans/enumerates nothing (see
     // renderActiveView). Flip/hide move into the sticky tab row (right-aligned)
     // so they can't overlap the tabs.
-    type ReviewTab = "contents" | "proofreading" | "notes" | "links";
+    type ReviewTab = "contents" | "proofreading" | "notes" | "links" | "backlinks";
     let activeTab: ReviewTab = "contents";
     // The Proofreading tab exists only while the master switch is on; when off
     // it's removed from the strip entirely (not shown with an "off" body).
@@ -316,12 +319,14 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
     tabStrip.setAttribute("role", "tablist");
     const tabContents = makeTabButton("contents", t("Contents"));
     const tabLinks = makeTabButton("links", t("Links"));
+    const tabBacklinks = makeTabButton("backlinks", t("Backlinks"));
     const tabNotes = makeTabButton("notes", t("Notes"));
     const tabProofread = makeTabButton("proofreading", t("Proofread"));
     // A review tab exists only while it has entries. Until the first idle
     // visibility pass (scheduleTabVisibility) they stay hidden, so document
     // open pays for nothing beyond the Contents outline.
     tabLinks.hidden = true;
+    tabBacklinks.hidden = true;
     tabNotes.hidden = true;
     tabProofread.hidden = true;
     // Tabs in their strip with the flip/hide controls at the trailing edge —
@@ -332,7 +337,7 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
     // a menu of the others.
     const tabsList = document.createElement("div");
     tabsList.className = "toc-tabs__list";
-    tabsList.append(tabContents, tabLinks, tabNotes, tabProofread);
+    tabsList.append(tabContents, tabLinks, tabBacklinks, tabNotes, tabProofread);
 
     const tabsSelect = document.createElement("button");
     tabsSelect.className = "ui-btn toc-tabs-select";
@@ -357,7 +362,7 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
     if (hasPanelControls) { tabStrip.appendChild(controls); }
 
     const ALL_TABS: Array<[HTMLButtonElement, ReviewTab]> = [
-        [tabContents, "contents"], [tabLinks, "links"], [tabNotes, "notes"], [tabProofread, "proofreading"],
+        [tabContents, "contents"], [tabLinks, "links"], [tabBacklinks, "backlinks"], [tabNotes, "notes"], [tabProofread, "proofreading"],
     ];
 
     function closeTabsMenu(): void {
@@ -441,6 +446,7 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
     const proofreadView = initProofreadingList(getEditorView);
     const notesView = initNotesList(getEditorView);
     const linksView = initLinksList(getEditorView);
+    const backlinksView = initBacklinksList(getEditorView);
 
     // The card is the surface; the panel is its box, and keeps a strip of
     // page along its sash edge so the resize line stands off the card's
@@ -449,7 +455,7 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
     // the shell's own, which is why `.toc-card` only dresses a docked drawer.
     const card = document.createElement("div");
     card.className = "toc-card";
-    card.append(tabStrip, list, proofreadView.element, notesView.element, linksView.element);
+    card.append(tabStrip, list, proofreadView.element, notesView.element, linksView.element, backlinksView.element);
     panel.appendChild(card);
 
     function makeTabButton(tab: ReviewTab, label: string): HTMLButtonElement {
@@ -488,7 +494,7 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         const isArrow = e.key === "ArrowLeft" || e.key === "ArrowRight" || e.key === "Home" || e.key === "End";
         const isActivate = e.key === "Enter" || e.key === " ";
         if (!isArrow && !isActivate) { return; }
-        const tabs = [tabContents, tabLinks, tabNotes, tabProofread].filter((tab) => !tab.hidden);
+        const tabs = [tabContents, tabLinks, tabBacklinks, tabNotes, tabProofread].filter((tab) => !tab.hidden);
         const cur = tabs.indexOf(document.activeElement as HTMLButtonElement);
         e.preventDefault();
         if (isActivate) {
@@ -514,10 +520,12 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         reflect(tabProofread, activeTab === "proofreading");
         reflect(tabNotes, activeTab === "notes");
         reflect(tabLinks, activeTab === "links");
+        reflect(tabBacklinks, activeTab === "backlinks");
         list.classList.toggle("toc-view--hidden", activeTab !== "contents");
         proofreadView.element.classList.toggle("toc-view--hidden", activeTab !== "proofreading");
         notesView.element.classList.toggle("toc-view--hidden", activeTab !== "notes");
         linksView.element.classList.toggle("toc-view--hidden", activeTab !== "links");
+        backlinksView.element.classList.toggle("toc-view--hidden", activeTab !== "backlinks");
     }
 
     /** Render whichever tab is active — the only view that does any work. */
@@ -531,6 +539,8 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
             proofreadView.refresh(getEditorView());
         } else if (activeTab === "notes") {
             notesView.refresh(getEditorView());
+        } else if (activeTab === "backlinks") {
+            backlinksView.refresh(getEditorView());
         } else {
             linksView.refresh(getEditorView());
         }
@@ -577,6 +587,7 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         if (activeTab === "contents") { outlineRoving.focusFirst(); }
         else if (activeTab === "proofreading") { proofreadView.focusFirst(); }
         else if (activeTab === "notes") { notesView.focusFirst(); }
+        else if (activeTab === "backlinks") { backlinksView.focusFirst(); }
         else { linksView.focusFirst(); }
         if (panel.contains(document.activeElement)) { return; }
         // Empty view: land on the strip's Tab stop — the active tab button, or
@@ -650,6 +661,7 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
             btn.hidden = !(has || activeTab === tab);
         };
         show(tabLinks, "links", linksView.count(view) > 0);
+        show(tabBacklinks, "backlinks", backlinksView.count() > 0);
         show(tabNotes, "notes", notesView.count(view) > 0);
         show(tabProofread, "proofreading", proofreadingEnabled && hasProofreadFindings(view));
         if (!proofreadingEnabled) { tabProofread.hidden = true; }
@@ -1287,6 +1299,18 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
     };
     window.addEventListener(PROOFREAD_FINDINGS_CHANGED, onProofreadFindingsChanged);
 
+    // The host re-sends the folder index whenever the folder changes. Its
+    // arrival is what shows or hides the Backlinks tab, and redraws it while
+    // it is the shown one; like the proofreading event, a hidden tab costs
+    // nothing here.
+    const onFolderIndexChanged = (): void => {
+        scheduleTabVisibility();
+        if (shell.isVisible() && activeTab === "backlinks") {
+            backlinksView.refresh(getEditorView());
+        }
+    };
+    window.addEventListener(FOLDER_INDEX_CHANGED, onFolderIndexChanged);
+
     // The master proofreading switch (birta.proofreading.enabled) governs whether
     // the Proofreading TAB exists at all — hidden when off. proofread-config-changed
     // fires on any config change (a toolbar toggle, or a settings echo).
@@ -1346,6 +1370,7 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
             proofreadView.setGroupByType(grouped);
             notesView.setGroupByType(grouped);
             linksView.setGroupByType(grouped);
+            backlinksView.setGroupByType(grouped);
         },
         showProofreadingTab: () => {
             // The toolbar menu item only appears while proofreading is on, but
@@ -1374,6 +1399,7 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         },
         dispose: () => {
             window.removeEventListener(PROOFREAD_FINDINGS_CHANGED, onProofreadFindingsChanged);
+            window.removeEventListener(FOLDER_INDEX_CHANGED, onFolderIndexChanged);
             window.removeEventListener("proofread-config-changed", onProofreadConfigChanged);
             tabVisibilityIdle?.cancel();
             tabVisibilityIdle = null;

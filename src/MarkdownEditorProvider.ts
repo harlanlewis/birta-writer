@@ -6,6 +6,7 @@ import { saveImageLocally } from "./utils/imageService";
 import { computeLineMap, sourceLineCount } from "../shared/lineMap";
 import { extractFrontmatter, restoreContentForSave } from "../shared/contentTransform";
 import { SuggestionProviders } from "./suggestionProviders";
+import { FolderIndexer, NOTE_GLOB } from "./folderIndex";
 import { DiskDriftController } from "./diskDrift";
 import { settlePhantomDirty } from "./phantomDirty";
 import { judgeReplacement } from "../shared/destructiveGuard";
@@ -324,6 +325,32 @@ export class MarkdownEditorProvider
             return uriMap;
         },
     });
+    // The folder edge index (folderIndex.ts): which notes in a workspace
+    // folder name which, for the Backlinks tab. Resolution shares the
+    // workspace file index with smart link resolution, so a backlink and a
+    // click agree about which note a link means.
+    private readonly _folderIndex = new FolderIndexer({
+        listNotes: async (root, limit) => (await vscode.workspace.findFiles(
+            new vscode.RelativePattern(root, NOTE_GLOB), "**/node_modules/**", limit,
+        )).map((u) => u.fsPath),
+        readText: async (fsPath) => {
+            try {
+                return Buffer.from(await vscode.workspace.fs.readFile(vscode.Uri.file(fsPath))).toString("utf8");
+            } catch {
+                return null; // unreadable: indexed as a note with no references
+            }
+        },
+        fileIndex: async () => (await this._suggestions.getLinkFileIndex()).map((u) => u.fsPath),
+        smartLinks: (root) => readBirtaSetting("smartLinks", vscode.Uri.file(root)),
+        yieldToHost: () => new Promise((resolve) => setImmediate(resolve)),
+    });
+    /** Panels that asked for their folder's index, and the document each
+     *  shows: whom a change on disk is re-sent to. */
+    private readonly _folderIndexSubscribers = new Map<vscode.WebviewPanel, vscode.TextDocument>();
+    private _folderIndexResend: ReturnType<typeof setTimeout> | undefined;
+    /** How long a burst of disk changes is gathered before the index is re-sent. */
+    private static readonly FOLDER_INDEX_RESEND_MS = 750;
+
     /** While switchToTextEditor is in progress, suppress onDidChangeTabs from switching the text tab back to WYSIWYG */
     public static readonly suppressAutoSwitch = new Set<string>();
 
@@ -762,15 +789,59 @@ export class MarkdownEditorProvider
      *
      * Clearing is O(1) — the slot is rebuilt lazily on the next menu open — so
      * a noisy workspace costs nothing. The watcher honours `files.watcherExclude`.
+     *
+     * The folder edge index is the one cache an EDIT does reach, since a save
+     * can add or remove a link, so it alone listens for changes too. That is
+     * O(1) as well: it drops one note's reading, and only a note under a
+     * folder somebody has indexed.
      */
     private _watchWorkspaceIndex(): void {
         const watcher = vscode.workspace.createFileSystemWatcher("**/*");
-        const invalidate = (uri: vscode.Uri): void => this._suggestions.invalidateFor(uri);
+        const invalidate = (uri: vscode.Uri): void => {
+            this._suggestions.invalidateFor(uri);
+            if (this._folderIndex.fileSetChanged(uri.fsPath)) { this._scheduleFolderIndexResend(); }
+        };
         this.context.subscriptions.push(
             watcher,
             watcher.onDidCreate(invalidate),
             watcher.onDidDelete(invalidate),
+            watcher.onDidChange((uri) => {
+                if (this._folderIndex.fileChanged(uri.fsPath)) { this._scheduleFolderIndexResend(); }
+            }),
         );
+    }
+
+    /**
+     * Answer a `requestFolderIndex`: this document's workspace folder, indexed,
+     * and where the document sits in it. A document in no workspace folder has
+     * no folder to index. `getWorkspaceFolder` alone, not `_workspaceRootFor`:
+     * that one falls back to the first folder for a loose file, which would
+     * index a folder the document is not in.
+     */
+    private async _sendFolderIndex(panel: vscode.WebviewPanel, document: vscode.TextDocument): Promise<void> {
+        const root = vscode.workspace.getWorkspaceFolder(document.uri)?.uri.fsPath;
+        if (!root) {
+            postToWebview(panel.webview, { type: "folderIndex", index: null, self: null });
+            return;
+        }
+        const index = await this._folderIndex.indexFor(root);
+        postToWebview(panel.webview, {
+            type: "folderIndex",
+            index,
+            self: this._folderIndex.selfIn(root, document.uri.fsPath, index),
+        });
+    }
+
+    /** Re-send every subscribed panel its index once a burst of changes settles. */
+    private _scheduleFolderIndexResend(): void {
+        if (this._folderIndexSubscribers.size === 0) { return; }
+        if (this._folderIndexResend) { clearTimeout(this._folderIndexResend); }
+        this._folderIndexResend = setTimeout(() => {
+            this._folderIndexResend = undefined;
+            for (const [panel, document] of this._folderIndexSubscribers) {
+                this._sendFolderIndex(panel, document).catch((err) => reportError("folderIndex", err));
+            }
+        }, MarkdownEditorProvider.FOLDER_INDEX_RESEND_MS);
     }
 
     async resolveCustomTextEditor(
@@ -804,6 +875,7 @@ export class MarkdownEditorProvider
 
         webviewPanel.onDidDispose(() => {
             this._webviewPanels.delete(uriKey);
+            this._folderIndexSubscribers.delete(webviewPanel);
             // Drop cached counts; hide the readout if this was the active editor
             // (its status bar figures no longer describe anything) (MAR-29).
             this._wordCount.forget(uriKey, this._activePanel === webviewPanel);
@@ -1437,6 +1509,13 @@ export class MarkdownEditorProvider
                         }
                         break;
                     }
+                    case "requestFolderIndex":
+                        // One ask subscribes the panel: it is re-sent the index
+                        // whenever its folder changes, until it closes.
+                        this._folderIndexSubscribers.set(panel, document);
+                        this._sendFolderIndex(panel, document)
+                            .catch((err) => reportError("folderIndex", err));
+                        break;
                     case "requestFmSuggestions":
                         if (message.key !== undefined) {
                             this._suggestions.requestFmSuggestions(document, panel, message.key)

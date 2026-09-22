@@ -40,6 +40,9 @@ export interface ReviewRowModel {
     onMeta?: () => void;
     from: number;
     to: number;
+    /** What activating the row does instead of revealing from/to in this
+     *  document: a row about ANOTHER document (a backlink) has no range here. */
+    onActivate?: () => void;
     actions: ReviewAction[];
     /** By-type group order: groups sort by their rows' min rank (lower = first),
      *  ties broken by first appearance. Default 0. */
@@ -333,7 +336,7 @@ export function initReviewList(
     }
 
     function buildRows(rows: readonly ReviewRowModel[]): HTMLElement[] {
-        return rows.map((row) => buildReviewItem({ ...row, navigate }));
+        return rows.map((row) => buildReviewItem({ ...row, navigate: row.onActivate ? () => row.onActivate!() : navigate }));
     }
 
     /** The DOM nodes for a result — group headers, rows, and show-more toggles. */

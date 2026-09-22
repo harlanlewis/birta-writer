@@ -22,7 +22,7 @@ import { scanLinks } from "../links/scan";
 import { isNoteHref, scanBodyLinks } from "../../shared/noteLinks";
 import { extractFrontmatter } from "../../shared/contentTransform";
 import { budget } from "./helpers/testBudget";
-import { loadCorpusFixtures, makeCorpusEditor, type CorpusFixture } from "./helpers/moveFuzz";
+import { loadCorpusFixtures, makeCorpusEditor, type CorpusFixture } from "./helpers/moveFuzz"; // corpus-sweep-kept: the only oracle shared/noteLinks.ts's body scanner has, and one parse per fixture
 
 const fixtures: CorpusFixture[] = loadCorpusFixtures();
 

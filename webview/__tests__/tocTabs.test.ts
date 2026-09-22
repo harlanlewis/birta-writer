@@ -1,6 +1,6 @@
 /**
- * Review sidebar shell (MAR-188): the ToC panel carries four tabs — Contents /
- * Links / Notes / Proofreading — and switching a tab swaps which view is shown
+ * Review sidebar shell (MAR-188): the ToC panel carries its tabs (Contents /
+ * Links / Backlinks / Notes / Proofreading), and switching a tab swaps which view is shown
  * while keeping the others hidden (so an inactive tab does no layout/scan work).
  * Review tabs exist only while they have entries, decided on IDLE (never on the
  * doc-open or keystroke path).
@@ -14,6 +14,8 @@ import * as proofread from "../plugins/proofread";
 import { PROOFREAD_FINDINGS_CHANGED } from "../plugins/proofread";
 import type { EventManager } from "../eventManager";
 import type { EditorView, Node as PmNode } from "../pm";
+import { receiveFolderIndex, resetFolderIndexForTests } from "../links/folderIndex";
+import type { FolderIndex } from "../../shared/folderIndex";
 
 const fakeEventManager = { onWindow: vi.fn(() => () => {}) } as unknown as EventManager;
 
@@ -21,8 +23,8 @@ function clickTab(tab: Element): void {
     tab.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
 }
 
-// Tab order is Contents, Links, Notes, Proofreading.
-const TAB = { contents: 0, links: 1, notes: 2, proofreading: 3 } as const;
+// Tab order is Contents, Links, Backlinks, Notes, Proofreading.
+const TAB = { contents: 0, links: 1, backlinks: 2, notes: 3, proofreading: 4 } as const;
 
 const miniSchema = new Schema({
     nodes: { doc: { content: "block+" }, paragraph: { group: "block", content: "inline*" }, text: { group: "inline" } },
@@ -61,10 +63,10 @@ describe("review sidebar tabs", () => {
 
     afterEach(() => { vi.unstubAllGlobals(); });
 
-    it("should render four tabs in the order Contents, Links, Notes, Proofreading", () => {
+    it("should render five tabs in the order Contents, Links, Backlinks, Notes, Proofreading", () => {
         const { panel } = initToc(fakeEventManager, () => null);
         const labels = [...panel.querySelectorAll(".toc-tab")].map((t) => t.textContent);
-        expect(labels).toEqual(["Contents", "Links", "Notes", "Proofread"]);
+        expect(labels).toEqual(["Contents", "Links", "Backlinks", "Notes", "Proofread"]);
     });
 
     it("should start on Contents with the review views hidden", () => {
@@ -282,6 +284,123 @@ describe("Proofreading tab is event-driven, not per-frame (MAR-192 follow-up)", 
         // Contents is the default active tab; a refresh renders its (empty) list.
         expect(() => toc.refreshContent()).not.toThrow();
         expect(toc.panel.querySelector(".toc-list")).not.toBeNull();
+        toc.dispose();
+    });
+});
+
+describe("Backlinks tab: the host's folder index, asked for only when the sidebar is seen", () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        stubTimers();
+        resetFolderIndexForTests();
+        document.body.className = "";
+        document.body.innerHTML = "";
+    });
+    afterEach(() => {
+        vi.unstubAllGlobals();
+        delete (window as { __i18n?: unknown }).__i18n;
+    });
+
+    const requests = (): number => mockVscodeApi.postMessage.mock.calls
+        .filter(([m]) => (m as { type?: string }).type === "requestFolderIndex").length;
+
+    const node = (path: string, name: string) =>
+        ({ path, name, type: null, tags: [], status: null, trust: null, staleAfter: null });
+
+    /** notes/self.md is named by a.md (on line 3) and sub/b.md; c.md names a.md. */
+    const INDEX: FolderIndex = {
+        rootName: "vault",
+        truncated: false,
+        nodes: [node("notes/self.md", "Self"), node("a.md", "Alpha note"), node("sub/b.md", "b"), node("c.md", "c")],
+        edges: [
+            { from: "a.md", to: "notes/self.md", target: "notes/self.md", kind: "link", text: "see self", line: 3 },
+            { from: "sub/b.md", to: "notes/self.md", target: "Self", kind: "wiki", text: "Self", line: 1 },
+            { from: "c.md", to: "a.md", target: "a.md", kind: "link", text: "alpha", line: 1 },
+        ],
+    };
+
+    function mountToc() {
+        const view = makeView();
+        const toc = initToc(fakeEventManager, () => view);
+        document.body.appendChild(toc.panel);
+        return toc;
+    }
+    const tabsOf = (toc: { panel: HTMLElement }) => [...toc.panel.querySelectorAll<HTMLButtonElement>(".toc-tab")];
+    const rowLabels = (toc: { panel: HTMLElement }) =>
+        [...toc.panel.querySelectorAll(".review-list--backlinks .review-item__label")].map((e) => e.textContent);
+
+    it("a sidebar nobody opens should never ask the host for the index", () => {
+        const toc = mountToc();
+        expect(requests()).toBe(0);
+        toc.dispose();
+    });
+
+    it("opening the sidebar should ask once, however many visibility passes follow", () => {
+        const toc = mountToc();
+        toc.toggle();
+        toc.refreshContent();
+        toc.refreshContent();
+        expect(requests()).toBe(1);
+        toc.dispose();
+    });
+
+    it("a host that does not declare the capability should never be asked", () => {
+        (window as { __i18n?: unknown }).__i18n = {
+            translations: {}, isMac: true, host: { capabilities: ["toc"], arrangements: [], shortcuts: {} },
+        };
+        const toc = mountToc();
+        toc.toggle();
+        expect(requests()).toBe(0);
+        expect(tabsOf(toc)[TAB.backlinks]!.hidden).toBe(true);
+        toc.dispose();
+    });
+
+    it("the tab should appear when an index arrives holding backlinks, and not before", () => {
+        const toc = mountToc();
+        toc.toggle();
+        expect(tabsOf(toc)[TAB.backlinks]!.hidden).toBe(true);
+        receiveFolderIndex(INDEX, "notes/self.md");
+        expect(tabsOf(toc)[TAB.backlinks]!.hidden).toBe(false);
+        toc.dispose();
+    });
+
+    it("an index with nothing pointing at this document should keep the tab hidden", () => {
+        const toc = mountToc();
+        toc.toggle();
+        receiveFolderIndex(INDEX, "c.md");
+        expect(tabsOf(toc)[TAB.backlinks]!.hidden).toBe(true);
+        toc.dispose();
+    });
+
+    it("the rows should name the linking notes, and a row should open its note at the reference's line", () => {
+        const toc = mountToc();
+        toc.toggle();
+        receiveFolderIndex(INDEX, "notes/self.md");
+        clickTab(tabsOf(toc)[TAB.backlinks]!);
+        expect(rowLabels(toc)).toEqual(["Alpha note", "b"]);
+        mockVscodeApi.postMessage.mockClear();
+        toc.panel.querySelector<HTMLElement>(".review-list--backlinks .review-item__main")!.click();
+        expect(mockVscodeApi.postMessage).toHaveBeenCalledWith({ type: "openFile", path: "../a.md#3" });
+        toc.dispose();
+    });
+
+    it("a new index should redraw the shown tab", () => {
+        const toc = mountToc();
+        toc.toggle();
+        receiveFolderIndex(INDEX, "notes/self.md");
+        clickTab(tabsOf(toc)[TAB.backlinks]!);
+        receiveFolderIndex({ ...INDEX, edges: INDEX.edges.slice(1) }, "notes/self.md");
+        expect(rowLabels(toc)).toEqual(["b"]);
+        toc.dispose();
+    });
+
+    it("an empty result from a walk that stopped at its cap should say the absence may be a cut", () => {
+        const toc = mountToc();
+        toc.toggle();
+        receiveFolderIndex(INDEX, "notes/self.md");
+        clickTab(tabsOf(toc)[TAB.backlinks]!);
+        receiveFolderIndex({ ...INDEX, edges: [], truncated: true }, "notes/self.md");
+        expect(toc.panel.querySelector(".review-list--backlinks")!.textContent).toContain("index reached");
         toc.dispose();
     });
 });

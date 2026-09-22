@@ -418,6 +418,12 @@ export function notifyFileExplorerExpanded(paths: string[]): void {
     vscode.postMessage({ type: "fileExplorerExpanded", paths });
 }
 
+// ── The folder edge index (MAR-467): a host declaring `folderIndex` answers ──
+/** Ask once for this document's folder index; the host re-sends it on change. */
+export function notifyRequestFolderIndex(): void {
+    vscode.postMessage({ type: "requestFolderIndex" });
+}
+
 /** A row was right-clicked; the host puts its own menu at the point. */
 export function notifyProjectFileMenu(path: string, kind: "dir" | "file", x: number, y: number): void {
     vscode.postMessage({ type: "projectFileMenu", path, kind, x, y });
