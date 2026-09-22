@@ -97,6 +97,12 @@ describe("noteLinks against the editor's own Links scan", { timeout: budget(60_0
         const withLinks = fixtures.filter((f) => editorHrefs(extractFrontmatter(f.content).body).length > 0);
         expect(fixtures.length).toBeGreaterThan(20);
         expect(withLinks.length).toBeGreaterThan(5);
+        // Wikilinks dominate the corpus; a Markdown link to a note is the more
+        // common spelling in a real vault, so it needs a floor of its own
+        // (note-links.md is the fixture that carries most of them).
+        const markdownNoteLinks = fixtures.reduce(
+            (n, f) => n + editorHrefs(extractFrontmatter(f.content).body).filter((h) => !h.startsWith("wiki:")).length, 0);
+        expect(markdownNoteLinks).toBeGreaterThanOrEqual(20);
     });
 
     it("the contexts should reach both links the editor keeps and shapes it reads as text", () => {
