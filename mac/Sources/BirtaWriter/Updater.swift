@@ -341,6 +341,12 @@ final class Updater {
     /// published checksum, unpack, and ask whether this Mac can launch what
     /// arrived.
     ///
+    /// All but one. That script also asks Gatekeeper whether the release can
+    /// be attributed to anybody, and refuses one that cannot; this path does
+    /// not ask, so an ad-hoc release installs here where the script would
+    /// stop. Every release is signed while the release job holds its signing
+    /// secrets, and an ad-hoc one reaches this path only when it does not.
+    ///
     /// Callers pile up rather than starting a second run: a background stage
     /// and a confirmed offer are two callers wanting the same bytes, and two
     /// downloads of the same archive would be the ordinary case rather than
