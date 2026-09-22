@@ -7,6 +7,7 @@ import { computeLineMap, sourceLineCount } from "../shared/lineMap";
 import { extractFrontmatter, restoreContentForSave } from "../shared/contentTransform";
 import { SuggestionProviders } from "./suggestionProviders";
 import { FolderIndexer, NOTE_GLOB } from "./folderIndex";
+import type { FolderIndex } from "../shared/folderIndex";
 import { DiskDriftController } from "./diskDrift";
 import { settlePhantomDirty } from "./phantomDirty";
 import { judgeReplacement } from "../shared/destructiveGuard";
@@ -347,6 +348,8 @@ export class MarkdownEditorProvider
     /** Panels that asked for their folder's index, and the document each
      *  shows: whom a change on disk is re-sent to. */
     private readonly _folderIndexSubscribers = new Map<vscode.WebviewPanel, vscode.TextDocument>();
+    /** What each panel was last sent, so a rebuild that changed nothing for it sends nothing. */
+    private readonly _folderIndexSent = new WeakMap<vscode.WebviewPanel, { index: FolderIndex | null; self: string | null }>();
     private _folderIndexResend: ReturnType<typeof setTimeout> | undefined;
     /** How long a burst of disk changes is gathered before the index is re-sent. */
     private static readonly FOLDER_INDEX_RESEND_MS = 750;
@@ -818,18 +821,22 @@ export class MarkdownEditorProvider
      * that one falls back to the first folder for a loose file, which would
      * index a folder the document is not in.
      */
-    private async _sendFolderIndex(panel: vscode.WebviewPanel, document: vscode.TextDocument): Promise<void> {
+    private async _sendFolderIndex(panel: vscode.WebviewPanel, document: vscode.TextDocument, asked: boolean): Promise<void> {
         const root = vscode.workspace.getWorkspaceFolder(document.uri)?.uri.fsPath;
         if (!root) {
             postToWebview(panel.webview, { type: "folderIndex", index: null, self: null });
             return;
         }
         const index = await this._folderIndex.indexFor(root);
-        postToWebview(panel.webview, {
-            type: "folderIndex",
-            index,
-            self: this._folderIndex.selfIn(root, document.uri.fsPath, index),
-        });
+        const self = this._folderIndex.selfIn(root, document.uri.fsPath, index);
+        // The indexer hands back the same object when a rebuild changed
+        // nothing, which is what most saves are; that is not worth a send.
+        // A page that asks is always answered, since it may be a reloaded page
+        // that has nothing, in a panel that was sent this very index before.
+        const last = this._folderIndexSent.get(panel);
+        if (!asked && last && last.index === index && last.self === self) { return; }
+        this._folderIndexSent.set(panel, { index, self });
+        postToWebview(panel.webview, { type: "folderIndex", index, self });
     }
 
     /** Re-send every subscribed panel its index once a burst of changes settles. */
@@ -839,7 +846,7 @@ export class MarkdownEditorProvider
         this._folderIndexResend = setTimeout(() => {
             this._folderIndexResend = undefined;
             for (const [panel, document] of this._folderIndexSubscribers) {
-                this._sendFolderIndex(panel, document).catch((err) => reportError("folderIndex", err));
+                this._sendFolderIndex(panel, document, false).catch((err) => reportError("folderIndex", err));
             }
         }, MarkdownEditorProvider.FOLDER_INDEX_RESEND_MS);
     }
@@ -1513,7 +1520,7 @@ export class MarkdownEditorProvider
                         // One ask subscribes the panel: it is re-sent the index
                         // whenever its folder changes, until it closes.
                         this._folderIndexSubscribers.set(panel, document);
-                        this._sendFolderIndex(panel, document)
+                        this._sendFolderIndex(panel, document, true)
                             .catch((err) => reportError("folderIndex", err));
                         break;
                     case "requestFmSuggestions":

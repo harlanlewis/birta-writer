@@ -143,6 +143,26 @@ describe("MarkdownEditorProvider: the folder index", () => {
         expect(all[1]!.index!.edges.map((e) => e.from)).toEqual(["other.md"]);
     });
 
+    it("a save that changes no reference should send nothing, and a second ask should still be answered", async () => {
+        mountWorkspace("/ws", { "/ws/note.md": "", "/ws/other.md": "See [[note]].\n" });
+        const { panel, handler } = await open("/ws/note.md");
+        await handler({ type: "requestFolderIndex" });
+        await settle();
+        expect(sent(panel)).toHaveLength(1);
+
+        // Prose changes, references do not: the rebuild is the same index.
+        files["/ws/other.md"] = "See [[note]], with more words around it.\n";
+        watcher().change(vscode.Uri.file("/ws/other.md"));
+        await vi.advanceTimersByTimeAsync(1000);
+        await settle();
+        expect(sent(panel)).toHaveLength(1);
+
+        // A page that asks again (a reload in the same panel) has nothing and must be answered.
+        await handler({ type: "requestFolderIndex" });
+        await settle();
+        expect(sent(panel)).toHaveLength(2);
+    });
+
     it("a change that is not a note, or a panel that never asked, should send nothing", async () => {
         mountWorkspace("/ws", { "/ws/note.md": "" });
         const { panel } = await open("/ws/note.md");

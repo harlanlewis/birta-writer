@@ -88,6 +88,9 @@ interface RootState {
     index: FolderIndex | null;
     /** In-flight assembly, so two asks at once build once. */
     building: Promise<FolderIndex> | null;
+    /** The last index assembled, and its content as text: a rebuild that
+     *  changed nothing hands back this same object. */
+    previous: { index: FolderIndex; text: string } | null;
 }
 
 export class FolderIndexer {
@@ -98,7 +101,7 @@ export class FolderIndexer {
     private state(root: string): RootState {
         let s = this.roots.get(root);
         if (!s) {
-            s = { notes: null, truncated: false, readings: new Map(), resolutions: new Map(), index: null, building: null };
+            s = { notes: null, truncated: false, readings: new Map(), resolutions: new Map(), index: null, building: null, previous: null };
             this.roots.set(root, s);
         }
         return s;
@@ -249,7 +252,13 @@ export class FolderIndexer {
                 });
             }
         }
-        const index: FolderIndex = { rootName: path.basename(root), nodes, edges, truncated: s.truncated };
+        const built: FolderIndex = { rootName: path.basename(root), nodes, edges, truncated: s.truncated };
+        // Most rebuilds follow a save that changed no reference at all. Handing
+        // back the object already sent lets the caller see that, and skip
+        // re-sending a folder's worth of index for nothing.
+        const text = JSON.stringify(built);
+        const index = s.previous?.text === text ? s.previous.index : built;
+        s.previous = { index, text };
         s.index = index;
         return index;
     }
