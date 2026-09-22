@@ -1,0 +1,94 @@
+<!doctype html>
+<!-- e2e harness for the whole-folder graph (MAR-482). Mirrors the provider
+     template with acquireVsCodeApi stubbed, and answers `requestFolderIndex`
+     with a folder at the VS Code index's cap: 2000 notes, three references
+     each, typed in part, plus five notes nothing touches and two targets that
+     name no note, so the view's three lists have exact expected contents. The
+     --vscode-* variables stand in for the set VS Code injects natively. -->
+<meta charset="utf-8">
+<style>
+  :root {
+    --vscode-editor-background: #1e1e1e;
+    --vscode-editor-foreground: #d4d4d4;
+    --vscode-foreground: #cccccc;
+    --vscode-descriptionForeground: #999999;
+    --vscode-focusBorder: #007fd4;
+    --vscode-panel-border: rgba(128, 128, 128, 0.2);
+    --vscode-icon-foreground: #cccccc;
+    --vscode-toolbar-hoverBackground: rgba(90, 93, 94, 0.31);
+    --vscode-list-hoverBackground: rgba(90, 93, 94, 0.2);
+    --vscode-list-activeSelectionBackground: rgba(0, 127, 212, 0.26);
+    --vscode-list-activeSelectionForeground: #ffffff;
+    --vscode-editorWidget-background: #252526;
+    --vscode-editorHoverWidget-background: #252526;
+    --vscode-editorHoverWidget-border: #454545;
+    --vscode-editorWidget-foreground: #cccccc;
+    --vscode-editorWidget-border: #454545;
+    --vscode-widget-shadow: rgba(0, 0, 0, 0.36);
+    --vscode-input-background: #3c3c3c;
+    --vscode-input-foreground: #cccccc;
+    --vscode-input-border: #3c3c3c;
+    --vscode-charts-red: #f14c4c;
+    --vscode-charts-orange: #d18616;
+    --vscode-charts-yellow: #cca700;
+    --vscode-charts-green: #89d185;
+    --vscode-charts-blue: #3794ff;
+    --vscode-charts-purple: #b180d7;
+  }
+  body { background: var(--vscode-editor-background); color: var(--vscode-editor-foreground); margin: 0; }
+  .editor-topbar { height: 40px; }
+</style>
+<script>
+  document.addEventListener("DOMContentLoaded", () => document.body.classList.add("editor-width-auto"));
+  window.__i18n = {
+    translations: {},
+    isMac: true,
+    toolbar: { placements: {}, order: [] },
+    tocAutoHideThreshold: 3,
+    proofread: { grammarCheck: false, spellCheck: false },
+  };
+  window.__posted = [];
+  const CONTENT = ["# Hub", "", "Body.", "", "## One", "", "## Two", "", "## Three", "", "## Four", ""].join("\n");
+
+  const N = 2000;
+  const ORPHANS = 5;
+  const note = (path, name, type = null) => ({ path, name, type, tags: [], status: null, trust: null, staleAfter: null });
+  const edge = (from, to, target) => ({ from, to, target: target ?? to, kind: "link", text: target ?? to, line: 3 });
+  const TYPES = ["reference", "metric", "playbook", null, null];
+  const paths = Array.from({ length: N }, (_, i) => `d${i % 40}/note-${i}.md`);
+  const linked = N - ORPHANS; // the last five are touched by nothing
+  const edges = [];
+  for (let i = 0; i < linked; i++) {
+    for (const k of [1, 2, 3]) {
+      const j = (i * 7 + k * 13) % linked;
+      if (j !== i) { edges.push(edge(paths[i], paths[j])); }
+    }
+  }
+  // note-0 is everyone's hub: a tenth of the folder names it.
+  for (let i = 1; i < linked; i += 10) { edges.push(edge(paths[i], paths[0])); }
+  edges.push(edge(paths[3], null, "Ghost"), edge(paths[4], null, "Ghost"), edge(paths[5], null, "Unwritten"));
+  window.__folderIndex = {
+    rootName: "vault",
+    truncated: false,
+    nodes: paths.map((p, i) => note(p, `Note ${i}`, TYPES[i % TYPES.length])),
+    edges,
+  };
+  window.__expected = { orphans: paths.slice(linked).sort(), dangling: ["Ghost", "Unwritten"] };
+  window.acquireVsCodeApi = () => ({
+    postMessage: (msg) => {
+      window.__posted.push(msg);
+      if (msg.type === "ready") {
+        window.postMessage({ type: "init", content: CONTENT, frontmatter: "", syncVersion: 1 }, "*");
+      }
+      if (msg.type === "requestFolderIndex") {
+        window.postMessage({ type: "folderIndex", index: window.__folderIndex, self: paths[0] }, "*");
+      }
+    },
+    getState: () => undefined,
+    setState: () => {},
+  });
+</script>
+<link rel="stylesheet" href="dist/webview.css">
+<div class="editor-topbar"></div>
+<div id="editor"></div>
+<script type="module" src="dist/webview.js"></script>

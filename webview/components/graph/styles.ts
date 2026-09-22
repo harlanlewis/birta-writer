@@ -196,6 +196,120 @@ export const LOCAL_GRAPH_CSS = `
     width: 8px;
     height: 8px;
 }
+
+/* ── The whole-folder view (folderView.ts), on the fullscreen surface ── */
+
+/* The lists on the left, under the title's band, and the drawing on the
+   right, where the shell floats its actions (top) and navigation (bottom):
+   both clusters then sit over the canvas they control, never over a list. */
+.fg {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    grid-template-columns: 280px minmax(0, 1fr);
+}
+
+.fg-stage {
+    grid-column: 2;
+    grid-row: 1;
+    position: relative;
+    min-width: 0;
+    min-height: 0;
+}
+
+.fg-canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    cursor: grab;
+    touch-action: none;
+}
+
+.fg-hover {
+    position: absolute;
+    pointer-events: none;
+    padding: 2px var(--ui-space-2);
+    border-radius: var(--ui-radius-s);
+    background: var(--ui-card-bg);
+    color: var(--vscode-foreground);
+    font-size: var(--ui-fs-s);
+    white-space: nowrap;
+}
+
+.fg-side {
+    overflow-y: auto;
+    grid-column: 1;
+    grid-row: 1;
+    border-inline-end: 1px solid var(--vscode-panel-border);
+    padding: var(--fs-band) var(--ui-space-3) var(--ui-space-3);
+    display: flex;
+    flex-direction: column;
+    gap: var(--ui-space-1);
+    color: var(--vscode-foreground);
+    font-size: var(--ui-fs-s);
+}
+
+.fg-search {
+    width: 100%;
+    box-sizing: border-box;
+    padding: var(--ui-space-1) var(--ui-space-2);
+    border: 1px solid var(--vscode-input-border, var(--vscode-panel-border));
+    border-radius: var(--ui-radius-s);
+    background: var(--vscode-input-background);
+    color: var(--vscode-input-foreground);
+    font: inherit;
+}
+
+.fg-types {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--ui-space-1);
+    padding-block: var(--ui-space-1);
+}
+
+.fg-type {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--ui-space-1);
+}
+
+.fg-summary,
+.fg-empty {
+    color: var(--vscode-descriptionForeground);
+    padding-block: var(--ui-space-1);
+}
+
+.fg-heading {
+    margin-block-start: var(--ui-space-3);
+}
+
+.fg-list {
+    display: flex;
+    flex-direction: column;
+}
+
+.fg-row {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--ui-space-2);
+    text-align: start;
+}
+
+.fg-row[aria-disabled="true"] {
+    cursor: default;
+}
+
+.fg-row-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.fg-row-detail {
+    color: var(--vscode-descriptionForeground);
+    font-variant-numeric: tabular-nums;
+}
 `;
 
 /** Put the stylesheet on the page once, the first time a graph is drawn. */

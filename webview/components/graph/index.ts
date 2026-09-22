@@ -25,6 +25,8 @@ import { wireRoving } from "../sidePanel/keyboardNav";
 import { buildLocalGraph, hueOf, layoutRings, type GraphDepth, type GraphNode, type LocalGraph } from "./localGraph";
 import { ensureLocalGraphStyles } from "./styles";
 
+export { openFolderGraph } from "./folderView";
+
 const SVG_NS = "http://www.w3.org/2000/svg";
 /** The layout square: the SVG's viewBox and the buttons' percentages. */
 const SIZE = 100;
@@ -34,6 +36,8 @@ const ARROW = 1.3;
 export interface LocalGraphHost {
     /** Open a note by its root-relative path. */
     openNote: (path: string) => void;
+    /** Open the whole folder's graph over the page (./folderView.ts). */
+    openFolder: () => void;
     /** Where Escape sends focus: the editor. */
     onEscape: () => void;
 }
@@ -101,7 +105,14 @@ export function createLocalGraphView(host: LocalGraphHost): LocalGraphView {
     const segNear = makeSeg(t("Neighbours"), 1);
     const segFar = makeSeg(t("Two steps"), 2);
     segs.append(segNear, segFar);
-    toolbar.append(segs);
+    // The way out to the whole folder, at the trailing edge where the Notes
+    // tab keeps its own switch.
+    const wholeFolder = document.createElement("button");
+    wholeFolder.className = "ui-btn review-seg review-trailing lg-whole-folder";
+    wholeFolder.textContent = t("Whole folder");
+    wholeFolder.tabIndex = -1;
+    bindActivate(wholeFolder, () => host.openFolder());
+    toolbar.append(segs, wholeFolder);
 
     const stage = document.createElement("div");
     stage.className = "lg-stage";
@@ -111,7 +122,7 @@ export function createLocalGraphView(host: LocalGraphHost): LocalGraphView {
     legend.className = "lg-legend";
     element.append(toolbar, stage, caption, legend);
 
-    wireRoving({ container: toolbar, items: () => [segNear, segFar], orientation: "horizontal", onEscape: host.onEscape });
+    wireRoving({ container: toolbar, items: () => [segNear, segFar, wholeFolder], orientation: "horizontal", onEscape: host.onEscape });
     const nodeRoving = wireRoving({
         container: stage,
         items: () => [...stage.querySelectorAll<HTMLElement>(".lg-node:not(:disabled)")],
