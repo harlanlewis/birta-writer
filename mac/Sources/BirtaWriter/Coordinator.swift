@@ -155,13 +155,41 @@ final class Coordinator {
 
     /// A row was activated. An openable file goes to the app's routing, which
     /// lands it in this tab or a new one; anything else (an image, a PDF) is
-    /// a file the editor does not open, handed to whatever does.
-    private func openProjectFile(relative path: String, newTab: Bool) {
+    /// a file the editor does not open, handed to whatever does. `line` is
+    /// where a backlink asked to land, carried with the file to wherever it
+    /// lands; an explorer row asks for none.
+    private func openProjectFile(relative path: String, newTab: Bool, line: Int?) {
         guard let explorerRoot, let file = DirectoryListing.resolve(path, in: explorerRoot) else { return }
         if DocumentTypes.accepts(file) {
-            onOpenProjectFile?(file, newTab)
+            onOpenProjectFile?(file, newTab, line)
         } else {
             NSWorkspace.shared.open(file)
+        }
+    }
+
+    /// The document line the next page this window builds opens on, held
+    /// from `reveal(line:)` until `initDoc` carries it and then cleared: a
+    /// line asked for while the page is cold or loading has no page to be
+    /// sent to yet, and a `scrollToLine` posted before `ready` is lost.
+    private var pendingRevealLine: Int?
+
+    /// Put the page on a document line: now, when the page is up, or on the
+    /// page's first `init` when one is on its way. The one entry for every
+    /// route a backlink can take (`WindowSet.openFromExplorer`), so a caller
+    /// that has fronted a window, made a tab, or reloaded this one asks the
+    /// same way and the page's state decides which message it is.
+    ///
+    /// Held rather than sent when not warm, and it has to be: `show()`
+    /// reloads a cold page, and a send racing that reload reaches the page
+    /// being torn down. A caller that is ABOUT to reload this window's page
+    /// passes the line to `openInPlace` instead, which holds it past the
+    /// reload; asked here first, the line would go to the page the reload
+    /// is replacing.
+    func reveal(line: Int) {
+        if state == .warm {
+            host.send(.scrollToLine(line: line))
+        } else {
+            pendingRevealLine = line
         }
     }
 
@@ -208,7 +236,7 @@ final class Coordinator {
         guard let pick = sender.representedObject as? ExplorerMenuPick else { return }
         switch pick.action {
         case .openInNewTab:
-            onOpenProjectFile?(pick.url, true)
+            onOpenProjectFile?(pick.url, true, nil)
         case .newNoteInside:
             onNewNoteInFolder?(pick.url)
         case .revealInFinder:
@@ -239,7 +267,11 @@ final class Coordinator {
     /// same answer for the narrow case where the flush itself brings the
     /// first unsaved bytes: the replace is abandoned and the file opens
     /// beside, so no gesture here can drop text that was only in the buffer.
-    func replaceFile(with url: URL, orTab: @escaping (URL) -> Void) {
+    ///
+    /// `line` is where the open was asked to land, or nil: it goes to the
+    /// page this reload builds, and to `orTab` when the replace is abandoned,
+    /// so the line follows the file to whichever page ends up showing it.
+    func replaceFile(with url: URL, revealing line: Int?, orTab: @escaping (URL) -> Void) {
         flushThen(persisting: false) { [weak self] in
             guard let self else { return }
             self.write(.panelHidden)
@@ -249,7 +281,7 @@ final class Coordinator {
             }
             // A file in somebody's project is not the app's document, so the
             // tab takes no slot; `WindowSet` never hands one to a rooted tab.
-            self.openInPlace(url, slot: nil)
+            self.openInPlace(url, slot: nil, revealing: line)
         }
     }
 
@@ -445,8 +477,9 @@ final class Coordinator {
     /// A row of this window's file explorer was activated, and whether the
     /// reader asked for a new tab (Cmd+click, middle click, the row's menu).
     /// Where the file lands is the app's rule (`OpenRouting.explorerDestination`,
-    /// through `WindowSet.openFromExplorer`), so the window only asks.
-    var onOpenProjectFile: ((URL, Bool) -> Void)?
+    /// through `WindowSet.openFromExplorer`), so the window only asks. The
+    /// third is the document line a backlink asked to land on, nil for a row.
+    var onOpenProjectFile: ((URL, Bool, Int?) -> Void)?
 
     /// The explorer's New Note in a folder: a note is the app's to make and
     /// place (`WindowSet.newNote(in:beside:)`), so the window only asks.
@@ -884,10 +917,15 @@ final class Coordinator {
     /// and `startWatching` is what clears `noteMissing` and takes the screen
     /// down. What is left is the page, which has to be loaded again against the
     /// new binding, and the slot, which is `WindowSet`'s to hand out.
-    func openInPlace(_ url: URL, slot: ActiveBinding.Slot?) {
+    /// - Parameter revealing: the document line the new page opens on, or
+    ///   nil to open where `ViewStateOnOpen` says. Taken here rather than
+    ///   through `reveal(line:)` because this window's page is warm right up
+    ///   to `loadPage`, and a line sent to it would go to the page leaving.
+    func openInPlace(_ url: URL, slot: ActiveBinding.Slot?, revealing line: Int? = nil) {
         bindingSlot = slot
         boundURL = url
         reloadFromDisk = true
+        pendingRevealLine = line
         loadPage()
         refreshTitle()
         show()
@@ -1807,9 +1845,14 @@ final class Coordinator {
                 hasLoaded = adopt(readActiveNote())
             }
             let doc = split.forPage(latest)
+            // The line this open was asked for rides on the page's first
+            // `init` and is spent by it: the next page this window builds
+            // is a remount or another open, and neither was asked for it.
+            let revealLine = pendingRevealLine
+            pendingRevealLine = nil
             host.send(.initDoc(content: doc.body, frontmatter: doc.frontmatter,
                                lineOffset: doc.lineOffset, syncVersion: guardState.version,
-                               viewStateJSON: mountedViewStateJSON))
+                               viewStateJSON: mountedViewStateJSON, scrollToLine: revealLine))
             state = .warm
             // The two app-wide page settings, sent again now that the page
             // can hear them. The boot script carried them as they stood when
@@ -2025,8 +2068,8 @@ final class Coordinator {
         case let .setTocWidth(w): Prefs.tocWidth = w
         case let .listDirectory(id, path):
             answerListing(id: id, path: path)
-        case let .openProjectFile(path, newTab):
-            openProjectFile(relative: path, newTab: newTab)
+        case let .openProjectFile(path, newTab, line):
+            openProjectFile(relative: path, newTab: newTab, line: line)
         case .requestFolderIndex:
             folderIndexSubscribed = true
             onFolderIndexRequest?()
