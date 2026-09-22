@@ -913,6 +913,11 @@ public struct BootConfig: Equatable {
             "pasteUnfurl": networkEnabled,
             "calcEnabled": true,
             "calcBlocksEnabled": true,
+            // The folder graph is this surface's feature (MAR-487): on, with
+            // no setting to flip. Whether a window has a folder to index is
+            // the `folderIndex` capability's question, answered above, so a
+            // window on a loose file still asks for nothing.
+            "folderGraph": true,
             // The Checks answers, exactly as the menu posted them, and no
             // `proofread` config beside them. Which of the checks can RUN is
             // the page's to decide from the capabilities above, and a config

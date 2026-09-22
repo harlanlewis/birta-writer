@@ -12,6 +12,11 @@
  * declare `folderIndex` is never asked at all. The review sidebar reads on its
  * idle visibility pass, which it skips while closed, so a sidebar nobody opens
  * costs the host no walk of the folder.
+ *
+ * Two gates, one question each. The capability says the host CAN answer; the
+ * `folderGraph` setting says the editor asks (off by default in VS Code, on
+ * in the Mac app's folder windows). With the setting off nothing is asked, so
+ * the host walks no folder and reads no note, whatever it declared.
  */
 import { hostHas } from "../../shared/hostProfile";
 import { backlinksOf, relativeNotePath, type FolderEdge, type FolderIndex } from "../../shared/folderIndex";
@@ -29,12 +34,17 @@ export interface FolderIndexState {
 let requested = false;
 let current: FolderIndexState | null = null;
 
+/** Is the folder graph switched on for this page (birta.folderGraph)? */
+export function folderGraphEnabled(): boolean {
+    return window.__i18n?.folderGraph === true;
+}
+
 /**
  * The latest index the host sent, or null before the first answer (and
  * always, on a host that has none to give). The first call asks for it.
  */
 export function readFolderIndex(): FolderIndexState | null {
-    if (!requested && hostHas("folderIndex")) {
+    if (!requested && folderGraphEnabled() && hostHas("folderIndex")) {
         requested = true;
         notifyRequestFolderIndex();
     }

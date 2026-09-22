@@ -293,6 +293,9 @@ describe("Backlinks tab: the host's folder index, asked for only when the sideba
         vi.clearAllMocks();
         stubTimers();
         resetFolderIndexForTests();
+        // The setting is off by default (MAR-487); these tests are about what
+        // happens with it on. No `host` key: absent means the VS Code profile.
+        (window as { __i18n?: unknown }).__i18n = { folderGraph: true };
         document.body.className = "";
         document.body.innerHTML = "";
     });
@@ -346,12 +349,23 @@ describe("Backlinks tab: the host's folder index, asked for only when the sideba
 
     it("a host that does not declare the capability should never be asked", () => {
         (window as { __i18n?: unknown }).__i18n = {
-            translations: {}, isMac: true, host: { capabilities: ["toc"], arrangements: [], shortcuts: {} },
+            translations: {}, isMac: true, folderGraph: true, host: { capabilities: ["toc"], arrangements: [], shortcuts: {} },
         };
         const toc = mountToc();
         toc.toggle();
         expect(requests()).toBe(0);
         expect(tabsOf(toc)[TAB.backlinks]!.hidden).toBe(true);
+        toc.dispose();
+    });
+
+    it("with the setting off, a host that declares the capability should still never be asked, and both tabs stay hidden", () => {
+        (window as { __i18n?: unknown }).__i18n = { translations: {} };
+        const toc = mountToc();
+        toc.toggle();
+        toc.refreshContent();
+        expect(requests()).toBe(0);
+        expect(tabsOf(toc)[TAB.backlinks]!.hidden).toBe(true);
+        expect(tabsOf(toc)[TAB.graph]!.hidden).toBe(true);
         toc.dispose();
     });
 

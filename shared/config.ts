@@ -159,6 +159,17 @@ export interface BirtaConfig extends ProofreadConfig {
     floatingToolbarItems: Record<string, boolean>;
     smartLinks: boolean;
     /**
+     * The Backlinks and Graph tabs over the document's folder
+     * (birta.folderGraph), off by default in VS Code. Off, the page never
+     * asks the host for the folder index, so no folder is walked and no
+     * note is read; the host's `folderIndex` capability says it COULD
+     * answer, this says whether the editor asks. Birta Writer for Mac
+     * declares it on in a folder window, because the folder graph is that
+     * surface's feature; in VS Code it is another extension's job unless
+     * the user opts in.
+     */
+    folderGraph: boolean;
+    /**
      * Logseq handling (birta.logseq), off by default. `auto` detects whether
      * the document belongs to a Logseq graph (src/utils/logseqDetect.ts);
      * `on` forces the treatment for a page opened outside its graph. With
@@ -380,6 +391,7 @@ export const BIRTA_SETTING_KEYS: { readonly [K in keyof BirtaConfig]: string } =
     floatingToolbarEnabled: "floatingToolbar.enabled",
     floatingToolbarItems: "floatingToolbar.items",
     smartLinks: "smartLinks",
+    folderGraph: "folderGraph",
     logseq: "logseq",
     agentCommand: "agent.command",
     agentMode: "agent.mode",
@@ -482,6 +494,9 @@ export const BIRTA_CONFIG_DEFAULTS: BirtaConfig = {
     floatingToolbarEnabled: true,
     floatingToolbarItems: {},
     smartLinks: true,
+    // The folder graph ships OFF in VS Code: a user who never turns it on
+    // pays nothing for it, not a walk, not a read, not a watcher handler.
+    folderGraph: false,
     // Logseq handling ships OFF: a user who does not keep a Logseq graph pays
     // nothing for it, not even the ancestor stat walk that `auto` runs on open.
     logseq: "off",
