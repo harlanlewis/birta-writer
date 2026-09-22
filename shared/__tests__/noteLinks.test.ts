@@ -64,6 +64,15 @@ describe("readNote: the OKF fixture's frontmatter", () => {
     });
 });
 
+describe("readNote: a byte-order mark", () => {
+    it("a note read with its byte-order mark should keep its frontmatter, its sources and its line numbers", () => {
+        const plain = "---\ntitle: Marked\nsources:\n  - resource: s.md\n---\n[[b]]\n";
+        const marked = readNote(`﻿${plain}`);
+        expect(marked.meta.title).toBe("Marked");
+        expect(marked).toEqual(readNote(plain));
+    });
+});
+
 describe("readNote: the body", () => {
     it("a body link should report the file line it is written on, frontmatter counted", () => {
         const content = "---\ntitle: T\n---\n\nFirst line.\n\nSee [a](a.md) and\n[[B]] here.\n";

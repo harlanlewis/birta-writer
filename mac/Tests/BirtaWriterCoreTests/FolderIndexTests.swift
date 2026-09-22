@@ -130,6 +130,14 @@ final class FolderIndexTests: XCTestCase {
         XCTAssertEqual(FolderIndexer(root: root).build().nodes.map(\.path), ["a.md"])
     }
 
+    func testDependenciesShouldNotBeWalkedAtAnyDepth() throws {
+        try write("node_modules/pkg/README.md", "[[a]]\n")
+        try write("web/node_modules/other/CHANGELOG.md", "x\n")
+        try write("web/notes.md", "n\n")
+        try write("a.md", "a\n")
+        XCTAssertEqual(FolderIndexer(root: root).build().nodes.map(\.path), ["a.md", "web/notes.md"])
+    }
+
     func testTheWireFormShouldCarryEveryFieldTheTypeScriptTypeDeclares() throws {
         try write("a.md", "---\nstatus: draft\n---\n[[b]]\n")
         let index = FolderIndexer(root: root).build()

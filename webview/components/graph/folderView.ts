@@ -28,6 +28,8 @@ import { ensureLocalGraphStyles } from "./styles";
 export interface FolderGraphHost {
     /** Open a note by its root-relative path. */
     openNote: (path: string) => void;
+    /** Where focus goes when the graph is dismissed and what held it at opening is gone. */
+    onDismiss?: () => void;
 }
 
 /** Milliseconds of layout each animation frame may spend. */
@@ -59,6 +61,11 @@ export function openFolderGraph(state: FolderIndexState, host: FolderGraphHost):
     let focus: Set<string> | null = null;
     let raf = 0;
     let closed = false;
+    let openingNote = false;
+    // The surface takes focus and clears the editor's selection, so a
+    // dismissal hands focus back to whatever held it when the graph opened.
+    const opener = document.activeElement instanceof HTMLElement && document.activeElement !== document.body
+        ? document.activeElement : null;
 
     const surface = openFullscreenSurface({
         ground: "canvas",
@@ -68,6 +75,8 @@ export function openFolderGraph(state: FolderIndexState, host: FolderGraphHost):
             closed = true;
             cancelAnimationFrame(raf);
             resize.disconnect();
+            if (openingNote) { return; }
+            if (opener?.isConnected) { opener.focus(); } else { host.onDismiss?.(); }
         },
     });
     surface.setCanvasColor("var(--vscode-editor-background)");
@@ -200,7 +209,7 @@ export function openFolderGraph(state: FolderIndexState, host: FolderGraphHost):
             btn.addEventListener("blur", () => { focus = null; draw(); });
             if (row.path) {
                 const path = row.path;
-                btn.addEventListener("click", () => { surface.close(); host.openNote(path); });
+                btn.addEventListener("click", () => { openingNote = true; surface.close(); host.openNote(path); });
             } else {
                 btn.setAttribute("aria-disabled", "true");
             }
@@ -386,11 +395,15 @@ export function openFolderGraph(state: FolderIndexState, host: FolderGraphHost):
         draw();
     });
     canvas.addEventListener("pointerup", (e) => {
-        const wasDrag = drag?.moved ?? false;
+        // A release is a click only after a press on the canvas: the graph
+        // opens on the press of the button that summons it, and that
+        // gesture's release must not open whatever dot is under it.
+        const pressed = drag;
         drag = null;
-        if (wasDrag) { return; }
+        if (!pressed || pressed.moved) { return; }
         const over = hit(e.clientX, e.clientY);
         if (over) {
+            openingNote = true;
             surface.close();
             host.openNote(over);
         }

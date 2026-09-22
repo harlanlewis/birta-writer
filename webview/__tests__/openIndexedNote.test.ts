@@ -30,6 +30,18 @@ describe("openIndexedNote", () => {
         expect(mockVscodeApi.postMessage).toHaveBeenCalledWith({ type: "openFile", path: "../other/there.md#12" });
     });
 
+    it("a file name holding % but no # should go literally, which resolution opens with smart links on or off", () => {
+        declare(["textEditor", "folderIndex"]);
+        openIndexedNote("here.md", "100% done.md", 3);
+        expect(mockVscodeApi.postMessage).toHaveBeenCalledWith({ type: "openFile", path: "./100% done.md#3" });
+    });
+
+    it("a file name holding # should be escaped, % with it, so the name is not read as a fragment", () => {
+        declare(["textEditor", "folderIndex"]);
+        openIndexedNote("here.md", "C# at 50%.md", 3);
+        expect(mockVscodeApi.postMessage).toHaveBeenCalledWith({ type: "openFile", path: "./C%23 at 50%25.md#3" });
+    });
+
     it("a host with an explorer should be sent openProjectFile with the root-relative path", () => {
         declare(["projectFiles", "folderIndex"]);
         openIndexedNote("notes/here.md", "other/th#ere.md", 12);

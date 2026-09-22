@@ -475,7 +475,10 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
                         const state = readFolderIndex();
                         if (!state?.index || state.self === null) { return; }
                         const self = state.self;
-                        mod.openFolderGraph(state, { openNote: (path) => openIndexedNote(self, path) });
+                        mod.openFolderGraph(state, {
+                            openNote: (path) => openIndexedNote(self, path),
+                            onDismiss: () => getEditorView()?.focus(),
+                        });
                     },
                 });
                 graphHost.append(graphView.element);

@@ -66,9 +66,10 @@ export function selfHasReferences(): boolean {
  * Open the note at `path` (root-relative), at `line` when one is given: the
  * one route every view of the index opens a note by. `openFile` resolves a
  * path relative to the open document first, so the path is made relative to
- * `self`; `%` and `#` are escaped so a file name holding either is not read
- * as a fragment, since the host's resolver tries the decoded form after the
- * literal one.
+ * `self`. A `#` in a file name would be read as the fragment, so a name
+ * holding one is escaped (`%` too, then, so the escape is unambiguous), and
+ * only smart link resolution decodes it back; a name without one goes
+ * literally, which both resolution modes open.
  *
  * A host with a file explorer (`projectFiles`, the Mac app's directory
  * windows) opens a root-relative path directly and parses no `openFile`,
@@ -82,7 +83,8 @@ export function openIndexedNote(self: string, path: string, line?: number): void
         notifyOpenProjectFile(path, false);
         return;
     }
-    const rel = relativeNotePath(self, path).replace(/%/g, "%25").replace(/#/g, "%23");
+    const plain = relativeNotePath(self, path);
+    const rel = plain.includes("#") ? plain.replace(/%/g, "%25").replace(/#/g, "%23") : plain;
     notifyOpenFile(line === undefined ? rel : `${rel}#${line}`);
 }
 

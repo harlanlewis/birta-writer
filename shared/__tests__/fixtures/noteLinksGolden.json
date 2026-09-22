@@ -1904,6 +1904,29 @@
   },
   {
    "name": "EXTRA[0]",
+   "content": "﻿---\ntitle: Marked\ntype: concept\n---\n[[b]]\n",
+   "reading": {
+    "links": [
+     {
+      "kind": "wiki",
+      "href": "b",
+      "path": "b",
+      "text": "b",
+      "line": 5
+     }
+    ],
+    "meta": {
+     "title": "Marked",
+     "type": "concept",
+     "tags": [],
+     "status": null,
+     "trust": null,
+     "staleAfter": null
+    }
+   }
+  },
+  {
+   "name": "EXTRA[1]",
    "content": "---\ntitle: \"Quoted: Title\"\ntype: concept\ntags: [a, \"b c\", 'd']\n---\nBody [x](x.md)\n",
    "reading": {
     "links": [
@@ -1930,7 +1953,7 @@
    }
   },
   {
-   "name": "EXTRA[1]",
+   "name": "EXTRA[2]",
    "content": "---\ntitle: Plain\ntags:\n  - one\n  - \"two\"\n---\n\n[[One]]\n",
    "reading": {
     "links": [
@@ -1956,7 +1979,7 @@
    }
   },
   {
-   "name": "EXTRA[2]",
+   "name": "EXTRA[3]",
    "content": "---\ntags:\n[\n  alpha,\n  \"beta\",\n]\n---\n[a](a.md)\n",
    "reading": {
     "links": [
@@ -1982,7 +2005,7 @@
    }
   },
   {
-   "name": "EXTRA[3]",
+   "name": "EXTRA[4]",
    "content": "---\ntags:\n[\n  alpha,\n  beta\n]\n---\n[a](a.md)\n",
    "reading": {
     "links": [
@@ -2008,7 +2031,7 @@
    }
   },
   {
-   "name": "EXTRA[4]",
+   "name": "EXTRA[5]",
    "content": "---\ntags:\n[\n  alpha\n  beta,\n]\n---\n[refused by its commas](a.md)\n",
    "reading": {
     "links": [
@@ -2031,7 +2054,7 @@
    }
   },
   {
-   "name": "EXTRA[5]",
+   "name": "EXTRA[6]",
    "content": "---\ntags: solo\ntitle: ''\n---\nx\n",
    "reading": {
     "links": [],
@@ -2048,7 +2071,7 @@
    }
   },
   {
-   "name": "EXTRA[6]",
+   "name": "EXTRA[7]",
    "content": "---\ntitle: Sourced\nsources:\n  - resource: notes/origin.md\n    title: \"The origin\"\n  - resource: https://example.com/x\n  - resource: ../up.md#part\n  - { resource: flow.md, title: Flow }\n---\n\nBody\n",
    "reading": {
     "links": [
@@ -2085,7 +2108,7 @@
    }
   },
   {
-   "name": "EXTRA[7]",
+   "name": "EXTRA[8]",
    "content": "---\nsources:\n- resource: same.md\n- resource: same.md\n---\n",
    "reading": {
     "links": [
@@ -2115,7 +2138,7 @@
    }
   },
   {
-   "name": "EXTRA[8]",
+   "name": "EXTRA[9]",
    "content": "---\nsources:\n  resource: mapped.md\n  title: Mapped\n---\n",
    "reading": {
     "links": [
@@ -2138,7 +2161,7 @@
    }
   },
   {
-   "name": "EXTRA[9]",
+   "name": "EXTRA[10]",
    "content": "---\nsources: { resource: inline.md }\n---\n",
    "reading": {
     "links": [
@@ -2161,7 +2184,7 @@
    }
   },
   {
-   "name": "EXTRA[10]",
+   "name": "EXTRA[11]",
    "content": "---\nstatus: stable\nstale_after: 2026-01-01T00:00:00Z\ngenerated:\n  by: process:build\nverified:\n  - by: \"human:ana\"\n---\n",
    "reading": {
     "links": [],
@@ -2176,7 +2199,7 @@
    }
   },
   {
-   "name": "EXTRA[11]",
+   "name": "EXTRA[12]",
    "content": "---\nstatus: whatever\nverified:\n  - by: tool:x\n---\n",
    "reading": {
     "links": [],
@@ -2191,7 +2214,7 @@
    }
   },
   {
-   "name": "EXTRA[12]",
+   "name": "EXTRA[13]",
    "content": "---\nverified:\n  - at: 2026-01-01\n---\n",
    "reading": {
     "links": [],
@@ -2206,7 +2229,7 @@
    }
   },
   {
-   "name": "EXTRA[13]",
+   "name": "EXTRA[14]",
    "content": "---\ngenerated:\n  by: tool:x\n---\n",
    "reading": {
     "links": [],
@@ -2221,7 +2244,7 @@
    }
   },
   {
-   "name": "EXTRA[14]",
+   "name": "EXTRA[15]",
    "content": "---\n# a comment\ntitle: Refused\nsources:\n  - resource: never.md\n---\n[kept](kept.md)\n",
    "reading": {
     "links": [
@@ -2244,7 +2267,7 @@
    }
   },
   {
-   "name": "EXTRA[15]",
+   "name": "EXTRA[16]",
    "content": "---\r\ntitle: CRLF\r\n---\r\n[crlf](crlf.md)\r\n",
    "reading": {
     "links": [
@@ -2267,7 +2290,7 @@
    }
   },
   {
-   "name": "EXTRA[16]",
+   "name": "EXTRA[17]",
    "content": "+++\ntitle = \"TOML\"\n+++\n[toml](toml.md)\n",
    "reading": {
     "links": [
@@ -2290,7 +2313,7 @@
    }
   },
   {
-   "name": "EXTRA[17]",
+   "name": "EXTRA[18]",
    "content": "---\n  title: stray indent\n---\n",
    "reading": {
     "links": [],
@@ -2305,7 +2328,7 @@
    }
   },
   {
-   "name": "EXTRA[18]",
+   "name": "EXTRA[19]",
    "content": "---\nsources:\n  - resource: a.md\n    meta:\n      deep: third level\n---\n",
    "reading": {
     "links": [],
@@ -2320,7 +2343,7 @@
    }
   },
   {
-   "name": "EXTRA[19]",
+   "name": "EXTRA[20]",
    "content": "---\ntitle: |\n  block scalar\n---\n",
    "reading": {
     "links": [],
@@ -2335,7 +2358,7 @@
    }
   },
   {
-   "name": "EXTRA[20]",
+   "name": "EXTRA[21]",
    "content": "---\nlist:\n  - b:\n---\n",
    "reading": {
     "links": [],
@@ -2350,7 +2373,7 @@
    }
   },
   {
-   "name": "EXTRA[21]",
+   "name": "EXTRA[22]",
    "content": "---\n\n---\n[empty block](e.md)\n",
    "reading": {
     "links": [
@@ -2373,7 +2396,7 @@
    }
   },
   {
-   "name": "EXTRA[22]",
+   "name": "EXTRA[23]",
    "content": "---\ntitle: Only frontmatter\n---",
    "reading": {
     "links": [],
@@ -2388,7 +2411,7 @@
    }
   },
   {
-   "name": "EXTRA[23]",
+   "name": "EXTRA[24]",
    "content": "---\ntitle: 😀 Emoji\n---\n[😀 a  b](emoji.md) [﻿bom﻿](bom.md)\n",
    "reading": {
     "links": [
@@ -2418,7 +2441,7 @@
    }
   },
   {
-   "name": "EXTRA[24]",
+   "name": "EXTRA[25]",
    "content": "[&#x1F600; smile](e.md) [n](&#0;.md) [amp](a&amp;b.md) [nope](a&bogus;.md) [nbsp](a&nbsp;b.md)\n",
    "reading": {
     "links": [
@@ -2469,7 +2492,7 @@
    }
   },
   {
-   "name": "EXTRA[25]",
+   "name": "EXTRA[26]",
    "content": "[a](&#x110000;.md) [b](&#9999999;.md) [c](&#xD800;.md) [d](&#1;.md) [e](&#x85;.md) [f](&#xFDD0;.md) [g](&#xFFFE;.md) [h](&#x1FFFF;.md) [ok](&#x41;&#9;.md)\n",
    "reading": {
     "links": [
@@ -2548,7 +2571,7 @@
    }
   },
   {
-   "name": "EXTRA[26]",
+   "name": "EXTRA[27]",
    "content": "[x](&constructor;.md) [&toString; label](a.md) [y](&hasOwnProperty;.md)\n",
    "reading": {
     "links": [
@@ -2585,7 +2608,7 @@
    }
   },
   {
-   "name": "EXTRA[27]",
+   "name": "EXTRA[28]",
    "content": "1234567890. not an item [a](a.md)\n\n-     five spaces [five](five.md)\n\n-\t[tab after marker](tab.md)\n",
    "reading": {
     "links": [
@@ -2622,7 +2645,7 @@
    }
   },
   {
-   "name": "EXTRA[28]",
+   "name": "EXTRA[29]",
    "content": "\t[tab code](tab-code.md)\n\n  \t[mixed indent](mixed.md)\n",
    "reading": {
     "links": [],
@@ -2637,7 +2660,7 @@
    }
   },
   {
-   "name": "EXTRA[29]",
+   "name": "EXTRA[30]",
    "content": "<span>\n[after a tag line](tagline.md)\n\n[after blank](after-blank.md)\n",
    "reading": {
     "links": [
@@ -2660,7 +2683,7 @@
    }
   },
   {
-   "name": "EXTRA[30]",
+   "name": "EXTRA[31]",
    "content": "Para\n<span>\n[tag cannot interrupt](interrupt.md)\n",
    "reading": {
     "links": [
@@ -2683,7 +2706,7 @@
    }
   },
   {
-   "name": "EXTRA[31]",
+   "name": "EXTRA[32]",
    "content": "> <pre>\n> [in pre](pre.md)\n> </PRE>\n\n[after pre](after-pre.md)\n",
    "reading": {
     "links": [
@@ -2706,7 +2729,7 @@
    }
   },
   {
-   "name": "EXTRA[32]",
+   "name": "EXTRA[33]",
    "content": "<textarea>[inline raw](raw.md)</textarea>\n\n[out](out.md)\n",
    "reading": {
     "links": [
@@ -2729,7 +2752,7 @@
    }
   },
   {
-   "name": "EXTRA[33]",
+   "name": "EXTRA[34]",
    "content": "[a\\]b]: esc.md\n[lbl]: <spaced target.md>\n[bad]: <a<b>\n\n[x][a\\]b] [y][lbl] [z][bad]\n",
    "reading": {
     "links": [
@@ -2766,7 +2789,7 @@
    }
   },
   {
-   "name": "EXTRA[34]",
+   "name": "EXTRA[35]",
    "content": "[[a\\|b|alias]] [[#heading only]] [[ ]] [[x#h|]] [[Target#Head]] [[p/q.md]]\n",
    "reading": {
     "links": [
@@ -2810,7 +2833,7 @@
    }
   },
   {
-   "name": "EXTRA[35]",
+   "name": "EXTRA[36]",
    "content": "[t](t.md 'single') [u](u.md (paren)) [v](<v.md> \"t\") [w](w.md\n\"next\")\n",
    "reading": {
     "links": [
@@ -2854,7 +2877,7 @@
    }
   },
   {
-   "name": "EXTRA[36]",
+   "name": "EXTRA[37]",
    "content": "[deep [nested] label](nested.md) [code `]` label](code-label.md)\n",
    "reading": {
     "links": [
@@ -2884,7 +2907,7 @@
    }
   },
   {
-   "name": "EXTRA[37]",
+   "name": "EXTRA[38]",
    "content": "```\nunclosed fence [hidden](hidden.md)\n",
    "reading": {
     "links": [],
@@ -2899,7 +2922,7 @@
    }
   },
   {
-   "name": "EXTRA[38]",
+   "name": "EXTRA[39]",
    "content": "~~~ info with `ticks` ok\n[in tilde](tilde.md)\n~~~\n\n``` bad`info\n[not a fence](not-fence.md)\n",
    "reading": {
     "links": [
@@ -2922,7 +2945,7 @@
    }
   },
   {
-   "name": "EXTRA[39]",
+   "name": "EXTRA[40]",
    "content": "$$ inline $$ [after inline math](after-math.md)\n\n$$\n[in math](in-math.md)\n",
    "reading": {
     "links": [],
@@ -2937,7 +2960,7 @@
    }
   },
   {
-   "name": "EXTRA[40]",
+   "name": "EXTRA[41]",
    "content": "###### h6 [six](six.md)\n####### seven [seven](seven.md)\n#nospace [ns](ns.md)\n",
    "reading": {
     "links": [
@@ -2974,7 +2997,7 @@
    }
   },
   {
-   "name": "EXTRA[41]",
+   "name": "EXTRA[42]",
    "content": "- a\n\n   [lazy under item](lazy-item.md)\n\n[back](back.md)\n",
    "reading": {
     "links": [
@@ -3004,7 +3027,7 @@
    }
   },
   {
-   "name": "EXTRA[42]",
+   "name": "EXTRA[43]",
    "content": "-     five spaces opens no item\n\n       [so this is code](after-five.md)\n",
    "reading": {
     "links": [],
@@ -3019,7 +3042,7 @@
    }
   },
   {
-   "name": "EXTRA[43]",
+   "name": "EXTRA[44]",
    "content": "[percent](a%20b.md) [hash](a.md#frag) [query](a.md?x=1) [mailto](mailto:x@y.z) [c](C:\\path.md) [frag](#only)\n",
    "reading": {
     "links": [

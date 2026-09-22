@@ -567,6 +567,10 @@ export function scanBodyLinks(body: string): Array<{ href: string; text: string;
 
 /** One note's references to other notes, and its attributes. */
 export function readNote(content: string): NoteReading {
+    // A byte-order mark is an encoding artifact, not text: a host that reads
+    // raw bytes keeps it, and it would stand in front of the frontmatter's
+    // opening fence. The editor never sees one (the host's decoder drops it).
+    if (content.charCodeAt(0) === 0xfeff) { content = content.slice(1); }
     const { frontmatter, body } = extractFrontmatter(content);
     const entries = frontmatter === "" ? null : parseTabularFrontmatter(frontmatter);
     const bodyLine0 = frontmatter === "" ? 0 : frontmatter.split("\n").length - 1;

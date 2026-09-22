@@ -112,6 +112,28 @@ export async function run({ page, check, baseUrl }) {
         !layout.closeOnSide && !layout.fitOnSide, JSON.stringify(layout));
     check("and the title's band leaves the list's first control clear", !layout.titleOverSearch, JSON.stringify(layout));
 
+    // The button opens the graph on its press, so that gesture's release can
+    // land on the canvas with no press there. Released over a grid across a
+    // drawing of the whole folder, it must open nothing.
+    const stray = await page.evaluate(() => {
+        window.__posted.length = 0;
+        const c = document.querySelector(".fg-canvas");
+        const r = c.getBoundingClientRect();
+        let released = 0;
+        for (let i = 1; i < 20; i++) {
+            for (let j = 1; j < 20; j++) {
+                if (!document.querySelector(".fs-surface.fg-surface")) { break; }
+                c.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, pointerId: 1,
+                    clientX: r.left + (r.width * i) / 20, clientY: r.top + (r.height * j) / 20 }));
+                released++;
+            }
+        }
+        return { released, opened: window.__posted.filter((m) => m.type === "openFile").length,
+            surface: !!document.querySelector(".fs-surface.fg-surface") };
+    });
+    check("a release with no press on the canvas opens no note", stray.released === 361 && stray.opened === 0 && stray.surface,
+        JSON.stringify(stray));
+
     await page.locator(".fg-types[aria-label=\"Statuses\"] .fg-type", { hasText: "draft" }).click();
     const drafts = await page.textContent(".fg-summary");
     check("a status chip keeps only notes of that status", drafts === "286 of 2000 notes", drafts);
@@ -129,6 +151,18 @@ export async function run({ page, check, baseUrl }) {
         surface: !!document.querySelector(".fs-surface.fg-surface"),
     }));
     check("a row opens its note and takes the surface down", after.opened.length === 1 && !after.surface, JSON.stringify(after));
+
+    await switchTab(page, "Graph");
+    await page.locator(".lg-whole-folder").dispatchEvent("mousedown");
+    await page.waitForSelector(".fs-surface.fg-surface", { timeout: 5000 });
+    await page.keyboard.press("Escape");
+    await page.waitForSelector(".fs-surface.fg-surface", { state: "detached", timeout: 5000 });
+    const focusAfter = await page.evaluate(() => {
+        const a = document.activeElement;
+        return { tag: a?.tagName ?? null, cls: String(a?.className ?? ""), body: a === document.body };
+    });
+    check("dismissing the folder graph hands focus back rather than dropping it on the page", !focusAfter.body && focusAfter.tag !== null,
+        JSON.stringify(focusAfter));
 
     check("no page errors while laying out and drawing the folder", errors.length === 0, JSON.stringify(errors));
 }

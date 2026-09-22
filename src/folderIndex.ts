@@ -52,6 +52,13 @@ export interface FolderIndexIo {
     yieldToHost?(): Promise<void>;
 }
 
+/**
+ * How many times one ask rebuilds when files keep changing under the build.
+ * Past it the ask is answered with the last build, uncached, so the next ask
+ * builds again rather than a burst of writes holding the caller forever.
+ */
+const MAX_REBUILDS = 3;
+
 /** How many fresh resolutions run between two yields to the host. */
 const RESOLVE_BATCH = 200;
 
@@ -59,6 +66,23 @@ const NOTE_EXT = new Set(DOCUMENT_EXTENSIONS.map((e) => `.${e}`));
 
 /** The walk's glob: every file this editor opens is a note. */
 export const NOTE_GLOB = `**/*.{${DOCUMENT_EXTENSIONS.join(",")}}`;
+
+/**
+ * The walk's exclude, for `findFiles`. An explicit exclude REPLACES
+ * `files.exclude` there rather than adding to it, so the user's patterns are
+ * folded back in by hand. Dependencies and dot-folders (a vault's `.trash`,
+ * `.obsidian`) are never notes of the folder; the Mac walk skips the same two
+ * (`FolderIndex.build`), so both hosts index the same notes.
+ */
+export function noteWalkExclude(filesExclude: Readonly<Record<string, unknown>> | undefined): string {
+    const patterns = ["**/node_modules/**", "**/.*/**"];
+    for (const [glob, on] of Object.entries(filesExclude ?? {})) {
+        // A `{ when: ... }` value depends on a sibling file and cannot be
+        // said as a glob; only a plain `true` is carried.
+        if (on === true && !glob.includes(",") && !glob.includes("{")) { patterns.push(glob); }
+    }
+    return `{${patterns.join(",")}}`;
+}
 
 /** Is this a file the index reads as a note? */
 export function isNotePath(fsPath: string): boolean {
@@ -91,6 +115,13 @@ interface RootState {
     /** The last index assembled, and its content as text: a rebuild that
      *  changed nothing hands back this same object. */
     previous: { index: FolderIndex; text: string } | null;
+    /**
+     * Bumped by every invalidation. A build awaits the disk and yields to the
+     * host, so a change can land in the middle of one; what that build read
+     * or resolved before the change is written back only while the generation
+     * it started under still holds, or the stale answer would be cached.
+     */
+    generation: number;
 }
 
 export class FolderIndexer {
@@ -101,7 +132,7 @@ export class FolderIndexer {
     private state(root: string): RootState {
         let s = this.roots.get(root);
         if (!s) {
-            s = { notes: null, truncated: false, readings: new Map(), resolutions: new Map(), index: null, building: null, previous: null };
+            s = { notes: null, truncated: false, readings: new Map(), resolutions: new Map(), index: null, building: null, previous: null, generation: 0 };
             this.roots.set(root, s);
         }
         return s;
@@ -128,6 +159,7 @@ export class FolderIndexer {
         for (const s of this.rootsOf(fsPath)) {
             s.readings.delete(fsPath);
             s.index = null;
+            s.generation++;
             touched = true;
         }
         return touched;
@@ -139,7 +171,10 @@ export class FolderIndexer {
      * have been waiting for exactly that one. A NOTE created or deleted
      * anywhere clears every root's resolutions, because a wikilink resolves
      * against the whole workspace's files and the nearest match can move to
-     * another folder.
+     * another folder. A folder counts as a note here: renaming or deleting
+     * one fires events for the folder alone, never for the notes inside it.
+     * A path with no extension is taken for a folder, since the watcher does
+     * not say which it is; a dotted folder name is the case that misses.
      */
     fileSetChanged(fsPath: string): boolean {
         let touched = false;
@@ -148,13 +183,15 @@ export class FolderIndexer {
             s.resolutions.clear();
             s.readings.delete(fsPath);
             s.index = null;
+            s.generation++;
             touched = true;
         }
-        if (isNotePath(fsPath)) {
+        if (isNotePath(fsPath) || path.extname(fsPath) === "") {
             for (const s of this.roots.values()) {
-                if (s.resolutions.size === 0 && s.index === null) { continue; }
+                if (!s.building && s.resolutions.size === 0 && s.index === null) { continue; }
                 s.resolutions.clear();
                 s.index = null;
+                s.generation++;
                 touched = true;
             }
         }
@@ -172,19 +209,39 @@ export class FolderIndexer {
     }
 
     private async assemble(root: string, s: RootState): Promise<FolderIndex> {
-        if (!s.notes) {
-            // One past the cap, so a folder holding exactly the cap is not called truncated.
-            const listed = await this.io.listNotes(root, FOLDER_INDEX_CAP + 1);
-            const notes = listed.filter(isNotePath).sort();
-            s.truncated = notes.length > FOLDER_INDEX_CAP;
-            s.notes = notes.slice(0, FOLDER_INDEX_CAP);
+        for (let attempt = 0; ; attempt++) {
+            const generation = s.generation;
+            const index = await this.assembleOnce(root, s, generation);
+            if (s.generation === generation) {
+                s.index = index;
+                return index;
+            }
+            if (attempt >= MAX_REBUILDS) { return index; }
         }
-        const notes = s.notes;
+    }
+
+    private async assembleOnce(root: string, s: RootState, generation: number): Promise<FolderIndex> {
+        const live = () => s.generation === generation;
+        let notes = s.notes;
+        let truncated = s.truncated;
+        if (!notes) {
+            // One past the cap, so a folder holding exactly the cap is not called truncated.
+            const listed = (await this.io.listNotes(root, FOLDER_INDEX_CAP + 1)).filter(isNotePath).sort();
+            truncated = listed.length > FOLDER_INDEX_CAP;
+            notes = listed.slice(0, FOLDER_INDEX_CAP);
+            if (live()) { s.notes = notes; s.truncated = truncated; }
+        }
+        // Readings made by this build, kept apart so one taken before a change
+        // can serve this build without being cached past it.
+        const readings = new Map<string, NoteReading | null>();
         await Promise.all(notes.map(async (fsPath) => {
             if (s.readings.has(fsPath)) { return; }
             const text = await this.io.readText(fsPath);
-            s.readings.set(fsPath, text === null ? null : readNote(text));
+            const reading = text === null ? null : readNote(text);
+            readings.set(fsPath, reading);
+            if (live()) { s.readings.set(fsPath, reading); }
         }));
+        const readingOf = (fsPath: string) => s.readings.get(fsPath) ?? readings.get(fsPath) ?? null;
 
         // Every note the walk listed exists, whether or not the workspace file
         // index (capped on its own) reached it, so both answer `isFile`.
@@ -214,7 +271,7 @@ export class FolderIndexer {
             const abs = wiki && smartLinks
                 ? await resolveWikiTarget(target, ctx, resolverIo)
                 : await resolveLinkPath(target, ctx, resolverIo);
-            memo.set(key, abs);
+            if (live()) { memo.set(key, abs); }
             return abs;
         };
 
@@ -222,7 +279,7 @@ export class FolderIndexer {
         const edges: FolderEdge[] = [];
         for (const fsPath of notes) {
             const rel = underRoot(root, fsPath)!;
-            const reading = s.readings.get(fsPath) ?? null;
+            const reading = readingOf(fsPath);
             const stem = path.basename(fsPath, path.extname(fsPath));
             const meta = reading?.meta;
             nodes.push({
@@ -252,14 +309,13 @@ export class FolderIndexer {
                 });
             }
         }
-        const built: FolderIndex = { rootName: path.basename(root), nodes, edges, truncated: s.truncated };
+        const built: FolderIndex = { rootName: path.basename(root), nodes, edges, truncated };
         // Most rebuilds follow a save that changed no reference at all. Handing
         // back the object already sent lets the caller see that, and skip
         // re-sending a folder's worth of index for nothing.
         const text = JSON.stringify(built);
         const index = s.previous?.text === text ? s.previous.index : built;
-        s.previous = { index, text };
-        s.index = index;
+        if (live()) { s.previous = { index, text }; }
         return index;
     }
 

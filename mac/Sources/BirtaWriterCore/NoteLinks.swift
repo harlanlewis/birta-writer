@@ -751,6 +751,9 @@ public enum NoteLinks {
 
     /// One note's references to other notes, and its attributes.
     public static func readNote(_ content: String) -> Reading {
+        // A byte-order mark is an encoding artifact, not text; dropped as
+        // `readNote` in shared/noteLinks.ts drops it.
+        let content = content.unicodeScalars.first == "\u{FEFF}" ? String(content.unicodeScalars.dropFirst()) : content
         let split = Frontmatter.split(content)
         let frontmatter = JSText.units(split.frontmatter)
         let body = JSText.units(split.body)

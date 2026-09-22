@@ -6,7 +6,7 @@ import { saveImageLocally } from "./utils/imageService";
 import { computeLineMap, sourceLineCount } from "../shared/lineMap";
 import { extractFrontmatter, restoreContentForSave } from "../shared/contentTransform";
 import { SuggestionProviders } from "./suggestionProviders";
-import { FolderIndexer, NOTE_GLOB } from "./folderIndex";
+import { FolderIndexer, NOTE_GLOB, noteWalkExclude } from "./folderIndex";
 import type { FolderIndex } from "../shared/folderIndex";
 import { DiskDriftController } from "./diskDrift";
 import { settlePhantomDirty } from "./phantomDirty";
@@ -332,7 +332,9 @@ export class MarkdownEditorProvider
     // click agree about which note a link means.
     private readonly _folderIndex = new FolderIndexer({
         listNotes: async (root, limit) => (await vscode.workspace.findFiles(
-            new vscode.RelativePattern(root, NOTE_GLOB), "**/node_modules/**", limit,
+            new vscode.RelativePattern(root, NOTE_GLOB),
+            noteWalkExclude(vscode.workspace.getConfiguration("files", vscode.Uri.file(root)).get<Record<string, unknown>>("exclude")),
+            limit,
         )).map((u) => u.fsPath),
         readText: async (fsPath) => {
             try {

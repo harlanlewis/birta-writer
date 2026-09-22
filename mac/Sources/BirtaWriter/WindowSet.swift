@@ -626,8 +626,14 @@ final class WindowSet {
                 self.folderIndexBuilding.remove(key)
                 // The last window on the root closed while this ran.
                 guard self.roots[key] != nil else { return }
+                // Most rebuilds follow an autosave that changed no reference.
+                // Every page subscribed already holds that index, and a
+                // re-send would redraw its Backlinks and Graph tabs (dropping
+                // a focused node) for nothing; the VS Code host skips the same.
+                // A page that asked since was answered from `folderIndexes`.
+                let changed = self.folderIndexes[key] != built
                 self.folderIndexes[key] = built
-                self.windows(rootedAt: root).forEach { $0.sendFolderIndex(built) }
+                if changed { self.windows(rootedAt: root).forEach { $0.sendFolderIndex(built) } }
                 if self.folderIndexStale.remove(key) != nil { self.buildFolderIndex(root) }
             }
         }

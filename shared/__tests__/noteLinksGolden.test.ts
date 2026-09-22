@@ -86,6 +86,7 @@ function documentsUnder(rel: string): Array<{ name: string; content: string }> {
  * and inline edges the scanner's regular expressions encode.
  */
 const EXTRA: readonly string[] = [
+    "\uFEFF---\ntitle: Marked\ntype: concept\n---\n[[b]]\n",
     "---\ntitle: \"Quoted: Title\"\ntype: concept\ntags: [a, \"b c\", 'd']\n---\nBody [x](x.md)\n",
     "---\ntitle: Plain\ntags:\n  - one\n  - \"two\"\n---\n\n[[One]]\n",
     "---\ntags:\n[\n  alpha,\n  \"beta\",\n]\n---\n[a](a.md)\n",

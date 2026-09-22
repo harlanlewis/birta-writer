@@ -214,6 +214,10 @@ public final class FolderIndexer: @unchecked Sendable {
         if let walk = fileManager.enumerator(at: root, includingPropertiesForKeys: keys,
                                              options: [.skipsHiddenFiles, .skipsPackageDescendants]) {
             for case let url as URL in walk {
+                // Dependencies are never notes of the folder; the VS Code
+                // walk excludes the same tree (`noteWalkExclude`), and
+                // hidden folders are skipped by the options above on both.
+                if url.lastPathComponent == "node_modules" { walk.skipDescendants(); continue }
                 guard let values = try? url.resourceValues(forKeys: Set(keys)), values.isRegularFile == true,
                       let rel = DirectoryListing.relativePath(of: url, in: root) else { continue }
                 let abs = rootPath + "/" + rel
