@@ -76,7 +76,7 @@ export function selfHasReferences(): boolean {
  * because it has no text editor to open one into; its index is of the same
  * root, so the path goes as the index names it. `openProjectFile` carries no
  * line, so there the note opens where it was last left rather than at the
- * reference (MAR-480).
+ * reference (MAR-486).
  */
 export function openIndexedNote(self: string, path: string, line?: number): void {
     if (hostHas("projectFiles")) {
