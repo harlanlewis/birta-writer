@@ -70,7 +70,8 @@
   window.__folderIndex = {
     rootName: "vault",
     truncated: false,
-    nodes: paths.map((p, i) => note(p, `Note ${i}`, TYPES[i % TYPES.length])),
+    // A seventh of the folder is a draft, so the status chips have a row to draw.
+    nodes: paths.map((p, i) => ({ ...note(p, `Note ${i}`, TYPES[i % TYPES.length]), status: i % 7 === 0 ? "draft" : null })),
     edges,
   };
   window.__expected = { orphans: paths.slice(linked).sort(), dangling: ["Ghost", "Unwritten"] };

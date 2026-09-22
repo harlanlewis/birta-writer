@@ -61,7 +61,9 @@ export function analyzeFolder(index: FolderIndex): FolderAnalysis {
 export interface FolderFilter {
     /** Only notes of these OKF types; null for every note. An untyped note is `""`. */
     types: ReadonlySet<string> | null;
-    /** Only notes whose name or path holds this, ignoring case; empty for every note. */
+    /** Only notes of these OKF statuses; null for every note. A note with none is `""`. */
+    statuses: ReadonlySet<string> | null;
+    /** Only notes whose name, path or one of whose tags holds this, ignoring case; empty for every note. */
     query: string;
 }
 
@@ -70,7 +72,9 @@ export function filterNotes(index: FolderIndex, filter: FolderFilter): Set<strin
     const q = filter.query.trim().toLowerCase();
     return new Set(index.nodes
         .filter((n) => filter.types === null || filter.types.has(n.type ?? ""))
-        .filter((n) => q === "" || n.name.toLowerCase().includes(q) || n.path.toLowerCase().includes(q))
+        .filter((n) => filter.statuses === null || filter.statuses.has(n.status ?? ""))
+        .filter((n) => q === "" || n.name.toLowerCase().includes(q) || n.path.toLowerCase().includes(q)
+            || n.tags.some((tag) => tag.toLowerCase().includes(q.replace(/^#/, ""))))
         .map((n) => n.path));
 }
 

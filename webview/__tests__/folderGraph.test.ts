@@ -57,12 +57,23 @@ describe("analyzeFolder", () => {
 
 describe("filterNotes", () => {
     it("a type filter should keep only those types, an untyped note spelled as the empty type", () => {
-        expect([...filterNotes(FOLDER, { types: new Set(["metric", ""]), query: "" })].sort())
+        expect([...filterNotes(FOLDER, { types: new Set(["metric", ""]), statuses: null, query: "" })].sort())
             .toEqual(["a.md", "b.md", "c.md", "lone.md"]);
     });
 
     it("a query should match a name or a path, ignoring case", () => {
-        expect([...filterNotes(FOLDER, { types: null, query: "HU" })]).toEqual(["hub.md"]);
+        expect([...filterNotes(FOLDER, { types: null, statuses: null, query: "HU" })]).toEqual(["hub.md"]);
+    });
+
+    it("a query should also match a tag, with or without its hash", () => {
+        const f = index([{ ...node("a.md"), tags: ["Planning"] }, node("b.md")], []);
+        expect([...filterNotes(f, { types: null, statuses: null, query: "plan" })]).toEqual(["a.md"]);
+        expect([...filterNotes(f, { types: null, statuses: null, query: "#planning" })]).toEqual(["a.md"]);
+    });
+
+    it("a status filter should keep only those statuses, a note with none spelled as the empty status", () => {
+        const f = index([{ ...node("a.md"), status: "draft" }, { ...node("b.md"), status: "stable" }, node("c.md")], []);
+        expect([...filterNotes(f, { types: null, statuses: new Set(["draft", ""]), query: "" })].sort()).toEqual(["a.md", "c.md"]);
     });
 });
 

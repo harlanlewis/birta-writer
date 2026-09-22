@@ -54,7 +54,7 @@ export function openFolderGraph(state: FolderIndexState, host: FolderGraphHost):
     const layout = createForceLayout(index);
     const nodeByPath = new Map(index.nodes.map((n) => [n.path, n]));
     const types = [...new Set(index.nodes.map((n) => n.type).filter((x): x is string => x !== null))].sort();
-    let filter: FolderFilter = { types: null, query: "" };
+    let filter: FolderFilter = { types: null, statuses: null, query: "" };
     let kept = filterNotes(index, filter);
     let focus: Set<string> | null = null;
     let raf = 0;
@@ -111,37 +111,55 @@ export function openFolderGraph(state: FolderIndexState, host: FolderGraphHost):
     const search = document.createElement("input");
     search.type = "search";
     search.className = "fg-search";
-    search.placeholder = t("Filter notes");
-    search.setAttribute("aria-label", t("Filter notes"));
+    search.placeholder = t("Filter by name, path or tag");
+    search.setAttribute("aria-label", t("Filter by name, path or tag"));
     search.addEventListener("input", () => { setFilter({ ...filter, query: search.value }); });
     side.append(search);
 
-    if (types.length > 0) {
+    /**
+     * A row of toggle chips over one OKF field. No chip pressed means every
+     * value; pressing some keeps only those. `""` is the chip for a note that
+     * declares none, and a row appears only when some note declares one.
+     */
+    function chipRow(
+        label: string,
+        values: readonly string[],
+        noneLabel: string,
+        field: "types" | "statuses",
+        hue: (value: string) => number | null,
+    ): void {
+        if (values.length === 0) { return; }
         const chips = document.createElement("div");
         chips.className = "fg-types";
         chips.setAttribute("role", "group");
-        chips.setAttribute("aria-label", t("Types"));
-        for (const type of [...types, ""]) {
+        chips.setAttribute("aria-label", label);
+        for (const value of [...values, ""]) {
             const chip = document.createElement("button");
-            const hue = type === "" ? null : hueOf(types, type);
-            chip.className = `ui-btn review-seg fg-type ${hue !== null ? `lg-hue-${hue}` : ""}`.trim();
-            const dot = document.createElement("span");
-            dot.className = "lg-dot";
-            const label = document.createElement("span");
-            label.textContent = type === "" ? t("No type") : type;
-            chip.append(dot, label);
+            const h = value === "" ? null : hue(value);
+            chip.className = `ui-btn review-seg fg-type ${h !== null ? `lg-hue-${h}` : ""}`.trim();
+            if (field === "types") {
+                const dot = document.createElement("span");
+                dot.className = "lg-dot";
+                chip.append(dot);
+            }
+            const text = document.createElement("span");
+            text.textContent = value === "" ? noneLabel : value;
+            chip.append(text);
             chip.setAttribute("aria-pressed", "false");
             chip.addEventListener("click", () => {
-                const next = new Set(filter.types ?? []);
-                if (next.has(type)) { next.delete(type); } else { next.add(type); }
-                chip.setAttribute("aria-pressed", String(next.has(type)));
-                chip.classList.toggle("review-seg--active", next.has(type));
-                setFilter({ ...filter, types: next.size === 0 ? null : next });
+                const next = new Set(filter[field] ?? []);
+                if (next.has(value)) { next.delete(value); } else { next.add(value); }
+                chip.setAttribute("aria-pressed", String(next.has(value)));
+                chip.classList.toggle("review-seg--active", next.has(value));
+                setFilter({ ...filter, [field]: next.size === 0 ? null : next });
             });
             chips.append(chip);
         }
         side.append(chips);
     }
+    chipRow(t("Types"), types, t("No type"), "types", (value) => hueOf(types, value));
+    const statuses = [...new Set(index.nodes.map((n) => n.status).filter((x): x is NonNullable<typeof x> => x !== null))].sort();
+    chipRow(t("Statuses"), statuses, t("No status"), "statuses", () => null);
 
     const summary = document.createElement("div");
     summary.className = "fg-summary";

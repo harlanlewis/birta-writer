@@ -112,6 +112,11 @@ export async function run({ page, check, baseUrl }) {
         !layout.closeOnSide && !layout.fitOnSide, JSON.stringify(layout));
     check("and the title's band leaves the list's first control clear", !layout.titleOverSearch, JSON.stringify(layout));
 
+    await page.locator(".fg-types[aria-label=\"Statuses\"] .fg-type", { hasText: "draft" }).click();
+    const drafts = await page.textContent(".fg-summary");
+    check("a status chip keeps only notes of that status", drafts === "286 of 2000 notes", drafts);
+    await page.locator(".fg-types[aria-label=\"Statuses\"] .fg-type", { hasText: "draft" }).click();
+
     await page.fill(".fg-search", "Note 12");
     const summary = await page.textContent(".fg-summary");
     check("filtering by name narrows the notes the view counts", /of 2000 notes/.test(summary ?? ""), summary);
