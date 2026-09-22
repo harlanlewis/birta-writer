@@ -334,6 +334,19 @@ final class BridgeTests: XCTestCase {
         XCTAssertEqual(HostMessage.setLineNumbers(true).jsonObject()["enabled"] as? Bool, true)
     }
 
+    func testTheFolderIndexPairShouldParseAndEncode() {
+        XCTAssertEqual(WebviewMessage.parse(#"{"type":"requestFolderIndex"}"#), .requestFolderIndex)
+        let index = FolderIndex.assemble(root: "/r", notes: ["/r/a.md"], readings: ["/r/a.md": NoteLinks.readNote("[[b]]")],
+                                         files: ["/r/a.md"], truncated: true)
+        let sent = HostMessage.folderIndex(index, self: "a.md").jsonObject()
+        XCTAssertEqual(sent["type"] as? String, "folderIndex")
+        XCTAssertEqual(sent["self"] as? String, "a.md")
+        XCTAssertEqual((sent["index"] as? [String: Any])?["truncated"] as? Bool, true)
+        let none = HostMessage.folderIndex(nil, self: nil).jsonObject()
+        XCTAssertTrue(none["index"] is NSNull, "a window with no folder is told so, not left waiting")
+        XCTAssertTrue(none["self"] is NSNull)
+    }
+
     func testTheExplorersMemoriesShouldReachThePageOnTheOutlinePanelsChannels() {
         XCTAssertEqual(BootConfig(fileExplorerWidth: 280).tocRootStyle, ":root { --files-width: 280px; }")
         XCTAssertEqual(BootConfig(tocWidth: 320, fileExplorerWidth: 280).tocRootStyle,

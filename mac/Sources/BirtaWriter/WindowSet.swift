@@ -163,6 +163,10 @@ final class WindowSet {
             guard let coordinator else { return }
             self?.newNote(in: folder, beside: coordinator)
         }
+        coordinator.onFolderIndexRequest = { [weak self, weak coordinator] in
+            guard let coordinator else { return }
+            self?.folderIndexRequested(by: coordinator)
+        }
         coordinator.onShowHiddenChanged = { [weak self] shown in self?.setShowHiddenFiles(shown) }
         coordinator.onFormattingRowChanged = { [weak self] on in self?.setFormattingRowExpanded(on) }
         coordinator.onOpenDirectoryRequest = { [weak self] url in self?.openDirectory(at: url) }
@@ -534,6 +538,7 @@ final class WindowSet {
             // The Go to File index is a picture of the tree, and the tree
             // moved; the next palette open rebuilds it.
             self?.fileIndexes.removeValue(forKey: key)
+            self?.folderChanged(root, folders: folders)
         }
         watcher.start()
         roots[key] = watcher
@@ -544,6 +549,87 @@ final class WindowSet {
             watcher.stop()
             roots.removeValue(forKey: key)
             fileIndexes.removeValue(forKey: key)
+            folderIndexers.removeValue(forKey: key)
+            folderIndexes.removeValue(forKey: key)
+            folderIndexStale.remove(key)
+        }
+    }
+
+    // MARK: the folder edge index (MAR-480)
+
+    /// One indexer per open root, holding what its last build read so the
+    /// next build reads only what changed, and the index it last built. Both
+    /// go with the root's watcher (`releaseUnwatchedRoots`).
+    private var folderIndexers: [String: FolderIndexer] = [:]
+    private var folderIndexes: [String: FolderIndex] = [:]
+    /// Roots with a build in flight, and those whose tree moved during one:
+    /// at most one build per root runs, and a change in the middle of it buys
+    /// exactly one more once it lands.
+    private var folderIndexBuilding: Set<String> = []
+    private var folderIndexStale: Set<String> = []
+    /// Serial, so one indexer is never asked twice at once; utility, because
+    /// nobody is waiting on a frame for it.
+    private let folderIndexQueue = DispatchQueue(label: "com.birtalabs.birta-writer.folder-index", qos: .utility)
+
+    /// A page asked for its root's index: answered now from the last build
+    /// when there is one, and the root is built when there is none. Built on
+    /// the first ask rather than when the window opens, because the page asks
+    /// only once somebody opens the review sidebar, and a cold build is a
+    /// walk of the whole tree.
+    func folderIndexRequested(by coordinator: Coordinator) {
+        guard let root = coordinator.explorerRoot else {
+            coordinator.sendFolderIndex(nil)
+            return
+        }
+        let key = root.standardizedFileURL.path
+        if let index = folderIndexes[key] {
+            coordinator.sendFolderIndex(index)
+        } else if !folderIndexBuilding.contains(key) {
+            buildFolderIndex(root)
+        }
+    }
+
+    /// The tree under `root` moved. A root some page is subscribed to, or
+    /// one mid-build (whose result would describe the tree before this), is
+    /// built again and every subscribed page is sent the result; a root
+    /// nobody is subscribed to forgets its index, and the next ask builds it.
+    ///
+    /// A change only inside hidden folders is not a change to the index,
+    /// because the walk never enters them: that is `.git` on every commit and
+    /// every status refresh, and an editor's settings folder.
+    private func folderChanged(_ root: URL, folders: [URL]) {
+        let key = root.standardizedFileURL.path
+        let visible = folders.contains { folder in
+            guard let rel = DirectoryListing.relativePath(of: folder, in: root) else { return true }
+            return !rel.split(separator: "/").contains { $0.hasPrefix(".") }
+        }
+        guard visible else { return }
+        if folderIndexBuilding.contains(key) || windows(rootedAt: root).contains(where: \.folderIndexSubscribed) {
+            buildFolderIndex(root)
+        } else {
+            folderIndexes.removeValue(forKey: key)
+        }
+    }
+
+    private func buildFolderIndex(_ root: URL) {
+        let key = root.standardizedFileURL.path
+        guard folderIndexBuilding.insert(key).inserted else {
+            folderIndexStale.insert(key)
+            return
+        }
+        let indexer = folderIndexers[key] ?? FolderIndexer(root: root)
+        folderIndexers[key] = indexer
+        folderIndexQueue.async {
+            let built = indexer.build()
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                self.folderIndexBuilding.remove(key)
+                // The last window on the root closed while this ran.
+                guard self.roots[key] != nil else { return }
+                self.folderIndexes[key] = built
+                self.windows(rootedAt: root).forEach { $0.sendFolderIndex(built) }
+                if self.folderIndexStale.remove(key) != nil { self.buildFolderIndex(root) }
+            }
         }
     }
 

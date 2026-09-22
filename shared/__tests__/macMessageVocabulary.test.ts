@@ -98,7 +98,6 @@ const DELIBERATELY_UNPARSED: Record<string, string> = {
     // never offered. `HOST_PROFILES.mac` is the declaration.
     connectService: "posted only by a locked embed card's Connect affordance, and no card ever resolves in the Mac app, so the affordance is never drawn",
     openFile: "no `textEditor` capability: there is no editor to open a file into",
-    requestFolderIndex: "no `folderIndex` capability: the page asks only a host that declares it, and the Mac app declares it once it builds the index (MAR-480)",
     openKeybindings: "no `hostSettings` capability, which is what gates `openKeyboardShortcuts`: the hotkey is the Mac app's own setting",
     openSettings: "the extension's own settings window; the Mac app answers `openHostPreferences` instead",
     switchToTextEditor: "no `textEditor` capability: the panel is the only surface",

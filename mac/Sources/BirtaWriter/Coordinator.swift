@@ -253,6 +253,24 @@ final class Coordinator {
         }
     }
 
+    /// Whether this window's page asked for the folder edge index. A page
+    /// asks once and is then told again whenever the root changes, so this
+    /// is what decides whether a change under the root is worth a rebuild;
+    /// a page load clears it, because the new page has not asked.
+    private(set) var folderIndexSubscribed = false
+
+    /// Hand the page the folder edge index, if it asked for one: `index` nil
+    /// when this window has no root, and `self` the bound file's path in it,
+    /// nil for a file the index does not hold.
+    func sendFolderIndex(_ index: FolderIndex?) {
+        guard folderIndexSubscribed, state == .warm else { return }
+        let selfPath = explorerRoot.flatMap { root in index?.path(of: boundURL, root: root) }
+        host.send(.folderIndex(index, self: selfPath))
+        if measure.enabled {
+            measure.trace("folderIndex nodes=\(index?.nodes.count ?? -1) edges=\(index?.edges.count ?? -1) self=\(selfPath ?? "none")")
+        }
+    }
+
     /// Folders under this window's root changed on disk, as the watcher the
     /// app runs per root reports them; the page re-lists the ones it has open.
     func directoryChanged(_ folders: [URL]) {
@@ -433,6 +451,12 @@ final class Coordinator {
     /// The explorer's New Note in a folder: a note is the app's to make and
     /// place (`WindowSet.newNote(in:beside:)`), so the window only asks.
     var onNewNoteInFolder: ((URL) -> Void)?
+
+    /// This window's page asked for the folder edge index of its root. The
+    /// index is per root and shared by every window rooted there, so the app
+    /// builds and holds it (`WindowSet.folderIndexRequested`) and the window
+    /// only asks, then answers its own page through `sendFolderIndex`.
+    var onFolderIndexRequest: (() -> Void)?
 
     /// The hidden-files setting was flipped from this window's page. The
     /// setting is the app's and every rooted window's page has to hear it,
@@ -1587,6 +1611,7 @@ final class Coordinator {
 
     private func loadPage() {
         state = .loading
+        folderIndexSubscribed = false
         measure.mark("load-start")
         // Decided HERE, before the page starts, and once. The page reads the
         // remembered bag through two doors that must not disagree: the
@@ -2002,6 +2027,9 @@ final class Coordinator {
             answerListing(id: id, path: path)
         case let .openProjectFile(path, newTab):
             openProjectFile(relative: path, newTab: newTab)
+        case .requestFolderIndex:
+            folderIndexSubscribed = true
+            onFolderIndexRequest?()
         case let .projectFileMenu(path, kind, x, y):
             showProjectFileMenu(relative: path, kind: kind, x: x, y: y)
         case let .stripTooltip(tooltip):
