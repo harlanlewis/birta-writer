@@ -7,6 +7,7 @@
 import { describe, it, expect } from "vitest";
 import type { FolderEdge, FolderIndex, FolderNode } from "../../shared/folderIndex";
 import { analyzeFolder, createForceLayout, filterNotes, HUB_COUNT } from "../components/graph/folderGraph";
+import { budget } from "./helpers/testBudget";
 
 const node = (path: string, type: string | null = null): FolderNode =>
     ({ path, name: path.replace(/\.md$/, ""), type, tags: [], status: null, trust: null, staleAfter: null });
@@ -122,5 +123,8 @@ describe("createForceLayout", () => {
         expect(layout.iterations).toBeLessThanOrEqual(layout.maxIterations);
         for (const [, v] of layout.positions()) { expect(Number.isFinite(v.x) && Number.isFinite(v.y)).toBe(true); }
         // How long that takes, and whether it holds a frame, is e2e/folderGraph's to measure.
-    });
+        // A budget sized from the settle's own cost with the machine to itself
+        // (`pnpm exec vitest run` this file alone), not the runner's default,
+        // which a peer's browser sweep on the same box has tripped.
+    }, budget(30_000));
 });
