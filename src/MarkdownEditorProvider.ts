@@ -553,6 +553,20 @@ export class MarkdownEditorProvider
     }
 
     /**
+     * `birta.folderGraph` changed. Every page hears the new value; a page
+     * that had subscribed while it was on is answered empty once, which is
+     * also what drops its subscription, so no folder is walked for it again.
+     */
+    public folderGraphChanged(): void {
+        this.postToAll({ type: "setFolderGraph", enabled: readBirtaSetting("folderGraph") });
+        for (const [panel, document] of [...this._folderIndexSubscribers]) {
+            if (!readBirtaSetting("folderGraph", document.uri)) {
+                this._sendFolderIndex(panel, document, false).catch((err) => reportError("folderIndex", err));
+            }
+        }
+    }
+
+    /**
      * Tell one webview which agent skills are on this machine, for the
      * composer's third picker (MAR-483). A few directory listings under the
      * workspace and the home directory, scanned afresh on every ask because
@@ -566,7 +580,10 @@ export class MarkdownEditorProvider
             listDirs: async (dir) => {
                 try {
                     const entries = await vscode.workspace.fs.readDirectory(vscode.Uri.file(dir));
-                    return entries.filter(([, kind]) => kind === vscode.FileType.Directory).map(([name]) => name);
+                    // A bit test, not equality: a symlinked folder (a plugin's
+                    // skill linked in, a dotfiles-managed one) reports
+                    // `SymbolicLink | Directory`, and the harness follows it.
+                    return entries.filter(([, kind]) => (kind & vscode.FileType.Directory) !== 0).map(([name]) => name);
                 } catch {
                     return []; // no such folder, which is the common case
                 }
@@ -877,6 +894,14 @@ export class MarkdownEditorProvider
      * index a folder the document is not in.
      */
     private async _sendFolderIndex(panel: vscode.WebviewPanel, document: vscode.TextDocument, asked: boolean): Promise<void> {
+        // Read on every send, not only on the ask: the setting can go off
+        // under a subscriber, and this is where its re-sends would otherwise
+        // go on walking the folder for a page that no longer wants them.
+        if (!readBirtaSetting("folderGraph", document.uri)) {
+            this._folderIndexSubscribers.delete(panel);
+            postToWebview(panel.webview, { type: "folderIndex", index: null, self: null });
+            return;
+        }
         const root = vscode.workspace.getWorkspaceFolder(document.uri)?.uri.fsPath;
         if (!root) {
             postToWebview(panel.webview, { type: "folderIndex", index: null, self: null });
@@ -1572,18 +1597,16 @@ export class MarkdownEditorProvider
                         break;
                     }
                     case "requestFolderIndex":
-                        // The page asks only with `birta.folderGraph` on. An
-                        // ask that arrives anyway (a page booted before the
-                        // setting was turned off) is answered empty and never
-                        // subscribed, so nothing is walked or read for it.
-                        if (!readBirtaSetting("folderGraph", document.uri)) {
-                            postToWebview(panel.webview, { type: "folderIndex", index: null, self: null });
-                            break;
-                        }
                         // One ask subscribes the panel: it is re-sent the index
-                        // whenever its folder changes, until it closes.
-                        this._watchFolderIndexChanges();
-                        this._folderIndexSubscribers.set(panel, document);
+                        // whenever its folder changes, until it closes. Only
+                        // with `birta.folderGraph` on: an ask that arrives with
+                        // it off (a page booted before it was turned off) is
+                        // answered empty by `_sendFolderIndex` and subscribes
+                        // nothing, so nothing is walked or read for it.
+                        if (readBirtaSetting("folderGraph", document.uri)) {
+                            this._watchFolderIndexChanges();
+                            this._folderIndexSubscribers.set(panel, document);
+                        }
                         this._sendFolderIndex(panel, document, true)
                             .catch((err) => reportError("folderIndex", err));
                         break;

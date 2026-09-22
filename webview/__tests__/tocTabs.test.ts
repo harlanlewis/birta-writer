@@ -14,7 +14,7 @@ import * as proofread from "../plugins/proofread";
 import { PROOFREAD_FINDINGS_CHANGED } from "../plugins/proofread";
 import type { EventManager } from "../eventManager";
 import type { EditorView, Node as PmNode } from "../pm";
-import { receiveFolderIndex, resetFolderIndexForTests } from "../links/folderIndex";
+import { receiveFolderIndex, resetFolderIndexForTests, setFolderGraphEnabled } from "../links/folderIndex";
 import type { FolderIndex } from "../../shared/folderIndex";
 
 const fakeEventManager = { onWindow: vi.fn(() => () => {}) } as unknown as EventManager;
@@ -375,6 +375,24 @@ describe("Backlinks tab: the host's folder index, asked for only when the sideba
         expect(tabsOf(toc)[TAB.backlinks]!.hidden).toBe(true);
         receiveFolderIndex(INDEX, "notes/self.md");
         expect(tabsOf(toc)[TAB.backlinks]!.hidden).toBe(false);
+        toc.dispose();
+    });
+
+    it("the setting going off under an open sidebar should forget the index and hide both tabs; going on should ask again", () => {
+        const toc = mountToc();
+        toc.toggle();
+        receiveFolderIndex(INDEX, "notes/self.md");
+        expect(requests()).toBe(1);
+        expect(tabsOf(toc)[TAB.backlinks]!.hidden).toBe(false);
+        expect(tabsOf(toc)[TAB.graph]!.hidden).toBe(false);
+
+        setFolderGraphEnabled(false);
+        expect(tabsOf(toc)[TAB.backlinks]!.hidden).toBe(true);
+        expect(tabsOf(toc)[TAB.graph]!.hidden).toBe(true);
+        expect(requests()).toBe(1);
+
+        setFolderGraphEnabled(true);
+        expect(requests()).toBe(2);
         toc.dispose();
     });
 

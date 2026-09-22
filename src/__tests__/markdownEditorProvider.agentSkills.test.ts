@@ -53,7 +53,10 @@ function mountDisk(contents: Record<string, string>): void {
         for (const p of Object.keys(files)) {
             if (!p.startsWith(prefix)) { continue; }
             const head = p.slice(prefix.length).split("/")[0]!;
-            names.set(head, p.slice(prefix.length).includes("/") ? vscode.FileType.Directory : vscode.FileType.File);
+            // A folder named `linked-*` is reported the way a symlinked folder
+            // is: the SymbolicLink bit beside the Directory bit.
+            const dirKind = head.startsWith("linked-") ? vscode.FileType.SymbolicLink | vscode.FileType.Directory : vscode.FileType.Directory;
+            names.set(head, p.slice(prefix.length).includes("/") ? dirKind : vscode.FileType.File);
         }
         if (names.size === 0) { throw new Error("ENOENT"); }
         return [...names.entries()];
@@ -128,6 +131,14 @@ describe("MarkdownEditorProvider: the agent skills", () => {
             { name: "birta-changelog", description: "Write a changelog entry.", scope: "project" },
             { name: "house-style", description: "Our voice.", scope: "user" },
         ]]);
+    });
+
+    it("a symlinked skill folder should be offered like any other, since the harness follows the link", async () => {
+        mountDisk({ [`${HOME}/.claude/skills/linked-plugin-skill/SKILL.md`]: skill("plugin-skill", "Linked in.") });
+        const { panel, handler } = await open("/ws/note.md");
+        await handler({ type: "requestAgentCapabilities" });
+        await settle();
+        expect(skillsSent(panel)[0]!.map((s) => s.name)).toEqual(["plugin-skill"]);
     });
 
     it("the configured harness should decide which extra folder is read", async () => {

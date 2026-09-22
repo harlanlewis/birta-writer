@@ -143,6 +143,44 @@ describe("MarkdownEditorProvider: the folder index", () => {
         expect(findFiles).not.toHaveBeenCalled();
     });
 
+    it("the setting going off under a subscriber should answer it empty once, drop it, and walk nothing more", async () => {
+        mountWorkspace("/ws", { "/ws/note.md": "", "/ws/other.md": "See [[note]].\n" });
+        const { provider, panel, handler } = await open("/ws/note.md");
+        await handler({ type: "requestFolderIndex" });
+        await settle();
+        expect(sent(panel)).toHaveLength(1);
+        const walks = findFiles.mock.calls.length;
+
+        folderGraphOn = false;
+        provider.folderGraphChanged();
+        await settle();
+        const posted = panel.webview.postMessage.mock.calls.map((c) => c[0] as { type: string; enabled?: boolean });
+        expect(posted.filter((m) => m.type === "setFolderGraph")).toEqual([{ type: "setFolderGraph", enabled: false }]);
+        expect(sent(panel)).toHaveLength(2);
+        expect(sent(panel)[1]).toEqual({ type: "folderIndex", index: null, self: null });
+
+        // A later change under the folder reaches no subscriber and walks nothing.
+        files["/ws/new.md"] = "";
+        watcher().create(vscode.Uri.file("/ws/new.md"));
+        await vi.advanceTimersByTimeAsync(2000);
+        await settle();
+        expect(sent(panel)).toHaveLength(2);
+        expect(findFiles.mock.calls.length).toBe(walks);
+    });
+
+    it("the setting going on should tell every open page, and a page that then asks should be indexed", async () => {
+        folderGraphOn = false;
+        mountWorkspace("/ws", { "/ws/note.md": "", "/ws/other.md": "See [[note]].\n" });
+        const { provider, panel, handler } = await open("/ws/note.md");
+        folderGraphOn = true;
+        provider.folderGraphChanged();
+        const posted = panel.webview.postMessage.mock.calls.map((c) => c[0] as { type: string; enabled?: boolean });
+        expect(posted.filter((m) => m.type === "setFolderGraph")).toEqual([{ type: "setFolderGraph", enabled: true }]);
+        await handler({ type: "requestFolderIndex" });
+        await settle();
+        expect(sent(panel)[0]!.index!.edges).toHaveLength(1);
+    });
+
     it("the change handler should be registered by the first ask, once, and not at activation", async () => {
         mountWorkspace("/ws", { "/ws/note.md": "", "/ws/other.md": "" });
         const { handler } = await open("/ws/note.md");

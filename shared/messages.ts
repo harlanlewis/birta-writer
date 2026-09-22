@@ -906,6 +906,11 @@ export type ToWebviewMessage =
     // earlier flag at the cost of an await on the open path.
     | { type: "logseqState"; reason: LogseqReason | null }
     | { type: "setTableWrap"; wrap: TableWrapMode }
+    // `birta.folderGraph` moved under a live page. Off: the page forgets the
+    // index it holds and asks for no more (the host has already dropped its
+    // subscription); on: the page may ask again. The boot blob carries the
+    // value a page starts with; this is what moves it afterwards.
+    | { type: "setFolderGraph"; enabled: boolean }
     // Live master-network-switch update (settings UI edit or the just-in-time
     // opt-in accepted in ANOTHER webview): flips `window.__i18n.network` so
     // every network feature gates correctly everywhere without a reload. The

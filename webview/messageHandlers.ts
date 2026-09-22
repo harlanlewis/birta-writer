@@ -42,7 +42,7 @@ import { notifySwitchToTextEditor, getWebviewState, setWebviewState, setBaseSync
 import type { EditorSelectionContext } from "../shared/agentContext";
 import { renderFrontmatterPanel, refreshFrontmatterEmptyState } from "./components/frontmatter";
 import { dispatchFmSuggestions } from "./components/frontmatter/suggestMenu";
-import { receiveFolderIndex } from "./links/folderIndex";
+import { receiveFolderIndex, setFolderGraphEnabled } from "./links/folderIndex";
 import { runEditorCommand } from "./editorCommands";
 import { refreshShortcutsHelpIfLoaded } from "./components/shortcutsHelp/loader";
 import { hostHas, setHostCapabilities } from "../shared/hostProfile";
@@ -535,6 +535,9 @@ export function createMessageHandlers(
             // ago unlocks the cards already on screen without a reload.
             setConnectorStates(msg.connectors);
             regateEmbedsIfPossible();
+        },
+        setFolderGraph(msg) {
+            setFolderGraphEnabled(msg.enabled);
         },
         setTableWrap(msg) {
             applyTableWrap(msg.wrap);

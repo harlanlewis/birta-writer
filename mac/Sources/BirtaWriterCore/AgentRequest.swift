@@ -51,17 +51,11 @@ public enum AgentRequest {
     /// for; everything else gets prose.
     static let slashSkillHarnesses: Set<String> = ["claude", "cursor-agent"]
 
-    /// The template's first word, without its directory: which binary runs.
-    public static func harnessName(_ template: String) -> String {
-        let first = template.split(whereSeparator: \.isWhitespace).first.map(String.init) ?? ""
-        let base = first.split(separator: "/").last.map(String.init) ?? ""
-        return base.isEmpty ? "agent" : base
-    }
-
     /// The form a skill takes on the line handed to `route`, or nil with no skill.
     public static func skillPrefix(route: String, skill: String?) -> SkillPrefix? {
         guard let name = skill?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty else { return nil }
-        return SkillPrefix(name: name, form: slashSkillHarnesses.contains(harnessName(route)) ? .slash : .prose)
+        let harness = harnessName(from: route) ?? ""
+        return SkillPrefix(name: name, form: slashSkillHarnesses.contains(harness) ? .slash : .prose)
     }
 
     /// Quote `text` as one POSIX shell argument. Single quotes, with the

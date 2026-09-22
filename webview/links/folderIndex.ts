@@ -40,6 +40,20 @@ export function folderGraphEnabled(): boolean {
 }
 
 /**
+ * The setting moved under this page (`setFolderGraph`). Off forgets the
+ * index, so the tabs go on the next visibility pass and nothing asks again;
+ * on lets the next read ask, as a fresh page would.
+ */
+export function setFolderGraphEnabled(enabled: boolean): void {
+    // Every real page boots with a blob; the default is for a test page.
+    const blob = (window.__i18n ??= { translations: {}, isMac: false });
+    blob.folderGraph = enabled;
+    requested = false;
+    if (!enabled) { current = null; }
+    window.dispatchEvent(new CustomEvent(FOLDER_INDEX_CHANGED));
+}
+
+/**
  * The latest index the host sent, or null before the first answer (and
  * always, on a host that has none to give). The first call asks for it.
  */
