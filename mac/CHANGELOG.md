@@ -12,6 +12,10 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ## [Unreleased]
 
+### Added
+
+- Birta Writer for Mac shows the Backlinks and Graph tabs in a window opened on a folder, indexed from that folder and kept current as its files change. A window holding a single file has no folder to index, so neither tab appears there. A backlink opens the linking note, but not yet at the line the link is on.
+
 ### Changed
 
 - Birta Writer for Mac is signed with an Apple Developer ID and notarized by Apple, so macOS can say who built it. A release downloaded from GitHub opens the way any other app downloaded from the internet does: macOS asks once whether to open it, says Apple checked it, and opens it, with nothing to change in System Settings first. That check works with no network, because the notarization ticket travels inside the app. Until now the app was ad-hoc signed, which macOS cannot attribute to anyone, and getting it open meant stripping the download quarantine first: that is why it was only ever offered to people who also had the source.

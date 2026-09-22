@@ -160,6 +160,10 @@ webview/components/table/tableView.ts         Table NodeView (overlay chrome: gr
 webview/components/table/reorder.ts           Pure row/column block-reorder + drop-index helpers
 webview/components/codeBlock/index.ts         Code block UI
 webview/components/toc/index.ts               Table of contents (TOC) panel
+webview/components/graph/                     The local graph (ring layout around the open note) and the whole-folder graph (frame-sliced force layout on canvas); a lazy chunk with injected CSS
+webview/links/folderIndex.ts                  The page's one reader of the host's folder index (`folderIndex` capability): backlinks, and where a graph node opens
+shared/noteLinks.ts                           THE link extractor over a note's text, host side: which references a note makes, without a parser; the Swift port is held to it by a golden file
+src/folderIndex.ts                            The folder edge index in VS Code: capped listing, per-note cache, resolution through the click-time resolver
 webview/components/sidePanel/shell.ts         THE docked side panel every drawer composes: side, width and resize, docked against overlay, whether a narrow window may take it away at all, reveal tab, flyout; the TOC and the file explorer are two of it
 webview/components/fileExplorer/index.ts      The file explorer over a host-provided directory (`projectFiles`): a lazy chunk, host-driven selection, one listing per opened folder
 webview/components/linkPopup/index.ts         Link hover popup
@@ -230,6 +234,7 @@ mac/Sources/BirtaWriterCore/InstalledThemesPick.swift  VS Code's installed theme
 mac/Sources/BirtaWriter/InstalledThemesSheet.swift  Draws that list as a sheet over Settings
 mac/Sources/BirtaWriter/ThemesMenu.swift         View > Theme, filled from the store and the resolved appearance on every opening
 mac/Sources/BirtaWriterCore/FileIndex.swift      The files Go to File can reach in a rooted window: one capped walk, rebuilt when the root changes
+mac/Sources/BirtaWriterCore/FolderIndex.swift    The folder edge index in a rooted window, the Swift half of src/folderIndex.ts; NoteLinks.swift beside it ports shared/noteLinks.ts, held by noteLinksGolden.json
 mac/Sources/BirtaWriter/PaletteCatalog.swift     Where the palette's rows come from (the menu table, the page's commands, the windows, Settings, the files) and what a pick does; nothing here is a second table
 mac/Sources/BirtaWriter/PaletteWindow.swift      The palette panel: draws and dispatches, readable unshown
 mac/scripts/update.sh                     The other-machine path: fetch the app off the newest GitHub Release, verify, install (ad-hoc signed, so it clears quarantine)
