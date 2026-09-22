@@ -156,3 +156,19 @@
         color: var(--vscode-input-placeholderForeground);
     }
 }
+
+/* A group heading in the skill menu (This project, Your machine): drawn,
+   never picked. Composes the chrome primitive; the row below it is a
+   button like every other row. */
+.agent-panel-menu-heading {
+    padding: 4px 6px 2px;
+}
+
+/* A skill's description under its name, the file's own text. */
+.agent-panel-menu-detail {
+    display: block;
+    color: var(--vscode-descriptionForeground);
+    font-size: var(--ui-fs-xs);
+    white-space: normal;
+    max-width: 320px;
+}

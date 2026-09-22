@@ -41,7 +41,7 @@
  */
 import { t } from "@/i18n";
 import { IconArrowUp, IconPaperclip, IconX } from "@/ui/icons";
-import type { HarnessCapabilities } from "../../../shared/messages";
+import type { AgentSkill, HarnessCapabilities } from "../../../shared/messages";
 import { displayEffort, displayModel } from "../../agentRoute";
 
 /** One file on its way to becoming a path the agent can read. */
@@ -67,6 +67,8 @@ export interface AgentPanelHost {
         prompt: string;
         model?: string;
         effort?: string;
+        /** A skill name to run under, by name; absent means none. */
+        skill?: string;
         attachments: readonly string[];
     }): void;
     /** The panel closed without sending. */
@@ -77,6 +79,8 @@ export interface AgentPanelHandle {
     el: HTMLElement;
     /** Apply capabilities that arrived after the panel opened. */
     setCapabilities(caps: HarnessCapabilities | undefined): void;
+    /** Apply a skill list that arrived after the panel opened. */
+    setSkills(skills: readonly AgentSkill[] | undefined): void;
     /** Resolve one pending attachment (path, or null when the write failed). */
     resolveAttachment(id: string, path: string | null): void;
     destroy(): void;
@@ -109,12 +113,19 @@ export function createAgentPanel(opts: {
     anchor: { left: number; top: number; bottom: number };
     initial?: string;
     capabilities?: HarnessCapabilities;
+    /**
+     * The skills the host found, or undefined on a host that scans none.
+     * A list, even an empty one, draws the picker; undefined draws nothing.
+     */
+    skills?: readonly AgentSkill[];
     host: AgentPanelHost;
 }): AgentPanelHandle {
     const { host } = opts;
     let caps = opts.capabilities;
+    let skills = opts.skills;
     let model: string | undefined;
     let effort: string | undefined;
+    let skill: string | undefined;
     const attachments: PanelAttachment[] = [];
 
     const root = document.createElement("div");
@@ -242,23 +253,34 @@ export function createAgentPanel(opts: {
      */
     function renderSpec(): void {
         spec.textContent = "";
-        if (!caps) { return; }
-        if (caps.supportsModel) {
+        if (caps?.supportsModel) {
             spec.appendChild(makeMenuButton(
                 model ? displayModel(model) : t("Default model"),
                 () => modelMenuItems(),
             ));
         }
-        if (caps.supportsEffort) {
+        if (caps?.supportsEffort) {
             spec.appendChild(makeMenuButton(
                 effort ? displayEffort(effort) : t("Default effort"),
                 () => effortMenuItems(),
+            ));
+        }
+        // The skill picker rests on the host's scan, not on the harness's
+        // help, so it is drawn whenever a list arrived, capabilities or not.
+        if (skills !== undefined) {
+            spec.appendChild(makeMenuButton(
+                skill ? `/${skill}` : t("No skill"),
+                () => skillMenuItems(),
             ));
         }
     }
 
     interface MenuItem {
         label: string;
+        /** A group heading rather than a choice: drawn, never picked. */
+        heading?: boolean;
+        /** Drawn under the label as the row's own text (a skill's description). */
+        detail?: string;
         checked?: boolean;
         /**
          * Opens a text field in the menu instead of picking a value, and
@@ -342,6 +364,40 @@ export function createAgentPanel(opts: {
         return items;
     }
 
+    /**
+     * No skill, then the scan's findings grouped by where they came from,
+     * then free text. The list is what the scan reached and never the set
+     * of skills the harness can see (a plugin's, a synced one), so free text
+     * is always reachable, as it is for the model menu; and a name typed
+     * here that the harness does not know falls through to the plain
+     * request, which is a safer floor than the flag pickers have.
+     */
+    function skillMenuItems(): MenuItem[] {
+        const pick = (value: string | undefined) => () => { skill = value; renderSpec(); };
+        const items: MenuItem[] = [
+            { label: t("No skill"), checked: skill === undefined, onPick: pick(undefined) },
+        ];
+        const groups: Array<[AgentSkill["scope"], string]> = [["project", t("This project")], ["user", t("Your machine")]];
+        for (const [scope, title] of groups) {
+            const rows = (skills ?? []).filter((s) => s.scope === scope);
+            if (rows.length === 0) { continue; }
+            items.push({ label: title, heading: true, onPick: () => {} });
+            for (const s of rows) {
+                items.push({ label: `/${s.name}`, detail: s.description, checked: skill === s.name, onPick: pick(s.name) });
+            }
+        }
+        items.push({
+            label: t("Other skill…"),
+            freeText: {
+                placeholder: t("skill name, as your harness spells it"),
+                current: skill,
+                commit: (value) => { skill = value?.replace(/^\//, "") || undefined; },
+            },
+            onPick: () => {},
+        });
+        return items;
+    }
+
     let openMenu: HTMLElement | null = null;
     function closeMenu(): void {
         openMenu?.remove();
@@ -361,12 +417,26 @@ export function createAgentPanel(opts: {
             menu.className = "agent-panel-menu";
             menu.setAttribute("role", "menu");
             for (const item of items()) {
+                if (item.heading) {
+                    const head = document.createElement("div");
+                    head.className = "ui-heading ui-menu-heading agent-panel-menu-heading";
+                    head.textContent = item.label;
+                    menu.appendChild(head);
+                    continue;
+                }
                 const row = document.createElement("button");
                 row.type = "button";
                 row.className = "ui-menu-row agent-panel-menu-row";
                 row.setAttribute("role", "menuitemradio");
                 row.setAttribute("aria-checked", String(item.checked ?? false));
                 row.textContent = item.label;
+                if (item.detail) {
+                    // textContent, never markup: the detail is a file's own text.
+                    const detail = document.createElement("span");
+                    detail.className = "agent-panel-menu-detail";
+                    detail.textContent = item.detail;
+                    row.appendChild(detail);
+                }
                 if (item.checked) { row.classList.add("agent-panel-menu-row--checked"); }
                 row.addEventListener("click", (ev) => {
                     // The panel closes any open menu on a click, which is
@@ -440,6 +510,7 @@ export function createAgentPanel(opts: {
             prompt,
             model,
             effort,
+            skill,
             // Only what actually reached disk. A chip whose write failed is
             // showing that it failed, and sending its path would point the
             // agent at nothing.
@@ -508,6 +579,7 @@ export function createAgentPanel(opts: {
     return {
         el: root,
         setCapabilities(next) { caps = next; renderSpec(); },
+        setSkills(next) { skills = next; renderSpec(); },
         resolveAttachment(id, path) {
             const entry = attachments.find((a) => a.id === id);
             if (!entry) { return; }

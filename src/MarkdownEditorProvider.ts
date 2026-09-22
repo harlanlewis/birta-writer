@@ -34,6 +34,9 @@ import { detectLogseq } from "./utils/logseqDetect";
 import { currentAgentRoute } from "./agentBridge";
 import { saveAgentAttachment } from "./agentBridge/askAgent";
 import { cachedCapabilities, probeHarness } from "./agentBridge/harnessProbe";
+import { harnessName } from "./agentBridge/harnessCapabilities";
+import { scanAgentSkills, type SkillScanIo } from "./agentBridge/agentSkills";
+import * as os from "os";
 import { scanHeadings } from "../shared/headingScan";
 import { extractOgDescription, extractOgTitle } from "./utils/openGraph";
 import type { LinkCardMeta } from "../shared/messages";
@@ -547,6 +550,40 @@ export class MarkdownEditorProvider
         }
         const caps = await probeHarness(this.context, template);
         postToWebview(panel.webview, { type: "agentCapabilities", capabilities: caps });
+    }
+
+    /**
+     * Tell one webview which agent skills are on this machine, for the
+     * composer's third picker (MAR-483). A few directory listings under the
+     * workspace and the home directory, scanned afresh on every ask because
+     * a skill is a folder the user can add at any time; nothing waits on it,
+     * and a folder that cannot be listed is an empty group.
+     */
+    private async _sendAgentSkills(panel: vscode.WebviewPanel, document: vscode.TextDocument): Promise<void> {
+        const template = readBirtaSetting("agentCommand").trim();
+        if (!template) { return; }
+        const io: SkillScanIo = {
+            listDirs: async (dir) => {
+                try {
+                    const entries = await vscode.workspace.fs.readDirectory(vscode.Uri.file(dir));
+                    return entries.filter(([, kind]) => kind === vscode.FileType.Directory).map(([name]) => name);
+                } catch {
+                    return []; // no such folder, which is the common case
+                }
+            },
+            readText: async (file) => {
+                try {
+                    return Buffer.from(await vscode.workspace.fs.readFile(vscode.Uri.file(file))).toString("utf8");
+                } catch {
+                    return null;
+                }
+            },
+        };
+        const skills = await scanAgentSkills(
+            { workspace: this._workspaceRootFor(document), home: os.homedir(), harness: harnessName(template) },
+            io,
+        );
+        postToWebview(panel.webview, { type: "agentSkills", skills });
     }
 
     public postToAll(msg: ToWebviewMessage): void {
@@ -1803,6 +1840,7 @@ export class MarkdownEditorProvider
                             requestId: message.requestId,
                             model: message.model,
                             effort: message.effort,
+                            skill: message.skill,
                             attachments: message.attachments,
                         });
                         break;
@@ -1824,6 +1862,7 @@ export class MarkdownEditorProvider
                     }
                     case "requestAgentCapabilities":
                         void this._sendAgentCapabilities(webviewPanel);
+                        void this._sendAgentSkills(webviewPanel, document);
                         break;
                     case "agentCancel":
                         vscode.commands.executeCommand("birta.cancelAgent", message.requestId);
