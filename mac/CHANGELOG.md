@@ -12,6 +12,11 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ## [Unreleased]
 
+### Changed
+
+- Birta Writer for Mac is signed with an Apple Developer ID and notarized by Apple, so macOS can say who built it. A release downloaded from GitHub opens the way any other app downloaded from the internet does: macOS asks once whether to open it, says Apple checked it, and opens it, with nothing to change in System Settings first. That check works with no network, because the notarization ticket travels inside the app. Until now the app was ad-hoc signed, which macOS cannot attribute to anyone, and getting it open meant stripping the download quarantine first: that is why it was only ever offered to people who also had the source.
+- `mac/scripts/update.sh` asks Gatekeeper about the release it just downloaded and refuses one macOS cannot attribute to anybody, printing what it asked and what came back rather than installing it quietly. A release cut before signing is one of those, so updating to an older tag now stops rather than proceeding. `BIRTA_ALLOW_UNSIGNED=1` installs one anyway, which is a reasonable trade on a machine whose owner also owns the source.
+
 ---
 
 ## [2026.921.0] - 2026, September 21

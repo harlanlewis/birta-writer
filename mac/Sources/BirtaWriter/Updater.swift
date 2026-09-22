@@ -338,8 +338,14 @@ final class Updater {
     ///
     /// The steps and their reasons are `mac/scripts/update.sh`'s, done here so
     /// somebody with no checkout can take an update: fetch, verify the
-    /// published checksum, unpack, ask whether this Mac can launch what
-    /// arrived, then clear the download quarantine.
+    /// published checksum, unpack, and ask whether this Mac can launch what
+    /// arrived.
+    ///
+    /// All but one. That script also asks Gatekeeper whether the release can
+    /// be attributed to anybody, and refuses one that cannot; this path does
+    /// not ask, so an ad-hoc release installs here where the script would
+    /// stop. Every release is signed while the release job holds its signing
+    /// secrets, and an ad-hoc one reaches this path only when it does not.
     ///
     /// Callers pile up rather than starting a second run: a background stage
     /// and a confirmed offer are two callers wanting the same bytes, and two
@@ -413,7 +419,7 @@ final class Updater {
 
     /// Unpack the verified archive and take what is in it, or nothing.
     ///
-    /// `ditto` and `xattr` are run WITHOUT waiting on the thread that called
+    /// `ditto` is run WITHOUT waiting on the thread that called
     /// this. Blocking was tolerable when the whole path only ran after
     /// somebody had pressed Restart and the app was about to quit anyway;
     /// staging now happens on its own while a person may be typing, and an
@@ -458,12 +464,13 @@ final class Updater {
                 self.abandon(work, saying: refusal)
                 return
             }
-            // Ad-hoc signed, so Gatekeeper cannot attribute it to anyone and
-            // would refuse to open it at all. Same trade `update.sh` makes,
-            // and its header is where the argument lives.
-            self.run("/usr/bin/xattr", ["-dr", "com.apple.quarantine", bundle.path]) { _ in
-                self.finish(Staged(tag: release.tag, bundle: bundle, work: work), saying: nil)
-            }
+            // No download quarantine is cleared, because none is set. This
+            // process writes the bytes itself and does not declare
+            // LSFileQuarantineEnabled, which is what would make macOS attach the
+            // flag; a quarantine comes from a browser download, not from here.
+            // Declaring that key would put the flag on every update, and an
+            // ad-hoc release would then be refused at its first launch.
+            self.finish(Staged(tag: release.tag, bundle: bundle, work: work), saying: nil)
         }
     }
 
