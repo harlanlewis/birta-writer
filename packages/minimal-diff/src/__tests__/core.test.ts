@@ -674,6 +674,71 @@ describe("round-trip protection — mid-document suppression (two string anchors
     });
 });
 
+describe("round-trip protection — the opaque-content veto is judged per region (MAR-485)", () => {
+    // A synthetic classifier with markdown's two hazards and nothing else.
+    // `~` lines are code. A line indented two spaces is code too, UNLESS the
+    // nearest significant line above opens a list item: the same bytes are
+    // then that item's continuation, which is how a repair beside a new
+    // neighbour demotes code (MAR-326). `@@` lines are code the classifier
+    // cannot see at all, the shape of markdown's indented code inside a list
+    // item, which its classifier reads as prose on purpose (MAR-131).
+    const opaqueCount = (lines: readonly string[]): number => {
+        let n = 0;
+        let prev = "";
+        for (const line of lines) {
+            if (line.trim() === "") continue;
+            if (line.startsWith("~") || (line.startsWith("  ") && !prev.startsWith("- "))) n++;
+            prev = line;
+        }
+        return n;
+    };
+    const opaque: FormatProfile = {
+        ...plain,
+        losesOpaqueContent: (before, after) => opaqueCount(after) < opaqueCount(before),
+    };
+
+    it("a region whose repair reads as a code loss on the verified baseline should still be repaired on an edit elsewhere", () => {
+        const saved = "alpha\n\nOLD\n\n@@code\n\nomega\n";
+        const baseline = "alpha\n\nNEW\n\n~code\n\nomega\n";
+        const protection = computeRoundTripProtection(saved, baseline, opaque);
+        expect(protection?.regions.length).toBe(2);
+        expect(applyMinimalChanges(saved, baseline, opaque, protection)).toBe(saved);
+
+        expect(
+            applyMinimalChanges(saved, "alpha EDITED\n\nNEW\n\n~code\n\nomega\n", opaque, protection),
+        ).toBe("alpha EDITED\n\nOLD\n\n@@code\n\nomega\n");
+    });
+
+    it("a region whose repair demotes code should stand down alone, and every other region should keep its repair", () => {
+        const saved = "alpha\n\nOLD\n\n  code\n\nomega\n";
+        const baseline = "alpha\n\nNEW\n\n~code\n\nomega\n";
+        const protection = computeRoundTripProtection(saved, baseline, opaque);
+        expect(protection?.regions.length).toBe(2);
+
+        // A list item lands above the code, so its saved bytes would now read
+        // as the item's continuation: that region writes the serializer's `~`
+        // spelling, and the unrelated OLD keeps its own.
+        expect(
+            applyMinimalChanges(saved, "alpha\n\nNEW\n\n- item\n\n~code\n\nomega\n", opaque, protection),
+        ).toBe("alpha\n\nOLD\n\n- item\n\n~code\n\nomega\n");
+    });
+
+    it("a loss no single region explains should fall back to the serializer's text", () => {
+        // Each repair alone keeps the code; the two together do not, because
+        // one restores the list item the other's bytes then continue. Neither
+        // region can be named as the culprit, so neither is kept, and the
+        // baseline's own loss excuses nothing: it is not any one region's.
+        const saved = "alpha\n\n- x\n\n  code\n\nomega\n";
+        const baseline = "alpha\n\n* x\n\n~code\n\nomega\n";
+        const protection = computeRoundTripProtection(saved, baseline, opaque);
+        expect(protection?.regions.length).toBe(2);
+        expect(applyMinimalChanges(saved, baseline, opaque, protection)).toBe(saved);
+
+        const serialized = "alpha EDITED\n\n* x\n\n~code\n\nomega\n";
+        expect(applyMinimalChanges(saved, serialized, opaque, protection)).toBe(serialized);
+    });
+});
+
 // ─── Line endings (MAR-223) ─────────────────────────────────────────────────
 //
 // The serializer always emits LF. The engine owns the mapping back onto the
