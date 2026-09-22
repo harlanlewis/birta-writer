@@ -15,10 +15,9 @@
  */
 import type { EditorView } from "@/pm";
 import { t } from "@/i18n";
-import { notifyOpenFile, notifyReviewGroupByType } from "@/messaging";
-import { relativeNotePath, type FolderEdge } from "../../../shared/folderIndex";
+import { notifyReviewGroupByType } from "@/messaging";
 import type { NoteLinkKind } from "../../../shared/noteLinks";
-import { currentBacklinks, readFolderIndex } from "@/links/folderIndex";
+import { currentBacklinks, openIndexedNote, readFolderIndex } from "@/links/folderIndex";
 import { initReviewList, type ReviewResult, type ReviewRowModel } from "./reviewList";
 import type { ReviewListView } from "./proofreadingList";
 
@@ -34,14 +33,6 @@ const KIND: Record<NoteLinkKind, { tag: string; rank: number }> = {
     source: { tag: "Sources", rank: 2 },
 };
 
-/** The path `openFile` takes to land on `edge`'s line in the note that wrote it.
- *  `%` and `#` are escaped so a file name holding either is not read as a
- *  fragment: the host's resolver tries the decoded form after the literal one. */
-function openTarget(self: string, edge: FolderEdge): string {
-    const rel = relativeNotePath(self, edge.from).replace(/%/g, "%25").replace(/#/g, "%23");
-    return `${rel}#${edge.line}`;
-}
-
 function produce(): ReviewResult {
     const state = readFolderIndex();
     if (!state?.index || state.self === null) { return { empty: t("No backlinks") }; }
@@ -55,7 +46,7 @@ function produce(): ReviewResult {
     }
     return {
         rows: edges.map((edge): ReviewRowModel => {
-            const open = (): void => { notifyOpenFile(openTarget(self, edge)); };
+            const open = (): void => { openIndexedNote(self, edge.from, edge.line); };
             return {
                 tag: t(KIND[edge.kind].tag),
                 rank: KIND[edge.kind].rank,

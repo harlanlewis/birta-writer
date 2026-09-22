@@ -14,8 +14,8 @@
  * costs the host no walk of the folder.
  */
 import { hostHas } from "../../shared/hostProfile";
-import { backlinksOf, type FolderEdge, type FolderIndex } from "../../shared/folderIndex";
-import { notifyRequestFolderIndex } from "../messaging";
+import { backlinksOf, relativeNotePath, type FolderEdge, type FolderIndex } from "../../shared/folderIndex";
+import { notifyOpenFile, notifyRequestFolderIndex } from "../messaging";
 
 /** Dispatched on `window` whenever a new index arrives. */
 export const FOLDER_INDEX_CHANGED = "birta:folder-index-changed";
@@ -52,6 +52,27 @@ export function currentBacklinks(): FolderEdge[] {
     const state = readFolderIndex();
     if (!state?.index || state.self === null) { return []; }
     return backlinksOf(state.index, state.self);
+}
+
+/** Does the index hold any reference to or from this document, dangling ones included? */
+export function selfHasReferences(): boolean {
+    const state = readFolderIndex();
+    if (!state?.index || state.self === null) { return false; }
+    const self = state.self;
+    return state.index.edges.some((e) => (e.from === self || e.to === self) && e.from !== e.to);
+}
+
+/**
+ * Open the note at `path` (root-relative), at `line` when one is given: the
+ * one route every view of the index opens a note by. `openFile` resolves a
+ * path relative to the open document first, so the path is made relative to
+ * `self`; `%` and `#` are escaped so a file name holding either is not read
+ * as a fragment, since the host's resolver tries the decoded form after the
+ * literal one.
+ */
+export function openIndexedNote(self: string, path: string, line?: number): void {
+    const rel = relativeNotePath(self, path).replace(/%/g, "%25").replace(/#/g, "%23");
+    notifyOpenFile(line === undefined ? rel : `${rel}#${line}`);
 }
 
 /** Test seam: forget the index and the request, as a fresh page would. */

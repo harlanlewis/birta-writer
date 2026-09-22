@@ -25,7 +25,9 @@ import { initProofreadingList } from "./proofreadingList";
 import { initNotesList } from "./notesList";
 import { initLinksList } from "./linksList";
 import { initBacklinksList } from "./backlinksList";
-import { FOLDER_INDEX_CHANGED } from "@/links/folderIndex";
+import { FOLDER_INDEX_CHANGED, openIndexedNote, readFolderIndex, selfHasReferences } from "@/links/folderIndex";
+import { loadLocalGraph } from "@/utils/localGraphLoader";
+import type { LocalGraphView } from "../graph";
 import { PROOFREAD_FINDINGS_CHANGED, hasProofreadFindings } from "@/plugins/proofread";
 import { requestIdle } from "@/utils/idle";
 import { singleTextblockInlineEdit } from "@/utils/textblockEdit";
@@ -300,14 +302,14 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         },
     });
 
-    // ── Review tabs: Contents / Links / Backlinks / Notes / Proofreading ────
+    // ── Review tabs: Contents / Links / Backlinks / Graph / Notes / Proofreading
     // The panel is a tabbed review sidebar; all the drawer chrome (docked/overlay,
     // flyout, resize, flip/hide) is shared and only the body switches. Contents
     // is the heading outline (`list`); the others read their data live and
     // ONLY while active — an inactive tab scans/enumerates nothing (see
     // renderActiveView). Flip/hide move into the sticky tab row (right-aligned)
     // so they can't overlap the tabs.
-    type ReviewTab = "contents" | "proofreading" | "notes" | "links" | "backlinks";
+    type ReviewTab = "contents" | "proofreading" | "notes" | "links" | "backlinks" | "graph";
     let activeTab: ReviewTab = "contents";
     // The Proofreading tab exists only while the master switch is on; when off
     // it's removed from the strip entirely (not shown with an "off" body).
@@ -320,6 +322,7 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
     const tabContents = makeTabButton("contents", t("Contents"));
     const tabLinks = makeTabButton("links", t("Links"));
     const tabBacklinks = makeTabButton("backlinks", t("Backlinks"));
+    const tabGraph = makeTabButton("graph", t("Graph"));
     const tabNotes = makeTabButton("notes", t("Notes"));
     const tabProofread = makeTabButton("proofreading", t("Proofread"));
     // A review tab exists only while it has entries. Until the first idle
@@ -327,6 +330,7 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
     // open pays for nothing beyond the Contents outline.
     tabLinks.hidden = true;
     tabBacklinks.hidden = true;
+    tabGraph.hidden = true;
     tabNotes.hidden = true;
     tabProofread.hidden = true;
     // Tabs in their strip with the flip/hide controls at the trailing edge —
@@ -337,7 +341,7 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
     // a menu of the others.
     const tabsList = document.createElement("div");
     tabsList.className = "toc-tabs__list";
-    tabsList.append(tabContents, tabLinks, tabBacklinks, tabNotes, tabProofread);
+    tabsList.append(tabContents, tabLinks, tabBacklinks, tabGraph, tabNotes, tabProofread);
 
     const tabsSelect = document.createElement("button");
     tabsSelect.className = "ui-btn toc-tabs-select";
@@ -362,7 +366,7 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
     if (hasPanelControls) { tabStrip.appendChild(controls); }
 
     const ALL_TABS: Array<[HTMLButtonElement, ReviewTab]> = [
-        [tabContents, "contents"], [tabLinks, "links"], [tabBacklinks, "backlinks"], [tabNotes, "notes"], [tabProofread, "proofreading"],
+        [tabContents, "contents"], [tabLinks, "links"], [tabBacklinks, "backlinks"], [tabGraph, "graph"], [tabNotes, "notes"], [tabProofread, "proofreading"],
     ];
 
     function closeTabsMenu(): void {
@@ -447,6 +451,36 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
     const notesView = initNotesList(getEditorView);
     const linksView = initLinksList(getEditorView);
     const backlinksView = initBacklinksList(getEditorView);
+    // The Graph tab's body. Its view lives in a lazy chunk (utils/
+    // localGraphLoader.ts), built into this host the first time the tab is
+    // shown; until then the host is an empty box nobody sees.
+    const graphHost = document.createElement("div");
+    graphHost.className = "review-list review-list--graph";
+    let graphView: LocalGraphView | null = null;
+    let graphFocusWanted = false;
+    function renderGraph(): void {
+        if (graphView) {
+            graphView.render(readFolderIndex());
+            return;
+        }
+        loadLocalGraph().then((mod) => {
+            if (!graphView) {
+                graphView = mod.createLocalGraphView({
+                    openNote: (path) => {
+                        const self = readFolderIndex()?.self;
+                        if (self) { openIndexedNote(self, path); }
+                    },
+                    onEscape: () => getEditorView()?.focus(),
+                });
+                graphHost.append(graphView.element);
+            }
+            graphView.render(readFolderIndex());
+            if (graphFocusWanted) {
+                graphFocusWanted = false;
+                graphView.focusFirst();
+            }
+        }).catch(() => { /* not cached: the next showing of the tab retries */ });
+    }
 
     // The card is the surface; the panel is its box, and keeps a strip of
     // page along its sash edge so the resize line stands off the card's
@@ -455,7 +489,7 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
     // the shell's own, which is why `.toc-card` only dresses a docked drawer.
     const card = document.createElement("div");
     card.className = "toc-card";
-    card.append(tabStrip, list, proofreadView.element, notesView.element, linksView.element, backlinksView.element);
+    card.append(tabStrip, list, proofreadView.element, notesView.element, linksView.element, backlinksView.element, graphHost);
     panel.appendChild(card);
 
     function makeTabButton(tab: ReviewTab, label: string): HTMLButtonElement {
@@ -494,7 +528,7 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         const isArrow = e.key === "ArrowLeft" || e.key === "ArrowRight" || e.key === "Home" || e.key === "End";
         const isActivate = e.key === "Enter" || e.key === " ";
         if (!isArrow && !isActivate) { return; }
-        const tabs = [tabContents, tabLinks, tabBacklinks, tabNotes, tabProofread].filter((tab) => !tab.hidden);
+        const tabs = [tabContents, tabLinks, tabBacklinks, tabGraph, tabNotes, tabProofread].filter((tab) => !tab.hidden);
         const cur = tabs.indexOf(document.activeElement as HTMLButtonElement);
         e.preventDefault();
         if (isActivate) {
@@ -521,11 +555,13 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         reflect(tabNotes, activeTab === "notes");
         reflect(tabLinks, activeTab === "links");
         reflect(tabBacklinks, activeTab === "backlinks");
+        reflect(tabGraph, activeTab === "graph");
         list.classList.toggle("toc-view--hidden", activeTab !== "contents");
         proofreadView.element.classList.toggle("toc-view--hidden", activeTab !== "proofreading");
         notesView.element.classList.toggle("toc-view--hidden", activeTab !== "notes");
         linksView.element.classList.toggle("toc-view--hidden", activeTab !== "links");
         backlinksView.element.classList.toggle("toc-view--hidden", activeTab !== "backlinks");
+        graphHost.classList.toggle("toc-view--hidden", activeTab !== "graph");
     }
 
     /** Render whichever tab is active — the only view that does any work. */
@@ -541,6 +577,8 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
             notesView.refresh(getEditorView());
         } else if (activeTab === "backlinks") {
             backlinksView.refresh(getEditorView());
+        } else if (activeTab === "graph") {
+            renderGraph();
         } else {
             linksView.refresh(getEditorView());
         }
@@ -588,6 +626,9 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         else if (activeTab === "proofreading") { proofreadView.focusFirst(); }
         else if (activeTab === "notes") { notesView.focusFirst(); }
         else if (activeTab === "backlinks") { backlinksView.focusFirst(); }
+        else if (activeTab === "graph") {
+            if (graphView) { graphView.focusFirst(); } else { graphFocusWanted = true; }
+        }
         else { linksView.focusFirst(); }
         if (panel.contains(document.activeElement)) { return; }
         // Empty view: land on the strip's Tab stop — the active tab button, or
@@ -662,6 +703,7 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         };
         show(tabLinks, "links", linksView.count(view) > 0);
         show(tabBacklinks, "backlinks", backlinksView.count() > 0);
+        show(tabGraph, "graph", selfHasReferences());
         show(tabNotes, "notes", notesView.count(view) > 0);
         show(tabProofread, "proofreading", proofreadingEnabled && hasProofreadFindings(view));
         if (!proofreadingEnabled) { tabProofread.hidden = true; }
@@ -1308,6 +1350,7 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         if (shell.isVisible() && activeTab === "backlinks") {
             backlinksView.refresh(getEditorView());
         }
+        if (shell.isVisible() && activeTab === "graph") { renderGraph(); }
     };
     window.addEventListener(FOLDER_INDEX_CHANGED, onFolderIndexChanged);
 

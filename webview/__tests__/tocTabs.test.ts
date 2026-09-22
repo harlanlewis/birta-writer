@@ -1,6 +1,6 @@
 /**
  * Review sidebar shell (MAR-188): the ToC panel carries its tabs (Contents /
- * Links / Backlinks / Notes / Proofreading), and switching a tab swaps which view is shown
+ * Links / Backlinks / Graph / Notes / Proofreading), and switching a tab swaps which view is shown
  * while keeping the others hidden (so an inactive tab does no layout/scan work).
  * Review tabs exist only while they have entries, decided on IDLE (never on the
  * doc-open or keystroke path).
@@ -23,8 +23,8 @@ function clickTab(tab: Element): void {
     tab.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
 }
 
-// Tab order is Contents, Links, Backlinks, Notes, Proofreading.
-const TAB = { contents: 0, links: 1, backlinks: 2, notes: 3, proofreading: 4 } as const;
+// Tab order is Contents, Links, Backlinks, Graph, Notes, Proofreading.
+const TAB = { contents: 0, links: 1, backlinks: 2, graph: 3, notes: 4, proofreading: 5 } as const;
 
 const miniSchema = new Schema({
     nodes: { doc: { content: "block+" }, paragraph: { group: "block", content: "inline*" }, text: { group: "inline" } },
@@ -63,10 +63,10 @@ describe("review sidebar tabs", () => {
 
     afterEach(() => { vi.unstubAllGlobals(); });
 
-    it("should render five tabs in the order Contents, Links, Backlinks, Notes, Proofreading", () => {
+    it("should render six tabs in the order Contents, Links, Backlinks, Graph, Notes, Proofreading", () => {
         const { panel } = initToc(fakeEventManager, () => null);
         const labels = [...panel.querySelectorAll(".toc-tab")].map((t) => t.textContent);
-        expect(labels).toEqual(["Contents", "Links", "Backlinks", "Notes", "Proofread"]);
+        expect(labels).toEqual(["Contents", "Links", "Backlinks", "Graph", "Notes", "Proofread"]);
     });
 
     it("should start on Contents with the review views hidden", () => {
@@ -401,6 +401,80 @@ describe("Backlinks tab: the host's folder index, asked for only when the sideba
         clickTab(tabsOf(toc)[TAB.backlinks]!);
         receiveFolderIndex({ ...INDEX, edges: [], truncated: true }, "notes/self.md");
         expect(toc.panel.querySelector(".review-list--backlinks")!.textContent).toContain("index reached");
+        toc.dispose();
+    });
+
+    // ── The Graph tab (MAR-481): the same index, drawn ──────────────────────
+
+    /** The graph renders out of a lazy chunk; wait for its first drawing. */
+    async function graphDrawn(toc: { panel: HTMLElement }): Promise<HTMLElement> {
+        for (let i = 0; i < 50; i++) {
+            const stage = toc.panel.querySelector<HTMLElement>(".review-list--graph .lg-stage");
+            if (stage && stage.querySelector(".lg-node")) { return stage; }
+            await new Promise((resolve) => setTimeout(resolve, 10));
+        }
+        throw new Error("the graph never drew a node");
+    }
+    const nodeIds = (stage: HTMLElement) => [...stage.querySelectorAll<HTMLElement>(".lg-node")].map((n) => n.dataset["id"]);
+
+    it("the Graph tab should appear for a note with references either way, and not for one with none", () => {
+        const toc = mountToc();
+        toc.toggle();
+        receiveFolderIndex(INDEX, "c.md");
+        expect(tabsOf(toc)[TAB.graph]!.hidden).toBe(false); // c.md names a.md: outbound only
+        receiveFolderIndex({ ...INDEX, nodes: [...INDEX.nodes, node("lonely.md", "Lonely")] }, "lonely.md");
+        expect(tabsOf(toc)[TAB.graph]!.hidden).toBe(true);
+        toc.dispose();
+    });
+
+    it("a note whose only reference is dangling should still show the Graph tab", () => {
+        const toc = mountToc();
+        toc.toggle();
+        receiveFolderIndex({
+            ...INDEX,
+            edges: [{ from: "c.md", to: null, target: "Nowhere", kind: "wiki", text: "Nowhere", line: 2 }],
+        }, "c.md");
+        expect(tabsOf(toc)[TAB.graph]!.hidden).toBe(false);
+        toc.dispose();
+    });
+
+    it("showing the Graph tab should draw this note, its neighbours, and a line per reference", async () => {
+        const toc = mountToc();
+        toc.toggle();
+        receiveFolderIndex(INDEX, "notes/self.md");
+        clickTab(tabsOf(toc)[TAB.graph]!);
+        const stage = await graphDrawn(toc);
+        expect(nodeIds(stage).sort()).toEqual(["a.md", "notes/self.md", "sub/b.md"]);
+        expect(stage.querySelectorAll(".lg-line")).toHaveLength(2);
+        expect(stage.querySelector(".lg-node--self")!.getAttribute("data-id")).toBe("notes/self.md");
+        toc.dispose();
+    });
+
+    it("clicking a neighbour should open it relative to this note, and this note should open nothing", async () => {
+        const toc = mountToc();
+        toc.toggle();
+        receiveFolderIndex(INDEX, "notes/self.md");
+        clickTab(tabsOf(toc)[TAB.graph]!);
+        const stage = await graphDrawn(toc);
+        mockVscodeApi.postMessage.mockClear();
+        stage.querySelector<HTMLElement>('.lg-node[data-id="notes/self.md"]')!.click();
+        expect(mockVscodeApi.postMessage).not.toHaveBeenCalled();
+        stage.querySelector<HTMLElement>('.lg-node[data-id="sub/b.md"]')!.click();
+        expect(mockVscodeApi.postMessage).toHaveBeenCalledWith({ type: "openFile", path: "../sub/b.md" });
+        toc.dispose();
+    });
+
+    it("Two steps should reach the neighbours' neighbours, and a new index should redraw", async () => {
+        const toc = mountToc();
+        toc.toggle();
+        receiveFolderIndex(INDEX, "a.md"); // a.md -> self; c.md -> a.md; b.md -> self
+        clickTab(tabsOf(toc)[TAB.graph]!);
+        const stage = await graphDrawn(toc);
+        expect(nodeIds(stage).sort()).toEqual(["a.md", "c.md", "notes/self.md"]);
+        toc.panel.querySelector<HTMLElement>('.review-list--graph .review-seg[data-depth="2"]')!.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+        expect(nodeIds(stage).sort()).toEqual(["a.md", "c.md", "notes/self.md", "sub/b.md"]);
+        receiveFolderIndex({ ...INDEX, edges: INDEX.edges.filter((e) => e.from !== "c.md") }, "a.md");
+        expect(nodeIds(stage)).not.toContain("c.md");
         toc.dispose();
     });
 });
