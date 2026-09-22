@@ -79,9 +79,33 @@ export function hrefPath(href: string): string {
 
 const ASCII_PUNCT = /[!-/:-@[-`{-~]/;
 
+/**
+ * The named references decoded here: the ones a path or a label plausibly
+ * holds. The editor decodes every HTML named reference, so a destination
+ * spelled with any other (`&copy;`) reads here as naming the literal text,
+ * and its reference dangles where a click would open it. Closing that needs
+ * the whole entity table on both hosts, which the case does not repay.
+ */
 const NAMED_ENTITIES: Record<string, string> = {
     amp: "&", lt: "<", gt: ">", quot: "\"", apos: "'", nbsp: " ",
 };
+
+/**
+ * A numeric reference as micromark decodes it
+ * (`micromark-util-decode-numeric-character-reference`): the code points no
+ * document may carry (C0 and C1 controls, surrogates, noncharacters, and
+ * anything past U+10FFFF) read as U+FFFD, never as a throw, since one note
+ * throwing rejects a host's whole folder index.
+ */
+function decodeNumeric(code: number): string {
+    const bad = code < 9 || code === 11 || (code > 13 && code < 32)
+        || (code > 126 && code < 160)
+        || (code > 55_295 && code < 57_344)
+        || (code > 64_975 && code < 65_008)
+        || (code & 65_535) === 65_535 || (code & 65_535) === 65_534
+        || code > 1_114_111;
+    return bad ? "�" : String.fromCodePoint(code);
+}
 
 /** Backslash escapes of ASCII punctuation and the character references a link
  *  destination can carry, decoded as CommonMark decodes them. */
@@ -98,9 +122,9 @@ function decodeMarkdownText(s: string): string {
             const m = /^&(?:#[xX]([0-9a-fA-F]{1,6})|#([0-9]{1,7})|([A-Za-z][A-Za-z0-9]{1,31}));/.exec(s.slice(i));
             if (m) {
                 let decoded: string | null = null;
-                if (m[1] !== undefined) { decoded = String.fromCodePoint(parseInt(m[1], 16) || 0xfffd); }
-                else if (m[2] !== undefined) { decoded = String.fromCodePoint(parseInt(m[2], 10) || 0xfffd); }
-                else if (m[3] !== undefined && NAMED_ENTITIES[m[3]] !== undefined) { decoded = NAMED_ENTITIES[m[3]]!; }
+                if (m[1] !== undefined) { decoded = decodeNumeric(parseInt(m[1], 16)); }
+                else if (m[2] !== undefined) { decoded = decodeNumeric(parseInt(m[2], 10)); }
+                else if (m[3] !== undefined && Object.hasOwn(NAMED_ENTITIES, m[3])) { decoded = NAMED_ENTITIES[m[3]]!; }
                 if (decoded !== null) {
                     out += decoded;
                     i += m[0].length - 1;

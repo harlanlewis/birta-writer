@@ -104,6 +104,20 @@ describe("readNote: the body", () => {
         expect(readNote("[r]\n\n[r]: first.md\n[r]: second.md\n").links.map((l) => l.href)).toEqual(["first.md"]);
     });
 
+    it("a numeric reference no code point can hold should read as U+FFFD, never throw", () => {
+        // A throw here rejects the host's whole folder index, not one note.
+        for (const ref of ["&#x110000;", "&#9999999;", "&#0;", "&#xD800;"]) {
+            expect(readNote(`[x](${ref}.md)\n`).links.map((l) => l.href)).toEqual(["�.md"]);
+        }
+    });
+
+    it("a name that is not a character reference should stay as written, whatever Object calls it", () => {
+        expect(readNote("[x](&constructor;.md) [&toString; label](a.md)\n").links.map((l) => [l.href, l.text])).toEqual([
+            ["&constructor;.md", "x"],
+            ["a.md", "&toString; label"],
+        ]);
+    });
+
     it("an unclosed fence should hide every link after it", () => {
         expect(readNote("[a](a.md)\n\n```\n[b](b.md)\n").links.map((l) => l.href)).toEqual(["a.md"]);
     });

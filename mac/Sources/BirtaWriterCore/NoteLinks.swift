@@ -109,9 +109,15 @@ public enum NoteLinks {
             guard n >= 1, n <= (hex ? 6 : 7), j < s.endIndex, s[j] == c(";") else { return nil }
             let digits = String(decoding: s[start..<j], as: UTF16.self)
             let value = UInt32(digits, radix: hex ? 16 : 10) ?? 0
-            // `String.fromCodePoint(n || 0xfffd)`. Past U+10FFFF JavaScript
-            // throws; U+FFFD is what CommonMark says such a reference means.
-            let units = JSText.fromCodePoint(value == 0 ? 0xFFFD : value) ?? [0xFFFD]
+            // micromark's rule (`decodeNumeric` in shared/noteLinks.ts): the
+            // code points no document may carry read as U+FFFD.
+            let bad = value < 9 || value == 11 || (value > 13 && value < 32)
+                || (value > 126 && value < 160)
+                || (value > 55_295 && value < 57_344)
+                || (value > 64_975 && value < 65_008)
+                || (value & 65_535) == 65_535 || (value & 65_535) == 65_534
+                || value > 1_114_111
+            let units = bad ? [0xFFFD] : (JSText.fromCodePoint(value) ?? [0xFFFD])
             return (units, j + 1 - i)
         }
         guard JSText.isAsciiLetter(s[j]) else { return nil }

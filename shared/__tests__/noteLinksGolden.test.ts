@@ -111,6 +111,11 @@ const EXTRA: readonly string[] = [
     "---\ntitle: Only frontmatter\n---",
     "---\ntitle: \ud83d\ude00 Emoji\n---\n[\ud83d\ude00 a\u00a0 b](emoji.md) [\ufeffbom\ufeff](bom.md)\n",
     "[&#x1F600; smile](e.md) [n](&#0;.md) [amp](a&amp;b.md) [nope](a&bogus;.md) [nbsp](a&nbsp;b.md)\n",
+    // Every class micromark turns into U+FFFD: past U+10FFFF, a surrogate, a C0
+    // and a C1 control, a noncharacter, and the end of a plane.
+    "[a](&#x110000;.md) [b](&#9999999;.md) [c](&#xD800;.md) [d](&#1;.md) [e](&#x85;.md) [f](&#xFDD0;.md) [g](&#xFFFE;.md) [h](&#x1FFFF;.md) [ok](&#x41;&#9;.md)\n",
+    // Names Object.prototype carries are not character references.
+    "[x](&constructor;.md) [&toString; label](a.md) [y](&hasOwnProperty;.md)\n",
     "1234567890. not an item [a](a.md)\n\n-     five spaces [five](five.md)\n\n-\t[tab after marker](tab.md)\n",
     "\t[tab code](tab-code.md)\n\n  \t[mixed indent](mixed.md)\n",
     "<span>\n[after a tag line](tagline.md)\n\n[after blank](after-blank.md)\n",
