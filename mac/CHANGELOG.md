@@ -12,6 +12,10 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ## [Unreleased]
 
+---
+
+## [2026.922.0] - 2026, September 22
+
 ### Added
 
 - Birta Writer for Mac shows the Backlinks and Graph tabs in a window opened on a folder, indexed from that folder and kept current as its files change. A window holding a single file has no folder to index, so neither tab appears there. A backlink opens the linking note at the line the link is written on, whether the note replaces the one in this tab, opens as a new tab, or is already open in another window, which is brought forward and scrolled there; an explorer row still opens a note where it was left.
