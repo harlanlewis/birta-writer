@@ -137,6 +137,10 @@ public enum WebviewMessage: Equatable {
     /// A row was right-clicked at a point in the page, for the host to put its
     /// own menu at (`ExplorerMenu`). `kind` is the row's, `dir` or `file`.
     case projectFileMenu(path: String, kind: String, x: Double, y: Double)
+    /// Ask for the folder edge index of this window's root (MAR-480). One
+    /// request subscribes the page: the host answers with `folderIndex` now
+    /// and again whenever the root changes, until the page is gone.
+    case requestFolderIndex
     /// The three things the explorer remembers, as the outline panel's are
     /// remembered: its width and whether it is out, per app, and whether
     /// dotfiles are listed, which is the host's setting because the host's
@@ -295,6 +299,7 @@ public enum WebviewMessage: Equatable {
             return .listDirectory(id: id, path: str("path") ?? "")
         case "openProjectFile":
             return str("path").map { .openProjectFile(path: $0, newTab: bool("newTab") ?? false) } ?? .other(type: type)
+        case "requestFolderIndex": return .requestFolderIndex
         case "projectFileMenu":
             guard let path = str("path"), let kind = str("kind"),
                   let x = dict["x"] as? NSNumber, let y = dict["y"] as? NSNumber else { return .other(type: type) }
@@ -450,6 +455,10 @@ public enum HostMessage: Equatable {
     /// Folders whose contents changed on disk, root-relative; the page
     /// re-lists the ones it has open.
     case directoryChanged(paths: [String])
+    /// The folder edge index of this window's root, and where this window's
+    /// file sits in it (`self`, root-relative). A nil index is a window with
+    /// no folder; a nil `self` is a file the index does not hold.
+    case folderIndex(FolderIndex?, self: String?)
     /// The hidden-files setting moved, from this window's row or another's.
     case fileExplorerConfig(showHidden: Bool)
     /// Whether this page carries the formatting row. The app's setting
@@ -606,6 +615,8 @@ public enum HostMessage: Equatable {
             return ["type": "currentProjectFile", "path": path ?? NSNull()]
         case let .directoryChanged(paths):
             return ["type": "directoryChanged", "paths": paths]
+        case let .folderIndex(index, selfPath):
+            return ["type": "folderIndex", "index": index?.jsonObject ?? NSNull(), "self": selfPath ?? NSNull()]
         case let .fileExplorerConfig(showHidden):
             return ["type": "fileExplorerConfig", "showHidden": showHidden]
         case let .setFormattingRowExpanded(expanded):

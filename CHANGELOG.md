@@ -4,6 +4,16 @@
 
 ## [Unreleased]
 
+### Added
+
+- A Backlinks tab in the review sidebar lists every note in the document's folder that links to it: by a Markdown link, a `[[wikilink]]`, or an Open Knowledge Format `sources` entry. A row opens the linking note at the line the link is on. Links are matched the way clicking them resolves them, so a note appears here only when its link would open this one. The tab shows only when something links to the note, and nothing in the folder is read until the sidebar has been opened.
+- A Graph tab draws the note with the notes it links to and the notes that link to it, on a ring around it, or two steps out. A dot's size says how connected a note is, its colour says its Open Knowledge Format `type`, an outlined dot is a link to no note in the folder, and clicking a dot opens its note. Whole folder opens the entire folder's graph over the page, with its most connected notes, the notes nothing links to, and the links that name no note listed beside it, each entry opening its note, and filters by name, path, tag, `type` and `status`.
+
+### Fixed
+
+- Escaped Markdown characters were lost on save when another inline element followed them in the same paragraph: inline code, bold, italic, a link or a wikilink. Text such as `\[not a link](x.md)` could reopen as a real link, and a line starting with `\#` as a heading. It happened in a paragraph you had edited, and in any paragraph of a file holding indented code inside a list item (the next entry).
+- Editing a file that holds indented code inside a list item no longer respells the rest of the file when it saves. Character references, escapes, tilde fences and other code blocks anywhere in the file keep the spelling they had; only what you changed is written differently.
+
 ---
 
 ## [2026.921.0] - 2026, September 21

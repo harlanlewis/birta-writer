@@ -42,6 +42,7 @@ import { notifySwitchToTextEditor, getWebviewState, setWebviewState, setBaseSync
 import type { EditorSelectionContext } from "../shared/agentContext";
 import { renderFrontmatterPanel, refreshFrontmatterEmptyState } from "./components/frontmatter";
 import { dispatchFmSuggestions } from "./components/frontmatter/suggestMenu";
+import { receiveFolderIndex } from "./links/folderIndex";
 import { runEditorCommand } from "./editorCommands";
 import { refreshShortcutsHelpIfLoaded } from "./components/shortcutsHelp/loader";
 import { hostHas, setHostCapabilities } from "../shared/hostProfile";
@@ -629,6 +630,9 @@ export function createMessageHandlers(
         },
         fmSuggestions(msg) {
             dispatchFmSuggestions(msg.key, msg.values);
+        },
+        folderIndex(msg) {
+            receiveFolderIndex(msg.index, msg.self);
         },
         proofreadConfig(msg) {
             const view = getEditorView();

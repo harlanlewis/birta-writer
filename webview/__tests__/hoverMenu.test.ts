@@ -433,7 +433,7 @@ describe("wireHoverMenu under barMenusOnClick", () => {
     });
 });
 
-describe("wireHoverMenu with a menu nested inside another (MAR-486)", () => {
+describe("wireHoverMenu with a menu nested inside another", () => {
     beforeEach(() => {
         vi.useFakeTimers();
         while (closeTopmostLayer()) { /* drain */ }

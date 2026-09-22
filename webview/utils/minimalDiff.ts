@@ -690,6 +690,12 @@ function opaqueLineCount(lines: readonly string[]): number {
  * for the merge's own role check and thirty-four for the "any role changed"
  * rule this replaced. It is meant to be a rare, specific veto, so a version of
  * it that starts firing broadly is wrong rather than thorough.
+ *
+ * It fires on every repair of indented code inside a list item, which the
+ * classifier reads as prose (MAR-131), so restoring it over the serializer's
+ * fence counts as a loss. The engine tolerates that per region: a repair this
+ * vetoes on the zero-edit round trip is not judged by it afterwards, and the
+ * rest of the document keeps its protection (MAR-485).
  */
 function losesOpaqueContent(before: readonly string[], after: readonly string[]): boolean {
     return opaqueLineCount(after) < opaqueLineCount(before);

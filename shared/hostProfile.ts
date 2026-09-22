@@ -185,6 +185,19 @@ export type HostCapability =
      */
     | "projectFiles"
     /**
+     * An index of the notes in the document's folder and the references
+     * between them (shared/folderIndex.ts), which the host builds and the
+     * page asks for with `requestFolderIndex`: what the Backlinks tab reads.
+     *
+     * The host's because the page cannot read another file, and a folder of
+     * them is the host's to walk and to watch. VS Code answers for the
+     * document's workspace folder; the Mac app for a window's root, and
+     * only for a window that has one, as with `projectFiles` (MAR-480). A
+     * host that declares it and has no folder for a document answers with a
+     * null index.
+     */
+    | "folderIndex"
+    /**
      * A tooltip the host can draw over the strip it paints on the bar
      * (`--host-strip-under-topbar`, the Mac app's tab bar).
      *
@@ -211,6 +224,7 @@ export const ALL_HOST_CAPABILITIES: readonly HostCapability[] = [
     "contentMeasure",
     "appPreferences",
     "projectFiles",
+    "folderIndex",
     "stripTooltip",
 ];
 
@@ -264,7 +278,7 @@ export const HOST_PROFILES = {
     // and the e2e mac page restate this list as a literal, because neither
     // Swift nor an HTML bootstrap can import it. They are not free to drift:
     // shared/__tests__/hostProfile.test.ts parses both and fails.
-    mac: ["spellAndGrammar", "imageUpload", "toc", "contentMeasure", "appPreferences", "agent", "projectFiles", "stripTooltip"] as readonly HostCapability[],
+    mac: ["spellAndGrammar", "imageUpload", "toc", "contentMeasure", "appPreferences", "agent", "projectFiles", "folderIndex", "stripTooltip"] as readonly HostCapability[],
 } as const satisfies Record<string, readonly HostCapability[]>;
 
 /**

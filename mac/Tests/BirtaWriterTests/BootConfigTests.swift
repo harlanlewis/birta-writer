@@ -16,6 +16,7 @@ final class BootConfigTests: XCTestCase {
     func testAWindowOnALooseFileShouldNotBeOfferedTheExplorer() {
         let capabilities = Prefs.bootConfig(viewState: nil, explorerRoot: nil).hostCapabilities
         XCTAssertFalse(capabilities.contains("projectFiles"))
+        XCTAssertFalse(capabilities.contains("folderIndex"), "no root, so no folder to index")
         XCTAssertTrue(capabilities.contains("toc"), "the rest of the profile is untouched")
     }
 
@@ -23,6 +24,7 @@ final class BootConfigTests: XCTestCase {
         let root = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
         let capabilities = Prefs.bootConfig(viewState: nil, explorerRoot: root).hostCapabilities
         XCTAssertTrue(capabilities.contains("projectFiles"))
+        XCTAssertTrue(capabilities.contains("folderIndex"))
     }
 
     func testTheOrderShouldBeTheProfilesWithOnlyTheWithdrawnEntriesMissing() {
@@ -31,6 +33,6 @@ final class BootConfigTests: XCTestCase {
         // one the guard blessed.
         let full = Prefs.bootConfig(viewState: nil, explorerRoot: URL(fileURLWithPath: NSTemporaryDirectory())).hostCapabilities
         let loose = Prefs.bootConfig(viewState: nil, explorerRoot: nil).hostCapabilities
-        XCTAssertEqual(loose, full.filter { $0 != "projectFiles" })
+        XCTAssertEqual(loose, full.filter { $0 != "projectFiles" && $0 != "folderIndex" })
     }
 }

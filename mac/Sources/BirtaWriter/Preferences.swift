@@ -1299,10 +1299,12 @@ enum Prefs {
             //
             // Withdrawing `projectFiles` is the same shape: a window on a loose
             // file is a host with no directory to provide, so the page it
-            // mounts is never offered the explorer (MAR-457).
-            hostCapabilities: ["spellAndGrammar", "imageUpload", "toc", "contentMeasure", "appPreferences", "agent", "projectFiles", "stripTooltip"]
+            // mounts is never offered the explorer (MAR-457). `folderIndex`
+            // goes with it: the index is of the window's root, and a window
+            // on a loose file has none to index (MAR-480).
+            hostCapabilities: ["spellAndGrammar", "imageUpload", "toc", "contentMeasure", "appPreferences", "agent", "projectFiles", "folderIndex", "stripTooltip"]
                 .filter { $0 != "agent" || agentAvailable }
-                .filter { $0 != "projectFiles" || explorerRoot != nil },
+                .filter { ($0 != "projectFiles" && $0 != "folderIndex") || explorerRoot != nil },
             viewStateJSON: viewState,
             hostShortcuts: AppMenu.shortcuts
         )

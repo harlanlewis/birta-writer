@@ -15,6 +15,7 @@ import type { EmbedCardResult } from "./connectors";
 import type { HostPromptStep } from "./hostPrompt";
 import type { Diagnostics } from "./feedback/compose";
 import type { HostCapability } from "./hostProfile";
+import type { FolderIndex } from "./folderIndex";
 
 /** Image metadata: disk-relative path + WebView-accessible URI + file name */
 export type ProjectImage = {
@@ -466,6 +467,11 @@ export type ToExtensionMessage =
     // move; the host persists it and injects it back as `--files-width` on
     // `:root`, the way `tocWidth` comes back as `--toc-width`.
     | { type: "fileExplorerWidth"; width: number }
+    // ── The folder edge index (MAR-467), to a host declaring `folderIndex` ──
+    // Ask for the index of this document's folder. The host answers with
+    // `folderIndex`, now and again whenever the folder changes under it, until
+    // the page is gone: one request subscribes this page.
+    | { type: "requestFolderIndex" }
     // ── A tooltip the page cannot draw, under `stripTooltip` ──
     // The chip belongs against its control, and for a control in the bar's
     // first row that is inside the strip the host paints over the page (the
@@ -978,6 +984,12 @@ export type ToWebviewMessage =
     // The dotfile switch changed under the panel, from the host's own menu
     // row or as the echo of `setFileExplorerShowHidden`.
     | { type: "fileExplorerConfig"; showHidden: boolean }
+    // ── The folder edge index (MAR-467), from a host declaring `folderIndex` ──
+    // The index of this document's folder, and where this document sits in it
+    // (`self`, root-relative). A null index is a document with no folder to
+    // index; a null `self` is a document outside the index (past its cap, or
+    // not a note the walk reads).
+    | { type: "folderIndex"; index: FolderIndex | null; self: string | null }
     // A host with a palette of its own asks what the page can run here; the
     // page answers with `paletteCommands` now and again after every later
     // change to the list. Ask once, after `init`.

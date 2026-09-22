@@ -28,6 +28,12 @@ public enum DocumentTypes {
     /// Mirrors `DOCUMENT_EXTENSIONS`.
     public static let opened = ["md", "markdown", "mdx"]
 
+    /// The plain-Markdown spellings: every one opened but MDX. The tier a
+    /// wikilink name prefers when two files share it (`NoteLinkResolver`,
+    /// after `MD_SUFFIXES` in src/utils/linkResolver.ts), so a bare `[[page]]`
+    /// in a folder holding both twins opens the plain one.
+    public static let plainMarkdown = opened.filter { $0 != "mdx" }
+
     /// The extension every file this app creates ends up with.
     ///
     /// One entry rather than a list, and it is `NoteNameTemplate`'s: a note is

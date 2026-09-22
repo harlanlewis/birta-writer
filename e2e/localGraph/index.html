@@ -1,0 +1,109 @@
+<!doctype html>
+<!-- e2e harness for the review sidebar's Backlinks and Graph tabs (MAR-479,
+     MAR-481). Mirrors the provider template with acquireVsCodeApi stubbed, and
+     answers the page's `requestFolderIndex` with a folder index built below:
+     this note named by and naming a dozen notes of realistic name lengths,
+     three of them typed, one reference dangling, and a further step of
+     neighbours for the two-step view. The document carries enough headings
+     for the panel to auto-open docked at the runner's viewport. The --vscode-*
+     variables stand in for the set VS Code injects natively. -->
+<meta charset="utf-8">
+<style>
+  :root {
+    --vscode-editor-background: #1e1e1e;
+    --vscode-editor-foreground: #d4d4d4;
+    --vscode-foreground: #cccccc;
+    --vscode-descriptionForeground: #999999;
+    --vscode-focusBorder: #007fd4;
+    --vscode-panel-border: rgba(128, 128, 128, 0.2);
+    --vscode-icon-foreground: #cccccc;
+    --vscode-toolbar-hoverBackground: rgba(90, 93, 94, 0.31);
+    --vscode-list-hoverBackground: rgba(90, 93, 94, 0.2);
+    --vscode-list-activeSelectionBackground: rgba(0, 127, 212, 0.26);
+    --vscode-list-activeSelectionForeground: #ffffff;
+    --vscode-editor-selectionBackground: #264f78;
+    --vscode-editorWidget-background: #252526;
+    --vscode-editorHoverWidget-background: #252526;
+    --vscode-editorHoverWidget-border: #454545;
+    --vscode-editorWidget-foreground: #cccccc;
+    --vscode-editorWidget-border: #454545;
+    --vscode-widget-shadow: rgba(0, 0, 0, 0.36);
+    --vscode-textLink-foreground: #3794ff;
+    --vscode-charts-red: #f14c4c;
+    --vscode-charts-orange: #d18616;
+    --vscode-charts-yellow: #cca700;
+    --vscode-charts-green: #89d185;
+    --vscode-charts-blue: #3794ff;
+    --vscode-charts-purple: #b180d7;
+  }
+  body { background: var(--vscode-editor-background); color: var(--vscode-editor-foreground); margin: 0; }
+  .editor-topbar { height: 40px; }
+</style>
+<script>
+  document.addEventListener("DOMContentLoaded", () => document.body.classList.add("editor-width-auto"));
+  window.__i18n = {
+    translations: {},
+    isMac: true,
+    toolbar: { placements: {}, order: [] },
+    tocAutoHideThreshold: 3,
+    proofread: { grammarCheck: false, spellCheck: false },
+  };
+  window.__posted = [];
+  const CONTENT = ["# Self", "", "Body.", "", "## One", "", "## Two", "", "## Three", "", "## Four", ""].join("\n");
+
+  const SELF = "notes/self.md";
+  const note = (path, name, type = null) => ({ path, name, type, tags: [], status: null, trust: null, staleAfter: null });
+  const edge = (from, to, kind = "link", line = 3) => ({ from, to, target: to ?? "Unwritten idea", kind, text: to ?? "Unwritten idea", line });
+  const NEIGHBOURS = [
+    ["plans/q3-planning.md", "Quarterly planning review", "playbook"],
+    ["metrics/active-users.md", "Weekly active users", "metric"],
+    ["ref/ga4.md", "GA4 dimension catalogue", "reference"],
+    ["notes/standup.md", "Standup", null],
+    ["notes/retro.md", "Retrospective notes from the launch", null],
+    ["people/alex.md", "Alex", null],
+    ["notes/ideas.md", "Ideas", null],
+    ["notes/reading.md", "Reading list", null],
+    ["notes/decisions.md", "Decision log", null],
+    ["notes/risks.md", "Risks and mitigations", null],
+    ["archive/old-plan.md", "Old plan", null],
+    ["notes/glossary.md", "Glossary", null],
+  ];
+  const FAR = [
+    ["notes/budget.md", "Budget", "plans/q3-planning.md"],
+    ["notes/hiring.md", "Hiring", "plans/q3-planning.md"],
+    ["metrics/retention.md", "Retention", "metrics/active-users.md"],
+    ["people/sam.md", "Sam", "people/alex.md"],
+  ];
+  window.__folderIndex = {
+    rootName: "vault",
+    truncated: false,
+    nodes: [
+      note(SELF, "This note"),
+      ...NEIGHBOURS.map(([p, n, t]) => note(p, n, t)),
+      ...FAR.map(([p, n]) => note(p, n)),
+    ],
+    edges: [
+      // Half the neighbours name this note, half are named by it.
+      ...NEIGHBOURS.map(([p], i) => (i % 2 === 0 ? edge(p, SELF, "wiki", 4 + i) : edge(SELF, p))),
+      edge(SELF, null),
+      ...FAR.map(([p, , via]) => edge(via, p)),
+    ],
+  };
+  window.acquireVsCodeApi = () => ({
+    postMessage: (msg) => {
+      window.__posted.push(msg);
+      if (msg.type === "ready") {
+        window.postMessage({ type: "init", content: CONTENT, frontmatter: "", syncVersion: 1 }, "*");
+      }
+      if (msg.type === "requestFolderIndex") {
+        window.postMessage({ type: "folderIndex", index: window.__folderIndex, self: SELF }, "*");
+      }
+    },
+    getState: () => undefined,
+    setState: () => {},
+  });
+</script>
+<link rel="stylesheet" href="dist/webview.css">
+<div class="editor-topbar"></div>
+<div id="editor"></div>
+<script type="module" src="dist/webview.js"></script>

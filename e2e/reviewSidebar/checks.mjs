@@ -4,7 +4,8 @@
  * parses markers out of a real markdown round-trip (HTML comments as `html`
  * atoms, `- [ ]` as a checked list_item), and never runs the proofread pass.
  *
- * Covers: the four tabs render in order (Contents/Links/Notes/Proofreading);
+ * Covers: the tabs render in order (Contents/Links/Backlinks/Graph/Notes/
+ * Proofreading; the two index tabs stay hidden here, where no host answers);
  * Notes lists every built-in marker in document order with no dismiss actions;
  * Proofreading lists live style findings; Links groups by destination with the
  * URL inline on hover and a working Open action; keyboard nav; and typing with
@@ -36,8 +37,8 @@ export async function run({ page, check, baseUrl }) {
 
     // ── Tabs render ───────────────────────────────────────────────────────
     const tabLabels = await page.$$eval(".toc-tab", (els) => els.map((e) => e.textContent));
-    check("four tabs render in the order Contents / Links / Notes / Proofread",
-        JSON.stringify(tabLabels) === JSON.stringify(["Contents", "Links", "Notes", "Proofread"]),
+    check("the tabs render in the order Contents / Links / Backlinks / Graph / Notes / Proofread",
+        JSON.stringify(tabLabels) === JSON.stringify(["Contents", "Links", "Backlinks", "Graph", "Notes", "Proofread"]),
         JSON.stringify(tabLabels));
 
     // Contents is the default tab and lists the headings.
