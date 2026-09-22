@@ -41,6 +41,12 @@ export BIRTA_MAC_SCRATCHPAD="$NOTE"
 export BIRTA_MAC_DEFAULTS_SUITE="com.birtalabs.birta-writer.external-change.$$"
 LOG="$(mktemp -t mac-external-change)"
 printf 'first line\n' > "$NOTE"
+# An agent the arms below can stand in for: the command runs in the note's
+# folder, so what "the agent" does is whatever agent.sh says at the time, and
+# each arm writes its own. Set before the launch, because the page is told at
+# boot whether the host has an agent at all, and `/ai` is withdrawn without it.
+defaults write "$BIRTA_MAC_DEFAULTS_SUITE" agentEnabled -bool YES
+defaults write "$BIRTA_MAC_DEFAULTS_SUITE" agentCommand -string 'sh agent.sh {prompt}'
 
 BIRTA_MAC_MEASURE=1 "$APP" 2>"$LOG" &
 PID=$!
@@ -70,6 +76,29 @@ wait_for() { # wait_for <mark> <timeout-s>
 post() { # post <json>: hand the running app one debug message
     printf '%s' "$1" > "$DIR/.debug-message.json"
     kill -URG "$PID"
+}
+wait_for_file() { # wait_for_file <path> <timeout-s>: a marker a stand-in agent leaves
+    local n=0
+    while [ ! -e "$1" ]; do
+        sleep 0.1; n=$((n+1))
+        if [ $n -gt $(( $2 * 10 )) ]; then echo "timeout waiting for $1" >&2; cat "$LOG" >&2; exit 1; fi
+    done
+}
+# Start one `/ai` run whose agent is agent.sh, through the page's own command
+# so the page registers the run and merges its landing, exactly as the slash
+# menu's row does. Returns once the agent has started; a run that never starts
+# is an arm measuring nothing, so that is a stop rather than a failure.
+start_run() { # start_run <agent.sh body>
+    printf '%s\n' "$1" > "$DIR/agent.sh"
+    rm -f "$DIR/run-started" "$DIR/run-ended"
+    post '{"type":"editorCommand","command":"askAgent","args":{"prompt":"wait"}}'
+    wait_for_file "$DIR/run-started" 15
+}
+expect_no_question_since() { # expect_no_question_since <asked-before> <what>
+    checks=$((checks + 1))
+    if [ "$(traces "diskdrift asked")" -gt "$1" ]; then
+        fail "$2: the question was put"
+    fi
 }
 # SIGUSR1 is a toggle, not a direction; `show` marks `visible` and `hide`
 # marks nothing, so the direction a toggle went is read back rather than
@@ -218,6 +247,89 @@ if [ "$(stat -f %i "$NOTE")" != "$before_ino" ]; then
     fail "a summon and a hide over an unchanged file replaced it (new inode)"
 fi
 
+echo "an /ai run's own write, with nothing typed meanwhile"
+# The run edits the bound file at this window's request, so its write is not
+# somebody else's change: a finished run takes the file into a panel that
+# holds nothing the run has not seen, and no question is put (MAR-478).
+asked_before=$(traces "diskdrift asked")
+start_run 'touch run-started
+sleep 1
+printf "%s\nagent wrote this\n" "$(cat Note.md)" > Note.md
+sleep 2
+touch run-ended'
+wait_for_file "$DIR/run-ended" 15; sleep 3
+post '{"type":"__birtaSaveNow"}'; sleep 1.5
+checks=$((checks + 1))
+case "$(cat "$NOTE")" in
+    *"agent wrote this"*) ;;
+    *) fail "the run's own write did not land: '$(cat "$NOTE")'" ;;
+esac
+expect_no_question_since "$asked_before" "a run's own landing is not somebody else's change"
+
+echo "an /ai run's own write, with typing during the run"
+# The same run, with a sentence typed after the agent has written. Autosave
+# fires on the keystroke, and the file it would write over is the agent's:
+# the write has to be refused, as it is for any file that moved, and the
+# landing folds the agent's text around what was typed. No question is put in
+# the middle of a run, because at that moment nothing can tell the run's own
+# write from a third program's, and asking about the file the user just asked
+# an agent to rewrite is the wrong question for the case that happens.
+asked_before=$(traces "diskdrift asked")
+conflicts_before=$(traces "diskdrift conflict")
+start_run 'touch run-started
+sleep 1
+printf "%s\nagent wrote this too\n" "$(cat Note.md)" > Note.md
+sleep 6
+touch run-ended'
+sleep 2.5
+checks=$((checks + 1))
+case "$(cat "$NOTE")" in
+    *"agent wrote this too"*) ;;
+    *) fail "the stand-in agent's write never reached the file, so this arm measures nothing" ;;
+esac
+post '{"type":"__testInsertText","text":"typed while the agent worked "}'; sleep 1.5
+checks=$((checks + 1))
+case "$(cat "$NOTE")" in
+    *"agent wrote this too"*) ;;
+    *) fail "typing during a run autosaved over the run's own write: '$(cat "$NOTE")'" ;;
+esac
+expect_trace "diskdrift conflict" $((conflicts_before + 1)) "the run's write was noticed under the typing"
+expect_no_question_since "$asked_before" "no question in the middle of a run"
+wait_for_file "$DIR/run-ended" 15; sleep 3
+checks=$((checks + 1))
+case "$(cat "$NOTE")" in
+    *"agent wrote this too"*"typed while the agent worked"*|*"typed while the agent worked"*"agent wrote this too"*) ;;
+    *) fail "the landing did not fold the agent's text around the typing: '$(cat "$NOTE")'"; ls -l "$DIR" >&2 ;;
+esac
+expect_no_question_since "$asked_before" "the landing itself put no question"
+
+echo "a third program's change during an /ai run"
+# The case MAR-478 is the record of: while a run is in flight, a change made by
+# something that is NOT the run. The app cannot tell the two apart, and it
+# does not need to: the write is refused on the same terms as any file that
+# moved, and the landing brings the change in the way it brings the agent's.
+# Nothing the run does here touches the file, so every byte that moves is the
+# outside writer's.
+asked_before=$(traces "diskdrift asked")
+conflicts_before=$(traces "diskdrift conflict")
+start_run 'touch run-started
+sleep 7
+touch run-ended'
+sleep 0.5
+base="$(cat "$NOTE")"
+printf '%s\nchanged by a third program\n' "$base" > "$NOTE"
+post '{"type":"__testInsertText","text":"typed during the run "}'; sleep 1.5
+expect_bytes "$base"$'\n'"changed by a third program" "an edited buffer does not autosave over a third program's change while a run is in flight"
+expect_trace "diskdrift conflict" $((conflicts_before + 1)) "the third program's change was noticed during the run"
+expect_no_question_since "$asked_before" "no question in the middle of a run"
+wait_for_file "$DIR/run-ended" 15; sleep 3
+checks=$((checks + 1))
+case "$(cat "$NOTE")" in
+    *"changed by a third program"*"typed during the run"*|*"typed during the run"*"changed by a third program"*) ;;
+    *) fail "the landing did not keep the third program's change beside the typing: '$(cat "$NOTE")'"; ls -l "$DIR" >&2 ;;
+esac
+expect_no_question_since "$asked_before" "the landing of a third program's change put no question"
+
 echo "a window that goes before anybody answers"
 # The question needs somebody there, and quitting is when there is nobody. The
 # buffer goes beside the file rather than over it, which is the same answer the
@@ -272,7 +384,7 @@ echo
 # stops running takes its assertions with it and leaves a green line with a
 # smaller number in it, which nobody reads as a failure. Raise this when arms
 # are added; a drop is the thing it exists to catch.
-EXPECTED_CHECKS=23
+EXPECTED_CHECKS=36
 if [ "$checks" -lt "$EXPECTED_CHECKS" ]; then
     echo "check-external-change: only $checks checks ran, expected at least $EXPECTED_CHECKS." >&2
     echo "  An arm stopped running. Nothing below its own assertions was measured." >&2

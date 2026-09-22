@@ -206,6 +206,35 @@ final class ExternalChangeGuardTests: XCTestCase {
         }
     }
 
+    /// An `/ai` run in flight decides whether a conflict ASKS now, never
+    /// whether the file is looked at (MAR-478).
+    ///
+    /// The shape this pins is the order: the run's status is read after the
+    /// disk has been compared, so the write is refused for a file that moved
+    /// whatever moved it. A guard on the run ahead of the comparison is the
+    /// exemption this replaced, under which autosave wrote over a third
+    /// program's change for as long as an agent took, and the check itself
+    /// reads as cautious either way, which is why the order is pinned rather
+    /// than left to a reader. The comparison's own verdicts are `DiskDrift`'s,
+    /// and what the arms of `mac/scripts/check-external-change.sh` drive is
+    /// the app doing this to a real file.
+    func testARunInFlightShouldGovernOnlyWhetherAConflictAsksNow() throws {
+        let body = try functionBody(named: "reconcileWithDisk", in: source())
+        let code = body.components(separatedBy: "\n")
+            .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
+            .joined(separator: "\n")
+        let run = try XCTUnwrap(code.range(of: "agent.hasRunsInFlight"),
+                                "reconcileWithDisk no longer consults the run at all, so a conflict "
+                                + "found in the middle of one asks about the file the agent is editing")
+        let judge = try XCTUnwrap(code.range(of: "DiskDrift.judge("),
+                                  "the comparison is gone or renamed, and this guard names it")
+        XCTAssertTrue(judge.lowerBound < run.lowerBound,
+                      "the run is consulted before the disk is compared, which is the check "
+                      + "standing down for every writer while an agent works")
+        XCTAssertEqual(code.components(separatedBy: "agent.hasRunsInFlight").count - 1, 1,
+                       "the run is consulted in one place, the asking, and nowhere before it")
+    }
+
     /// The other side of the same rule: a summon is where a stale panel is
     /// corrected and the only place there is a window to put the question on.
     func testTheSummonShouldReconcileToo() throws {

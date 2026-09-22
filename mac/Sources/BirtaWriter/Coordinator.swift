@@ -2717,17 +2717,6 @@ final class Coordinator {
         // fourth: a read is already queued for the next `ready`, and the
         // baseline until then describes the file this window is leaving.
         guard hasLoaded, !noteMissing, !isWelcoming, !reloadFromDisk else { return true }
-        // An agent run writes the bound file itself, and a finished run has
-        // its own reconciliation (`AgentLandingPolicy`, and the copy it keeps
-        // beside the note). A question in the middle of one would be asking
-        // about the file the app has just asked somebody to edit.
-        //
-        // It stands down for EVERY change while a run is in flight, not only
-        // the run's own, because nothing here can tell them apart: a third
-        // program editing the same file during a run is the case this gives
-        // up, and autosave goes on writing through it. `docs/PERSISTENCE.md`
-        // says so under the table rather than leaving it to be discovered.
-        guard !agent.hasRunsInFlight else { return true }
         // A write decided earlier may still be on the writer's queue, and the
         // disk is what this compares against, so it has to hold everything the
         // app has already decided to put there.
@@ -2759,7 +2748,18 @@ final class Coordinator {
         case .conflict(let disk, let stamp):
             measure.trace("diskdrift conflict at=\(boundURL.lastPathComponent)")
             driftUnresolved = true
-            if asking { askAboutDrift(disk: disk, stamp: stamp) }
+            // The write is refused whatever moved the file. What an `/ai` run
+            // in flight changes is only whether the question is put NOW: the
+            // run writes the bound file at this window's request, and in the
+            // middle of it nothing here can tell its write from a third
+            // program's, so asking would ask about the file the user just
+            // asked an agent to rewrite, and a Keep would write over the
+            // agent's work. The landing is the answer for both writers:
+            // `finishAgentRun` re-reads the file and folds whatever it holds
+            // around what was typed, keeping a copy of anything left out. A
+            // run that ends without landing leaves `driftUnresolved` standing,
+            // and the next write or summon asks as it would have (MAR-478).
+            if asking, !agent.hasRunsInFlight { askAboutDrift(disk: disk, stamp: stamp) }
             return false
         case .unavailable:
             return true
