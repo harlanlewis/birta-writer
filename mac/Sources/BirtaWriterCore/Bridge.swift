@@ -57,7 +57,7 @@ public enum WebviewMessage: Equatable {
     case openHostPreferences
     /// `/ai`: the request typed after the pill, with the id the page will
     /// match every `agentRun` report against.
-    case askAgent(prompt: String?, requestId: String?, model: String?, effort: String?)
+    case askAgent(prompt: String?, requestId: String?, model: String?, effort: String?, skill: String?)
     /// Cancel a run, from a click on its gutter marker. The wire name is
     /// `agentCancel`, which is what `notifyAgentCancel` posts; a case
     /// spelled anything else is a case nothing ever reaches.
@@ -132,8 +132,10 @@ public enum WebviewMessage: Equatable {
     /// A row was activated. An openable file goes through the app's routing
     /// (`OpenRouting.explorerDestination`: this tab, or a new one when
     /// `newTab` says the reader asked for it); anything else opens in its
-    /// default app.
-    case openProjectFile(path: String, newTab: Bool)
+    /// default app. `line` is the document line to land on, which a backlink
+    /// or a graph edge asks for and an explorer row does not; wherever the
+    /// file lands, the page showing it is told (`Coordinator.reveal(line:)`).
+    case openProjectFile(path: String, newTab: Bool, line: Int?)
     /// A row was right-clicked at a point in the page, for the host to put its
     /// own menu at (`ExplorerMenu`). `kind` is the row's, `dir` or `file`.
     case projectFileMenu(path: String, kind: String, x: Double, y: Double)
@@ -233,8 +235,11 @@ public enum WebviewMessage: Equatable {
         case "openUrl": return str("url").map { .openUrl($0) } ?? .other(type: type)
         case "openHostPreferences": return .openHostPreferences
         case "askAgent", "askAgentAdvanced":
+            // `skill` is carried although this host declares no `agentSkills`
+            // (it scans no folder), so a host that grows the scan changes
+            // nothing here; the page never sends one until then.
             return .askAgent(prompt: str("prompt"), requestId: str("requestId"),
-                             model: str("model"), effort: str("effort"))
+                             model: str("model"), effort: str("effort"), skill: str("skill"))
         case "agentCancel":
             return str("requestId").map { .agentCancel(requestId: $0) } ?? .other(type: type)
         case "agentMergeResult":
@@ -298,7 +303,7 @@ public enum WebviewMessage: Equatable {
             guard let id = str("id") else { return .other(type: type) }
             return .listDirectory(id: id, path: str("path") ?? "")
         case "openProjectFile":
-            return str("path").map { .openProjectFile(path: $0, newTab: bool("newTab") ?? false) } ?? .other(type: type)
+            return str("path").map { .openProjectFile(path: $0, newTab: bool("newTab") ?? false, line: int("line")) } ?? .other(type: type)
         case "requestFolderIndex": return .requestFolderIndex
         case "projectFileMenu":
             guard let path = str("path"), let kind = str("kind"),
@@ -374,8 +379,20 @@ public enum HostMessage: Equatable {
     /// how many source lines that block takes so the page can name a document
     /// line the file actually has. `BirtaWriterCore.DocumentSplit` is what
     /// makes the three, and the whole of why the split is the host's job.
-    case initDoc(content: String, frontmatter: String, lineOffset: Int, syncVersion: Int, viewStateJSON: String?)
+    ///
+    /// `scrollToLine` is the document line this open was asked to land on
+    /// (a backlink's), or nil for an open nobody named a line for. The page's
+    /// `init` reads it before it reads the remembered offset, so a line here
+    /// outranks whatever `viewStateJSON` carries; omitted from the wire when
+    /// nil, so an unasked open is the message it always was.
+    case initDoc(content: String, frontmatter: String, lineOffset: Int, syncVersion: Int, viewStateJSON: String?,
+                 scrollToLine: Int? = nil)
     case externalUpdate(content: String, frontmatter: String, lineOffset: Int, syncVersion: Int)
+    /// Put the caret on a document line and scroll it into view, on a page
+    /// that is already showing the file: a backlink whose note is open in
+    /// some window fronts that window and sends this, because no fresh
+    /// `init` will carry the line there.
+    case scrollToLine(line: Int)
     /// A new `lineOffset` with the document left where it is: what a panel edit
     /// amounts to, since it changes how far the body is pushed down and nothing
     /// about the body. No `lineMap` travels with it, because the map describes
@@ -534,17 +551,20 @@ public enum HostMessage: Equatable {
             return object
         case let .raw(json):
             return (json.data(using: .utf8).flatMap { try? JSONSerialization.jsonObject(with: $0) } as? [String: Any]) ?? [:]
-        case let .initDoc(content, frontmatter, lineOffset, syncVersion, viewStateJSON):
+        case let .initDoc(content, frontmatter, lineOffset, syncVersion, viewStateJSON, scrollToLine):
             var o: [String: Any] = ["type": "init", "content": content, "frontmatter": frontmatter,
                                     "lineOffset": lineOffset, "syncVersion": syncVersion]
             if let vs = viewStateJSON, let d = vs.data(using: .utf8),
                let obj = try? JSONSerialization.jsonObject(with: d), obj is [String: Any] {
                 o["viewState"] = obj
             }
+            if let scrollToLine { o["scrollToLine"] = scrollToLine }
             return o
         case let .externalUpdate(content, frontmatter, lineOffset, syncVersion):
             return ["type": "externalUpdate", "content": content, "frontmatter": frontmatter,
                     "lineOffset": lineOffset, "syncVersion": syncVersion]
+        case let .scrollToLine(line):
+            return ["type": "scrollToLine", "line": line]
         case let .lineOffsetUpdate(lineOffset):
             return ["type": "lineMapUpdate", "lineOffset": lineOffset]
         case let .agentRun(requestId, status, harness, text, message):
@@ -913,6 +933,11 @@ public struct BootConfig: Equatable {
             "pasteUnfurl": networkEnabled,
             "calcEnabled": true,
             "calcBlocksEnabled": true,
+            // The folder graph is this surface's feature (MAR-487): on, with
+            // no setting to flip. Whether a window has a folder to index is
+            // the `folderIndex` capability's question, answered above, so a
+            // window on a loose file still asks for nothing.
+            "folderGraph": true,
             // The Checks answers, exactly as the menu posted them, and no
             // `proofread` config beside them. Which of the checks can RUN is
             // the page's to decide from the capabilities above, and a config

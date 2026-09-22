@@ -193,8 +193,43 @@ export function currentAgentRoute(): AgentRouteSummary {
  * single shell argument, prefixed with where it applies. Every major agent
  * reads `relative/path.md#L12-L20` as a location (buildReference's contract).
  */
-export function composeAgentRequest(prompt: string, reference: string): string {
-    return `In ${reference}: ${prompt.replace(/\s+/g, " ").trim()}`;
+export function composeAgentRequest(prompt: string, reference: string, skill?: SkillPrefix): string {
+    const line = `In ${reference}: ${prompt.replace(/\s+/g, " ").trim()}`;
+    if (!skill) { return line; }
+    return skill.form === "slash" ? `/${skill.name} ${line}` : `Use the ${skill.name} skill. ${line}`;
+}
+
+/**
+ * How a skill is named on the composed line (MAR-483). A skill is part of
+ * the REQUEST, never a flag: no harness documents a flag for one, and the
+ * line is the one thing every harness reads.
+ *
+ * `slash` is the `/name request` form Claude Code resolves as the skill
+ * itself, with the rest arriving as its argument; a name it does not know
+ * falls through to the plain request. `prose` names the skill in words for
+ * a harness that matches skills by description, where a leading slash would
+ * be a token it has no reading for.
+ */
+export interface SkillPrefix {
+    name: string;
+    form: "slash" | "prose";
+}
+
+/**
+ * The harnesses whose own `/name` invocation the slash form is written for.
+ * Everything else gets prose, and that includes the two reserved routes by
+ * construction (`chat` and `clipboard` are not binaries here): the Chat view
+ * in particular reads a leading `/` as one of its own commands, so a slash
+ * there would be swallowed by VS Code rather than reach any skill, and a
+ * name added to this set must never be one of the reserved route words.
+ */
+const SLASH_SKILL_HARNESSES: ReadonlySet<string> = new Set(["claude", "cursor-agent"]);
+
+/** The form a skill takes on the line handed to `route`, or undefined with no skill. */
+export function skillPrefixFor(route: string, skill: string | undefined): SkillPrefix | undefined {
+    const name = skill?.trim();
+    if (!name) { return undefined; }
+    return { name, form: SLASH_SKILL_HARNESSES.has(harnessName(route)) ? "slash" : "prose" };
 }
 
 /**
@@ -813,6 +848,8 @@ export async function askAgent(
      * first-use picker, because a caller with a template has a route.
      */
     templateOverride?: string,
+    /** A skill to name on the line, spelled per the route it goes to. */
+    skill?: string,
 ): Promise<void> {
     const active = await getActive();
     const handedOff = (): void => {
@@ -843,7 +880,7 @@ export async function askAgent(
         mode = picked.mode;
     }
     const relPath = vscode.workspace.asRelativePath(active.uri, false);
-    const line = composeAgentRequest(request, buildReference(relPath, active.context));
+    const line = composeAgentRequest(request, buildReference(relPath, active.context), skillPrefixFor(route, skill));
     // The reference names lines in the file the agent will read from disk, so
     // disk must hold what the reference was computed against.
     const document = await vscode.workspace.openTextDocument(active.uri);
@@ -925,6 +962,7 @@ export async function askAgentAdvanced(
         model?: string;
         effort?: string;
         attachments?: readonly string[];
+        skill?: string;
     },
 ): Promise<void> {
     const base = readBirtaSetting("agentCommand").trim();
@@ -949,7 +987,7 @@ export async function askAgentAdvanced(
     if (!base || base === AGENT_ROUTE_CHAT || base === AGENT_ROUTE_CLIPBOARD) {
         // Nothing to write a model or effort into. The plain path still
         // works, and asks for a route when there is none.
-        await askAgent(getActive, report, prompt, request.requestId);
+        await askAgent(getActive, report, prompt, request.requestId, undefined, request.skill);
         return;
     }
     // The flag SPELLINGS come from the probe, not from here: the panel offered
@@ -971,7 +1009,7 @@ export async function askAgentAdvanced(
     if (request.effort !== undefined && effortFlag) {
         template = setTemplateFlag(template, effortFlag, request.effort || undefined);
     }
-    await askAgent(getActive, report, prompt, request.requestId, template);
+    await askAgent(getActive, report, prompt, request.requestId, template, request.skill);
 }
 
 /** Register the internal `birta.askAgent` and `birta.cancelAgent` commands. */
@@ -996,6 +1034,7 @@ export function registerAskAgent(
                 requestId: typeof r.requestId === "string" ? r.requestId : undefined,
                 model: typeof r.model === "string" ? r.model : undefined,
                 effort: typeof r.effort === "string" ? r.effort : undefined,
+                skill: typeof r.skill === "string" ? r.skill : undefined,
                 attachments: Array.isArray(r.attachments)
                     ? r.attachments.filter((a): a is string => typeof a === "string")
                     : undefined,

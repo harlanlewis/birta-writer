@@ -33,6 +33,17 @@ final class AgentLandingTests: XCTestCase {
             .merge(diskText: agentWrote))
     }
 
+    /// A summon during the run has already read the agent's write into a
+    /// clean panel (the external-change check does not stand down for a run,
+    /// MAR-478). The panel then holds the file whole, and a merge of the same
+    /// bytes would find nothing to apply and keep a copy of what the document
+    /// already is.
+    func testAPanelAlreadyHoldingTheFileShouldSettle() {
+        XCTAssertEqual(
+            AgentLandingPolicy.landing(handoff: opened, onDisk: agentWrote, buffer: agentWrote),
+            .settle)
+    }
+
     /// The case the whole policy exists for, stated as the invariant rather
     /// than as one arrangement: whenever the panel holds something the run
     /// never saw, the buffer is not read over.

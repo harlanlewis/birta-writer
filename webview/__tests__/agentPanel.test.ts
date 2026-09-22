@@ -14,7 +14,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createAgentPanel, type AgentPanelHandle, type AgentPanelHost } from "../components/agentPanel";
-import type { HarnessCapabilities } from "../../shared/messages";
+import type { AgentSkill, HarnessCapabilities } from "../../shared/messages";
 
 /** A harness publishing its rungs, as Claude Code, Cline and Copilot do. */
 const WITH_SCALE: HarnessCapabilities = {
@@ -54,7 +54,7 @@ const NO_EFFORT: HarnessCapabilities = {
 let host: AgentPanelHost & { submit: ReturnType<typeof vi.fn>; dismiss: ReturnType<typeof vi.fn> };
 let panel: AgentPanelHandle;
 
-function open(caps: HarnessCapabilities | undefined): void {
+function open(caps: HarnessCapabilities | undefined, skills?: readonly AgentSkill[]): void {
     host = {
         saveAttachment: vi.fn(),
         submit: vi.fn(),
@@ -63,6 +63,7 @@ function open(caps: HarnessCapabilities | undefined): void {
     panel = createAgentPanel({
         anchor: { left: 0, top: 0, bottom: 0 },
         capabilities: caps,
+        skills,
         host,
     });
     document.body.appendChild(panel.el);
@@ -241,5 +242,92 @@ describe("the composer's pickers", () => {
         panel.setCapabilities(NO_SCALE);
 
         expect(rowsOf(specButtons()[1]!)).toEqual(["Default effort", "Other effort…"]);
+    });
+});
+
+/**
+ * The third picker (MAR-483): the skills the host's scan reached. Drawn
+ * exactly when a list arrived, grouped by where each came from, free text
+ * always reachable, and the pick sent by name.
+ */
+describe("the composer's skill picker", () => {
+    const SKILLS: readonly AgentSkill[] = [
+        { name: "birta-changelog", description: "Write a changelog entry.", scope: "project" },
+        { name: "house-style", description: "Our voice.", scope: "user" },
+    ];
+
+    /** Click the row whose label (its first text node) is this. */
+    function clickSkillRow(label: string): void {
+        const menu = panel.el.querySelector(".agent-panel-menu");
+        const row = [...(menu?.querySelectorAll<HTMLElement>(".agent-panel-menu-row") ?? [])]
+            .find((r) => r.firstChild?.textContent === label);
+        if (!row) { throw new Error(`no menu row labelled ${label}; rows: ${menu?.textContent}`); }
+        row.click();
+    }
+
+    beforeEach(() => {
+        document.body.textContent = "";
+        vi.clearAllMocks();
+    });
+
+    it("a host that sent no list should draw no skill picker, capabilities or not", () => {
+        open(WITH_SCALE);
+        expect(specButtons().map((b) => b.textContent)).toEqual(["Default model", "Default effort"]);
+    });
+
+    it("an empty list should still draw the picker, with the default and free text alone", () => {
+        open(undefined, []);
+        expect(specButtons().map((b) => b.textContent)).toEqual(["No skill"]);
+        expect(rowsOf(specButtons()[0]!)).toEqual(["No skill", "Other skill…"]);
+    });
+
+    it("the scan's findings should be grouped by where they came from, each with its description as text", () => {
+        open(WITH_SCALE, SKILLS);
+        const btn = specButtons()[2]!;
+        expect(btn.textContent).toBe("No skill");
+        btn.click();
+        const menu = panel.el.querySelector(".agent-panel-menu")!;
+        expect([...menu.querySelectorAll(".agent-panel-menu-heading")].map((h) => h.textContent)).toEqual(["This project", "Your machine"]);
+        const rows = [...menu.querySelectorAll(".agent-panel-menu-row")].map((r) => r.firstChild?.textContent);
+        expect(rows).toEqual(["No skill", "/birta-changelog", "/house-style", "Other skill…"]);
+        const detail = menu.querySelector(".agent-panel-menu-detail")!;
+        expect(detail.textContent).toBe("Write a changelog entry.");
+        expect(detail.children.length).toBe(0);
+    });
+
+    it("a picked skill should reach the request by name, and show on the button", () => {
+        open(WITH_SCALE, SKILLS);
+        specButtons()[2]!.click();
+        clickSkillRow("/house-style");
+        expect(specButtons()[2]!.textContent).toBe("/house-style");
+        expect(sendPrompt().skill).toBe("house-style");
+    });
+
+    it("a description in the file should never become markup in the menu", () => {
+        open(undefined, [{ name: "x", description: "<b>bold</b> <img src=x onerror=alert(1)>", scope: "user" }]);
+        specButtons()[0]!.click();
+        const detail = panel.el.querySelector(".agent-panel-menu-detail")!;
+        expect(detail.querySelector("b, img")).toBeNull();
+        expect(detail.textContent).toContain("<b>bold</b>");
+    });
+
+    it("a skill typed into the free-text row should reach the request, its leading slash dropped", () => {
+        open(undefined, SKILLS);
+        specButtons()[0]!.click();
+        clickSkillRow("Other skill…");
+        typeInto("/synced-one", "Enter");
+        expect(sendPrompt().skill).toBe("synced-one");
+    });
+
+    it("No skill should send no skill, and a list arriving after the panel opened should bring the picker with it", () => {
+        open(undefined);
+        expect(specButtons()).toHaveLength(0);
+        panel.setSkills(SKILLS);
+        expect(specButtons().map((b) => b.textContent)).toEqual(["No skill"]);
+        specButtons()[0]!.click();
+        clickSkillRow("/house-style");
+        specButtons()[0]!.click();
+        clickSkillRow("No skill");
+        expect(sendPrompt().skill).toBeUndefined();
     });
 });

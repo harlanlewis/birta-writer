@@ -200,6 +200,8 @@ final class AgentRunnerTests: XCTestCase {
         // the tool said, and several of these CLIs answer on stderr.
         XCTAssertTrue(result.transcript.contains("Hello!"), result.transcript)
         XCTAssertTrue(result.transcript.contains("on stderr"), result.transcript)
+        // And nothing of ours: the pipes closed with the child.
+        XCTAssertFalse(result.transcript.contains(AgentRunner.Transcript.cutShortNote), result.transcript)
     }
 
     func testAProbeShouldReachTheToolWithTheHelloPrompt() throws {
@@ -383,6 +385,110 @@ final class AgentRunnerTests: XCTestCase {
         let found = try XCTUnwrap(
             path, "a plain AgentRunner gives its children no PATH of their own")
         XCTAssertTrue(found.split(separator: ":").contains("/usr/bin"), found)
+    }
+
+    // MARK: the child's exit against its pipes closing (MAR-476)
+
+    /// A template whose shell exits at once while a command it backgrounded
+    /// keeps stdout open. The run is over when the shell is; a reader that
+    /// waited for the pipe instead reported `done` only when the grandchild
+    /// let go, and the corner kept counting a run that had ended.
+    ///
+    /// The grandchild sleeps for three seconds and the report is required
+    /// inside them. Pre-fix the report cannot arrive before the sleep ends,
+    /// so the threshold is the defect's own shape rather than a budget: a
+    /// machine that turns the grace into three seconds has every other test
+    /// here dead too.
+    func testARunWhoseGrandchildHoldsStdoutShouldReportWhenTheShellExits() throws {
+        let dir = try makeNote("# Note\n")
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let runner = AgentRunner()
+        var seen: [AgentRunStatus] = []
+        var reportedAfter: TimeInterval?
+        let finished = expectation(description: "the run reports a terminal status")
+        let started = Date()
+        runner.run(requestId: "r1", line: "rewrite the body",
+                   template: "true {prompt} ; { sleep 3 ; printf late ; } & printf early",
+                   workingDirectory: dir) { status in
+            seen.append(status)
+            if status.status != "running" {
+                reportedAfter = Date().timeIntervalSince(started)
+                finished.fulfill()
+            }
+        }
+        wait(for: [finished], timeout: 30)
+
+        XCTAssertEqual(seen.last?.status, "done")
+        let elapsed = try XCTUnwrap(reportedAfter)
+        XCTAssertLessThan(elapsed, 3, "the report waited for the grandchild's pipe")
+        XCTAssertFalse(runner.hasRunsInFlight, "a reported run is still counted as live")
+    }
+
+    /// The same shape through the Test button, where the transcript is shown:
+    /// what the shell printed is there, what the grandchild printed after the
+    /// shell exited is not, and the transcript says why it stops.
+    func testAProbeWhoseGrandchildHoldsStdoutShouldSayItStoppedReading() throws {
+        let started = Date()
+        let result = try XCTUnwrap(probe(
+            template: "true {prompt} ; { sleep 3 ; printf late ; } & printf early"))
+        let elapsed = Date().timeIntervalSince(started)
+
+        XCTAssertLessThan(elapsed, 3, "the probe waited for the grandchild's pipe")
+        XCTAssertTrue(result.succeeded, "the shell exited cleanly")
+        XCTAssertNil(result.failure)
+        XCTAssertTrue(result.transcript.hasPrefix("early"), result.transcript)
+        XCTAssertFalse(result.transcript.contains("late"), result.transcript)
+        XCTAssertTrue(result.transcript.hasSuffix(AgentRunner.Transcript.cutShortNote), result.transcript)
+    }
+
+    /// The other direction: a child that prints more than a pipe holds, which
+    /// is what an agent's transcript is, and every byte of it arrives.
+    ///
+    /// Past a pipe's capacity the child can only have exited because it was
+    /// being read while it ran, so a reader that took the output at exit
+    /// instead would never see this exit at all. The count is the assertion,
+    /// and the note must not be there either: nothing held the pipe, so
+    /// nothing was cut short. What this does NOT pin is the report waiting
+    /// for a tail written just before exit: `head` has long finished by the
+    /// time the shell exits, so that tail is at most the last few bytes, and
+    /// the small probes above (a transcript that is empty when the report
+    /// beats the bytes) are what catch a report made on the exit alone.
+    func testAChildPrintingMoreThanAPipeHoldsShouldHaveItAllInTheTranscript() throws {
+        let result = try XCTUnwrap(probe(
+            template: "true {prompt} ; yes | head -c 200000 ; printf '\\nEND\\n'"))
+
+        XCTAssertTrue(result.succeeded, result.failure ?? "")
+        XCTAssertEqual(result.transcript.utf8.count, 200_000 + 5)
+        XCTAssertTrue(result.transcript.hasSuffix("\nEND\n"))
+        XCTAssertFalse(result.transcript.contains(AgentRunner.Transcript.cutShortNote))
+    }
+
+    /// What the grandchild finds when it writes after the report: a closed
+    /// pipe, never an open one nobody reads.
+    ///
+    /// The `Process` keeps its pipes alive, so a pipe merely left unread is a
+    /// 64KB buffer and then a writer blocked for the rest of the app's life.
+    /// The grandchild records its own write's exit status: `rc=0` is the
+    /// buffer, which is the failure; no marker at all is SIGPIPE ending the
+    /// subshell before it could record anything, and `rc=1` is EPIPE where
+    /// SIGPIPE is ignored, which an app launched some other way may inherit.
+    /// Both of the last two are the pipe's contract for a reader that has
+    /// gone, so both pass.
+    func testAGrandchildWritingAfterTheReportShouldFindItsPipeClosed() throws {
+        let dir = try makeNote("# Note\n")
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let reports = run(
+            template: "true {prompt} ; { sleep 1.5 ; printf late 2>/dev/null ; printf rc=$? > marker.txt ; } & printf early",
+            in: dir)
+        XCTAssertEqual(reports.last?.status, "done")
+        // `run` returned past the report and the throttle's settle; the rest
+        // of the grandchild's sleep, and its write, are still to come.
+        let written = expectation(description: "the grandchild has tried to write")
+        written.isInverted = true
+        wait(for: [written], timeout: 2.5)
+
+        let marker = try? String(contentsOf: dir.appendingPathComponent("marker.txt"), encoding: .utf8)
+        XCTAssertNotEqual(marker, "rc=0", "the grandchild's write after the report went into a buffer")
     }
 
     func testTheFirstReportShouldBeRunningWithTheHarnessName() throws {

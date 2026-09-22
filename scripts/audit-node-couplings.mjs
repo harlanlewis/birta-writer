@@ -239,6 +239,10 @@ const RULES = [
         why: "tmpdir() picks a scratch directory for a dropped attachment whose whole purpose is to be a path a locally running CLI can open. With no local CLI there is nothing for the path to mean.",
     },
     {
+        key: "builtin-import/os", file: "src/MarkdownEditorProvider.ts", verdict: DROPS, capability: "agent-bridge",
+        why: "homedir() roots the agent skill scan (the SKILL.md folders under ~/.claude/skills and its siblings) for the composer's skill picker. The skills are folders on the machine that runs the CLI, so with no local CLI there is no folder to scan and the picker goes with the bridge; the composer keeps its free-text row, which is the same floor it has on a machine with no skill folder.",
+    },
+    {
         key: "builtin-import/os", file: "src/utils/imageService.ts", verdict: DEGRADES, capability: "images",
         why: "homedir() is the fallback target for a document whose scheme is not file:, which on the web is every document. A web build has to pick another target (globalStorageUri is the obvious one) and saved images then land somewhere the reader did not choose.",
     },

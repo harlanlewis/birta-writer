@@ -155,13 +155,41 @@ final class Coordinator {
 
     /// A row was activated. An openable file goes to the app's routing, which
     /// lands it in this tab or a new one; anything else (an image, a PDF) is
-    /// a file the editor does not open, handed to whatever does.
-    private func openProjectFile(relative path: String, newTab: Bool) {
+    /// a file the editor does not open, handed to whatever does. `line` is
+    /// where a backlink asked to land, carried with the file to wherever it
+    /// lands; an explorer row asks for none.
+    private func openProjectFile(relative path: String, newTab: Bool, line: Int?) {
         guard let explorerRoot, let file = DirectoryListing.resolve(path, in: explorerRoot) else { return }
         if DocumentTypes.accepts(file) {
-            onOpenProjectFile?(file, newTab)
+            onOpenProjectFile?(file, newTab, line)
         } else {
             NSWorkspace.shared.open(file)
+        }
+    }
+
+    /// The document line the next page this window builds opens on, held
+    /// from `reveal(line:)` until `initDoc` carries it and then cleared: a
+    /// line asked for while the page is cold or loading has no page to be
+    /// sent to yet, and a `scrollToLine` posted before `ready` is lost.
+    private var pendingRevealLine: Int?
+
+    /// Put the page on a document line: now, when the page is up, or on the
+    /// page's first `init` when one is on its way. The one entry for every
+    /// route a backlink can take (`WindowSet.openFromExplorer`), so a caller
+    /// that has fronted a window, made a tab, or reloaded this one asks the
+    /// same way and the page's state decides which message it is.
+    ///
+    /// Held rather than sent when not warm, and it has to be: `show()`
+    /// reloads a cold page, and a send racing that reload reaches the page
+    /// being torn down. A caller that is ABOUT to reload this window's page
+    /// passes the line to `openInPlace` instead, which holds it past the
+    /// reload; asked here first, the line would go to the page the reload
+    /// is replacing.
+    func reveal(line: Int) {
+        if state == .warm {
+            host.send(.scrollToLine(line: line))
+        } else {
+            pendingRevealLine = line
         }
     }
 
@@ -208,7 +236,7 @@ final class Coordinator {
         guard let pick = sender.representedObject as? ExplorerMenuPick else { return }
         switch pick.action {
         case .openInNewTab:
-            onOpenProjectFile?(pick.url, true)
+            onOpenProjectFile?(pick.url, true, nil)
         case .newNoteInside:
             onNewNoteInFolder?(pick.url)
         case .revealInFinder:
@@ -239,7 +267,11 @@ final class Coordinator {
     /// same answer for the narrow case where the flush itself brings the
     /// first unsaved bytes: the replace is abandoned and the file opens
     /// beside, so no gesture here can drop text that was only in the buffer.
-    func replaceFile(with url: URL, orTab: @escaping (URL) -> Void) {
+    ///
+    /// `line` is where the open was asked to land, or nil: it goes to the
+    /// page this reload builds, and to `orTab` when the replace is abandoned,
+    /// so the line follows the file to whichever page ends up showing it.
+    func replaceFile(with url: URL, revealing line: Int?, orTab: @escaping (URL) -> Void) {
         flushThen(persisting: false) { [weak self] in
             guard let self else { return }
             self.write(.panelHidden)
@@ -249,7 +281,7 @@ final class Coordinator {
             }
             // A file in somebody's project is not the app's document, so the
             // tab takes no slot; `WindowSet` never hands one to a rooted tab.
-            self.openInPlace(url, slot: nil)
+            self.openInPlace(url, slot: nil, revealing: line)
         }
     }
 
@@ -445,8 +477,9 @@ final class Coordinator {
     /// A row of this window's file explorer was activated, and whether the
     /// reader asked for a new tab (Cmd+click, middle click, the row's menu).
     /// Where the file lands is the app's rule (`OpenRouting.explorerDestination`,
-    /// through `WindowSet.openFromExplorer`), so the window only asks.
-    var onOpenProjectFile: ((URL, Bool) -> Void)?
+    /// through `WindowSet.openFromExplorer`), so the window only asks. The
+    /// third is the document line a backlink asked to land on, nil for a row.
+    var onOpenProjectFile: ((URL, Bool, Int?) -> Void)?
 
     /// The explorer's New Note in a folder: a note is the app's to make and
     /// place (`WindowSet.newNote(in:beside:)`), so the window only asks.
@@ -884,10 +917,15 @@ final class Coordinator {
     /// and `startWatching` is what clears `noteMissing` and takes the screen
     /// down. What is left is the page, which has to be loaded again against the
     /// new binding, and the slot, which is `WindowSet`'s to hand out.
-    func openInPlace(_ url: URL, slot: ActiveBinding.Slot?) {
+    /// - Parameter revealing: the document line the new page opens on, or
+    ///   nil to open where `ViewStateOnOpen` says. Taken here rather than
+    ///   through `reveal(line:)` because this window's page is warm right up
+    ///   to `loadPage`, and a line sent to it would go to the page leaving.
+    func openInPlace(_ url: URL, slot: ActiveBinding.Slot?, revealing line: Int? = nil) {
         bindingSlot = slot
         boundURL = url
         reloadFromDisk = true
+        pendingRevealLine = line
         loadPage()
         refreshTitle()
         show()
@@ -1807,9 +1845,14 @@ final class Coordinator {
                 hasLoaded = adopt(readActiveNote())
             }
             let doc = split.forPage(latest)
+            // The line this open was asked for rides on the page's first
+            // `init` and is spent by it: the next page this window builds
+            // is a remount or another open, and neither was asked for it.
+            let revealLine = pendingRevealLine
+            pendingRevealLine = nil
             host.send(.initDoc(content: doc.body, frontmatter: doc.frontmatter,
                                lineOffset: doc.lineOffset, syncVersion: guardState.version,
-                               viewStateJSON: mountedViewStateJSON))
+                               viewStateJSON: mountedViewStateJSON, scrollToLine: revealLine))
             state = .warm
             // The two app-wide page settings, sent again now that the page
             // can hear them. The boot script carried them as they stood when
@@ -1923,8 +1966,8 @@ final class Coordinator {
             if let u = URL(string: url) { NSWorkspace.shared.open(u) }
         case .openHostPreferences:
             openPreferences?()
-        case let .askAgent(prompt, requestId, model, effort):
-            runAgent(prompt: prompt, requestId: requestId, model: model, effort: effort)
+        case let .askAgent(prompt, requestId, model, effort, skill):
+            runAgent(prompt: prompt, requestId: requestId, model: model, effort: effort, skill: skill)
         case let .agentMergeResult(requestId, outcome):
             settleAgentRescue(requestId: requestId, outcome: outcome)
         case let .agentCancel(requestId):
@@ -2025,8 +2068,8 @@ final class Coordinator {
         case let .setTocWidth(w): Prefs.tocWidth = w
         case let .listDirectory(id, path):
             answerListing(id: id, path: path)
-        case let .openProjectFile(path, newTab):
-            openProjectFile(relative: path, newTab: newTab)
+        case let .openProjectFile(path, newTab, line):
+            openProjectFile(relative: path, newTab: newTab, line: line)
         case .requestFolderIndex:
             folderIndexSubscribed = true
             onFolderIndexRequest?()
@@ -2674,17 +2717,6 @@ final class Coordinator {
         // fourth: a read is already queued for the next `ready`, and the
         // baseline until then describes the file this window is leaving.
         guard hasLoaded, !noteMissing, !isWelcoming, !reloadFromDisk else { return true }
-        // An agent run writes the bound file itself, and a finished run has
-        // its own reconciliation (`AgentLandingPolicy`, and the copy it keeps
-        // beside the note). A question in the middle of one would be asking
-        // about the file the app has just asked somebody to edit.
-        //
-        // It stands down for EVERY change while a run is in flight, not only
-        // the run's own, because nothing here can tell them apart: a third
-        // program editing the same file during a run is the case this gives
-        // up, and autosave goes on writing through it. `docs/PERSISTENCE.md`
-        // says so under the table rather than leaving it to be discovered.
-        guard !agent.hasRunsInFlight else { return true }
         // A write decided earlier may still be on the writer's queue, and the
         // disk is what this compares against, so it has to hold everything the
         // app has already decided to put there.
@@ -2716,7 +2748,18 @@ final class Coordinator {
         case .conflict(let disk, let stamp):
             measure.trace("diskdrift conflict at=\(boundURL.lastPathComponent)")
             driftUnresolved = true
-            if asking { askAboutDrift(disk: disk, stamp: stamp) }
+            // The write is refused whatever moved the file. What an `/ai` run
+            // in flight changes is only whether the question is put NOW: the
+            // run writes the bound file at this window's request, and in the
+            // middle of it nothing here can tell its write from a third
+            // program's, so asking would ask about the file the user just
+            // asked an agent to rewrite, and a Keep would write over the
+            // agent's work. The landing is the answer for both writers:
+            // `finishAgentRun` re-reads the file and folds whatever it holds
+            // around what was typed, keeping a copy of anything left out. A
+            // run that ends without landing leaves `driftUnresolved` standing,
+            // and the next write or summon asks as it would have (MAR-478).
+            if asking, !agent.hasRunsInFlight { askAboutDrift(disk: disk, stamp: stamp) }
             return false
         case .unavailable:
             return true
@@ -3019,7 +3062,7 @@ final class Coordinator {
     /// place a write happens regardless of the autosave setting for a reason
     /// that is not about safety: an agent reading a stale file would rewrite
     /// the wrong text.
-    private func runAgent(prompt: String?, requestId: String?, model: String?, effort: String?) {
+    private func runAgent(prompt: String?, requestId: String?, model: String?, effort: String?, skill: String? = nil) {
         let id = requestId ?? UUID().uuidString
         let request = (prompt ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         guard !request.isEmpty else {
@@ -3056,7 +3099,8 @@ final class Coordinator {
             let handoffURL = self.boundURL
             let directory = self.boundURL.deletingLastPathComponent()
             let reference = "\(self.boundURL.lastPathComponent)#L1"
-            let line = AgentRequest.compose(prompt: request, reference: reference)
+            let line = AgentRequest.compose(prompt: request, reference: reference,
+                                            skill: AgentRequest.skillPrefix(route: command, skill: skill))
             self.agent.run(requestId: id, line: line, template: command,
                            workingDirectory: directory,
                            progress: { [weak self] progressLine in

@@ -13,7 +13,8 @@
  * opened.
  */
 import type { EditorView } from "./pm";
-import type { HarnessCapabilities } from "../shared/messages";
+import type { AgentSkill, HarnessCapabilities } from "../shared/messages";
+import { hostHas } from "../shared/hostProfile";
 import {
     notifyAgentAttachment,
     notifyAskAgentAdvanced,
@@ -55,6 +56,31 @@ export function setAgentCapabilities(caps: HarnessCapabilities | undefined): voi
 /** The capabilities last pushed. Exported for tests. */
 export function agentCapabilities(): HarnessCapabilities | undefined {
     return capabilities;
+}
+
+/**
+ * The skills the host's scan reached, or undefined on a host that scans
+ * none. The picker is drawn exactly when this is a list: a host declaring
+ * `agentSkills` sends one (empty is a list, and the picker then offers
+ * free text alone), and a host that does not declare it is never read.
+ */
+let skills: readonly AgentSkill[] | undefined;
+
+/** Store what the host found, and tell an open panel about it. */
+export function setAgentSkills(next: readonly AgentSkill[]): void {
+    if (!hostHas("agentSkills")) { return; }
+    skills = next;
+    panel?.setSkills(next);
+}
+
+/** The skills last pushed. Exported for tests. */
+export function agentSkills(): readonly AgentSkill[] | undefined {
+    return skills;
+}
+
+/** Test seam: forget the list, as a fresh page would. */
+export function resetAgentSkillsForTests(): void {
+    skills = undefined;
 }
 
 /** Route one attachment's write result to the chip waiting for it. */
@@ -139,7 +165,7 @@ export function openAgentPanel(getEditorView: () => EditorView | null, initial?:
             // a second open. Mounting now would put a panel on screen for a
             // request that is over.
             if (token !== openToken) { return; }
-            panel = m.createAgentPanel({ anchor: caretAnchor(view), initial, capabilities, host });
+            panel = m.createAgentPanel({ anchor: caretAnchor(view), initial, capabilities, skills, host });
             // A click anywhere outside dismisses, the behaviour every other
             // transient surface here has. Capture phase, so it runs before a
             // handler that might stop propagation. Registered with the panel

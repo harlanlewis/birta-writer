@@ -42,7 +42,7 @@ import { notifySwitchToTextEditor, getWebviewState, setWebviewState, setBaseSync
 import type { EditorSelectionContext } from "../shared/agentContext";
 import { renderFrontmatterPanel, refreshFrontmatterEmptyState } from "./components/frontmatter";
 import { dispatchFmSuggestions } from "./components/frontmatter/suggestMenu";
-import { receiveFolderIndex } from "./links/folderIndex";
+import { receiveFolderIndex, setFolderGraphEnabled } from "./links/folderIndex";
 import { runEditorCommand } from "./editorCommands";
 import { refreshShortcutsHelpIfLoaded } from "./components/shortcutsHelp/loader";
 import { hostHas, setHostCapabilities } from "../shared/hostProfile";
@@ -60,7 +60,7 @@ import { handleEmbedCardResult, setConnectorStates } from "./embedConnector";
 import { regateEmbeds } from "./plugins/embed";
 import { setWhatsNewUnread } from "./components/toolbar/settingsMenu";
 import { setAgentRoute } from "./agentRoute";
-import { closeAgentPanel, resolveAgentAttachment, setAgentCapabilities } from "./agentPanelController";
+import { closeAgentPanel, resolveAgentAttachment, setAgentCapabilities, setAgentSkills } from "./agentPanelController";
 import { resolveNativeDatePicker } from "./dateInsert";
 import { resolveHostDiagnostics, resolveHostPrompt } from "./hostPrompt";
 
@@ -536,6 +536,9 @@ export function createMessageHandlers(
             setConnectorStates(msg.connectors);
             regateEmbedsIfPossible();
         },
+        setFolderGraph(msg) {
+            setFolderGraphEnabled(msg.enabled);
+        },
         setTableWrap(msg) {
             applyTableWrap(msg.wrap);
         },
@@ -719,6 +722,10 @@ export function createMessageHandlers(
             // the probe found nothing, and the composer then offers no model
             // or effort control rather than guessing at either.
             setAgentCapabilities(msg.capabilities);
+        },
+        agentSkills(msg) {
+            // The skills the host's scan reached, for the composer's picker.
+            setAgentSkills(msg.skills);
         },
         agentAttachmentSaved(msg) {
             resolveAgentAttachment(msg.id, msg.path);

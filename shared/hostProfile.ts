@@ -122,6 +122,19 @@ export type HostCapability =
     /** A coding agent to hand a prompt to (Ask Agent). */
     | "agent"
     /**
+     * The host can enumerate the agent skills on this machine (MAR-483): the
+     * `SKILL.md` folders under the workspace and the home directory, which
+     * is what the composer's skill picker lists (`agentSkills` in
+     * shared/messages.ts, sent with `agentCapabilities`).
+     *
+     * Separate from `agent` because they are two host facts: the Mac app
+     * runs an agent and scans no skill folder, so it declares the first and
+     * not this, and the page draws no picker there rather than one that
+     * opens onto nothing. A skill picked here is a prefix on the composed
+     * line, so the capability names the enumeration only.
+     */
+    | "agentSkills"
+    /**
      * A notification surface of the host's own, which the page can leave a
      * failure to rather than saying it in the corner itself.
      *
@@ -219,6 +232,7 @@ export const ALL_HOST_CAPABILITIES: readonly HostCapability[] = [
     "imageUpload",
     "projectImages",
     "agent",
+    "agentSkills",
     "notifications",
     "editorFont",
     "contentMeasure",

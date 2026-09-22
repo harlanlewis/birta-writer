@@ -76,6 +76,13 @@ public enum AgentLandingPolicy {
         // merge, whatever the panel holds. Asked first because the other two
         // answers both assume the file moved.
         if onDisk == handoff { return .settle }
+        // The panel already holds the file. The external-change check runs
+        // during a run as it does outside one, so a summon while the agent
+        // worked has already read its write into a panel that held nothing
+        // else; handing the same bytes to the page to merge would diff them
+        // against the hand-off, find every range already replaced, and keep a
+        // copy of a version the document holds whole (MAR-478).
+        if onDisk == buffer { return .settle }
         if buffer != handoff { return .merge(diskText: onDisk) }
         return .reload
     }

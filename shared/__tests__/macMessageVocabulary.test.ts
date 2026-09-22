@@ -281,6 +281,30 @@ describe("the Mac app's parse table against the page's outbound vocabulary", () 
     });
 
     /**
+     * THE LINE A BACKLINK ASKS FOR, on both halves of the wire (MAR-486).
+     *
+     * `openProjectFile.line` is optional on the page's type and `scrollToLine`
+     * is optional on `init`, so a parse that never reads the one and an
+     * encoder that never writes the other are both well typed, and the row
+     * opens the note where it was left with nothing red anywhere. This reads
+     * the two arms of `Bridge.swift` by name: the parse case must take `line`
+     * off the message, and the `init` encoder must be able to put
+     * `scrollToLine` on it, which is the field the page's `init` handler
+     * reads before it reads the remembered offset.
+     */
+    it("the Mac app should read openProjectFile's line and be able to carry it on init", () => {
+        const swift = readFileSync(bridgePath, "utf8");
+        const parseStart = swift.indexOf('case "openProjectFile":');
+        expect(parseStart, "Bridge.swift no longer parses openProjectFile; this guard must follow it").toBeGreaterThan(0);
+        const parseArm = swift.slice(parseStart, swift.indexOf("\n        case ", parseStart + 1));
+        expect(parseArm, "the parse drops `line`, so a backlink opens the note where it was left").toContain('"line"');
+
+        const initArm = swift.split("case let .").find((a) => a.includes('"type": "init"'));
+        expect(initArm).toBeDefined();
+        expect(initArm, "the Mac app's init cannot name a line to open at").toContain('"scrollToLine"');
+    });
+
+    /**
      * THE OUTBOUND HALF, for every message rather than one pair's fields.
      *
      * The checks above read the page's vocabulary against the Mac app's PARSE

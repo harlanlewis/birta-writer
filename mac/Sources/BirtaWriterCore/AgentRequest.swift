@@ -22,9 +22,40 @@ public enum AgentRequest {
     /// The one line handed over: the request, whitespace collapsed so it stays
     /// a single shell argument, prefixed with where it applies. Every major
     /// agent reads `relative/path.md#L12` as a location.
-    public static func compose(prompt: String, reference: String) -> String {
+    public static func compose(prompt: String, reference: String, skill: SkillPrefix? = nil) -> String {
         let collapsed = prompt.split(whereSeparator: \.isWhitespace).joined(separator: " ")
-        return "In \(reference): \(collapsed)"
+        let line = "In \(reference): \(collapsed)"
+        guard let skill else { return line }
+        switch skill.form {
+        case .slash: return "/\(skill.name) \(line)"
+        case .prose: return "Use the \(skill.name) skill. \(line)"
+        }
+    }
+
+    /// How a skill is named on the composed line: a port of `SkillPrefix` and
+    /// `skillPrefixFor` in askAgent.ts. A skill is part of the request, never
+    /// a flag. `slash` is the `/name request` form Claude Code resolves as the
+    /// skill itself; `prose` names it in words for a harness that matches
+    /// skills by description.
+    public struct SkillPrefix: Equatable {
+        public enum Form: Equatable { case slash, prose }
+        public let name: String
+        public let form: Form
+        public init(name: String, form: Form) {
+            self.name = name
+            self.form = form
+        }
+    }
+
+    /// The harnesses whose own `/name` invocation the slash form is written
+    /// for; everything else gets prose.
+    static let slashSkillHarnesses: Set<String> = ["claude", "cursor-agent"]
+
+    /// The form a skill takes on the line handed to `route`, or nil with no skill.
+    public static func skillPrefix(route: String, skill: String?) -> SkillPrefix? {
+        guard let name = skill?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty else { return nil }
+        let harness = harnessName(from: route) ?? ""
+        return SkillPrefix(name: name, form: slashSkillHarnesses.contains(harness) ? .slash : .prose)
     }
 
     /// Quote `text` as one POSIX shell argument. Single quotes, with the

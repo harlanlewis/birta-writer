@@ -38,6 +38,18 @@ const makePanel = () => ({
 const findFiles = vscode.workspace.findFiles as unknown as ReturnType<typeof vi.fn>;
 const readFile = vscode.workspace.fs.readFile as unknown as ReturnType<typeof vi.fn>;
 const getWorkspaceFolder = vscode.workspace.getWorkspaceFolder as unknown as ReturnType<typeof vi.fn>;
+const getConfiguration = vi.mocked(vscode.workspace.getConfiguration);
+const defaultConfiguration = getConfiguration.getMockImplementation()!;
+
+/** `birta.folderGraph`, which the mock otherwise reads at its code default (off). */
+let folderGraphOn = true;
+function stubSettings(): void {
+    getConfiguration.mockImplementation(() => ({
+        get: vi.fn((key: string, defaultValue?: unknown) => (key === "folderGraph" ? folderGraphOn : defaultValue)),
+        inspect: vi.fn(() => undefined),
+        update: vi.fn(async () => undefined),
+    }) as never);
+}
 
 /** The workspace on disk: path → text. */
 let files: Record<string, string>;
@@ -85,8 +97,11 @@ function watcher() {
     const at = mock.calls.findIndex((c) => c[0] === "**/*");
     const w = mock.results[at]!.value;
     return {
-        change: w.onDidChange.mock.calls[0][0] as (uri: vscode.Uri) => void,
+        // A getter: the change handler exists only once a panel has subscribed.
+        get change() { return w.onDidChange.mock.calls[0][0] as (uri: vscode.Uri) => void; },
         create: w.onDidCreate.mock.calls[0][0] as (uri: vscode.Uri) => void,
+        /** How many change handlers the provider has registered: none until a panel subscribes. */
+        changeHandlers: w.onDidChange.mock.calls.length as number,
     };
 }
 
@@ -95,17 +110,94 @@ describe("MarkdownEditorProvider: the folder index", () => {
         vi.clearAllMocks();
         resetTextDocumentMocks();
         vi.useFakeTimers();
+        folderGraphOn = true;
+        stubSettings();
     });
     afterEach(() => {
         vi.useRealTimers();
         vscode.workspace.workspaceFolders = undefined;
         getWorkspaceFolder.mockReset();
         getWorkspaceFolder.mockImplementation(() => undefined);
+        getConfiguration.mockImplementation(defaultConfiguration);
+    });
+
+    it("with birta.folderGraph off, an ask should be answered empty: no walk, no read, no subscription, no change handler", async () => {
+        folderGraphOn = false;
+        mountWorkspace("/ws", { "/ws/note.md": "", "/ws/other.md": "See [[note]].\n" });
+        const { panel, handler } = await open("/ws/note.md");
+        // The page reads the setting off its boot blob, so a blob that drops
+        // the key is a setting that can never be turned on.
+        expect(panel.webview.html).toContain('"folderGraph":false');
+        expect(watcher().changeHandlers).toBe(0);
+        await handler({ type: "requestFolderIndex" });
+        await settle();
+        expect(sent(panel)).toEqual([{ type: "folderIndex", index: null, self: null }]);
+        expect(findFiles).not.toHaveBeenCalled();
+        expect(readFile).not.toHaveBeenCalled();
+        expect(watcher().changeHandlers).toBe(0);
+        // Nor is it re-sent anything when the folder changes.
+        watcher().create(vscode.Uri.file("/ws/new.md"));
+        await vi.advanceTimersByTimeAsync(2000);
+        await settle();
+        expect(sent(panel)).toHaveLength(1);
+        expect(findFiles).not.toHaveBeenCalled();
+    });
+
+    it("the setting going off under a subscriber should answer it empty once, drop it, and walk nothing more", async () => {
+        mountWorkspace("/ws", { "/ws/note.md": "", "/ws/other.md": "See [[note]].\n" });
+        const { provider, panel, handler } = await open("/ws/note.md");
+        await handler({ type: "requestFolderIndex" });
+        await settle();
+        expect(sent(panel)).toHaveLength(1);
+        const walks = findFiles.mock.calls.length;
+
+        folderGraphOn = false;
+        provider.folderGraphChanged();
+        await settle();
+        const posted = panel.webview.postMessage.mock.calls.map((c) => c[0] as { type: string; enabled?: boolean });
+        expect(posted.filter((m) => m.type === "setFolderGraph")).toEqual([{ type: "setFolderGraph", enabled: false }]);
+        expect(sent(panel)).toHaveLength(2);
+        expect(sent(panel)[1]).toEqual({ type: "folderIndex", index: null, self: null });
+
+        // A later change under the folder reaches no subscriber and walks nothing.
+        files["/ws/new.md"] = "";
+        watcher().create(vscode.Uri.file("/ws/new.md"));
+        await vi.advanceTimersByTimeAsync(2000);
+        await settle();
+        expect(sent(panel)).toHaveLength(2);
+        expect(findFiles.mock.calls.length).toBe(walks);
+    });
+
+    it("the setting going on should tell every open page, and a page that then asks should be indexed", async () => {
+        folderGraphOn = false;
+        mountWorkspace("/ws", { "/ws/note.md": "", "/ws/other.md": "See [[note]].\n" });
+        const { provider, panel, handler } = await open("/ws/note.md");
+        folderGraphOn = true;
+        provider.folderGraphChanged();
+        const posted = panel.webview.postMessage.mock.calls.map((c) => c[0] as { type: string; enabled?: boolean });
+        expect(posted.filter((m) => m.type === "setFolderGraph")).toEqual([{ type: "setFolderGraph", enabled: true }]);
+        await handler({ type: "requestFolderIndex" });
+        await settle();
+        expect(sent(panel)[0]!.index!.edges).toHaveLength(1);
+    });
+
+    it("the change handler should be registered by the first ask, once, and not at activation", async () => {
+        mountWorkspace("/ws", { "/ws/note.md": "", "/ws/other.md": "" });
+        const { handler } = await open("/ws/note.md");
+        expect(watcher().changeHandlers).toBe(0);
+        await handler({ type: "requestFolderIndex" });
+        await settle();
+        expect(watcher().changeHandlers).toBe(1);
+        const second = await open("/ws/other.md");
+        await second.handler({ type: "requestFolderIndex" });
+        await settle();
+        expect(watcher().changeHandlers).toBe(1);
     });
 
     it("a request should be answered with the document's folder indexed and its own place in it", async () => {
         mountWorkspace("/ws", { "/ws/note.md": "Body.\n", "/ws/other.md": "See [[note]].\n" });
         const { panel, handler } = await open("/ws/note.md");
+        expect(panel.webview.html).toContain('"folderGraph":true');
         await handler({ type: "requestFolderIndex" });
         await settle();
         const [msg] = sent(panel);
@@ -163,9 +255,13 @@ describe("MarkdownEditorProvider: the folder index", () => {
         expect(sent(panel)).toHaveLength(2);
     });
 
-    it("a change that is not a note, or a panel that never asked, should send nothing", async () => {
+    it("a change that is not a note, or one that changes no reference, should send nothing; a panel that never asked has no change handler to receive", async () => {
         mountWorkspace("/ws", { "/ws/note.md": "" });
-        const { panel } = await open("/ws/note.md");
+        const { panel, handler } = await open("/ws/note.md");
+        expect(watcher().changeHandlers).toBe(0);
+        await handler({ type: "requestFolderIndex" });
+        await settle();
+        panel.webview.postMessage.mockClear();
         watcher().change(vscode.Uri.file("/ws/note.md"));
         watcher().change(vscode.Uri.file("/ws/image.png"));
         await vi.advanceTimersByTimeAsync(2000);

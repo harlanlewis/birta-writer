@@ -12,6 +12,16 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ## [Unreleased]
 
+### Changed
+
+- Birta Writer for Mac keeps the Backlinks and Graph tabs on in a folder window. The editor's `birta.folderGraph` setting, now off by default in VS Code, is declared on by the app and has no switch there.
+
+### Fixed
+
+- A backlink row opens its note at the line the link is written on in Birta Writer for Mac, as it does in VS Code, whether the note replaces the one in this tab, opens as a new tab, or is already open in another window, which is brought forward and scrolled there. An explorer row still opens a note where it was left.
+- A file changed by another program while an `/ai` run is working is no longer written over by Birta Writer for Mac's autosave. The check that notices an outside change now runs during a run as it does outside one: a note with no edits of its own takes the file, and a note with edits is never written over it. The question is not put in the middle of a run, since the app cannot tell the agent's own write from another program's until the run lands; the landing brings whichever it was into the note, keeping a copy beside it of anything it could not fold in. The same fix keeps the agent's own edit when you type in the note after the agent has written and before it finishes.
+- An `/ai` run in Birta Writer for Mac now reports its end when the command exits. Before, a command that left a background process holding its output kept the corner saying the run was live, and counting, until that process let go. Half a second after the exit the app stops reading and closes the pipe, so a process the command left behind finds its output closed rather than silently buffered, and the Settings Test transcript ends on a line saying so when that happened.
+
 ---
 
 ## [2026.922.0] - 2026, September 22

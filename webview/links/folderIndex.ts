@@ -12,6 +12,11 @@
  * declare `folderIndex` is never asked at all. The review sidebar reads on its
  * idle visibility pass, which it skips while closed, so a sidebar nobody opens
  * costs the host no walk of the folder.
+ *
+ * Two gates, one question each. The capability says the host CAN answer; the
+ * `folderGraph` setting says the editor asks (off by default in VS Code, on
+ * in the Mac app's folder windows). With the setting off nothing is asked, so
+ * the host walks no folder and reads no note, whatever it declared.
  */
 import { hostHas } from "../../shared/hostProfile";
 import { backlinksOf, relativeNotePath, type FolderEdge, type FolderIndex } from "../../shared/folderIndex";
@@ -29,12 +34,31 @@ export interface FolderIndexState {
 let requested = false;
 let current: FolderIndexState | null = null;
 
+/** Is the folder graph switched on for this page (birta.folderGraph)? */
+export function folderGraphEnabled(): boolean {
+    return window.__i18n?.folderGraph === true;
+}
+
+/**
+ * The setting moved under this page (`setFolderGraph`). Off forgets the
+ * index, so the tabs go on the next visibility pass and nothing asks again;
+ * on lets the next read ask, as a fresh page would.
+ */
+export function setFolderGraphEnabled(enabled: boolean): void {
+    // Every real page boots with a blob; the default is for a test page.
+    const blob = (window.__i18n ??= { translations: {}, isMac: false });
+    blob.folderGraph = enabled;
+    requested = false;
+    if (!enabled) { current = null; }
+    window.dispatchEvent(new CustomEvent(FOLDER_INDEX_CHANGED));
+}
+
 /**
  * The latest index the host sent, or null before the first answer (and
  * always, on a host that has none to give). The first call asks for it.
  */
 export function readFolderIndex(): FolderIndexState | null {
-    if (!requested && hostHas("folderIndex")) {
+    if (!requested && folderGraphEnabled() && hostHas("folderIndex")) {
         requested = true;
         notifyRequestFolderIndex();
     }
@@ -74,13 +98,13 @@ export function selfHasReferences(): boolean {
  * A host with a file explorer (`projectFiles`, the Mac app's directory
  * windows) opens a root-relative path directly and parses no `openFile`,
  * because it has no text editor to open one into; its index is of the same
- * root, so the path goes as the index names it. `openProjectFile` carries no
- * line, so there the note opens where it was last left rather than at the
- * reference (MAR-486).
+ * root, so the path goes as the index names it, and the line rides beside
+ * it as the message's own optional field rather than as a fragment, because
+ * that host resolves no fragment and its file names may hold `#`.
  */
 export function openIndexedNote(self: string, path: string, line?: number): void {
     if (hostHas("projectFiles")) {
-        notifyOpenProjectFile(path, false);
+        notifyOpenProjectFile(path, false, line);
         return;
     }
     const plain = relativeNotePath(self, path);

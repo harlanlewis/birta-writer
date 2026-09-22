@@ -571,6 +571,11 @@ export function activate(context: vscode.ExtensionContext) {
                 // question separately for each open file.
                 MarkdownEditorProvider.current?.redetectLogseqAll();
             }
+            if (e.affectsConfiguration("birta.folderGraph")) {
+                // Off has to reach a page that already subscribed, or the
+                // host goes on indexing for it; on lets an open page ask.
+                MarkdownEditorProvider.current?.folderGraphChanged();
+            }
             if (e.affectsConfiguration("birta.tableWrap")) {
                 MarkdownEditorProvider.current?.postToAll({
                     type: "setTableWrap",
