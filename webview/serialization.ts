@@ -951,9 +951,37 @@ function emitsDashRule(node: FlowNode, state: unknown): boolean {
 }
 
 /**
+ * The `text` stringify handler, replacing Milkdown's stock one (MAR-484).
+ *
+ * Milkdown's handler writes a text node verbatim when it ends in whitespace and
+ * holds no `*`, `_` or `\`, so that a trailing space is not escaped as
+ * `&#x20;`. That skips every escape in the node, not only the space's, and a
+ * text node ends in whitespace whenever another inline node follows it: a
+ * literal `\[x](y.md)` before a code span was written as `[x](y.md)` and
+ * reopened as a link, and `\#`, `` \` ``, `\$` and `&amp;` lost theirs the
+ * same way.
+ *
+ * So the trailing whitespace is still written as it is, in exactly the case
+ * Milkdown's handler singled out, and the text before it is escaped as any
+ * other text is, with that whitespace as its following context.
+ */
+function serializeText(
+    node: { value: string },
+    _parent: unknown,
+    state: { safe(value: string, config: object): string },
+    info: { after?: string },
+): string {
+    const trailing = /^([^*_\\]*?)(\s+)$/.exec(node.value);
+    if (!trailing) return state.safe(node.value, { ...info, encode: [] });
+    const [, body, space] = trailing;
+    return state.safe(body, { ...info, after: space + (info.after ?? ""), encode: [] }) + space;
+}
+
+/**
  * Apply the stringify options that keep serializer output close to the
  * original file formatting: `-` bullets, `---` rules (instead of `***`), the
- * natural-width table handler, and the per-gap list join.
+ * natural-width table handler, the per-gap list join, and a `text` handler
+ * that escapes what Milkdown's own leaves bare.
  */
 export function configureSerialization(ctx: EditorCtx): void {
     ctx.update(remarkStringifyOptionsCtx, (prev) => ({
@@ -964,6 +992,7 @@ export function configureSerialization(ctx: EditorCtx): void {
         handlers: {
             ...(prev.handlers ?? {}),
             ...sourceStyleHandlers,
+            text: serializeText,
             table: serializeTableNoAlign,
         },
     }));
