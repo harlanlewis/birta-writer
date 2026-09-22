@@ -146,6 +146,47 @@ function matchTail(p: string): string {
     return segs.join("/");
 }
 
+/**
+ * A file list keyed for the two lookups below, built once per list and kept
+ * for as long as the list itself lives. A click hands in a fresh list and pays
+ * one pass over it, as a scan would; the folder index resolves thousands of
+ * references against ONE list, and without this each new name scanned all of
+ * it again. Every key is lowercased, and a key's bucket holds exactly the
+ * files the scan would have tested it against, in list order, so what either
+ * lookup returns is what the scan returned.
+ */
+interface FileKeys {
+    /** Lowercased last segment: the only files a path tail can end in. */
+    bySegment: Map<string, string[]>;
+    /** Lowercased file name, and its stem without the extension: a wiki name's matches. */
+    byName: Map<string, string[]>;
+}
+
+const fileKeysCache = new WeakMap<readonly string[], FileKeys>();
+
+function fileKeys(index: readonly string[]): FileKeys {
+    const cached = fileKeysCache.get(index);
+    if (cached) return cached;
+    const bySegment = new Map<string, string[]>();
+    const byName = new Map<string, string[]>();
+    const add = (map: Map<string, string[]>, key: string, fsPath: string): void => {
+        const bucket = map.get(key);
+        if (bucket) bucket.push(fsPath); else map.set(key, [fsPath]);
+    };
+    for (const fsPath of index) {
+        const posix = toPosix(fsPath).toLowerCase();
+        add(bySegment, posix.slice(posix.lastIndexOf("/") + 1), fsPath);
+        const base = path.basename(fsPath).toLowerCase();
+        const ext = path.extname(base);
+        const stem = ext ? base.slice(0, -ext.length) : base;
+        add(byName, base, fsPath);
+        if (stem !== base) add(byName, stem, fsPath);
+    }
+    const keys = { bySegment, byName };
+    fileKeysCache.set(index, keys);
+    return keys;
+}
+
 /** Suffix match of `linkPath` (+ inferred suffixes) over the file index. */
 async function resolveViaIndex(
     linkPath: string,
@@ -160,18 +201,18 @@ async function resolveViaIndex(
         tail + "/index.md",
         tail + "/_index.md",
     ];
-    const matches: string[] = [];
-    for (const fsPath of await io.getFileIndex()) {
-        const posix = toPosix(fsPath).toLowerCase();
-        for (const v of variants) {
-            if (posix === v || posix.endsWith("/" + v)) {
-                matches.push(fsPath);
-                break;
-            }
+    // A file matches a variant only by ending in it, so its last segment is
+    // the variant's: those files are the only candidates.
+    const { bySegment } = fileKeys(await io.getFileIndex());
+    const matches = new Set<string>();
+    for (const v of variants) {
+        for (const fsPath of bySegment.get(v.slice(v.lastIndexOf("/") + 1)) ?? []) {
+            const posix = toPosix(fsPath).toLowerCase();
+            if (posix === v || posix.endsWith("/" + v)) matches.add(fsPath);
         }
     }
-    if (matches.length === 0) return null;
-    return pickBest(matches, ctx.docFsPath);
+    if (matches.size === 0) return null;
+    return pickBest([...matches], ctx.docFsPath);
 }
 
 /**
@@ -288,19 +329,15 @@ export async function resolveWikiTarget(
     const stripped = stripNotionIds(trimmed);
     if (stripped) names.push(stripped);
 
-    const index = await io.getFileIndex();
+    const { byName } = fileKeys(await io.getFileIndex());
     for (const name of names) {
         const lower = name.toLowerCase();
         const mdMatches: string[] = [];
         const otherMatches: string[] = [];
-        for (const fsPath of index) {
-            const base = path.basename(fsPath).toLowerCase();
-            const ext = path.extname(base);
-            const stem = ext ? base.slice(0, -ext.length) : base;
-            if (base === lower || stem === lower) {
-                if (MD_SUFFIXES.includes(ext)) mdMatches.push(fsPath);
-                else otherMatches.push(fsPath);
-            }
+        for (const fsPath of byName.get(lower) ?? []) {
+            const ext = path.extname(path.basename(fsPath).toLowerCase());
+            if (MD_SUFFIXES.includes(ext)) mdMatches.push(fsPath);
+            else otherMatches.push(fsPath);
         }
         const pool = mdMatches.length > 0 ? mdMatches : otherMatches;
         if (pool.length > 0) return pickBest(pool, ctx.docFsPath);

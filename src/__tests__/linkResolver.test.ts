@@ -417,3 +417,32 @@ describe("resolveWikiTarget", () => {
         ).toBe(intact);
     });
 });
+
+describe("resolution against one file list, many times", () => {
+    /** A file list that counts how many of its entries anything reads. */
+    function countingList(files: string[]): { list: string[]; reads: () => number } {
+        let reads = 0;
+        const list = new Proxy(files, {
+            get(target, key, receiver) {
+                if (typeof key === "string" && /^\d+$/.test(key)) { reads++; }
+                return Reflect.get(target, key, receiver);
+            },
+        });
+        return { list, reads: () => reads };
+    }
+
+    it("many names resolved against the same list should read it about once, not once per name", async () => {
+        const files = Array.from({ length: 1000 }, (_, i) => path.join(ROOT, `d${i % 20}`, `Note ${i}.md`));
+        const { list, reads } = countingList(files);
+        const io: ResolverIo = { isFile: async () => false, getFileIndex: async () => list };
+        const names = Array.from({ length: 200 }, (_, i) => `Note ${i * 5}`);
+        for (const [i, name] of names.entries()) {
+            expect(await resolveWikiTarget(name, ctx(), io)).toBe(files[i * 5]);
+        }
+        for (const name of names.slice(0, 50)) {
+            expect(await resolveLinkPath(`${name}.md`, ctx(), io)).toBe(files[names.indexOf(name) * 5]);
+        }
+        // One pass builds the keys; a scan per name would read 250 times as many.
+        expect(reads()).toBeLessThan(files.length * 2);
+    });
+});

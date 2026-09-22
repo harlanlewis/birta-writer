@@ -124,7 +124,7 @@ function decodeMarkdownText(s: string): string {
                 let decoded: string | null = null;
                 if (m[1] !== undefined) { decoded = decodeNumeric(parseInt(m[1], 16)); }
                 else if (m[2] !== undefined) { decoded = decodeNumeric(parseInt(m[2], 10)); }
-                else if (m[3] !== undefined && Object.hasOwn(NAMED_ENTITIES, m[3])) { decoded = NAMED_ENTITIES[m[3]]!; }
+                else if (m[3] !== undefined && Object.prototype.hasOwnProperty.call(NAMED_ENTITIES, m[3])) { decoded = NAMED_ENTITIES[m[3]]!; }
                 if (decoded !== null) {
                     out += decoded;
                     i += m[0].length - 1;
