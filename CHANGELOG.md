@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+---
+
+## [2026.922.0] - 2026, September 22
+
 ### Added
 
 - A Backlinks tab in the review sidebar lists every note in the document's folder that links to it: by a Markdown link, a `[[wikilink]]`, or an Open Knowledge Format `sources` entry. A row opens the linking note at the line the link is on. Links are matched the way clicking them resolves them, so a note appears here only when its link would open this one. The tab shows only when something links to the note, and nothing in the folder is read until the sidebar has been opened.
