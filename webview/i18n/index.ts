@@ -32,6 +32,12 @@ declare global {
             pasteUnfurlAutoApply?: boolean;
             /** Link cards by default: a lone web link renders as an OG card (birta.linkCards.enabled). Also gated by `network`. */
             linkCardsEnabled?: boolean;
+            /**
+             * The Backlinks and Graph tabs (birta.folderGraph), default OFF.
+             * Off, the folder index is never asked for, so the host walks
+             * nothing; read through folderGraphEnabled in links/folderIndex.ts.
+             */
+            folderGraph?: boolean;
             /** Inline (unfenced) calc gate: the `=`/`=>` suggestions in prose (birta.calc.enabled). */
             calcEnabled?: boolean;
             /** Fenced ```calc block ledger gate (birta.calc.blocks.enabled); independent of `calcEnabled`. */
