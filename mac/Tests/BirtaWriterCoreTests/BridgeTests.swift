@@ -437,6 +437,9 @@ final class BridgeTests: XCTestCase {
         XCTAssertEqual(i18n["network"] as? Bool, false)
         XCTAssertEqual(i18n["embedsEnabled"] as? Bool, false)
         XCTAssertEqual(i18n["calcEnabled"] as? Bool, true)
+        // The page's default is OFF (VS Code's), so a dropped key would take
+        // the Backlinks and Graph tabs away from every folder window quietly.
+        XCTAssertEqual(i18n["folderGraph"] as? Bool, true)
         XCTAssertEqual(i18n["tocVisibility"] as? String, "hidden")
         // The publishing targets. Load-bearing rather than a convenience: the
         // page reads "absent means every target", so a dropped key does not

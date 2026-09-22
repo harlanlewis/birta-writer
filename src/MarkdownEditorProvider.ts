@@ -810,10 +810,26 @@ export class MarkdownEditorProvider
             watcher,
             watcher.onDidCreate(invalidate),
             watcher.onDidDelete(invalidate),
-            watcher.onDidChange((uri) => {
-                if (this._folderIndex.fileChanged(uri.fsPath)) { this._scheduleFolderIndexResend(); }
-            }),
         );
+        this._workspaceWatcher = watcher;
+    }
+
+    private _workspaceWatcher: vscode.FileSystemWatcher | undefined;
+    private _folderIndexListensForChanges = false;
+
+    /**
+     * The change half of that watcher, registered by the first panel that
+     * subscribes to its folder's index rather than at activation: a change
+     * handler runs on every write anywhere in the workspace, and with
+     * `birta.folderGraph` off (its default) no panel ever subscribes, so the
+     * editor pays for no handler it will never use (MAR-487).
+     */
+    private _watchFolderIndexChanges(): void {
+        if (this._folderIndexListensForChanges || !this._workspaceWatcher) { return; }
+        this._folderIndexListensForChanges = true;
+        this.context.subscriptions.push(this._workspaceWatcher.onDidChange((uri) => {
+            if (this._folderIndex.fileChanged(uri.fsPath)) { this._scheduleFolderIndexResend(); }
+        }));
     }
 
     /**
@@ -1519,8 +1535,17 @@ export class MarkdownEditorProvider
                         break;
                     }
                     case "requestFolderIndex":
+                        // The page asks only with `birta.folderGraph` on. An
+                        // ask that arrives anyway (a page booted before the
+                        // setting was turned off) is answered empty and never
+                        // subscribed, so nothing is walked or read for it.
+                        if (!readBirtaSetting("folderGraph", document.uri)) {
+                            postToWebview(panel.webview, { type: "folderIndex", index: null, self: null });
+                            break;
+                        }
                         // One ask subscribes the panel: it is re-sent the index
                         // whenever its folder changes, until it closes.
+                        this._watchFolderIndexChanges();
                         this._folderIndexSubscribers.set(panel, document);
                         this._sendFolderIndex(panel, document, true)
                             .catch((err) => reportError("folderIndex", err));
