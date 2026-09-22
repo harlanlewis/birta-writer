@@ -190,6 +190,12 @@ export interface FormatProfile {
      * Optional. Line counts may differ — `after` can hold constructs the
      * serializer dropped entirely, which is the ordinary reason a region is
      * protected at all — so an implementation must not compare positionally.
+     *
+     * The engine asks it of single regions as well as of the whole repair, and
+     * a veto costs only the regions whose own repair loses code (MAR-485). An
+     * implementation that cannot see some construct as code is tolerated: a
+     * region whose repair it vetoes even on the zero-edit round trip is not
+     * judged by it at all (`ProtectedRegion.opaqueBlind`).
      */
     losesOpaqueContent?(before: readonly string[], after: readonly string[]): boolean;
     /**
@@ -682,6 +688,14 @@ interface ProtectedRegion {
     insNorms: string[];
     anchorPrevNorm: string | null;
     anchorNextNorm: string | null;
+    /**
+     * Set when this region's repair, on its own, already reads as a loss of
+     * opaque content on the zero-edit round trip, where the repair is known to
+     * reproduce the file exactly. `losesOpaqueContent` cannot see this
+     * construct as code, so its verdict on the region is no evidence either
+     * way, and the merge's veto stops counting it (see `markOpaqueBlind`).
+     */
+    opaqueBlind?: true;
 }
 
 export interface RoundTripProtection {
@@ -754,11 +768,59 @@ export function computeRoundTripProtection(
             if (regions.length === 0) continue;
             const protection = { regions, baselineFacts };
             if (applyMinimalChanges(saved, baselineSerialized, profile, protection) === saved) {
-                return protection;
+                return markOpaqueBlind(saved, baselineSerialized, profile, protection);
             }
         }
     }
     return null;
+}
+
+/** A text split the way `losesOpaqueContent` is handed it. */
+function hookLines(text: string): string[] {
+    return text.split("\n").map(stripEol);
+}
+
+/**
+ * Flag each region whose repair `losesOpaqueContent` would veto even on the
+ * zero-edit round trip (`ProtectedRegion.opaqueBlind`).
+ *
+ * The baseline is the one serialization where every repair is known to be
+ * right, because the self-check above has just proved the regions reproduce
+ * the file byte for byte. A region whose repair still reads as code being lost
+ * there is a construct the profile's classifier cannot see as code: markdown
+ * reads indented code inside a list item as prose on purpose (MAR-131), so
+ * restoring it over the serializer's fence counts as a demotion. Unflagged,
+ * that one region made the veto discard every region in the document on any
+ * edit (MAR-485).
+ *
+ * The flag is per region, never per document, so a region the classifier CAN
+ * judge keeps being judged in a document that also holds a blind one. The
+ * whole-set question is asked first and is the only cost a file pays when its
+ * repairs lose nothing; only a file whose baseline repair does lose opaque
+ * lines pays one repair per region to find out whose loss it is. A loss no
+ * single region reproduces on its own flags nothing, which leaves the veto
+ * exactly as strict as it was.
+ */
+function markOpaqueBlind(
+    saved: string,
+    baselineSerialized: string,
+    profile: FormatProfile,
+    protection: RoundTripProtection,
+): RoundTripProtection {
+    const loses = profile.losesOpaqueContent;
+    if (!loses) return protection;
+    const eol = dominantEol(saved);
+    const matched = matchEol(baselineSerialized, eol);
+    const before = hookLines(matched);
+    // Merging the full repair at baseline writes `saved` exactly (the
+    // self-check's condition), so the file itself answers for the whole set
+    // without running the repair again.
+    if (!loses(before, hookLines(saved))) return protection;
+    const regions = protection.regions.map((region): ProtectedRegion => {
+        const alone = repairSerialized(matched, { regions: [region] }, profile, eol).text;
+        return loses(before, hookLines(alone)) ? { ...region, opaqueBlind: true } : region;
+    });
+    return { ...protection, regions };
 }
 
 /**
@@ -1285,6 +1347,18 @@ export function applyMinimalChanges(
     profile: FormatProfile,
     protection?: RoundTripProtection | null,
 ): string {
+    return mergeProtected(saved, serialized, profile, protection, true);
+}
+
+/** `applyMinimalChanges`, with whether an opaque-content veto may retry the
+ *  merge without the regions that caused it (it may, once). */
+function mergeProtected(
+    saved: string,
+    serialized: string,
+    profile: FormatProfile,
+    protection: RoundTripProtection | null | undefined,
+    retryWithoutCulprits: boolean,
+): string {
     // Give the serializer's output the document's endings BEFORE anything else,
     // so repair splices saved bytes among lines that already agree with them.
     const eol = dominantEol(saved);
@@ -1699,11 +1773,43 @@ export function applyMinimalChanges(
     // repair for — see `losesOpaqueContent`. Deliberately after the role check,
     // and reached only when a repair actually ran: with no regions `effective`
     // IS `matched` and the question is vacuous.
-    if (
-        effective !== matched &&
-        profile.losesOpaqueContent?.(matched.split("\n").map(stripEol), effective.split("\n").map(stripEol))
-    ) {
-        return matched;
+    if (effective !== matched && profile.losesOpaqueContent) {
+        const regions = protection!.regions;
+        // Measured from the repair of the regions the hook cannot judge, so
+        // their loss, which the baseline showed is no loss, is on both sides.
+        const blindOnly = (extra?: ProtectedRegion): string =>
+            repairSerialized(
+                matched,
+                { regions: regions.filter((r) => r.opaqueBlind || r === extra) },
+                profile,
+                eol,
+            ).text;
+        const base = regions.some((r) => r.opaqueBlind) ? blindOnly() : matched;
+        const baseLines = hookLines(base);
+        if (profile.losesOpaqueContent(baseLines, hookLines(effective))) {
+            if (!retryWithoutCulprits) return matched;
+            // One region's damage is no reason to drop every other region's
+            // repair: stand down the regions whose repair loses code on its
+            // own and merge again with the rest, which faces this same veto
+            // with no further retry. A loss no single region explains names
+            // no culprit, and the serializer's text is written as before.
+            const culprits = new Set(
+                regions.filter(
+                    (r) =>
+                        !r.opaqueBlind &&
+                        profile.losesOpaqueContent!(baseLines, hookLines(blindOnly(r))),
+                ),
+            );
+            // (A retry with every region kept would reach this same answer.)
+            if (culprits.size === 0) return matched;
+            return mergeProtected(
+                saved,
+                serialized,
+                profile,
+                { ...protection!, regions: regions.filter((r) => !culprits.has(r)) },
+                false,
+            );
+        }
     }
     return result;
 }

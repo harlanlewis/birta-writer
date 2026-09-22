@@ -269,6 +269,25 @@ describe("a tilde fence survives the serializer's backticks (MAR-161, MAR-312)",
     });
 });
 
+describe("indented code in a list item keeps the rest of the document protected (MAR-485)", () => {
+    // Measured against the real editor: the entity and the list item's
+    // indented code are both respelled by the round trip. The classifier reads
+    // indented code inside a list item as prose (MAR-131), so restoring it
+    // over the serializer's fence looks like code being lost, and that reading
+    // used to throw away every region in the document on any edit.
+    const saved = "Top [R&D](r&amp;d.md).\n\n- item\n\n      code in list\n";
+    const baseline = "Top [R\\&D](r\\&d.md).\n\n- item\n\n  ```\n  code in list\n  ```\n";
+
+    it("an edit elsewhere should keep both the entity and the list's indented code as written", () => {
+        const protection = computeRoundTripProtection(saved, baseline);
+        expect(protection?.regions.length).toBe(2);
+
+        const merged = applyMinimalChanges(saved, "New.\n\n" + baseline, protection);
+
+        expect(merged).toBe("New.\n\n" + saved);
+    });
+});
+
 describe("applyMinimalChanges — at scale", () => {
     it("a single edit in a 5000-line document should merge only that line", () => {
         // Correctness-at-scale, not a wall-clock gate: the LCS window-trimming
