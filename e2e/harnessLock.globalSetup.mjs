@@ -26,7 +26,11 @@ let release = () => {};
 
 export function setup() {
     if (isWatch) return;
-    release = acquireHarnessLock("vitest");
+    // A sweep: Vitest reads no timing, so another repository's sweep may run
+    // beside it. Its corpus suites do time out under a capture's load, and
+    // the table refuses that side.
+    const script = process.env["npm_lifecycle_event"];
+    release = acquireHarnessLock(script ? `vitest (pnpm ${script})` : "vitest", { kind: "sweep" });
 }
 
 export function teardown() {

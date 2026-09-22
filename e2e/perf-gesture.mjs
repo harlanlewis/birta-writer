@@ -87,7 +87,7 @@ import { FIXTURES, HEAVY_FIXTURES } from "./perf/fixtures.mjs";
 import { serve, repoRoot } from "./perf/server.mjs";
 import { acquireHarnessLock } from "./harnessLock.mjs";
 
-acquireHarnessLock("perf:gesture");
+acquireHarnessLock("perf:gesture", { kind: "capture" });
 
 const BROWSER = process.env.BIRTA_E2E_BROWSER || "chromium";
 if (BROWSER !== "chromium" && BROWSER !== "webkit") {

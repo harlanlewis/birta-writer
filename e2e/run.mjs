@@ -116,7 +116,11 @@ if (missing.length > 0 || suites.length === 0) {
 }
 
 // One harness at a time; see e2e/harnessLock.mjs for what running two costs.
-acquireHarnessLock(wanted.length > 0 ? `e2e ${wanted.join(" ")}` : "e2e sweep");
+// Held as a capture, not a sweep, although it is run for its pass or fail:
+// its verdict is load-sensitive (`corpus` and `embeds` go red at their
+// timeouts under another harness and pass alone), so it is held under the
+// strict kind, at the price of refusing another repository's sweep.
+acquireHarnessLock(wanted.length > 0 ? `e2e ${wanted.join(" ")}` : "e2e sweep", { kind: "capture" });
 
 let failedTotal = 0;
 const skippedSuites = [];
