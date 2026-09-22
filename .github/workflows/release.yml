@@ -520,10 +520,10 @@ jobs:
     permissions:
       contents: write # attach an asset to the release this workflow just cut
     env:
-      # Both halves or neither. A certificate with no notary credentials would
-      # produce a signed build that Gatekeeper still refuses on a first launch
-      # without network, which is the confusing middle state rather than a
-      # useful one.
+      # Both halves or neither. Gatekeeper refuses a Developer ID signature
+      # that was never notarized at first launch, network or not, so a
+      # certificate with no notary credentials would produce a build refused
+      # exactly as an ad-hoc one is, while looking as though it should not be.
       HAS_SIGNING: ${{ secrets.MAC_CERT_P12_BASE64 != '' && secrets.MAC_NOTARY_KEY_BASE64 != '' }}
     steps:
       # The tag, not the branch: the release job pushes a CHANGELOG stamp

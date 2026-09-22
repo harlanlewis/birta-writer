@@ -160,7 +160,7 @@ With neither `AZURE_CLIENT_ID` nor `OVSX_PAT`, a release builds the downloadable
 
 ### The six Mac signing secrets
 
-`HAS_SIGNING` in the `mac-app` job keys on `MAC_CERT_P12_BASE64` and `MAC_NOTARY_KEY_BASE64` together, and with neither the job still runs: it builds an ad-hoc signed app and attaches it, which is the personal-machines rung the app shipped on before this. Both halves or neither is deliberate. A certificate with no notary credentials produces a build Gatekeeper still refuses on a first launch without network, which is a confusing middle state rather than a useful one.
+`HAS_SIGNING` in the `mac-app` job keys on `MAC_CERT_P12_BASE64` and `MAC_NOTARY_KEY_BASE64` together, and with neither the job still runs: it builds an ad-hoc signed app and attaches it, which is the personal-machines rung the app shipped on before this. Both halves or neither is deliberate. A Developer ID signature without notarization is refused at first launch outright, network or not: Apple requires notarization of Developer ID software on macOS 10.14.5 and later. So a certificate with no notary credentials would produce a build refused at launch exactly as an ad-hoc one is, while looking as though it should not be: all of the signing work, none of the result.
 
 `MAC_CERT_P12_BASE64` is a Developer ID Application identity, certificate and private key, exported from Keychain Access as a `.p12` and base64'd (`base64 -i cert.p12 | pbcopy`). `MAC_CERT_P12_PASSWORD` is the password set during that export, and `MAC_KEYCHAIN_PASSWORD` is any random string: it protects a keychain the job creates and destroys with the runner.
 
