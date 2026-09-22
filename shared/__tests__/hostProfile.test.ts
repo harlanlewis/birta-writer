@@ -117,7 +117,7 @@ describe("HOST_PROFILES", () => {
         // owner, and no editor font of its own.
         expect(HOST_PROFILES.mac).toEqual(
             ["spellAndGrammar", "imageUpload", "toc", "contentMeasure", "appPreferences", "agent",
-             "projectFiles", "stripTooltip"]);
+             "projectFiles", "folderIndex", "stripTooltip"]);
     });
 
     it("every capability named on a command should be in ALL_HOST_CAPABILITIES", () => {

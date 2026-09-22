@@ -15,7 +15,7 @@
  */
 import { hostHas } from "../../shared/hostProfile";
 import { backlinksOf, relativeNotePath, type FolderEdge, type FolderIndex } from "../../shared/folderIndex";
-import { notifyOpenFile, notifyRequestFolderIndex } from "../messaging";
+import { notifyOpenFile, notifyOpenProjectFile, notifyRequestFolderIndex } from "../messaging";
 
 /** Dispatched on `window` whenever a new index arrives. */
 export const FOLDER_INDEX_CHANGED = "birta:folder-index-changed";
@@ -69,8 +69,19 @@ export function selfHasReferences(): boolean {
  * `self`; `%` and `#` are escaped so a file name holding either is not read
  * as a fragment, since the host's resolver tries the decoded form after the
  * literal one.
+ *
+ * A host with a file explorer (`projectFiles`, the Mac app's directory
+ * windows) opens a root-relative path directly and parses no `openFile`,
+ * because it has no text editor to open one into; its index is of the same
+ * root, so the path goes as the index names it. `openProjectFile` carries no
+ * line, so there the note opens where it was last left rather than at the
+ * reference (MAR-480).
  */
 export function openIndexedNote(self: string, path: string, line?: number): void {
+    if (hostHas("projectFiles")) {
+        notifyOpenProjectFile(path, false);
+        return;
+    }
     const rel = relativeNotePath(self, path).replace(/%/g, "%25").replace(/#/g, "%23");
     notifyOpenFile(line === undefined ? rel : `${rel}#${line}`);
 }
