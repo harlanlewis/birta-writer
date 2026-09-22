@@ -74,13 +74,13 @@ export function selfHasReferences(): boolean {
  * A host with a file explorer (`projectFiles`, the Mac app's directory
  * windows) opens a root-relative path directly and parses no `openFile`,
  * because it has no text editor to open one into; its index is of the same
- * root, so the path goes as the index names it. `openProjectFile` carries no
- * line, so there the note opens where it was last left rather than at the
- * reference (MAR-486).
+ * root, so the path goes as the index names it, and the line rides beside
+ * it as the message's own optional field rather than as a fragment, because
+ * that host resolves no fragment and its file names may hold `#`.
  */
 export function openIndexedNote(self: string, path: string, line?: number): void {
     if (hostHas("projectFiles")) {
-        notifyOpenProjectFile(path, false);
+        notifyOpenProjectFile(path, false, line);
         return;
     }
     const plain = relativeNotePath(self, path);

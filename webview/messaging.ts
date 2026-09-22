@@ -408,9 +408,14 @@ export function notifyListDirectory(id: string, path: string): void {
     vscode.postMessage({ type: "listDirectory", id, path });
 }
 
-/** A row was activated; the host opens the file (and then says which is current). */
-export function notifyOpenProjectFile(path: string, newTab: boolean): void {
-    vscode.postMessage({ type: "openProjectFile", path, newTab });
+/**
+ * A row was activated; the host opens the file (and then says which is
+ * current). `line` is the document line to land on, which a backlink asks
+ * for and an explorer row does not; absent goes off the wire rather than as
+ * `undefined`, so a host reads the same message the explorer always sent.
+ */
+export function notifyOpenProjectFile(path: string, newTab: boolean, line?: number): void {
+    vscode.postMessage({ type: "openProjectFile", path, newTab, ...(line === undefined ? {} : { line }) });
 }
 
 /** The folders the tree has open, for the host to hand the next page on this root. */

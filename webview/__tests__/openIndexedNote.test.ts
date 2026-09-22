@@ -42,10 +42,22 @@ describe("openIndexedNote", () => {
         expect(mockVscodeApi.postMessage).toHaveBeenCalledWith({ type: "openFile", path: "./C%23 at 50%25.md#3" });
     });
 
-    it("a host with an explorer should be sent openProjectFile with the root-relative path", () => {
+    it("a host with an explorer should be sent openProjectFile with the root-relative path and the line beside it", () => {
         declare(["projectFiles", "folderIndex"]);
         openIndexedNote("notes/here.md", "other/th#ere.md", 12);
-        expect(mockVscodeApi.postMessage).toHaveBeenCalledWith({ type: "openProjectFile", path: "other/th#ere.md", newTab: false });
+        // The line is its own field, never a fragment: this host resolves no
+        // fragment, and the path goes exactly as the index names it (MAR-486).
+        expect(mockVscodeApi.postMessage).toHaveBeenCalledWith({ type: "openProjectFile", path: "other/th#ere.md", newTab: false, line: 12 });
         expect(mockVscodeApi.postMessage).not.toHaveBeenCalledWith(expect.objectContaining({ type: "openFile" }));
+    });
+
+    it("a graph node, which names no line, should be sent openProjectFile with no line key at all", () => {
+        declare(["projectFiles", "folderIndex"]);
+        openIndexedNote("notes/here.md", "other/there.md");
+        const sent = mockVscodeApi.postMessage.mock.calls.map((c) => c[0]).filter((m) => m.type === "openProjectFile");
+        expect(sent).toHaveLength(1);
+        // The explorer's own message, key for key: a host that reads `line`
+        // must see the row it always saw, not an `undefined` it has to skip.
+        expect(Object.keys(sent[0]).sort()).toEqual(["newTab", "path", "type"]);
     });
 });

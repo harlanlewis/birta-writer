@@ -155,9 +155,9 @@ final class WindowSet {
             guard let coordinator else { return }
             self?.newTab(in: coordinator)
         }
-        coordinator.onOpenProjectFile = { [weak self, weak coordinator] url, newTab in
+        coordinator.onOpenProjectFile = { [weak self, weak coordinator] url, newTab, line in
             guard let coordinator else { return }
-            self?.openFromExplorer(url, from: coordinator, inNewTab: newTab)
+            self?.openFromExplorer(url, from: coordinator, inNewTab: newTab, revealing: line)
         }
         coordinator.onNewNoteInFolder = { [weak self, weak coordinator] folder in
             guard let coordinator else { return }
@@ -490,7 +490,15 @@ final class WindowSet {
     /// another tab of this window fronts that tab, and one open in some other
     /// window fronts that window rather than opening a second buffer over one
     /// path. `OpenRouting.explorerDestination`'s header has the argument.
-    func openFromExplorer(_ url: URL, from here: Coordinator, inNewTab: Bool) {
+    ///
+    /// `line` is the document line a backlink or a graph edge asked to land
+    /// on, nil for a row and for Go to File. The routing does not read it,
+    /// because it changes nothing about WHERE the file lands; every arm
+    /// hands it to the page that ends up showing the file, through
+    /// `Coordinator.reveal(line:)` or the reload's own `revealing:`, so the
+    /// note opens at the reference on each route rather than where it was
+    /// left (MAR-486).
+    func openFromExplorer(_ url: URL, from here: Coordinator, inNewTab: Bool, revealing line: Int? = nil) {
         let target = url.standardizedFileURL
         guard let hereIndex = windows.firstIndex(where: { $0 === here }) else { return }
         let routed = OpenRouting.explorerDestination(
@@ -502,17 +510,24 @@ final class WindowSet {
             sameFile: Self.sameFile)
         let tabHere: (URL) -> Void = { [weak self, weak here] file in
             guard let self, let here else { return }
-            self.open(self.makeWindow(on: file, slot: nil, inGroupOf: here, explorerRoot: here.explorerRoot))
+            let made = self.makeWindow(on: file, slot: nil, inGroupOf: here, explorerRoot: here.explorerRoot)
+            // Before the tab is shown, so the page it builds is cold when
+            // asked and its first `init` carries the line.
+            if let line { made.reveal(line: line) }
+            self.open(made)
         }
         switch routed {
         case let .existing(index):
             let open = windows[index]
             open.selectTab()
             open.show()
+            // No fresh page is coming for a file already on screen, so the
+            // page that has it is told directly.
+            if let line { open.reveal(line: line) }
         case .tabHere:
             tabHere(target)
         case .replaceHere:
-            here.replaceFile(with: target, orTab: tabHere)
+            here.replaceFile(with: target, revealing: line, orTab: tabHere)
         }
     }
 

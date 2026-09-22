@@ -458,7 +458,13 @@ export type ToExtensionMessage =
     // route. `newTab` is the reader asking for a tab beside this one
     // (Cmd+click, middle click, Cmd+Return); a plain activation moves this
     // window to the file, and where it lands either way is the host's rule.
-    | { type: "openProjectFile"; path: string; newTab: boolean }
+    // `line` is a document line to land on (1-based, frontmatter counted,
+    // what `scrollToLine` counts): a backlink or a graph edge names where
+    // the other note makes its reference, and the host carries it to the
+    // page wherever the file lands, as `scrollToLine` on a fresh `init` or
+    // as the `scrollToLine` message to a page already showing the file. An
+    // explorer row sends none and opens where the note was left.
+    | { type: "openProjectFile"; path: string; newTab: boolean; line?: number }
     // A row was right-clicked at a viewport point. The host draws its own
     // menu there (a native one, with the actions only it can perform: a new
     // tab, the file manager, the pasteboard, the trash); the page draws none.

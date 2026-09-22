@@ -222,6 +222,14 @@ final class BridgeTests: XCTestCase {
                        #"{"content":"","frontmatter":"","lineOffset":0,"syncVersion":0,"type":"init"}"#)
         XCTAssertEqual(HostMessage.externalUpdate(content: "", frontmatter: "", lineOffset: 0, syncVersion: 2).jsonString(),
                        #"{"content":"","frontmatter":"","lineOffset":0,"syncVersion":2,"type":"externalUpdate"}"#)
+        // The line a backlink asked the open to land on rides on `init` under
+        // the name the page's handler reads, and outranks the remembered
+        // offset there by the page's own rule; a page already on the file is
+        // sent the standalone message instead (MAR-486).
+        XCTAssertEqual(HostMessage.initDoc(content: "# a", frontmatter: "", lineOffset: 0, syncVersion: 0,
+                                           viewStateJSON: #"{"scrollY":3}"#, scrollToLine: 12).jsonString(),
+                       ##"{"content":"# a","frontmatter":"","lineOffset":0,"scrollToLine":12,"syncVersion":0,"type":"init","viewState":{"scrollY":3}}"##)
+        XCTAssertEqual(HostMessage.scrollToLine(line: 12).jsonString(), #"{"line":12,"type":"scrollToLine"}"#)
         // The panel's half of a document, on both messages that carry one. A
         // host that sends only `content` sends the panel nothing to draw, and
         // an offset the page never hears leaves every document line it reports
@@ -287,9 +295,13 @@ final class BridgeTests: XCTestCase {
         XCTAssertEqual(WebviewMessage.parse(#"{"type":"listDirectory","path":"x"}"#),
                        .other(type: "listDirectory"), "no id means no way to answer")
         XCTAssertEqual(WebviewMessage.parse(#"{"type":"openProjectFile","path":"a/b.md"}"#),
-                       .openProjectFile(path: "a/b.md", newTab: false))
+                       .openProjectFile(path: "a/b.md", newTab: false, line: nil))
         XCTAssertEqual(WebviewMessage.parse(#"{"type":"openProjectFile","path":"a/b.md","newTab":true}"#),
-                       .openProjectFile(path: "a/b.md", newTab: true))
+                       .openProjectFile(path: "a/b.md", newTab: true, line: nil))
+        // A backlink names the line its reference is on (MAR-486); an
+        // explorer row names none and is the message it always was.
+        XCTAssertEqual(WebviewMessage.parse(#"{"type":"openProjectFile","path":"a/b.md","line":12}"#),
+                       .openProjectFile(path: "a/b.md", newTab: false, line: 12))
         XCTAssertEqual(WebviewMessage.parse(#"{"type":"projectFileMenu","path":"a","kind":"dir","x":12,"y":40.5}"#),
                        .projectFileMenu(path: "a", kind: "dir", x: 12, y: 40.5))
         XCTAssertEqual(WebviewMessage.parse(#"{"type":"projectFileMenu","path":"a","kind":"dir"}"#),

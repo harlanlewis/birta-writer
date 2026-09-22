@@ -35,6 +35,12 @@ import Foundation
 /// only thing on this side that looks inside it, so a `Codable` model of a bag
 /// whose other keys belong entirely to the page would be a second declaration
 /// of a shape this side has no business knowing.
+///
+/// A line the open was ASKED for is outside this rule and outranks it. A
+/// backlink names the line its reference is on, and that line rides on the
+/// same `init` as `scrollToLine` (`Coordinator.reveal(line:)`), which the
+/// page reads before it reads any offset: an offset that survived here is
+/// never restored over a line somebody asked for, on an open or a remount.
 public enum ViewStateOnOpen {
     /// The key the page stores the scroll offset under
     /// (`webview/scrollPersistence.ts`).
