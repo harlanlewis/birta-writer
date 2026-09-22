@@ -147,10 +147,28 @@ Set these in the repo, under Settings → Secrets and variables → Actions.
 | `OVSX_PAT`          | Also publishes to Open VSX                        | set to publish   |
 | `RELEASE_TOKEN`     | Commits the rolled changelogs back to `main`      | needed to stamp  |
 | `LINEAR_API_KEY`    | Raises a blocked release in Linear instead of nowhere | needed to be told |
+| `MAC_CERT_P12_BASE64` | Signs the Mac app with Developer ID instead of ad-hoc | set to distribute |
+| `MAC_CERT_P12_PASSWORD` | Required alongside `MAC_CERT_P12_BASE64`       | set to distribute |
+| `MAC_KEYCHAIN_PASSWORD` | Password for the throwaway keychain the job makes | set to distribute |
+| `MAC_NOTARY_KEY_BASE64` | Notarizes and staples the Mac app               | set to distribute |
+| `MAC_NOTARY_KEY_ID` | Required alongside `MAC_NOTARY_KEY_BASE64`        | set to distribute |
+| `MAC_NOTARY_ISSUER_ID` | Required alongside `MAC_NOTARY_KEY_BASE64`     | set to distribute |
 
 With neither `AZURE_CLIENT_ID` nor `OVSX_PAT`, a release builds the downloadable `.vsix` and stops. That is the "build it, don't publish yet" phase. The two registry secrets are independent, so either can be added on its own.
 
 `AZURE_CLIENT_ID` and `AZURE_TENANT_ID` are not secrets in the usual sense. They are identifiers, not credentials, and nothing about them expires. They are stored as secrets only to keep the tenant out of public logs.
+
+### The six Mac signing secrets
+
+`HAS_SIGNING` in the `mac-app` job keys on `MAC_CERT_P12_BASE64` and `MAC_NOTARY_KEY_BASE64` together, and with neither the job still runs: it builds an ad-hoc signed app and attaches it, which is the personal-machines rung the app shipped on before this. Both halves or neither is deliberate. A Developer ID signature without notarization is refused at first launch outright, network or not: Apple requires notarization of Developer ID software on macOS 10.14.5 and later. So a certificate with no notary credentials would produce a build refused at launch exactly as an ad-hoc one is, while looking as though it should not be: all of the signing work, none of the result.
+
+`MAC_CERT_P12_BASE64` is a Developer ID Application identity, certificate and private key, exported from Keychain Access as a `.p12` and base64'd (`base64 -i cert.p12 | pbcopy`). `MAC_CERT_P12_PASSWORD` is the password set during that export, and `MAC_KEYCHAIN_PASSWORD` is any random string: it protects a keychain the job creates and destroys with the runner.
+
+That private key is the one credential here that cannot be replaced. Apple never receives it, so it cannot reissue it, and a Developer ID certificate cannot be revoked from the account either. Losing the key means burning one of five slots on a replacement; leaking it means somebody else can sign software as you and there is no revocation to reach for. Keep an independent copy outside the repository and outside any machine that does not sign.
+
+The three `MAC_NOTARY_*` secrets are an App Store Connect Team API key, its Key ID, and the Issuer ID. Team rather than Individual because only the Team key is unambiguously supported. Apple's App Store Connect documentation says individual keys cannot use the notary service, and the reported failure is a `trace trap` rather than a message; the `notarytool` man page implies they can, on Xcode 26 or later. The two have not been reconciled, and a Team key works under either reading. The Developer role is enough. An app-specific password would also work and is the wrong choice here, because changing your Apple Account password revokes every app-specific password automatically, which breaks releases silently and at a moment unconnected to anything you changed in the repository.
+
+The signing identity is selected by SHA-1, read back out of the imported keychain, never by name. Two Developer ID certificates belonging to one team carry the identical common name, so a name match is ambiguous the moment a second certificate exists, and `codesign` fails rather than picking one.
 
 ### When a release fails, and how you find out
 
