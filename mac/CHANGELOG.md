@@ -12,6 +12,10 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ## [Unreleased]
 
+---
+
+## [2026.923.0] - 2026, September 23
+
 ### Changed
 
 - Birta Writer for Mac keeps the Backlinks and Graph tabs on in a folder window. The editor's `birta.folderGraph` setting, now off by default in VS Code, is declared on by the app and has no switch there.
