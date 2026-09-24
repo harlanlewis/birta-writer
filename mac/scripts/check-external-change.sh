@@ -275,7 +275,7 @@ echo "an /ai run's own write, with typing during the run"
 # write from a third program's, and asking about the file the user just asked
 # an agent to rewrite is the wrong question for the case that happens.
 asked_before=$(traces "diskdrift asked")
-conflicts_before=$(traces "diskdrift conflict")
+noticed_before=$(( $(traces "diskdrift conflict") + $(traces "diskdrift reread") ))
 start_run 'touch run-started
 sleep 1
 printf "%s\nagent wrote this too\n" "$(cat Note.md)" > Note.md
@@ -293,7 +293,15 @@ case "$(cat "$NOTE")" in
     *"agent wrote this too"*) ;;
     *) fail "typing during a run autosaved over the run's own write: '$(cat "$NOTE")'" ;;
 esac
-expect_trace "diskdrift conflict" $((conflicts_before + 1)) "the run's write was noticed under the typing"
+# Noticed is either verdict: the buffer is clean when the agent writes, so the
+# app usually re-reads before the typing lands (the agent's text is then what
+# the typing goes into), and refuses only when the typing got there first.
+checks=$((checks + 1))
+noticed=$(( $(traces "diskdrift conflict") + $(traces "diskdrift reread") ))
+if [ "$noticed" -le "$noticed_before" ]; then
+    fail "the run's write was not noticed under the typing: no reread and no conflict"
+    grep -E "^birta-trace (writeattempt|diskdrift)" "$LOG" | tail -12 | sed 's/^/    /' >&2
+fi
 expect_no_question_since "$asked_before" "no question in the middle of a run"
 wait_for_file "$DIR/run-ended" 15; sleep 3
 checks=$((checks + 1))
@@ -309,7 +317,10 @@ echo "a third program's change during an /ai run"
 # does not need to: the write is refused on the same terms as any file that
 # moved, and the landing brings the change in the way it brings the agent's.
 # Nothing the run does here touches the file, so every byte that moves is the
-# outside writer's.
+# outside writer's. The change goes at the TOP of the file while the typing
+# lands at the caret, which the arms above have left at the end: two edits to
+# the same lines are the overlap the rescue copy exists for, and that case is
+# the page's merge tests' to hold; this arm is about a change that folds in.
 asked_before=$(traces "diskdrift asked")
 conflicts_before=$(traces "diskdrift conflict")
 start_run 'touch run-started
@@ -317,9 +328,9 @@ sleep 7
 touch run-ended'
 sleep 0.5
 base="$(cat "$NOTE")"
-printf '%s\nchanged by a third program\n' "$base" > "$NOTE"
+printf 'changed by a third program\n%s\n' "$base" > "$NOTE"
 post '{"type":"__testInsertText","text":"typed during the run "}'; sleep 1.5
-expect_bytes "$base"$'\n'"changed by a third program" "an edited buffer does not autosave over a third program's change while a run is in flight"
+expect_bytes "changed by a third program"$'\n'"$base" "an edited buffer does not autosave over a third program's change while a run is in flight"
 expect_trace "diskdrift conflict" $((conflicts_before + 1)) "the third program's change was noticed during the run"
 expect_no_question_since "$asked_before" "no question in the middle of a run"
 wait_for_file "$DIR/run-ended" 15; sleep 3
