@@ -12,6 +12,10 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ## [Unreleased]
 
+---
+
+## [2026.924.0] - 2026, September 24
+
 ### Changed
 
 - Birta Writer for Mac is signed with an Apple Developer ID and notarized by Apple, so macOS can say who built it. A release downloaded from GitHub opens the way any other app downloaded from the internet does: macOS asks once whether to open it, says Apple checked it, and opens it, with nothing to change in System Settings first. That check works with no network, because the notarization ticket travels inside the app. Until now the app was ad-hoc signed, which macOS cannot attribute to anyone, and getting it open meant stripping the download quarantine first: that is why it was only ever offered to people who also had the source.
