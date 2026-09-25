@@ -86,16 +86,31 @@ function failedJobs() {
 const failed = failedJobs();
 const failedList = failed.length ? failed.join(", ") : "(none reported)";
 
+// Whether the release itself failed, or something after it did, because the
+// two have different consequences and saying the wrong one costs the alert
+// its credibility. A reader told nothing shipped, who then finds the release
+// on GitHub and the extension on the Marketplace, has been taught to check
+// this issue rather than act on it.
+const releaseFailed = failed.includes("release");
+
+const consequence = releaseFailed
+    ? `The nightly Release run failed in its first job, so nothing was published: no GitHub Release, no Marketplace or Open VSX publish, and no Mac app asset. An installed copy asking for an update is told it is up to date, truthfully, because the newest release really is the last one that succeeded.`
+    : `The nightly Release run cut its release, and then ${failedList} failed. What that job produces is missing from this release and from every release until it is fixed; every other surface shipped. An installed copy asking for something that job makes is told there is nothing newer, truthfully, because the newest release carrying it really is the last one that succeeded.`;
+
+const mechanism = releaseFailed
+    ? `The publish jobs are \`needs: release\`, so a failure in the first job skips the rest and every surface stops at once. Read the failing step in the run above rather than inferring the cause from the job name.`
+    : `The publish jobs are \`needs: release\` but not on each other, so one of them failing leaves the others alone and the release stands with a hole in it. Read the failing step in the run above rather than inferring the cause from the job name.`;
+
 const body = [
     MARKER,
     "",
-    `The nightly Release run failed, so nothing was published: no GitHub Release, no Marketplace or Open VSX publish, and no Mac app asset. An installed copy asking for an update is told it is up to date, truthfully, because the newest release really is the last one that succeeded.`,
+    consequence,
     "",
     `* Run: ${runUrl}`,
     `* Commit: \`${GITHUB_SHA}\``,
     `* Failed jobs: ${failedList}`,
     "",
-    `The publish jobs are \`needs: release\`, so a failure in the first job skips the rest and every surface stops at once. Read the failing step in the run above rather than inferring the cause from the job name.`,
+    mechanism,
     "",
     `This comment is written by \`scripts/alert-release-failure.mjs\`. It appends to this issue rather than filing a new one each night, so the age of the issue is how long shipping has been blocked.`,
 ].join("\n");
@@ -113,6 +128,11 @@ async function main() {
                 "This run summary is the only record, which is the situation this " +
                 "script exists to end. Add the secret in repository settings.",
         );
+        // The report itself, since by the line above this summary is the whole
+        // record. Printing only the job names would leave the reader to work
+        // out which surfaces stopped, which is the question the body answers.
+        summary("");
+        summary(body);
         return;
     }
 
@@ -189,7 +209,9 @@ async function main() {
                 teamId,
                 labelIds,
                 priority: 1,
-                title: "Nightly Release is blocked, so nothing is shipping",
+                title: releaseFailed
+                    ? "Nightly Release is blocked, so nothing is shipping"
+                    : `Nightly Release is shipping without ${failedList}`,
                 description: body,
             },
         },
