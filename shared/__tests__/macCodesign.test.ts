@@ -132,6 +132,21 @@ describe(".github/workflows/release.yml", () => {
         expect(verify).toBeLessThan(notarize);
     });
 
+    it("installing the intermediate should accept it already being there, and nothing else", () => {
+        // A `.p12` exported from Keychain Access carries the chain, so the
+        // import installs the intermediate and adding it again exits 1 with
+        // "already in". That took the mac-app job down on two nightlies and
+        // shipped two releases with no app attached, because the step is run
+        // under `bash -e`.
+        //
+        // The tolerance has to be that one outcome. A blanket `|| true` would
+        // also swallow a download that produced nothing and a keychain that
+        // refused the write, and the first sign of either would again be a
+        // release with nothing attached to it.
+        expect(releaseWorkflow).toMatch(/\*"already in"\*\)/);
+        expect(releaseWorkflow).not.toMatch(/security add-certificates[^\n]*\|\| true/);
+    });
+
     it("the job should install the G2 intermediate, which a fresh runner does not carry", () => {
         // Without it codesign fails with errSecInternalComponent and
         // find-identity omits the identity entirely, so the symptom reads as

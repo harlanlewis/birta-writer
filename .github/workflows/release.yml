@@ -568,16 +568,29 @@ jobs:
           # passing a single keychain to -s does and would drop the runner's
           # own login and System keychains out from under everything else.
           security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d ' "')
-          # A runner is a fresh Mac, and a fresh Mac does not carry the G2
-          # intermediate that a current Developer ID certificate chains
+          # The G2 intermediate a current Developer ID certificate chains
           # through. Without it codesign cannot build the chain and fails with
           # errSecInternalComponent, which names neither the missing
           # certificate nor the chain; `security find-identity` compounds it by
           # listing only identities it CAN chain, so the identity looks absent
           # rather than unusable (MAR-378).
+          #
+          # A `.p12` exported from Keychain Access carries the chain with it,
+          # so `security import` above has usually installed this already and
+          # adding it again exits 1 saying "already in". That is the state to
+          # accept rather than the failure it resembles, and accepting it
+          # precisely is the point: a blanket `|| true` would swallow a
+          # download that produced nothing and a keychain that refused the
+          # write, and the first thing to notice either would be a release
+          # with no app attached to it.
           curl -fsSL -o "$RUNNER_TEMP/DeveloperIDG2CA.cer" \
             https://www.apple.com/certificateauthority/DeveloperIDG2CA.cer
-          security add-certificates -k "$KEYCHAIN" "$RUNNER_TEMP/DeveloperIDG2CA.cer"
+          if ! ADDED="$(security add-certificates -k "$KEYCHAIN" "$RUNNER_TEMP/DeveloperIDG2CA.cer" 2>&1)"; then
+            case "$ADDED" in
+              *"already in"*) echo "the G2 intermediate came in with the .p12: $ADDED" ;;
+              *) printf '%s\n' "$ADDED" >&2; exit 1 ;;
+            esac
+          fi
           # Sign by hash, never by name. Two Developer ID certificates of the
           # same team carry the identical common name, so a name match is
           # ambiguous the moment a second one reaches a keychain, and codesign
