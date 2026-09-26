@@ -19,13 +19,16 @@ if (!file || !token || !Number.isInteger(holderPid) || !(intervalMs > 0)) {
     process.exit(2);
 }
 
+/**
+ * Whether the holder is still our parent. Asked of `ppid` rather than of
+ * `kill(pid, 0)`: a holder that dies has this process reparented at once,
+ * and the answer stays no whatever the system later hands the holder's pid
+ * to. A liveness test by pid would keep a stranded record beating for as
+ * long as the stranger lived, and refuse every harness on the machine in a
+ * dead holder's name, which is the failure the contract names.
+ */
 function holderAlive() {
-    try {
-        process.kill(holderPid, 0);
-        return true;
-    } catch (err) {
-        return err.code === "EPERM";
-    }
+    return process.ppid === holderPid;
 }
 
 /** One beat: rewrite `at` on our own record, renamed over the file so no reader sees it half-written. */

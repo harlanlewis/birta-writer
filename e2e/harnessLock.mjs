@@ -159,8 +159,10 @@ export function refusedBy(mine, holder) {
  *
  * The residual hole is pid reuse: a record stranded by a kill, whose pid the
  * system later hands to something unrelated, reads as held until its `at`
- * ages past STALE_MS, which the heartbeat no longer refreshes. So the hole
- * costs a reader thirty minutes at most, and the refusal names the override.
+ * ages past STALE_MS. The heartbeat does not refresh it, because it asks
+ * whether the holder is still its parent rather than whether the pid is
+ * alive (harnessHeartbeat.mjs). So the hole costs a reader thirty minutes
+ * at most, and the refusal names the override.
  */
 function isAlive(pid) {
     if (!Number.isInteger(pid)) return false;
@@ -277,6 +279,13 @@ export function tryHarnessLock(what, opts) {
     const beat = spawn(process.execPath, [HEARTBEAT_SCRIPT, file, token, String(process.pid), String(heartbeatMs)],
         { detached: true, stdio: "ignore" });
     beat.unref();
+    // A spawn that fails (the file-descriptor or process ceilings a loaded
+    // machine hits) reports on the next tick, and unhandled it would end the
+    // holder at its claim. A capture with no heartbeat is still a capture;
+    // it is only reapable after STALE_MS, so say so and carry on.
+    beat.on("error", (err) => {
+        process.stderr.write(`harness lock: no heartbeat (${err.code ?? err.message}); a run past the staleness ceiling can be reaped\n`);
+    });
 
     let released = false;
     const release = () => {
