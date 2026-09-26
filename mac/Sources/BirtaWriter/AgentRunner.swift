@@ -525,17 +525,37 @@ private final class Drain {
     /// Set by the exit; nil until then, and nil again once called.
     private var report: ((AgentRunner.Transcript) -> Void)?
     private var done = false
+    /// Held for every read of a handle and for its close. A readability
+    /// handler already dispatched on Foundation's own queue is not stopped
+    /// by clearing it, and a read on a closed handle raises an Objective-C
+    /// exception Swift cannot catch, so the two never overlap: a handler
+    /// that takes the lock after the close finds the stream closed and reads
+    /// nothing. Never held across the drain queue, so it cannot deadlock.
+    private let io = NSLock()
+    private var closed: Set<Stream> = []
 
     init(stdout: Pipe, stderr: Pipe, onChunk: ((Data, Stream) -> Void)?) {
         self.onChunk = onChunk
         handles = [.stdout: stdout.fileHandleForReading, .stderr: stderr.fileHandleForReading]
         for (stream, handle) in handles {
             handle.readabilityHandler = { [self] handle in
+                io.lock()
+                guard !closed.contains(stream) else { io.unlock(); return }
                 let chunk = handle.availableData
                 // Zero bytes is EOF. Cleared here, on the handler's own turn,
                 // rather than on the queue, so no further turn is taken.
                 if chunk.isEmpty { handle.readabilityHandler = nil }
-                queue.async { self.receive(chunk, from: stream) }
+                io.unlock()
+                // Handed over SYNCHRONOUSLY, with the lock already let go.
+                // Foundation calls this handler again only once it returns,
+                // so a writer that never pauses is held to the drain's pace
+                // by its own pipe filling, rather than piling one task per
+                // chunk onto the queue faster than the queue can take them:
+                // that backlog is what the exit report and the grace's
+                // finish would wait behind, for as long as the flood lasts,
+                // with the transcript growing the whole time. The lock is
+                // released first because finish takes it on this queue.
+                queue.sync { self.receive(chunk, from: stream) }
             }
         }
     }
@@ -597,11 +617,16 @@ private final class Drain {
     }
 
     private func stopReading(closing: Set<Stream>) {
+        io.lock()
         for (stream, handle) in handles {
             handle.readabilityHandler = nil
-            if closing.contains(stream) { try? handle.close() }
+            if closing.contains(stream) {
+                closed.insert(stream)
+                try? handle.close()
+            }
         }
         handles = [:]
+        io.unlock()
     }
 }
 

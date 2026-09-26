@@ -44,6 +44,14 @@ final class BridgeTests: XCTestCase {
         // click on the gutter marker reached `.other` and cancelled nothing.
         XCTAssertEqual(WebviewMessage.parse(#"{"type":"agentCancel","requestId":"r1"}"#),
                        .agentCancel(requestId: "r1"))
+        // The composer's send, with every optional the page can set. `skill`
+        // is carried although this host offers no picker (MAR-483), so a host
+        // that grows the scan changes nothing here.
+        XCTAssertEqual(
+            WebviewMessage.parse(#"{"type":"askAgentAdvanced","prompt":"tighten","requestId":"r2","model":"opus","effort":"high","skill":"house-style"}"#),
+            .askAgent(prompt: "tighten", requestId: "r2", model: "opus", effort: "high", skill: "house-style"))
+        XCTAssertEqual(WebviewMessage.parse(#"{"type":"askAgent","prompt":"x","requestId":"r3"}"#),
+                       .askAgent(prompt: "x", requestId: "r3", model: nil, effort: nil, skill: nil))
         // The old spelling must not quietly work again.
         XCTAssertEqual(WebviewMessage.parse(#"{"type":"stopAgentRun","requestId":"r1"}"#),
                        .other(type: "stopAgentRun"))

@@ -44,10 +44,9 @@ printf 'first line\n' > "$NOTE"
 # An agent the arms below can stand in for: the command runs in the note's
 # folder, so what "the agent" does is whatever agent.sh says at the time, and
 # each arm writes its own. Set before the launch, because the page is told at
-# boot whether the host has an agent at all, and `/ai` is withdrawn without it.
-defaults write "$BIRTA_MAC_DEFAULTS_SUITE" agentEnabled -bool YES
-defaults write "$BIRTA_MAC_DEFAULTS_SUITE" agentCommand -string 'sh agent.sh {prompt}'
-
+# boot whether the host has an agent at all, and `/ai` is withdrawn without it;
+# and after the trap below is armed, so a write that fails leaves no plist
+# behind with nothing to remove it.
 BIRTA_MAC_MEASURE=1 "$APP" 2>"$LOG" &
 PID=$!
 # SIGTERM through the app's own handler, never SIGKILL, which orphans WebKit's
@@ -59,6 +58,8 @@ end_app() {
     PID=""
 }
 trap 'end_app; rm -rf "$DIR"; defaults delete "$BIRTA_MAC_DEFAULTS_SUITE" >/dev/null 2>&1 || true; rm -f "$HOME/Library/Preferences/$BIRTA_MAC_DEFAULTS_SUITE.plist"; rm -f "$LOG"' EXIT
+defaults write "$BIRTA_MAC_DEFAULTS_SUITE" agentEnabled -bool YES
+defaults write "$BIRTA_MAC_DEFAULTS_SUITE" agentCommand -string 'sh agent.sh {prompt}'
 
 failures=0
 checks=0
@@ -287,6 +288,10 @@ case "$(cat "$NOTE")" in
     *"agent wrote this too"*) ;;
     *) fail "the stand-in agent's write never reached the file, so this arm measures nothing" ;;
 esac
+# With the panel up for this arm and the next: a question needs a window to
+# be put on, so "no question in the middle of a run" is only a claim about the
+# run when the window is there to ask it.
+show_panel
 post '{"type":"__testInsertText","text":"typed while the agent worked "}'; sleep 1.5
 checks=$((checks + 1))
 case "$(cat "$NOTE")" in
@@ -340,6 +345,7 @@ case "$(cat "$NOTE")" in
     *) fail "the landing did not keep the third program's change beside the typing: '$(cat "$NOTE")'"; ls -l "$DIR" >&2 ;;
 esac
 expect_no_question_since "$asked_before" "the landing of a third program's change put no question"
+hide_panel
 
 echo "a window that goes before anybody answers"
 # The question needs somebody there, and quitting is when there is nobody. The

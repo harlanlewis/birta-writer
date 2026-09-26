@@ -459,7 +459,7 @@ export type ToExtensionMessage =
     // (Cmd+click, middle click, Cmd+Return); a plain activation moves this
     // window to the file, and where it lands either way is the host's rule.
     // `line` is a document line to land on (1-based, frontmatter counted,
-    // what `scrollToLine` counts): a backlink or a graph edge names where
+    // what `scrollToLine` counts): a backlink names where
     // the other note makes its reference, and the host carries it to the
     // page wherever the file lands, as `scrollToLine` on a fresh `init` or
     // as the `scrollToLine` message to a page already showing the file. An

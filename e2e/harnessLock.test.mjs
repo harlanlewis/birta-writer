@@ -18,9 +18,10 @@
  */
 import { describe, it, expect, afterAll } from "vitest";
 import { mkdtempSync, writeFileSync, readFileSync, existsSync, rmSync } from "node:fs";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { KINDS, LOCK_FILE, tryHarnessLock, refusedBy, kindOf, checkoutOf } from "./harnessLock.mjs";
 
 const THEIRS = "/somewhere/else";
@@ -155,6 +156,33 @@ describe("harnessLock", () => {
         expect(existsSync(file)).toBe(false);
         await new Promise((r) => setTimeout(r, 40));
         expect(existsSync(file), "a released holder writes nothing more").toBe(false);
+    });
+
+    it("a holder whose event loop is blocked should still heartbeat, because the beat is its own process", async () => {
+        // perf-ab's shape: claim, then sit in a synchronous call until done.
+        // A timer in that loop never fires; the beat has to come from outside.
+        const file = lockFile();
+        const module = pathToFileURL(fileURLToPath(new URL("./harnessLock.mjs", import.meta.url))).href;
+        const child = spawn(process.execPath, ["--input-type=module", "-e", [
+            `import { tryHarnessLock } from ${JSON.stringify(module)};`,
+            `const got = tryHarnessLock("blocked", { kind: "capture", file: ${JSON.stringify(file)}, heartbeatMs: 20 });`,
+            `if (got.outcome !== "taken") process.exit(3);`,
+            `Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 500);`,
+            `got.release();`,
+        ].join("\n")], { stdio: "ignore", env: noEnv });
+        const exited = new Promise((r) => child.on("close", r));
+        const readAt = () => JSON.parse(readFileSync(file, "utf8")).at;
+        for (let i = 0; i < 100 && !existsSync(file); i++) await new Promise((r) => setTimeout(r, 10));
+        expect(existsSync(file), "the blocked holder claimed the lock").toBe(true);
+        const first = readAt();
+        let moved = first;
+        for (let i = 0; i < 30 && moved <= first; i++) {
+            await new Promise((r) => setTimeout(r, 10));
+            if (existsSync(file)) moved = readAt();
+        }
+        expect(moved, "the record's `at` moved while the holder's loop was blocked").toBeGreaterThan(first);
+        expect(await exited, "the holder ran to its own release").toBe(0);
+        expect(existsSync(file), "release took the record with it").toBe(false);
     });
 
     it("the heartbeat should never write over somebody else's record", async () => {

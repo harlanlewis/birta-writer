@@ -133,7 +133,7 @@ public enum WebviewMessage: Equatable {
     /// (`OpenRouting.explorerDestination`: this tab, or a new one when
     /// `newTab` says the reader asked for it); anything else opens in its
     /// default app. `line` is the document line to land on, which a backlink
-    /// or a graph edge asks for and an explorer row does not; wherever the
+    /// asks for and an explorer row does not; wherever the
     /// file lands, the page showing it is told (`Coordinator.reveal(line:)`).
     case openProjectFile(path: String, newTab: Bool, line: Int?)
     /// A row was right-clicked at a point in the page, for the host to put its

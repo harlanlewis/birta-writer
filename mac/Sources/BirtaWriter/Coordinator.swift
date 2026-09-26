@@ -2743,7 +2743,7 @@ final class Coordinator {
             measure.trace("diskdrift reread at=\(boundURL.lastPathComponent)")
             rebase(on: settled)
             adoptFromDisk(settled.content)
-            statusOverlay.flash("Reloaded: another app changed this file.")
+            statusOverlay.flash(reloadedNotice)
             return false
         case .conflict(let disk, let stamp):
             measure.trace("diskdrift conflict at=\(boundURL.lastPathComponent)")
@@ -3207,6 +3207,15 @@ final class Coordinator {
         guard state == .warm else { return }
         host.send(.agentRun(requestId: requestId, status: status.status,
                             harness: status.harness, text: status.text, message: status.message))
+    }
+
+    /// What a re-read says. During a run the file that moved is most likely
+    /// the agent's own write landing on a clean panel, and naming another app
+    /// for the edit the reader just asked for is the wrong sentence. Kept out
+    /// of `reconcileWithDisk`, whose one consultation of the run is the
+    /// asking (`ExternalChangeGuardTests` holds that count).
+    private var reloadedNotice: String {
+        agent.hasRunsInFlight ? "Reloaded: the agent changed this file." : "Reloaded: another app changed this file."
     }
 
     /// Take what is on disk as the buffer's new truth.

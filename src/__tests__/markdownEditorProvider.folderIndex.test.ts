@@ -63,8 +63,7 @@ function mountWorkspace(root: string, contents: Record<string, string>): void {
     readFile.mockImplementation(async (uri: vscode.Uri) => new TextEncoder().encode(files[uri.fsPath] ?? ""));
 }
 
-async function open(path: string) {
-    const provider = new MarkdownEditorProvider(makeContext());
+async function open(path: string, provider = new MarkdownEditorProvider(makeContext())) {
     const document = makeFakeTextDocument(files[path] ?? "", vscode.Uri.file(path));
     const panel = makePanel();
     await provider.resolveCustomTextEditor(
@@ -183,12 +182,14 @@ describe("MarkdownEditorProvider: the folder index", () => {
 
     it("the change handler should be registered by the first ask, once, and not at activation", async () => {
         mountWorkspace("/ws", { "/ws/note.md": "", "/ws/other.md": "" });
-        const { handler } = await open("/ws/note.md");
+        const { provider, handler } = await open("/ws/note.md");
         expect(watcher().changeHandlers).toBe(0);
         await handler({ type: "requestFolderIndex" });
         await settle();
         expect(watcher().changeHandlers).toBe(1);
-        const second = await open("/ws/other.md");
+        // A second panel on the SAME provider, or the "once" would be measured
+        // on a second provider's own watcher and hold whatever the code did.
+        const second = await open("/ws/other.md", provider);
         await second.handler({ type: "requestFolderIndex" });
         await settle();
         expect(watcher().changeHandlers).toBe(1);
