@@ -67,9 +67,9 @@
  * the holder, because the holder's event loop cannot be counted on: the A/B
  * runner sits in synchronous child calls from its claim to its exit, and a
  * timer there would never fire, which is the one runner the heartbeat is
- * for. The process watches the holder's pid and stops by itself when the
- * holder is gone; it is unref'd and detached, so a finished run is never
- * kept alive by it.
+ * for. The process asks whether the holder is still its parent and stops by
+ * itself when the holder is gone; it is unref'd and detached, so a finished
+ * run is never kept alive by it.
  *
  * ── Re-entrant for descendants ───────────────────────────────────────────
  *
@@ -297,7 +297,9 @@ export function tryHarnessLock(what, opts) {
         const current = readHolder(file);
         if (!current || current.token === token) rmSync(file, { force: true });
     };
-    return { outcome: "taken", token, held: true, release };
+    // `heartbeatPid` is diagnostic: which process is beating this record,
+    // for a reader of the lock and for the tests that hold the beat still.
+    return { outcome: "taken", token, held: true, release, heartbeatPid: beat.pid };
 }
 
 /**

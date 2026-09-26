@@ -227,6 +227,24 @@ describe("harnessLock", () => {
         rmSync(file, { force: true });
     });
 
+    it("a heartbeat whose holder is not its parent should exit without touching the record", async () => {
+        // What tells this liveness check from one by pid: pid 1 is alive,
+        // and a beat asking `kill(1, 0)` would go on beating a record for a
+        // holder that is long gone; asking whether 1 is its parent, it stops
+        // at its first tick and the record never moves.
+        const file = lockFile();
+        const planted = plant(file, { token: "orphaned", kind: "capture", pid: 1, at: Date.now() - 1000 });
+        const script = fileURLToPath(new URL("./harnessHeartbeat.mjs", import.meta.url));
+        const beat = spawn(process.execPath, [script, file, "orphaned", "1", "10"], { stdio: "ignore", env: noEnv });
+        const exit = await Promise.race([
+            new Promise((r) => beat.on("close", (code) => r({ exited: true, code }))),
+            new Promise((r) => setTimeout(() => r({ exited: false }), 1500)),
+        ]);
+        if (!exit.exited) beat.kill();
+        expect(exit.exited, "the beat kept running for a holder that is not its parent").toBe(true);
+        expect(JSON.parse(readFileSync(file, "utf8")), "the beat rewrote a record that is not its holder's").toEqual(planted);
+    });
+
     it("the heartbeat should never write over somebody else's record", async () => {
         const file = lockFile();
         const got = take("mine", { kind: "capture", file, heartbeatMs: 10 });
@@ -236,7 +254,14 @@ describe("harnessLock", () => {
         // never started passes this for the wrong reason.
         const first = JSON.parse(readFileSync(file, "utf8")).at;
         expect(await beatAfter(file, first), "the heartbeat reached its subject").not.toBeNull();
+        // The beat is held still while the file changes hands, as it is in
+        // production: a reclaim happens over a stale or dead record, whose
+        // beat has already exited. Planting under a live beat would race its
+        // read-and-rename, and lose to it once in a while for no reason
+        // this test is about.
+        process.kill(got.heartbeatPid, "SIGSTOP");
         const theirs = plant(file, { token: "somebody-else", kind: "capture", at: Date.now() - 1000 });
+        process.kill(got.heartbeatPid, "SIGCONT");
         await new Promise((r) => setTimeout(r, 80));
         expect(JSON.parse(readFileSync(file, "utf8")), "a reclaimed file is theirs to heartbeat").toEqual(theirs);
         got.release();

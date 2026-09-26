@@ -271,15 +271,18 @@ esac
 expect_no_question_since "$asked_before" "a run's own landing is not somebody else's change"
 
 echo "an /ai run's own write, with typing during the run"
-# The same run, with a sentence typed after the agent has written. The panel
-# is clean when the agent writes, so the app notices the write and takes it
-# (a re-read, as for any file that moved under a clean buffer), and the typing
-# then lands in the agent's text and is saved with it. What the old guard
-# did instead was not look, so the typing's autosave wrote the buffer over the
-# agent's file. The panel is up for this arm and the next: a question needs a
-# window to be put on, so "no question in the middle of a run" is only a
-# claim about the run when the window is there to ask it, and up BEFORE the
-# run, so the summon's own look at the disk is not what this arm counts.
+# The same run, with a sentence typed after the agent has written. The
+# agent's `printf >` reaches no presenter (the header above), so the first
+# look at the disk after it is whichever comes first: the typing's autosave,
+# which finds a dirty buffer and refuses the write (a conflict), or a look
+# with the buffer still clean, which takes the file (a re-read). Either is
+# the write being NOTICED, which is what the old guard withheld: it did not
+# look, so the typing's autosave wrote the buffer over the agent's file.
+# Whichever way, the file keeps the agent's text and the landing folds the
+# typing into it. The panel is up for this arm and the next: a question
+# needs a window to be put on, so "no question in the middle of a run" is
+# only a claim about the run when the window is there to ask it, and up
+# BEFORE the run, so the summon's own look is not what this arm counts.
 show_panel
 asked_before=$(traces "diskdrift asked")
 noticed_before=$(( $(traces "diskdrift conflict") + $(traces "diskdrift reread") ))

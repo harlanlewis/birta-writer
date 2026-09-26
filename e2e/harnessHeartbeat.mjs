@@ -5,8 +5,8 @@
 // loop is not something this can count on: `perf-ab.mjs` takes the lock and
 // then sits in synchronous child calls (the builds, then the whole compare)
 // until it exits, and a timer in that loop never fires. This one runs its own
-// loop, watches the holder's pid, and stops on its own when the holder is
-// gone or the record is no longer the holder's.
+// loop, asks whether the holder is still its parent, and stops on its own
+// when it is gone or the record is no longer the holder's.
 //
 // Usage: node harnessHeartbeat.mjs <lockFile> <token> <holderPid> <intervalMs>
 import { readFileSync, writeFileSync, renameSync, rmSync } from "node:fs";
