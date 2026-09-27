@@ -164,6 +164,42 @@ final class CliInvocationTests: XCTestCase {
         }
     }
 
+    /// A directory window has no document to close.
+    func testWaitOnAFolderShouldBeRefused() {
+        let path = "\(cwd)/notes"
+        XCTAssertThrowsError(try parse(["--wait", "notes"], tree: [path: .directory])) { error in
+            XCTAssertEqual(error as? CliInvocation.Failure, .waitOnDirectory(path))
+        }
+    }
+
+    /// `EDITOR='bwr --wait' git commit` names `COMMIT_EDITMSG`, so under
+    /// `--wait` alone a file with no extension is admitted, existing or not;
+    /// the caller chose it. Without the flag the same name is still refused,
+    /// which is the row `testAFileTheEditorDoesNotOpenShouldBeRefused` holds.
+    func testAnExtensionlessFileShouldBeAdmittedUnderWaitAlone() throws {
+        for name in ["COMMIT_EDITMSG", "git-rebase-todo"] {
+            let path = "\(cwd)/.git/\(name)"
+            let existing = try parse(["--wait", ".git/\(name)"], tree: [path: .file])
+            XCTAssertTrue(existing.waitsForClose)
+            XCTAssertEqual(existing.action, .open([.existing(URL(fileURLWithPath: path))]), name)
+            let missing = try parse(["--wait", ".git/\(name)"], tree: ["\(cwd)/.git": .directory])
+            XCTAssertEqual(missing.action, .open([.create(URL(fileURLWithPath: path))]), name)
+            XCTAssertThrowsError(try parse([".git/\(name)"], tree: [path: .file]), "\(name) without --wait") { error in
+                XCTAssertEqual(error as? CliInvocation.Failure, .unsupportedFile(".git/\(name)"))
+            }
+        }
+    }
+
+    /// The widening is one class, not the whole allowlist: a name that SAYS
+    /// what the file is stays refused under `--wait` too.
+    func testAFileWithAnotherExtensionShouldStayRefusedUnderWait() {
+        for name in ["notes.txt", "shot.png", "notes.md.bak"] {
+            XCTAssertThrowsError(try parse(["--wait", name], tree: ["\(cwd)/\(name)": .file]), name) { error in
+                XCTAssertEqual(error as? CliInvocation.Failure, .unsupportedFile(name), name)
+            }
+        }
+    }
+
     func testEverythingAfterADoubleHyphenShouldBeAPath() throws {
         let path = "\(cwd)/-weird.md"
         let request = try parse(["--", "-weird.md"], tree: [path: .file])
@@ -195,6 +231,7 @@ final class CliInvocationTests: XCTestCase {
         XCTAssertTrue(CliInvocation.Failure.unsupportedFile("Makefile").message.contains("Makefile"))
         XCTAssertTrue(CliInvocation.Failure.noSuchDirectory("/a/b").message.contains("/a/b"))
         XCTAssertFalse(CliInvocation.Failure.waitWithoutFile.message.isEmpty)
+        XCTAssertTrue(CliInvocation.Failure.waitOnDirectory("/a/notes").message.contains("/a/notes"))
         XCTAssertFalse(CliInvocation.Failure.standardInputWithFiles.message.isEmpty)
     }
 

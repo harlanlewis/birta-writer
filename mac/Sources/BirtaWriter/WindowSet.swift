@@ -921,7 +921,13 @@ final class WindowSet {
             openDirectory(at: target)
             return
         }
-        guard DocumentTypes.accepts(target) else {
+        // The allowlist, widened by exactly the file a shell has declared it
+        // is waiting on: `bwr --wait` admits an extensionless file because the
+        // caller chose it (`git commit` names `COMMIT_EDITMSG`), and it
+        // registers the wait before the open so this end can tell that file
+        // from a stray `Makefile`. `CliInvocation.target(for:)` is the other
+        // half and says why the class is safe to admit.
+        guard DocumentTypes.accepts(target) || waits.isWaiting(on: target.path) else {
             summonAll()
             key?.flashStatus("Birta Writer does not open \(target.lastPathComponent).")
             return
@@ -1030,11 +1036,16 @@ final class WindowSet {
     /// window where it is.
     func close(_ coordinator: Coordinator) {
         guard TabGroupPolicy.whatCloseDoes(windows: windows.count) == .closeTab else {
-            dismissAll()
+            closeLastWindow(coordinator)
             return
         }
+        let file = coordinator.boundFile
+        let failuresBefore = coordinator.writeFailures
         coordinator.prepareToClose { [weak self] proceed in
             guard proceed, let self else { return }
+            // The bytes the close decided on have landed: `prepareToClose`
+            // waits for its write. A shell blocked on this file hears now.
+            self.documentClosed(coordinator, file: file, failuresBefore: failuresBefore)
             // The file this window was on joins the recents list, and closing
             // is the second of the only two ways a file stops being on screen.
             // `Coordinator.boundURL`'s `didSet` records the other, a rebind,
@@ -1075,8 +1086,11 @@ final class WindowSet {
         func next() {
             guard !remaining.isEmpty else { return }
             let tab = remaining.removeFirst()
+            let file = tab.boundFile
+            let failuresBefore = tab.writeFailures
             tab.prepareToClose { [weak self] proceed in
                 guard proceed, let self else { return }
+                self.documentClosed(tab, file: file, failuresBefore: failuresBefore)
                 Prefs.rememberRecent(tab.boundFile)
                 if tab.bindingSlot == .document { Prefs.documentURL = nil }
                 self.windows.removeAll { $0 === tab }
@@ -1088,6 +1102,74 @@ final class WindowSet {
             }
         }
         next()
+    }
+
+    /// Cmd+W on the last window, which hides rather than closes.
+    ///
+    /// For a file a shell is blocked on in `bwr --wait` the hide is not
+    /// enough: a hide writes only with autosave on, and the shell is about to
+    /// read the file. So the buffer is first settled the way a close settles
+    /// it, sheet included (`Coordinator.settleForWaitingShell`), and the
+    /// window hides afterwards exactly as it otherwise would; Cancel on that
+    /// sheet leaves it up. Every other last window hides as it always did.
+    private func closeLastWindow(_ coordinator: Coordinator) {
+        let file = coordinator.boundFile
+        guard waits.isWaiting(on: file.path) else {
+            dismissAll()
+            return
+        }
+        let failuresBefore = coordinator.writeFailures
+        coordinator.settleForWaitingShell { [weak self] answer in
+            guard let self, answer != .cancel else { return }
+            self.dismissAll()
+            self.documentClosed(coordinator, file: file, failuresBefore: failuresBefore)
+        }
+    }
+
+    // MARK: a shell waiting on a document
+
+    /// The shells blocked in `bwr --wait`, by the file each waits on.
+    ///
+    /// `ControlSocket.Waits` is the rule for what ends a wait and with what
+    /// answer. What is here is which gesture is which exit: a tab closing
+    /// (`close`), a window closing (`closeWindow`), the last window's Cmd+W
+    /// (`closeLastWindow`), and a quit (`prepareToTerminate`), each answering
+    /// only once the bytes that exit decided on have landed. A wait is also
+    /// what admits a file the app would otherwise turn away (`openDocument`).
+    private(set) var waits = ControlSocket.Waits()
+
+    /// Sends an answer to its shell. The app's `ControlListener` installs it;
+    /// without one every answer is dropped and no wait ever ends, which is
+    /// what a shell sees when the app could not bind its socket at launch.
+    var answerShell: ((ControlSocket.Waits.Answer) -> Void)?
+
+    /// A shell has asked to be told when the document at `path` is closed.
+    func shellWaits(_ connection: ControlSocket.Waits.Connection, on path: String) {
+        answer(waits.register(connection, path: path))
+    }
+
+    /// The shell went away first. Its wait is forgotten and nothing changes
+    /// for the document.
+    func shellWentAway(_ connection: ControlSocket.Waits.Connection) {
+        waits.forget(connection)
+    }
+
+    private func answer(_ answers: [ControlSocket.Waits.Answer]) {
+        answers.forEach { answerShell?($0) }
+    }
+
+    /// A document a shell may be waiting on has closed and its close has
+    /// settled the file, for better or worse.
+    ///
+    /// `failuresBefore` is `coordinator.writeFailures` read before the
+    /// gesture began: a count that moved means the close's own write threw,
+    /// and the shell is told so rather than told the document closed.
+    private func documentClosed(_ coordinator: Coordinator, file: URL, failuresBefore: Int) {
+        guard waits.isWaiting(on: file.path) else { return }
+        let outcome: ControlSocket.CloseOutcome = coordinator.writeFailures > failuresBefore
+            ? .writeFailed(coordinator.lastWriteFailure ?? "the write failed")
+            : .written
+        answer(waits.documentClosed(file.path, outcome: outcome))
     }
 
     /// The windows sharing `coordinator`'s tab bar, in bar order,
@@ -1275,6 +1357,11 @@ final class WindowSet {
                 // next launch restores, and there is no next turn.
                 recordOpenSet()
                 releaseHotkey()
+                // Every window has written what it is going to. A shell still
+                // waiting on any of them is told the app quit, which is not a
+                // close: git treats an editor that went away as an
+                // interrupted edit, and so does this.
+                answer(waits.quitting())
                 done(true)
                 return
             }
