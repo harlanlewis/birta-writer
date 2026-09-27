@@ -12,6 +12,10 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ## [Unreleased]
 
+### Added
+
+- `bwr --wait` in Birta Writer for Mac: the command blocks until the document is closed and the bytes that close decided on are on disk, then exits 0, so `EDITOR='bwr --wait' git commit` works. The file opens as a tab beside the note you were on and takes no place of its own, so closing that tab ends the wait and leaves the window on your note. Closing the window and quitting end it too; on a lone window, Cmd+W settles the buffer the way a close does (asking, with autosave off) before it hides. A second `bwr --wait` on the same file ends the first with a nonzero exit, and so do a quit and a write that fails, each with a sentence saying why. Under `--wait` alone a file with no extension is opened, since that is what git names its message files; without the flag it is still refused.
+
 ### Fixed
 
 - An `/ai` run in Birta Writer for Mac no longer starts when the save it makes first is refused because another app changed the file and the panel holds edits of its own. Before, the run started anyway, from the panel rather than from the file, and if nothing was typed while it worked its landing read the agent's version over those edits. Now the run is refused with a message naming the question to answer (Reload from Disk or Keep My Changes), and the same request goes through once it is answered.

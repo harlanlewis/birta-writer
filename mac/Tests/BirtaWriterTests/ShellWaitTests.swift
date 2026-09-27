@@ -141,6 +141,25 @@ final class ShellWaitTests: XCTestCase {
         XCTAssertTrue(body.contains("DocumentTypes.accepts(target) || waits.isWaiting(on: target.path)"))
     }
 
+    /// A waited file is a passing edit and lands as a tab of the front window
+    /// with no app-wide slot, so closing it ends the wait and leaves the
+    /// window on the note it held. Opened in place, the note window and the
+    /// document setting would stay bound to a file git deletes the moment
+    /// the wait ends, and the next summon would open on a missing file.
+    func testAFileAShellWaitsOnShouldOpenAsATabAndTakeNoSlot() throws {
+        let text = try source("BirtaWriter/WindowSet.swift")
+        let body = try body(of: "func openDocument(at url: URL)", in: text)
+        let branch = try XCTUnwrap(body.range(of: "if waits.isWaiting(on: target.path), let host = key {"),
+                                   "the waited file no longer takes its own route")
+        let route = try XCTUnwrap(body.range(of: "switch routed {"))
+        XCTAssertTrue(branch.lowerBound < route.lowerBound, "the route is decided before the ordinary arms run")
+        let arm = body[branch.lowerBound..<route.lowerBound]
+        XCTAssertTrue(arm.contains("if case .existing = routed {} else {"), "a file already open is fronted, not opened twice")
+        XCTAssertTrue(arm.contains("makeWindow(on: target, slot: nil, inGroupOf: host"),
+                      "a tab of the front window, holding no slot")
+        XCTAssertFalse(arm.contains("Prefs.documentURL = target"), "the document setting must not follow a passing file")
+    }
+
     /// The settle is a slice of a close and must stay one: the decision the
     /// close makes, and the mark that would skip the next quit's last-chance
     /// write taken back, since this window is not going.

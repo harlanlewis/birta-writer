@@ -940,6 +940,19 @@ final class WindowSet {
             looseFilesOpenInTab: Prefs.openFilesIn == .tab,
             sameFile: Self.sameFile,
             isInside: { DirectoryListing.isInside(URL(fileURLWithPath: $0), root: URL(fileURLWithPath: $1, isDirectory: true)) })
+        // A file a shell is blocked on is a passing edit (git's message
+        // file, which git deletes once the wait ends), so it lands as a tab
+        // of the front window and takes no app-wide slot: closing that tab
+        // ends the wait and leaves the window on the note it held, where an
+        // open in place would have left the note window, and the document
+        // setting, bound to a file that is about to be gone (MAR-466). A
+        // file already open is fronted as any other.
+        if waits.isWaiting(on: target.path), let host = key {
+            if case .existing = routed {} else {
+                open(makeWindow(on: target, slot: nil, inGroupOf: host, explorerRoot: host.explorerRoot))
+                return
+            }
+        }
         switch routed {
         case let .existing(index):
             let open = windows[index]
