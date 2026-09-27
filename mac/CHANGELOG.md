@@ -12,6 +12,11 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ## [Unreleased]
 
+### Fixed
+
+- An `/ai` command that leaves a process printing without pause no longer keeps Birta Writer for Mac's corner saying the run is live for as long as that process prints, nor grows the transcript in memory the whole time: the app reads at its own pace and the printer waits on its pipe, so the exit is reported and the pipe is closed half a second later as for any other run.
+- While an `/ai` run is working, a note in Birta Writer for Mac that reloads with the agent's write now says the agent changed the file, rather than naming another app for the edit you asked for.
+
 ---
 
 ## [2026.924.0] - 2026, September 24

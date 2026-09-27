@@ -478,7 +478,7 @@ final class AgentRunnerTests: XCTestCase {
         let dir = try makeNote("# Note\n")
         defer { try? FileManager.default.removeItem(at: dir) }
         let reports = run(
-            template: "true {prompt} ; { sleep 1.5 ; printf late 2>/dev/null ; printf rc=$? > marker.txt ; } & printf early",
+            template: "true {prompt} ; { sleep 1.5 ; touch tried.txt ; printf late 2>/dev/null ; printf rc=$? > marker.txt ; } & printf early",
             in: dir)
         XCTAssertEqual(reports.last?.status, "done")
         // `run` returned past the report and the throttle's settle; the rest
@@ -487,8 +487,32 @@ final class AgentRunnerTests: XCTestCase {
         written.isInverted = true
         wait(for: [written], timeout: 2.5)
 
+        // The instrument reached its subject: a grandchild that never got to
+        // its write would leave no marker either, and read as SIGPIPE.
+        XCTAssertTrue(FileManager.default.fileExists(atPath: dir.appendingPathComponent("tried.txt").path),
+                      "the grandchild never reached its write, so nothing below is about the pipe")
         let marker = try? String(contentsOf: dir.appendingPathComponent("marker.txt"), encoding: .utf8)
         XCTAssertNotEqual(marker, "rc=0", "the grandchild's write after the report went into a buffer")
+    }
+
+    /// A grandchild writing without pause, across the grace. Two things it
+    /// holds. The report arrives at all: a drain that queued one task per
+    /// chunk fell behind a flood and the exit and the grace's finish waited
+    /// behind an unbounded backlog, so the run said `running` for as long as
+    /// the flood lasted (found by this test's first run). And the close at
+    /// the grace races a readability handler already running for the same
+    /// pipe, where a read on a closed handle raises an Objective-C exception
+    /// Swift cannot catch; the drain takes both under one lock. Several
+    /// times, since that window is narrow.
+    func testAGrandchildWritingWithoutPauseAcrossTheGraceShouldNotCrashTheDrain() throws {
+        let dir = try makeNote("# Note\n")
+        defer { try? FileManager.default.removeItem(at: dir) }
+        for _ in 0..<4 {
+            let reports = run(
+                template: "true {prompt} ; { while : ; do printf x 2>/dev/null || exit 0 ; done ; } & sleep 0.2",
+                in: dir)
+            XCTAssertEqual(reports.last?.status, "done")
+        }
     }
 
     func testTheFirstReportShouldBeRunningWithTheHarnessName() throws {

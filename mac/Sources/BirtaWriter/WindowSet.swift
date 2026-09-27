@@ -491,7 +491,7 @@ final class WindowSet {
     /// window fronts that window rather than opening a second buffer over one
     /// path. `OpenRouting.explorerDestination`'s header has the argument.
     ///
-    /// `line` is the document line a backlink or a graph edge asked to land
+    /// `line` is the document line a backlink asked to land
     /// on, nil for a row and for Go to File. The routing does not read it,
     /// because it changes nothing about WHERE the file lands; every arm
     /// hands it to the page that ends up showing the file, through

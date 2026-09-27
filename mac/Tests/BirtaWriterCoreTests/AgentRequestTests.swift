@@ -44,6 +44,16 @@ final class AgentRequestTests: XCTestCase {
         XCTAssertNil(AgentRequest.skillPrefix(route: "claude -p {prompt}", skill: nil))
     }
 
+    /// The extension's two reserved routes are words, not binaries, and the
+    /// Chat view reads a leading slash as its own command. The app has no
+    /// such route; the case is mirrored because askAgent.test.ts carries it.
+    func testAReservedRouteShouldNeverGetASlash() {
+        XCTAssertEqual(AgentRequest.skillPrefix(route: "chat", skill: "house-style"),
+                       .init(name: "house-style", form: .prose))
+        XCTAssertEqual(AgentRequest.skillPrefix(route: "clipboard", skill: "house-style"),
+                       .init(name: "house-style", form: .prose))
+    }
+
     func testShellQuoteShouldSingleQuoteAndEscapeEmbeddedSingleQuotes() {
         XCTAssertEqual(AgentRequest.shellQuote("it's $HOME `x`"), "'it'\\''s $HOME `x`'")
     }

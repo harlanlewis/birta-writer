@@ -299,6 +299,22 @@ describe("askAgentAdvanced", () => {
         await settle();
     });
 
+    it("a chosen skill should reach the command as a prefix on the quoted line, spelled for the route", async () => {
+        configureRoute("claude -p {prompt}");
+        makeFakeTextDocument("# Plan\n", noteUri);
+
+        await askAgentAdvanced(() => Promise.resolve(activeAt(1)), reporter().report, {
+            prompt: "tighten this", requestId: "ai1", skill: "house-style",
+        });
+
+        const line = spawnMock.mock.calls[0]![0] as string;
+        // Inside the shell quotes, so it is text the harness reads rather
+        // than a flag the shell does; and slash-form, since the route runs claude.
+        expect(line).toContain("'/house-style In ");
+        expect(line).not.toContain("--skill");
+        await settle();
+    });
+
     it("choosing a model should never rewrite the setting", async () => {
         // A model picked for one edit is a choice about that edit. Writing it
         // back would turn it into a preference the user never asked to change.

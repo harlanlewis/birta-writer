@@ -233,6 +233,12 @@ final class ExternalChangeGuardTests: XCTestCase {
                       + "standing down for every writer while an agent works")
         XCTAssertEqual(code.components(separatedBy: "agent.hasRunsInFlight").count - 1, 1,
                        "the run is consulted in one place, the asking, and nowhere before it")
+        // The negation is the rule: a run in flight SUPPRESSES the question.
+        // The order and count above hold with the sense inverted, and the
+        // script's arms cannot see the sense at all when the window is down.
+        XCTAssertTrue(code.contains("if asking, !agent.hasRunsInFlight {"),
+                      "a conflict during a run must refuse the write and not ask; "
+                      + "the ask is the one thing the run withholds")
     }
 
     /// The other side of the same rule: a summon is where a stale panel is

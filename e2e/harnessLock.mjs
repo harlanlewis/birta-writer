@@ -62,8 +62,14 @@
  * with repetitions, and without the heartbeat the longest capture in this
  * repository would be reaped out from under itself, a second harness would
  * start on top of it, and both sets of numbers would be silently wrong. That
- * is the failure the lock exists to prevent, so the timer is not optional.
- * It is unref'd, so a finished run is never kept alive by it.
+ * is the failure the lock exists to prevent, so the heartbeat is not optional.
+ * It is a process of its own (harnessHeartbeat.mjs) rather than a timer in
+ * the holder, because the holder's event loop cannot be counted on: the A/B
+ * runner sits in synchronous child calls from its claim to its exit, and a
+ * timer there would never fire, which is the one runner the heartbeat is
+ * for. The process asks whether the holder is still its parent and stops by
+ * itself when the holder is gone; it is unref'd and detached, so a finished
+ * run is never kept alive by it.
  *
  * ── Re-entrant for descendants ───────────────────────────────────────────
  *
@@ -92,12 +98,15 @@
  * count while every lock file on the machine is free. A red in a heavy suite
  * with the lock uncontended still means look at `ps` before believing it.
  */
-import { readFileSync, writeFileSync, renameSync, rmSync, existsSync } from "node:fs";
+import { readFileSync, writeFileSync, rmSync, existsSync } from "node:fs";
+import { spawn } from "node:child_process";
 import { dirname, join, resolve, sep } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 
 export const LOCK_FILE = join(tmpdir(), "hl-harness.lock");
+/** The heartbeat's own process; see its header for why it is not a timer here. */
+const HEARTBEAT_SCRIPT = fileURLToPath(new URL("./harnessHeartbeat.mjs", import.meta.url));
 const TOKEN_VAR = "WF_HARNESS_LOCK_TOKEN";
 const OVERRIDE_VAR = "BIRTA_NO_HARNESS_LOCK";
 // Thresholds, not measurements: how long a holder may go without reporting
@@ -150,8 +159,10 @@ export function refusedBy(mine, holder) {
  *
  * The residual hole is pid reuse: a record stranded by a kill, whose pid the
  * system later hands to something unrelated, reads as held until its `at`
- * ages past STALE_MS, which the heartbeat no longer refreshes. So the hole
- * costs a reader thirty minutes at most, and the refusal names the override.
+ * ages past STALE_MS. The heartbeat does not refresh it, because it asks
+ * whether the holder is still its parent rather than whether the pid is
+ * alive (harnessHeartbeat.mjs). So the hole costs a reader thirty minutes
+ * at most, and the refusal names the override.
  */
 function isAlive(pid) {
     if (!Number.isInteger(pid)) return false;
@@ -260,34 +271,35 @@ export function tryHarnessLock(what, opts) {
     }
     if (!claimed) return { outcome: "refused", code: 2, message: "\nharness lock: another run won the race for it.\n" };
 
-    // The heartbeat. Only ever over our own record: by the time it fires, a
-    // file reaped and reclaimed by somebody else is theirs to write. Written
-    // beside the file and renamed over it, so no reader ever sees the beat
-    // half-written; a write that fails is not worth failing a capture over,
-    // and the next claim decides what the lock's state means.
-    const beatFile = `${file}.${token}.beat`;
-    const beat = setInterval(() => {
-        if (readHolder(file)?.token !== token) return;
-        try {
-            writeFileSync(beatFile, JSON.stringify({ ...holder, at: Date.now() }));
-            renameSync(beatFile, file);
-        } catch {
-            rmSync(beatFile, { force: true });
-        }
-    }, heartbeatMs);
+    // The heartbeat, as its own process (see the header): it rewrites `at`
+    // on our record every heartbeatMs, only ever over our own record, and
+    // stops by itself once we are gone or the file is somebody else's.
+    // Detached and unref'd, so it neither holds this process open nor dies
+    // with a signal aimed at it alone; released below by pid.
+    const beat = spawn(process.execPath, [HEARTBEAT_SCRIPT, file, token, String(process.pid), String(heartbeatMs)],
+        { detached: true, stdio: "ignore" });
     beat.unref();
+    // A spawn that fails (the file-descriptor or process ceilings a loaded
+    // machine hits) reports on the next tick, and unhandled it would end the
+    // holder at its claim. A capture with no heartbeat is still a capture;
+    // it is only reapable after STALE_MS, so say so and carry on.
+    beat.on("error", (err) => {
+        process.stderr.write(`harness lock: no heartbeat (${err.code ?? err.message}); a run past the staleness ceiling can be reaped\n`);
+    });
 
     let released = false;
     const release = () => {
         if (released) return;
         released = true;
-        clearInterval(beat);
+        try { beat.kill(); } catch { /* already gone */ }
         // Only ours: a reaped-and-retaken lock must not be deleted by the
         // process whose corpse was reaped.
         const current = readHolder(file);
         if (!current || current.token === token) rmSync(file, { force: true });
     };
-    return { outcome: "taken", token, held: true, release };
+    // `heartbeatPid` is diagnostic: which process is beating this record,
+    // for a reader of the lock and for the tests that hold the beat still.
+    return { outcome: "taken", token, held: true, release, heartbeatPid: beat.pid };
 }
 
 /**

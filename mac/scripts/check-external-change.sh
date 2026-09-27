@@ -43,15 +43,15 @@ LOG="$(mktemp -t mac-external-change)"
 printf 'first line\n' > "$NOTE"
 # An agent the arms below can stand in for: the command runs in the note's
 # folder, so what "the agent" does is whatever agent.sh says at the time, and
-# each arm writes its own. Set before the launch, because the page is told at
-# boot whether the host has an agent at all, and `/ai` is withdrawn without it.
-defaults write "$BIRTA_MAC_DEFAULTS_SUITE" agentEnabled -bool YES
-defaults write "$BIRTA_MAC_DEFAULTS_SUITE" agentCommand -string 'sh agent.sh {prompt}'
-
-BIRTA_MAC_MEASURE=1 "$APP" 2>"$LOG" &
-PID=$!
+# each arm writes its own. Written before the launch, because the page is told
+# at boot whether the host has an agent at all, and `/ai` is withdrawn without
+# it; and after the trap is armed, so a write that fails leaves no plist
+# behind with nothing to remove it. `end_app` tolerates an empty PID, which
+# is what the trap sees if the launch itself is what fails.
+#
 # SIGTERM through the app's own handler, never SIGKILL, which orphans WebKit's
 # helpers. The ONE exit trap: a second `trap ... EXIT` replaces this one.
+PID=""
 end_app() {
     [ -n "${PID:-}" ] || return 0
     kill "$PID" 2>/dev/null || true
@@ -59,6 +59,10 @@ end_app() {
     PID=""
 }
 trap 'end_app; rm -rf "$DIR"; defaults delete "$BIRTA_MAC_DEFAULTS_SUITE" >/dev/null 2>&1 || true; rm -f "$HOME/Library/Preferences/$BIRTA_MAC_DEFAULTS_SUITE.plist"; rm -f "$LOG"' EXIT
+defaults write "$BIRTA_MAC_DEFAULTS_SUITE" agentEnabled -bool YES
+defaults write "$BIRTA_MAC_DEFAULTS_SUITE" agentCommand -string 'sh agent.sh {prompt}'
+BIRTA_MAC_MEASURE=1 "$APP" 2>"$LOG" &
+PID=$!
 
 failures=0
 checks=0
@@ -267,13 +271,19 @@ esac
 expect_no_question_since "$asked_before" "a run's own landing is not somebody else's change"
 
 echo "an /ai run's own write, with typing during the run"
-# The same run, with a sentence typed after the agent has written. Autosave
-# fires on the keystroke, and the file it would write over is the agent's:
-# the write has to be refused, as it is for any file that moved, and the
-# landing folds the agent's text around what was typed. No question is put in
-# the middle of a run, because at that moment nothing can tell the run's own
-# write from a third program's, and asking about the file the user just asked
-# an agent to rewrite is the wrong question for the case that happens.
+# The same run, with a sentence typed after the agent has written. The
+# agent's `printf >` reaches no presenter (the header above), so the first
+# look at the disk after it is whichever comes first: the typing's autosave,
+# which finds a dirty buffer and refuses the write (a conflict), or a look
+# with the buffer still clean, which takes the file (a re-read). Either is
+# the write being NOTICED, which is what the old guard withheld: it did not
+# look, so the typing's autosave wrote the buffer over the agent's file.
+# Whichever way, the file keeps the agent's text and the landing folds the
+# typing into it. The panel is up for this arm and the next: a question
+# needs a window to be put on, so "no question in the middle of a run" is
+# only a claim about the run when the window is there to ask it, and up
+# BEFORE the run, so the summon's own look is not what this arm counts.
+show_panel
 asked_before=$(traces "diskdrift asked")
 noticed_before=$(( $(traces "diskdrift conflict") + $(traces "diskdrift reread") ))
 start_run 'touch run-started
@@ -340,6 +350,7 @@ case "$(cat "$NOTE")" in
     *) fail "the landing did not keep the third program's change beside the typing: '$(cat "$NOTE")'"; ls -l "$DIR" >&2 ;;
 esac
 expect_no_question_since "$asked_before" "the landing of a third program's change put no question"
+hide_panel
 
 echo "a window that goes before anybody answers"
 # The question needs somebody there, and quitting is when there is nobody. The

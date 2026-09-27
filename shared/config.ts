@@ -495,7 +495,7 @@ export const BIRTA_CONFIG_DEFAULTS: BirtaConfig = {
     floatingToolbarItems: {},
     smartLinks: true,
     // The folder graph ships OFF in VS Code: a user who never turns it on
-    // pays nothing for it, not a walk, not a read, not a watcher handler.
+    // pays nothing for it, not a walk, not a read, not a change handler.
     folderGraph: false,
     // Logseq handling ships OFF: a user who does not keep a Logseq graph pays
     // nothing for it, not even the ancestor stat walk that `auto` runs on open.

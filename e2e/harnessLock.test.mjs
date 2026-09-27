@@ -18,9 +18,10 @@
  */
 import { describe, it, expect, afterAll } from "vitest";
 import { mkdtempSync, writeFileSync, readFileSync, existsSync, rmSync } from "node:fs";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { KINDS, LOCK_FILE, tryHarnessLock, refusedBy, kindOf, checkoutOf } from "./harnessLock.mjs";
 
 const THEIRS = "/somewhere/else";
@@ -142,27 +143,126 @@ describe("harnessLock", () => {
         got.release();
     });
 
+    /** The record's `at` once it has moved past `after`, or null if it never does within the wait. */
+    async function beatAfter(file, after, waitMs = 3000) {
+        const deadline = Date.now() + waitMs;
+        while (Date.now() < deadline) {
+            try {
+                const record = JSON.parse(readFileSync(file, "utf8"));
+                if (record.at > after) return record;
+            } catch {
+                // Between the create and the write, or between a beat and its rename.
+            }
+            await new Promise((r) => setTimeout(r, 10));
+        }
+        return null;
+    }
+
     it("a holder should heartbeat `at` while it holds, and stop when released", async () => {
+        // The beat is a process of its own, so its first tick waits on a
+        // Node start; polled rather than slept for, or a loaded machine
+        // reads a beat that had not happened yet as a beat that never would.
         const file = lockFile();
         const got = take("mine", { kind: "capture", file, heartbeatMs: 10 });
         expect(got.outcome).toBe("taken");
         const first = JSON.parse(readFileSync(file, "utf8")).at;
-        await new Promise((r) => setTimeout(r, 60));
-        const beat = JSON.parse(readFileSync(file, "utf8"));
-        expect(beat.at, "the record's `at` moved while held").toBeGreaterThan(first);
+        const beat = await beatAfter(file, first);
+        expect(beat, "the record's `at` moved while held").not.toBeNull();
         expect(beat.token, "the heartbeat rewrote our record, not a new one").toBe(got.token);
         got.release();
         expect(existsSync(file)).toBe(false);
-        await new Promise((r) => setTimeout(r, 40));
+        await new Promise((r) => setTimeout(r, 60));
         expect(existsSync(file), "a released holder writes nothing more").toBe(false);
+    });
+
+    it("a holder whose event loop is blocked should still heartbeat, because the beat is its own process", async () => {
+        // perf-ab's shape: claim, then sit in a synchronous call until done.
+        // A timer in that loop never fires; the beat has to come from outside.
+        const file = lockFile();
+        const module = pathToFileURL(fileURLToPath(new URL("./harnessLock.mjs", import.meta.url))).href;
+        const child = spawn(process.execPath, ["--input-type=module", "-e", [
+            `import { tryHarnessLock } from ${JSON.stringify(module)};`,
+            `const got = tryHarnessLock("blocked", { kind: "capture", file: ${JSON.stringify(file)}, heartbeatMs: 20 });`,
+            `if (got.outcome !== "taken") process.exit(3);`,
+            `Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 500);`,
+            `got.release();`,
+        ].join("\n")], { stdio: "ignore", env: noEnv });
+        const exited = new Promise((r) => child.on("close", r));
+        // The claim, read once it is whole: the create and the write are two
+        // calls, and a read between them is not a record.
+        const claimed = await beatAfter(file, 0);
+        expect(claimed, "the blocked holder claimed the lock").not.toBeNull();
+        const moved = await beatAfter(file, claimed.at);
+        expect(moved, "the record's `at` moved while the holder's loop was blocked").not.toBeNull();
+        expect(moved.token).toBe(claimed.token);
+        expect(await exited, "the holder ran to its own release").toBe(0);
+        expect(existsSync(file), "release took the record with it").toBe(false);
+    });
+
+    it("a holder killed outright should leave a record that stops beating, so it can go stale", async () => {
+        // The one way a heartbeat could be harmful: a holder that dies with
+        // no release, whose beat goes on refreshing a stranded record. It
+        // stops because the holder is no longer its parent, whatever the
+        // holder's pid is later handed to.
+        const file = lockFile();
+        const module = pathToFileURL(fileURLToPath(new URL("./harnessLock.mjs", import.meta.url))).href;
+        const child = spawn(process.execPath, ["--input-type=module", "-e", [
+            `import { tryHarnessLock } from ${JSON.stringify(module)};`,
+            `const got = tryHarnessLock("doomed", { kind: "capture", file: ${JSON.stringify(file)}, heartbeatMs: 10 });`,
+            `if (got.outcome !== "taken") process.exit(3);`,
+            `setInterval(() => {}, 1000);`,
+        ].join("\n")], { stdio: "ignore", env: noEnv });
+        const exited = new Promise((r) => child.on("close", r));
+        const claimed = await beatAfter(file, 0);
+        expect(claimed, "the holder claimed the lock").not.toBeNull();
+        expect(await beatAfter(file, claimed.at), "the heartbeat was running before the kill").not.toBeNull();
+        child.kill("SIGKILL");
+        await exited;
+        // Past the beat's own interval several times over: a beat that
+        // outlived its holder would have moved `at` by now.
+        await new Promise((r) => setTimeout(r, 150));
+        const settled = JSON.parse(readFileSync(file, "utf8")).at;
+        await new Promise((r) => setTimeout(r, 150));
+        expect(JSON.parse(readFileSync(file, "utf8")).at, "the record kept beating after its holder was killed").toBe(settled);
+        rmSync(file, { force: true });
+    });
+
+    it("a heartbeat whose holder is not its parent should exit without touching the record", async () => {
+        // What tells this liveness check from one by pid: pid 1 is alive,
+        // and a beat asking `kill(1, 0)` would go on beating a record for a
+        // holder that is long gone; asking whether 1 is its parent, it stops
+        // at its first tick and the record never moves.
+        const file = lockFile();
+        const planted = plant(file, { token: "orphaned", kind: "capture", pid: 1, at: Date.now() - 1000 });
+        const script = fileURLToPath(new URL("./harnessHeartbeat.mjs", import.meta.url));
+        const beat = spawn(process.execPath, [script, file, "orphaned", "1", "10"], { stdio: "ignore", env: noEnv });
+        const exit = await Promise.race([
+            new Promise((r) => beat.on("close", (code) => r({ exited: true, code }))),
+            new Promise((r) => setTimeout(() => r({ exited: false }), 1500)),
+        ]);
+        if (!exit.exited) beat.kill();
+        expect(exit.exited, "the beat kept running for a holder that is not its parent").toBe(true);
+        expect(JSON.parse(readFileSync(file, "utf8")), "the beat rewrote a record that is not its holder's").toEqual(planted);
     });
 
     it("the heartbeat should never write over somebody else's record", async () => {
         const file = lockFile();
         const got = take("mine", { kind: "capture", file, heartbeatMs: 10 });
         expect(got.outcome).toBe("taken");
+        // One beat observed first, so the heartbeat is known to be running
+        // before the file becomes somebody else's; otherwise a beat that
+        // never started passes this for the wrong reason.
+        const first = JSON.parse(readFileSync(file, "utf8")).at;
+        expect(await beatAfter(file, first), "the heartbeat reached its subject").not.toBeNull();
+        // The beat is held still while the file changes hands, as it is in
+        // production: a reclaim happens over a stale or dead record, whose
+        // beat has already exited. Planting under a live beat would race its
+        // read-and-rename, and lose to it once in a while for no reason
+        // this test is about.
+        process.kill(got.heartbeatPid, "SIGSTOP");
         const theirs = plant(file, { token: "somebody-else", kind: "capture", at: Date.now() - 1000 });
-        await new Promise((r) => setTimeout(r, 60));
+        process.kill(got.heartbeatPid, "SIGCONT");
+        await new Promise((r) => setTimeout(r, 80));
         expect(JSON.parse(readFileSync(file, "utf8")), "a reclaimed file is theirs to heartbeat").toEqual(theirs);
         got.release();
         expect(JSON.parse(readFileSync(file, "utf8")), "and theirs to remove").toEqual(theirs);

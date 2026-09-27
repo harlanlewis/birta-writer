@@ -50,6 +50,7 @@ const UNLOCKED = {
     "perf-bundle.mjs": "browser-free byte count; contends with nothing",
     "perf-counts.mjs": "browser-free count check over a JSON another runner wrote; contends with nothing",
     "harnessLock.mjs": "the lock itself",
+    "harnessHeartbeat.mjs": "the lock's heartbeat, a process the holder spawns; it writes the holder's own record and takes nothing",
     "harnessLock.globalSetup.mjs": "vitest's end of the lock, exempt in watch mode",
 };
 
