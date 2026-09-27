@@ -334,10 +334,9 @@ export class MarkdownEditorProvider
     // workspace file index with smart link resolution, so a backlink and a
     // click agree about which note a link means.
     private readonly _folderIndex = new FolderIndexer({
-        listNotes: async (root, limit) => (await vscode.workspace.findFiles(
+        listNotes: async (root) => (await vscode.workspace.findFiles(
             new vscode.RelativePattern(root, NOTE_GLOB),
             noteWalkExclude(vscode.workspace.getConfiguration("files", vscode.Uri.file(root)).get<Record<string, unknown>>("exclude")),
-            limit,
         )).map((u) => u.fsPath),
         readText: async (fsPath) => {
             try {

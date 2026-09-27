@@ -32,16 +32,24 @@ import { readNote, type NoteReading } from "../shared/noteLinks";
 import { resolveLinkPath, resolveWikiTarget, type ResolverIo } from "./utils/linkResolver";
 
 /**
- * How many notes one walk reads before it stops and says it stopped. Enough
- * for a working vault; a folder past it is indexed partially and the index
- * carries `truncated`, so no view reads the cut as an absence of links.
+ * How many notes one index holds. Enough for a working vault; a folder past
+ * it is indexed partially and the index carries `truncated`, so no view
+ * reads the cut as an absence of links. WHICH notes survive the cut is
+ * decided by path (`smallestPaths`), never by the order the walk met them,
+ * so the same folder indexes the same on every open and on both hosts.
  */
 export const FOLDER_INDEX_CAP = 2000;
 
 /** What the provider lends: everything that touches the disk or the editor. */
 export interface FolderIndexIo {
-    /** Up to `limit` note files (absolute fsPaths) under `root`, any order. */
-    listNotes(root: string, limit: number): Promise<readonly string[]>;
+    /**
+     * Every note file (absolute fsPaths) under `root`, in any order. The
+     * whole listing, never a capped one: a walk stopped at a count keeps
+     * whichever notes it met first, and `findFiles` promises no order, so
+     * the cap is applied here, by path. The cost is the folder's own walk,
+     * which Quick Open already pays for the workspace.
+     */
+    listNotes(root: string): Promise<readonly string[]>;
     /** A note's text, or null when it cannot be read. */
     readText(fsPath: string): Promise<string | null>;
     /** Every file in the workspace (absolute fsPaths): what a reference resolves against. */
@@ -87,6 +95,42 @@ export function noteWalkExclude(filesExclude: Readonly<Record<string, unknown>> 
 /** Is this a file the index reads as a note? */
 export function isNotePath(fsPath: string): boolean {
     return NOTE_EXT.has(path.extname(fsPath).toLowerCase());
+}
+
+/**
+ * The `cap` smallest of `paths` by UTF-16 code unit order, sorted, and
+ * whether anything was left out. That order is what `sort` with no
+ * comparator and Swift's `utf16.lexicographicallyPrecedes` both compare by
+ * (`SmallestByPath` in mac/Sources/BirtaWriterCore/FolderIndex.swift is the
+ * same selection), so the two hosts keep the same notes of the same folder
+ * although their walks differ. Nothing about the order `paths` arrive in
+ * reaches the answer.
+ *
+ * Bounded: once `cap` paths are held, anything at or past the largest of
+ * them cannot be among the smallest, so it is one comparison and no memory,
+ * and the kept list is compacted whenever it reaches twice the cap rather
+ * than the whole listing being sorted.
+ */
+export function smallestPaths(paths: Iterable<string>, cap: number): { kept: string[]; truncated: boolean } {
+    const kept: string[] = [];
+    // The largest path kept since the last compaction: nothing at or past it can survive.
+    let bound: string | null = null;
+    let seen = 0;
+    const compact = () => {
+        kept.sort();
+        if (kept.length > cap) { kept.length = cap; }
+    };
+    for (const p of paths) {
+        seen++;
+        if (bound !== null && p >= bound) { continue; }
+        kept.push(p);
+        if (kept.length >= 2 * cap) {
+            compact();
+            bound = kept[cap - 1]!;
+        }
+    }
+    compact();
+    return { kept, truncated: seen > cap };
 }
 
 function toPosix(p: string): string {
@@ -225,10 +269,8 @@ export class FolderIndexer {
         let notes = s.notes;
         let truncated = s.truncated;
         if (!notes) {
-            // One past the cap, so a folder holding exactly the cap is not called truncated.
-            const listed = (await this.io.listNotes(root, FOLDER_INDEX_CAP + 1)).filter(isNotePath).sort();
-            truncated = listed.length > FOLDER_INDEX_CAP;
-            notes = listed.slice(0, FOLDER_INDEX_CAP);
+            const listed = (await this.io.listNotes(root)).filter(isNotePath);
+            ({ kept: notes, truncated } = smallestPaths(listed, FOLDER_INDEX_CAP));
             if (live()) { s.notes = notes; s.truncated = truncated; }
         }
         // Readings made by this build, kept apart so one taken before a change
