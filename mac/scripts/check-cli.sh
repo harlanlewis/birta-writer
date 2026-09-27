@@ -291,6 +291,7 @@ APP_BIN="$APP_BUNDLE/Contents/MacOS/BirtaWriter"
 APP_ARM="skipped: no app at $APP_BUNDLE (pnpm mac:build builds one)"
 if [ -x "$APP_BIN" ]; then
     APP_ARM="ran"
+    FAILURES_BEFORE_APP=$failures
     WAIT_DIR="$WORK/w"
     mkdir -p "$WAIT_DIR"
     NOTE="$WAIT_DIR/Note.md"
@@ -305,9 +306,14 @@ if [ -x "$APP_BIN" ]; then
     # command reads its own.
     export BIRTA_MAC_CLI_BUNDLE="$APP_BUNDLE"
 
-    wait_for() { # wait_for <mark> <timeout-s>
+    marks() { grep -c "^mac-measure $1 " "$APP_LOG"; }
+    # Wait for one MORE of a mark than the log held when the gesture was
+    # sent, never for the mark to exist: every arm after the first would
+    # otherwise be satisfied by the first arm's marks and read as sequenced
+    # while racing the app.
+    wait_for() { # wait_for <mark> <timeout-s> <count-before>
         local n=0
-        while ! grep -q "^mac-measure $1 " "$APP_LOG"; do
+        while [ "$(marks "$1")" -le "$3" ]; do
             sleep 0.1; n=$((n+1))
             if [ $n -gt $(( $2 * 10 )) ]; then
                 echo "FAIL timeout waiting for the app's $1 mark" >&2
@@ -327,11 +333,21 @@ if [ -x "$APP_BIN" ]; then
             fi
         done
     }
-    # Post one debug message to the front window. The file goes beside the
-    # scratchpad, which is where the app reads it from.
-    post() {
+    # Post one debug message to the front window and wait for the mark it
+    # leaves. The file goes beside the scratchpad, which is where the app
+    # reads it from.
+    post() { # post <json> <mark>
+        local before
+        before="$(marks "$2")"
         printf '%s' "$1" > "$WAIT_DIR/.debug-message.json"
         kill -URG "$APP_PID"
+        wait_for "$2" 10 "$before"
+    }
+    summon() {
+        local before
+        before="$(marks visible)"
+        kill -USR1 "$APP_PID"
+        wait_for visible 10 "$before"
     }
     # The exit status of a background command, or 124 when it is still
     # running after the timeout: a wait that never ends must read as a
@@ -355,13 +371,11 @@ if [ -x "$APP_BIN" ]; then
         wait_line "$1" "wait $NOTE" 10
     }
     close_front() {
-        kill -USR1 "$APP_PID"
-        wait_for visible 10
-        post '{"type":"__birtaCloseWindow"}'
-        wait_for debug-close-window 10
+        summon
+        post '{"type":"__birtaCloseWindow"}' debug-close-window
     }
 
-    if wait_for ready 40; then
+    if wait_for ready 40 0; then
         SOCK="$(find "$SUPPORT" -name control.sock 2>/dev/null | head -1)"
         checks=$((checks + 1))
         if [ ! -S "$SOCK" ]; then
@@ -371,12 +385,10 @@ if [ -x "$APP_BIN" ]; then
 
         echo "  a close after an edit ends the wait 0, with the edit on disk"
         start_wait "$WORK/w1.out"; W1=$WAIT_PID
-        kill -USR1 "$APP_PID"; wait_for visible 10
-        post '{"type":"__birtaKeys","keys":["End","Enter","w","a","i","t","e","d"]}'
-        wait_for debug-keys 10
+        summon
+        post '{"type":"__birtaKeys","keys":["End","Enter","w","a","i","t","e","d"]}' debug-keys
         sleep 0.5
-        post '{"type":"__birtaCloseWindow"}'
-        wait_for debug-close-window 10
+        post '{"type":"__birtaCloseWindow"}' debug-close-window
         wait_pid $W1 15
         expect_status 0 "$STATUS" "--wait after a close"
         expect_contains "$(cat "$NOTE")" "waited" "the edit is on disk when --wait returns"
@@ -394,20 +406,22 @@ if [ -x "$APP_BIN" ]; then
 
         echo "  a close whose write fails ends the wait nonzero"
         start_wait "$WORK/w4.out"; W4=$WAIT_PID
-        kill -USR1 "$APP_PID"; wait_for visible 10
+        summon
         # The folder is closed to writes before the keys land, so the
         # autosave the edit schedules and the close's own write both fail.
         # The message file is written first, since it lives in that folder.
+        BEFORE="$(marks debug-keys)"
         printf '%s' '{"type":"__birtaKeys","keys":["End","Enter","l","o","s","t"]}' > "$WAIT_DIR/.debug-message.json"
         chmod 500 "$WAIT_DIR"
         kill -URG "$APP_PID"
-        wait_for debug-keys 10
+        wait_for debug-keys 10 "$BEFORE"
         sleep 1.5
         chmod 700 "$WAIT_DIR"
+        BEFORE="$(marks debug-close-window)"
         printf '%s' '{"type":"__birtaCloseWindow"}' > "$WAIT_DIR/.debug-message.json"
         chmod 500 "$WAIT_DIR"
         kill -URG "$APP_PID"
-        wait_for debug-close-window 10
+        wait_for debug-close-window 10 "$BEFORE"
         wait_pid $W4 15
         chmod 700 "$WAIT_DIR"
         expect_status 1 "$STATUS" "--wait after a close that could not write"
@@ -417,6 +431,42 @@ if [ -x "$APP_BIN" ]; then
             echo "FAIL the failed write reached the disk after all" >&2
             failures=$((failures + 1))
         fi
+
+        echo "  an extensionless file a shell waits on is admitted, and its tab's close ends the wait"
+        # The other half of admitting COMMIT_EDITMSG, driven through
+        # `WindowSet.openDocument` itself (`__birtaOpen` skips only the
+        # chooser). The file lands as a second window, so the close that
+        # follows is a real close rather than the last window's hide, which
+        # is the exit the arms above cannot reach. The comment block is read
+        # back byte for byte: git ignores those lines, and an editor that
+        # rewrote them would still have changed a file it was asked to edit.
+        #
+        # Nothing is typed here. With two windows up and none of them key,
+        # which window a debug message reaches is `WindowSet.key`'s fallback,
+        # and the keys and the close were measured landing in different
+        # windows; the close is the gesture this arm is about, and the write
+        # path it takes is the one the first arm typed into.
+        MSG="$WAIT_DIR/COMMIT_EDITMSG"
+        printf '\n# Please enter the commit message for your changes.\n#\n# On branch main\n#\tmodified:   README.md\n' > "$MSG"
+        "$BWR" --wait "$MSG" > "$WORK/w6.out" 2>&1 &
+        W6=$!
+        wait_line "$WORK/w6.out" "wait $MSG" 10
+        # The new window is a second page, and a cold one; the close waits
+        # for its `ready` mark so it closes a mounted document.
+        READY_BEFORE="$(marks ready)"
+        post "{\"type\":\"__birtaOpen\",\"path\":\"$MSG\"}" debug-open
+        wait_line "$APP_LOG" "open windows=" 10
+        expect_contains "$(grep 'open windows=' "$APP_LOG" | tail -1)" "open windows=2" \
+            "the extensionless file opened as a window of its own"
+        wait_for ready 30 "$READY_BEFORE"
+        sleep 0.5
+        post '{"type":"__birtaCloseWindow"}' debug-close-window
+        expect_contains "$(grep 'closewindow at=' "$APP_LOG" | tail -1)" "COMMIT_EDITMSG" \
+            "the close reached the extensionless file's window"
+        wait_pid $W6 15
+        expect_status 0 "$STATUS" "--wait on the extensionless file after its tab closed"
+        expect_contains "$(cat "$MSG")" "#	modified:   README.md" "the comment block is untouched, tab included"
+        expect_contains "$(cat "$MSG")" "# On branch main" "the comment block is untouched"
 
         echo "  a quit ends the wait nonzero and takes the socket away"
         start_wait "$WORK/w5.out"; W5=$WAIT_PID
@@ -428,6 +478,12 @@ if [ -x "$APP_BIN" ]; then
         expect_no_file "$SOCK" "the socket file goes with the app"
     fi
     end_app
+    # A red in this arm without the app's own log is undiagnosable, since
+    # the folder it was written to goes with the trap.
+    if [ "$failures" -gt "$FAILURES_BEFORE_APP" ]; then
+        echo "the app's log, last lines:" >&2
+        tail -60 "$APP_LOG" | sed 's/^/    /' >&2
+    fi
 fi
 
 cd "$REPO"
