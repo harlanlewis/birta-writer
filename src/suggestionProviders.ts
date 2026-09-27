@@ -29,6 +29,7 @@ import * as vscode from "vscode";
 import { DOCUMENT_EXTENSIONS } from "../shared/documentExtensions";
 import { extractListValuesByKey, rankListValues } from "../shared/frontmatterSuggestions";
 import { isLocalPathQuery, rankLinkTargets } from "../shared/linkTargetSuggest";
+import { smallestPaths } from "./folderIndex";
 import { buildLinkTargetItems } from "./utils/linkTargetSuggestions";
 import { postToWebview } from "./webviewMessaging";
 
@@ -79,6 +80,8 @@ export class SuggestionProviders {
     // burst never pays it twice.
     private _linkFileCache: { uris: vscode.Uri[]; expires: number } | undefined;
     private static readonly _LINK_FILE_TTL_MS = 10_000;
+    /** How many workspace files the link index keeps: the first this many by path. */
+    static readonly LINK_FILE_CAP = 2000;
 
     constructor(private readonly host: SuggestionHost) {}
 
@@ -261,11 +264,20 @@ export class SuggestionProviders {
     async getLinkFileIndex(): Promise<readonly vscode.Uri[]> {
         const now = Date.now();
         if (!this._linkFileCache || now >= this._linkFileCache.expires) {
-            const uris = await vscode.workspace.findFiles(
+            // Uncapped, then cut to the first LINK_FILE_CAP by path. A
+            // `maxResults` on `findFiles` keeps whichever files the walk met
+            // first, and that order is not stable between runs, so above the
+            // cap a `[[Foo]]` could resolve on one open and dangle on the next
+            // (the folder index's own cut had the same shape, MAR-492). The
+            // walk is the one Quick Open runs; what the cap bounds is what is
+            // kept, not what is visited.
+            const listed = await vscode.workspace.findFiles(
                 "**/*",
                 "{**/node_modules/**,**/.git/**,**/dist/**,**/releases/**}",
-                2000,
             );
+            const byPath = new Map(listed.map((u) => [u.fsPath, u] as const));
+            const { kept } = smallestPaths(byPath.keys(), SuggestionProviders.LINK_FILE_CAP);
+            const uris = kept.map((p) => byPath.get(p)!);
             this._linkFileCache = { uris, expires: now + SuggestionProviders._LINK_FILE_TTL_MS };
         }
         return this._linkFileCache.uris;

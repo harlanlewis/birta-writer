@@ -350,6 +350,42 @@ case "$(cat "$NOTE")" in
     *) fail "the landing did not keep the third program's change beside the typing: '$(cat "$NOTE")'"; ls -l "$DIR" >&2 ;;
 esac
 expect_no_question_since "$asked_before" "the landing of a third program's change put no question"
+
+echo "an /ai run asked for over an unanswered outside change"
+# The run writes the note before it starts, and that write is refused on the
+# same terms as any other over a file that moved. A run that started anyway
+# would open a file the panel does not hold: nothing typed meanwhile, and the
+# landing reads the agent's version over the panel's edits (MAR-490). So the
+# refusal ends the run before the agent is ever started, and the question the
+# typing's own autosave already put is the one to answer. The panel is up,
+# from the arm above, so that question has a window to be on.
+asked_before=$(traces "diskdrift asked")
+refused_before=$(traces "agent refused")
+printf 'changed before a run\n' > "$NOTE"
+post '{"type":"__testInsertText","text":"typed before the run "}'; sleep 1.5
+printf 'touch run-started\nprintf "agent wrote over it\\n" > Note.md\ntouch run-ended\n' > "$DIR/agent.sh"
+rm -f "$DIR/run-started" "$DIR/run-ended"
+post '{"type":"editorCommand","command":"askAgent","args":{"prompt":"wait"}}'; sleep 3
+expect_trace "agent refused" $((refused_before + 1)) "the run was refused rather than started"
+checks=$((checks + 1))
+if [ -e "$DIR/run-started" ]; then
+    fail "the agent was started over an unanswered outside change"
+fi
+expect_bytes "changed before a run" "the refused pre-run save wrote nothing"
+# Whichever write met the conflict first, the typing's autosave or the run's
+# own save, the question is up by now.
+expect_trace "diskdrift asked" $((asked_before + 1)) "the question the refusal answers to was put"
+post '{"type":"__birtaAnswerDiskDrift","answer":"keep"}'; sleep 1.5
+checks=$((checks + 1))
+case "$(cat "$NOTE")" in
+    *"typed before the run"*) ;;
+    *) fail "Keep My Changes after the refusal did not write the panel: '$(cat "$NOTE")'" ;;
+esac
+# Answered, the same request goes through: the refusal is the question's,
+# not the run's.
+start_run 'touch run-started
+touch run-ended'
+wait_for_file "$DIR/run-ended" 15; sleep 3
 hide_panel
 
 echo "a window that goes before anybody answers"
@@ -406,7 +442,7 @@ echo
 # stops running takes its assertions with it and leaves a green line with a
 # smaller number in it, which nobody reads as a failure. Raise this when arms
 # are added; a drop is the thing it exists to catch.
-EXPECTED_CHECKS=36
+EXPECTED_CHECKS=41
 if [ "$checks" -lt "$EXPECTED_CHECKS" ]; then
     echo "check-external-change: only $checks checks ran, expected at least $EXPECTED_CHECKS." >&2
     echo "  An arm stopped running. Nothing below its own assertions was measured." >&2

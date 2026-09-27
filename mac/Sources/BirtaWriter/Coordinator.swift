@@ -961,10 +961,52 @@ final class Coordinator {
                              root: explorerRoot?.standardizedFileURL.path))
         let webRoot = Coordinator.locateWebRoot()
         host = WebHost(webRoot: webRoot, documentDirectory: explorerRoot ?? url.deletingLastPathComponent())
+        let failures = WriteFailureLog()
+        writeFailureLog = failures
         writer = CoalescingWriter(onError: { error in
             NSLog("Birta Writer: write failed: \(error)")
+            failures.record(error)
         })
         menuState = menuStateFromPrefs()
+    }
+
+    /// The writes this window's writer reported failing, counted, with the
+    /// last reason.
+    ///
+    /// The writer reports a failure from its own queue and reports a landing
+    /// through `lastLanded`, and neither says "the write you just waited for
+    /// failed" on its own. A caller that needs that (a shell blocked in
+    /// `bwr --wait`, which must not be told the document closed cleanly when
+    /// its bytes never reached the disk) reads the count before the close and
+    /// again after the drain; the count is written on the writer's queue and
+    /// `drain` is what orders the read after it.
+    private let writeFailureLog: WriteFailureLog
+    var writeFailures: Int { writeFailureLog.count }
+    var lastWriteFailure: String? { writeFailureLog.last }
+
+    private final class WriteFailureLog: @unchecked Sendable {
+        private let lock = NSLock()
+        private var failures = 0
+        private var reason: String?
+
+        func record(_ error: Error) {
+            lock.lock()
+            failures += 1
+            reason = error.localizedDescription
+            lock.unlock()
+        }
+
+        var count: Int {
+            lock.lock()
+            defer { lock.unlock() }
+            return failures
+        }
+
+        var last: String? {
+            lock.lock()
+            defer { lock.unlock() }
+            return reason
+        }
     }
 
     // MARK: lifecycle
@@ -2553,6 +2595,33 @@ final class Coordinator {
         }
     }
 
+    /// Settle the buffer the way closing this window would, without closing
+    /// it, for a file a shell is blocked on in `bwr --wait`.
+    ///
+    /// The last window hides on Cmd+W rather than closing (`WindowSet.close`),
+    /// and a hide writes only with autosave on. That is right for a note
+    /// somebody will summon again and wrong for a document a shell is about
+    /// to read: told "closed" after a hide that wrote nothing, git would
+    /// commit the message file as it was before the edit. So the gesture
+    /// decides the bytes the way a close decides them, sheet included, and
+    /// the window then hides as it always did. `.cancel` means the sheet was
+    /// refused and the window stays up.
+    ///
+    /// Not `prepareToClose`, which this is a slice of: that one also stops
+    /// the agents, rescues a missing note and marks the window closing, all
+    /// of which are for a window that is going. This one is staying, so the
+    /// quit decision it records is taken back too, or the next real quit
+    /// would skip its own last-chance write.
+    func settleForWaitingShell(_ done: @escaping (UnsavedChanges.Answer) -> Void) {
+        flushThen(persisting: false) { [weak self] in
+            guard let self else { done(.save); return }
+            self.decideFinalWrite { answer in
+                self.quitDecided = false
+                done(answer)
+            }
+        }
+    }
+
     /// Decide what happens to the buffer on the way out, asking if the setting
     /// says to ask and there is somebody there to answer.
     private func decideFinalWrite(_ then: @escaping (UnsavedChanges.Answer) -> Void) {
@@ -3091,6 +3160,21 @@ final class Coordinator {
         flushThen { [weak self] in
             guard let self else { return }
             self.write(.explicitSave)
+            // The save above can be refused: the file changed outside the app
+            // since it was last read, and the panel holds edits of its own
+            // (`reconcileWithDisk`'s conflict). The question that refusal put
+            // is the one to answer first. A run that started anyway would open
+            // a file the panel does not hold, with `handoff` taken from the
+            // panel, and a landing with nothing typed meanwhile would read the
+            // agent's version over the edits (MAR-490). A refusal that could
+            // put no question (the panel off screen) is the same refusal; the
+            // next summon asks.
+            guard !self.driftUnresolved else {
+                self.measure.trace("agent refused reason=drift at=\(self.boundURL.lastPathComponent)")
+                self.reportAgent(requestId: id, .init(status: "failed", harness: nil, text: nil,
+                                                      message: DiskDrift.runRefused(document: self.boundURL.lastPathComponent)))
+                return
+            }
             // The bytes the agent opens, and the file they belong to. A
             // finished run compares against both: the bytes to tell its own
             // edit from one typed into the panel while it ran, the file

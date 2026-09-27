@@ -236,6 +236,14 @@ final class DiskDriftTests: XCTestCase {
                       "both buttons are named in the sentence, because both lose something")
     }
 
+    func testARefusedRunShouldNameTheFileAndBothAnswers() {
+        let message = DiskDrift.runRefused(document: "Note.md")
+        XCTAssertTrue(message.contains("Note.md"))
+        XCTAssertTrue(message.contains(DiskDrift.reloadTitle))
+        XCTAssertTrue(message.contains(DiskDrift.keepTitle),
+                      "the run was refused for the sheet's question, so it names the sheet's answers")
+    }
+
     func testTheKeptBufferShouldBeNamedBesideTheFileRatherThanLikeIt() {
         XCTAssertEqual(DiskDrift.unsavedStem(for: "Note"), "Note (unsaved)")
     }

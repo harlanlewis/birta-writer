@@ -70,6 +70,7 @@ public enum CliInvocation {
         case unsupportedFile(String)
         case noSuchDirectory(String)
         case waitWithoutFile
+        case waitOnDirectory(String)
         case standardInputWithFiles
 
         /// What is printed on standard error. One sentence, naming the word
@@ -84,6 +85,8 @@ public enum CliInvocation {
                 return "no such directory: \(path)"
             case .waitWithoutFile:
                 return "--wait needs a file to wait for"
+            case let .waitOnDirectory(path):
+                return "--wait waits for a file, and \(path) is a folder"
             case .standardInputWithFiles:
                 return "- reads standard input and cannot be given with files"
             }
@@ -94,9 +97,9 @@ public enum CliInvocation {
     public struct Request: Equatable, Sendable {
         public let action: Action
         /// `--wait`, which asks the command to block until the document is
-        /// closed. Parsed and validated here; carrying out the wait needs a
-        /// channel back from the app that does not exist yet, so the command
-        /// refuses rather than returning early and pretending.
+        /// closed and its bytes are on disk, then exit 0. What the wait is
+        /// told, and by which exit, is `ControlSocket`'s; what it changes
+        /// here is the allowlist (`target(for:)`).
         public let waitsForClose: Bool
 
         public init(action: Action, waitsForClose: Bool = false) {
@@ -165,7 +168,9 @@ public enum CliInvocation {
 
         if readsStandardInput && !words.isEmpty { throw Failure.standardInputWithFiles }
 
-        let targets = try words.map { try target(for: $0, workingDirectory: workingDirectory, kind: kind) }
+        let targets = try words.map {
+            try target(for: $0, workingDirectory: workingDirectory, waits: waits, kind: kind)
+        }
         if targets.isEmpty {
             if waits { throw Failure.waitWithoutFile }
             // Nothing named and nothing arriving means the shell wants the app
@@ -186,18 +191,39 @@ public enum CliInvocation {
     /// its extension is one the editor opens, whether it exists or not. The
     /// missing case also insists on a folder to put it in, so `bwr
     /// nowhere/new.md` fails before the app is launched rather than after.
+    ///
+    /// Under `--wait` the allowlist widens by exactly one class: a file with
+    /// NO extension. `EDITOR='bwr --wait'` is the reason, since `git commit`
+    /// names `COMMIT_EDITMSG` and `git rebase -i` names `git-rebase-todo`,
+    /// and the caller chose the file rather than the shell guessing at one.
+    /// The page's round-trip protection is what makes it safe to admit: a
+    /// message file's `#` comment block comes back byte for byte around what
+    /// was typed, tabs and a scissors diff included (measured under MAR-466
+    /// through `mergeVerified` over the real editor). `.txt` and the rest
+    /// stay refused under `--wait` too; the class admitted is the one a name
+    /// says nothing about, not every file the editor could render.
+    ///
+    /// The app widens the same way at its end, for a path a shell has
+    /// declared it is waiting on (`WindowSet.openDocument`), which is why the
+    /// command registers the wait before it opens the file.
+    ///
+    /// A folder is refused under `--wait`: a directory window has no document
+    /// to close.
     private static func target(for word: String,
                                workingDirectory: String,
+                               waits: Bool,
                                kind: (URL) -> PathKind) throws -> Target {
         let url = resolve(word, workingDirectory: workingDirectory)
+        let accepted = DocumentTypes.accepts(url) || (waits && url.pathExtension.isEmpty)
         switch kind(url) {
         case .directory:
+            if waits { throw Failure.waitOnDirectory(url.path) }
             return .directory(url)
         case .file:
-            guard DocumentTypes.accepts(url) else { throw Failure.unsupportedFile(word) }
+            guard accepted else { throw Failure.unsupportedFile(word) }
             return .existing(url)
         case .missing:
-            guard DocumentTypes.accepts(url) else { throw Failure.unsupportedFile(word) }
+            guard accepted else { throw Failure.unsupportedFile(word) }
             let parent = url.deletingLastPathComponent()
             guard kind(parent) == .directory else { throw Failure.noSuchDirectory(parent.path) }
             return .create(url)
