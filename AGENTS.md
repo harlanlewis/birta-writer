@@ -237,7 +237,7 @@ mac/Sources/BirtaWriterCore/FileIndex.swift      The files Go to File can reach 
 mac/Sources/BirtaWriterCore/FolderIndex.swift    The folder edge index in a rooted window, the Swift half of src/folderIndex.ts; NoteLinks.swift beside it ports shared/noteLinks.ts, held by noteLinksGolden.json
 mac/Sources/BirtaWriter/PaletteCatalog.swift     Where the palette's rows come from (the menu table, the page's commands, the windows, Settings, the files) and what a pick does; nothing here is a second table
 mac/Sources/BirtaWriter/PaletteWindow.swift      The palette panel: draws and dispatches, readable unshown
-mac/scripts/update.sh                     The other-machine path: fetch the app off the newest GitHub Release, verify, install (ad-hoc signed, so it clears quarantine)
+mac/scripts/update.sh                     The other-machine path: fetch the app off the newest GitHub Release, check it against its published checksum, ask Gatekeeper about it, install; refuses a release macOS cannot attribute to anyone rather than clearing quarantine on its behalf
 e2e/enterCaret/                               Return must leave the caret in the block it just made; the WebKit-only class of defect that gate exists for
 e2e/frameHost/                                The editor in a frame of a page that is not an editor: the host contract docs/HOSTING.md describes, run against the real bundle
 e2e/agentAttachPreview/                       The one suite whose page carries a CSP in order to be TESTED under it; why a thumbnail check needs an engine and what a refused image looks like
