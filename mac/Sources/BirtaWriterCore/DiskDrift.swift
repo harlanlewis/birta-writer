@@ -168,6 +168,18 @@ public enum DiskDrift: Equatable, Sendable {
     public static let reloadTitle = "Reload from Disk"
     public static let keepTitle = "Keep My Changes"
 
+    /// Why an `/ai` run did not start: its pre-run save met this question.
+    ///
+    /// The run opens the file on disk, so a save the conflict refused would
+    /// have started it on a file the panel does not hold, and a landing with
+    /// nothing typed meanwhile reads the agent's version over the edits
+    /// (MAR-490). The question is the one to answer first, and this names
+    /// the same two answers the sheet offers, so the message follows a
+    /// rename of either.
+    public static func runRefused(document: String) -> String {
+        "“\(document)” was changed by another app. Choose \(reloadTitle) or \(keepTitle), then ask again."
+    }
+
     /// What the person said.
     public enum Answer: Equatable, Sendable {
         /// Take the file's bytes into the buffer.
