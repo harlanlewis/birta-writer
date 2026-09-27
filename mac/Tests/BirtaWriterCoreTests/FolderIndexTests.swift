@@ -109,6 +109,28 @@ final class FolderIndexTests: XCTestCase {
         XCTAssertEqual(indexes[0].edges.map(\.to), ["n1.md", "n2.md", "n11.md", "n0.md", nil])
     }
 
+    /// The other list the walk cuts: the files a reference resolves against.
+    /// A reference to an image is dropped when the image is among them and
+    /// kept dangling when it is not, so a cut taken in walk order would draw
+    /// a different graph per launch above the file cap.
+    func testWhichFilesAReferenceResolvesAgainstShouldNotDependOnTheWalkOrder() throws {
+        let names = (0..<6).map { "n\($0).md" }
+        for name in names { try write(name, "[z](z.png)\n") }
+        try write("a.png", "x")
+        try write("z.png", "x")
+        let urls = (["a.png"] + names + ["z.png"]).map { root.appendingPathComponent($0) }
+        let orders = [urls, urls.reversed(), urls.shuffled()]
+        // Seven of eight files survive by path: z.png is the one cut, in every order.
+        let indexes = orders.map { order in
+            FolderIndexer(root: root, cap: 10, fileCap: 7).build(walk: { _, _ in FixedWalk(order) })
+        }
+        XCTAssertEqual(indexes.count, 3)
+        XCTAssertEqual(indexes[0].edges.map(\.to), Array(repeating: nil, count: 6),
+                       "z.png is past the file cap by path, so every reference to it dangles")
+        XCTAssertEqual(indexes[1], indexes[0])
+        XCTAssertEqual(indexes[2], indexes[0])
+    }
+
     func testANoteThatCannotBeReadShouldStayANodeWithNoReferences() throws {
         try write("ok.md", "[[broken]]\n")
         try write("broken.md", "[[ok]]\n")
@@ -185,7 +207,7 @@ final class FolderIndexTests: XCTestCase {
 /// A walk that returns the files it was given, in the order it was given
 /// them: what `FileManager.enumerator` promises nothing about, made a fact,
 /// so a build can be asked the same folder in two orders.
-private final class FixedWalk: FileManager.DirectoryEnumerator {
+final class FixedWalk: FileManager.DirectoryEnumerator {
     private var pending: [URL]
 
     init(_ urls: [URL]) {

@@ -55,8 +55,9 @@ export interface FolderIndex {
     nodes: FolderNode[];
     edges: FolderEdge[];
     /**
-     * The walk stopped at its cap before it ran out of notes, so an absence
-     * can mean "not reached" rather than "not linked". A view has to say so.
+     * The folder holds more notes than the cap, so the index is a cut (the
+     * first `cap` by path) and an absence can mean "not reached" rather than
+     * "not linked". A view has to say so.
      */
     truncated: boolean;
 }

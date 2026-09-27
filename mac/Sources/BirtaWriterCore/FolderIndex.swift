@@ -276,7 +276,9 @@ public final class FolderIndexer: @unchecked Sendable {
         // order is not a fact about the folder. What is bounded is what is
         // kept, by path, the same rule as the extension's.
         var notes = SmallestByPath<Stamp>(cap: cap)
-        var files: [String] = []
+        // The files a reference resolves against, cut by the same rule: a
+        // `[[Foo]]` that resolved on one launch must resolve on the next.
+        var fileSelection = SmallestByPath<Void>(cap: fileCap)
         if let walk = walk(root, keys) {
             for case let url as URL in walk {
                 // Dependencies are never notes of the folder; the VS Code
@@ -289,10 +291,11 @@ public final class FolderIndexer: @unchecked Sendable {
                 if FolderIndex.isNotePath(abs) {
                     notes.offer(abs, Stamp(modified: values.contentModificationDate, size: values.fileSize))
                 }
-                if files.count < fileCap { files.append(abs) }
+                fileSelection.offer(abs, ())
             }
         }
         let (kept, truncated) = notes.finish()
+        let files = fileSelection.finish().kept.map(\.path)
 
         var fresh: [String: (stamp: Stamp, reading: NoteLinks.Reading?)] = [:]
         var current: [String: NoteLinks.Reading] = [:]
