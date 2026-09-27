@@ -5,16 +5,33 @@
  * create or delete re-walks), counted rather than assumed.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { FOLDER_INDEX_CAP, FolderIndexer, isNotePath, noteWalkExclude, type FolderIndexIo } from "../folderIndex";
+import { FOLDER_INDEX_CAP, FolderIndexer, isNotePath, noteWalkExclude, smallestPaths, type FolderIndexIo } from "../folderIndex";
 import { backlinksOf } from "../../shared/folderIndex";
 
 const ROOT = "/vault";
 
-/** A folder as a path → text map; non-note files carry an empty string. */
+/** A copy of `items` in a random order. */
+function shuffled<T>(items: readonly T[]): T[] {
+    const out = [...items];
+    for (let i = out.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [out[i], out[j]] = [out[j]!, out[i]!];
+    }
+    return out;
+}
+
+/**
+ * A folder as a path → text map; non-note files carry an empty string. The
+ * walk lists notes in the map's own order, and a `limit` cuts that order
+ * where `findFiles` would cut it (`maxResults` keeps whichever files the
+ * search met first), so a producer that asks for a capped listing is
+ * measured on the cut it asked for. The contract takes no limit; the
+ * parameter is here so the walk-order case can still reach the defect.
+ */
 function folder(files: Record<string, string>, opts: { outside?: string[]; smartLinks?: boolean } = {}) {
     const all = { ...files };
     const io = {
-        listNotes: vi.fn(async (root: string, limit: number) =>
+        listNotes: vi.fn(async (root: string, limit?: number) =>
             Object.keys(all).filter((p) => p.startsWith(root + "/") && isNotePath(p)).slice(0, limit)),
         readText: vi.fn(async (fsPath: string) => all[fsPath] ?? null),
         fileIndex: vi.fn(async () => [...Object.keys(all), ...(opts.outside ?? [])]),
@@ -101,12 +118,82 @@ describe("FolderIndexer: the cap", () => {
         expect(index.truncated).toBe(false);
     });
 
-    it("a folder past the cap should index the cap and say it stopped", async () => {
+    it("a folder past the cap should index the cap and say it was cut", async () => {
         const files: Record<string, string> = {};
         for (let i = 0; i <= FOLDER_INDEX_CAP; i++) { files[`${ROOT}/n${i}.md`] = ""; }
         const index = await new FolderIndexer(folder(files).io).indexFor(ROOT);
         expect(index.nodes).toHaveLength(FOLDER_INDEX_CAP);
         expect(index.truncated).toBe(true);
+    });
+
+    it("a folder past the cap listed in three orders should build the same index: the smallest notes by path, and their edges", async () => {
+        // Every note names the next by index, so the text is the same in
+        // every order and only the walk differs; which notes survive decides
+        // which edges resolve, so a cut by walk order would move both.
+        const total = FOLDER_INDEX_CAP + 300;
+        const names = Array.from({ length: total }, (_, i) => `n${i}.md`);
+        const text = new Map(names.map((name, i) => [name, `[[${names[(i + 1) % total]!.slice(0, -3)}]]\n`]));
+        const orders = [names, [...names].reverse(), shuffled(names)];
+        expect(orders[1]).not.toEqual(orders[0]);
+        expect(orders[2]).not.toEqual(orders[0]);
+        const indexes = await Promise.all(orders.map(async (order) => {
+            const files: Record<string, string> = {};
+            for (const name of order) { files[`${ROOT}/${name}`] = text.get(name)!; }
+            return new FolderIndexer(folder(files).io).indexFor(ROOT);
+        }));
+        const smallest = [...names].sort().slice(0, FOLDER_INDEX_CAP);
+        expect(indexes[0]!.truncated).toBe(true);
+        expect(indexes[0]!.nodes.map((n) => n.path)).toEqual(smallest);
+        expect(indexes[1]).toEqual(indexes[0]);
+        expect(indexes[2]).toEqual(indexes[0]);
+        // An edge to a note the cut left out dangles rather than pointing at a node the index lacks.
+        const kept = new Set(smallest);
+        const cutSuccessors = names.filter((name, i) => kept.has(name) && !kept.has(names[(i + 1) % total]!)).length;
+        expect(cutSuccessors).toBeGreaterThan(0);
+        expect(indexes[0]!.edges).toHaveLength(FOLDER_INDEX_CAP);
+        expect(indexes[0]!.edges.filter((e) => e.to === null)).toHaveLength(cutSuccessors);
+        expect(indexes[0]!.edges.every((e) => e.to === null || kept.has(e.to))).toBe(true);
+    });
+});
+
+describe("smallestPaths", () => {
+    const sortedPrefix = (paths: string[], cap: number) => [...paths].sort().slice(0, cap);
+
+    it("any order of the same paths should keep the cap smallest, sorted, as a whole sort would", () => {
+        const cap = 7;
+        const paths = Array.from({ length: 5 * cap + 3 }, (_, i) => `/v/${(i * 2654435761 >>> 0).toString(36)}.md`);
+        const oracle = sortedPrefix(paths, cap);
+        let orders = 0;
+        for (let round = 0; round < 40; round++) {
+            const order = shuffled(paths);
+            if (order.join() === paths.join()) { continue; }
+            orders++;
+            expect(smallestPaths(order, cap)).toEqual({ kept: oracle, truncated: true });
+        }
+        expect(orders).toBeGreaterThan(30);
+    });
+
+    it("a listing at the cap should be kept whole and not called truncated, and one past it by one should be", () => {
+        const paths = ["/v/c.md", "/v/a.md", "/v/b.md"];
+        expect(smallestPaths(paths, 3)).toEqual({ kept: ["/v/a.md", "/v/b.md", "/v/c.md"], truncated: false });
+        expect(smallestPaths(paths, 2)).toEqual({ kept: ["/v/a.md", "/v/b.md"], truncated: true });
+        expect(smallestPaths([], 2)).toEqual({ kept: [], truncated: false });
+    });
+
+    it("a smaller path arriving after the bound is set should still displace the largest kept", () => {
+        // Past twice the cap the kept list is compacted and a bound taken;
+        // what arrives after it must still be judged against the set, not
+        // refused for arriving late.
+        const cap = 3;
+        const late = ["/v/z9.md", "/v/z8.md", "/v/z7.md", "/v/z6.md", "/v/z5.md", "/v/z4.md", "/v/a.md"];
+        expect(smallestPaths(late, cap)).toEqual({ kept: ["/v/a.md", "/v/z4.md", "/v/z5.md"], truncated: true });
+    });
+
+    it("the order should be UTF-16 code units, which is what both hosts sort by, not code points or a locale", () => {
+        // U+1D49C is two code units, D835 DC9C, so it precedes U+FFFD by
+        // code unit and follows it by code point; a locale puts "é" by "e".
+        expect(smallestPaths(["/v/�.md", "/v/\u{1D49C}.md"], 1).kept).toEqual(["/v/\u{1D49C}.md"]);
+        expect(smallestPaths(["/v/é.md", "/v/z.md"], 1).kept).toEqual(["/v/z.md"]);
     });
 });
 

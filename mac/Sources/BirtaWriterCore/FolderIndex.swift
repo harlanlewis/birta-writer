@@ -11,8 +11,9 @@ import Foundation
 /// here. Four rules carry over unchanged, and each is a promise the page's
 /// views rely on:
 ///
-/// - the walk stops at `cap` notes and says so in `truncated`, so an absent
-///   backlink can read as "not reached" rather than "not linked";
+/// - the index holds at most `cap` notes, the smallest by path
+///   (`SmallestByPath`), and says so in `truncated`, so an absent backlink
+///   can read as "not kept" rather than "not linked";
 /// - an edge is kept only between notes: a reference that resolves to a file
 ///   which is not a note (an image, a PDF) is dropped, not drawn dangling;
 /// - an unresolved reference is kept with `to` nil, because a broken
@@ -52,9 +53,9 @@ public struct FolderIndex: Equatable, Sendable {
     public let edges: [Edge]
     public let truncated: Bool
 
-    /// How many notes one walk reads before it stops and says it stopped:
-    /// the extension's `FOLDER_INDEX_CAP`, so the two hosts cut a large
-    /// folder at the same size.
+    /// How many notes one index holds: the extension's `FOLDER_INDEX_CAP`,
+    /// so the two hosts cut a large folder at the same size, and by the
+    /// same rule (`SmallestByPath`), so they keep the same notes of it.
     public static let cap = 2000
     /// How many files of any kind the walk keeps to resolve against, the Go
     /// to File index's cap.
@@ -164,6 +165,53 @@ public struct FolderIndex: Equatable, Sendable {
     }
 }
 
+/// The `cap` smallest paths offered, by UTF-16 code unit order, each with what
+/// the walk knew about it, and whether anything offered was left out. That
+/// order is what the extension's `sort` compares by too (`smallestPaths` in
+/// src/folderIndex.ts is the same selection), so the two hosts keep the same
+/// notes of the same folder although their walks differ. The order paths are
+/// offered in, which `FileManager.enumerator` promises nothing about, never
+/// reaches the answer.
+///
+/// Bounded: once `cap` paths are held, anything at or past the largest of
+/// them cannot be among the smallest, so it is one comparison and no memory,
+/// and the kept list is compacted whenever it reaches twice the cap rather
+/// than the whole listing being sorted, which by UTF-16 is the cost that
+/// shows on a folder of tens of thousands of notes.
+public struct SmallestByPath<Value> {
+    public let cap: Int
+    private var kept: [(path: String, value: Value)] = []
+    /// The largest path kept since the last compaction: nothing at or past it can survive.
+    private var bound: String?
+    /// How many paths were offered, cut or kept.
+    public private(set) var seen = 0
+
+    public init(cap: Int) {
+        self.cap = cap
+    }
+
+    public mutating func offer(_ path: String, _ value: Value) {
+        seen += 1
+        if let bound, !path.utf16.lexicographicallyPrecedes(bound.utf16) { return }
+        kept.append((path, value))
+        if kept.count >= 2 * cap { compact() }
+    }
+
+    private mutating func compact() {
+        kept.sort { $0.path.utf16.lexicographicallyPrecedes($1.path.utf16) }
+        if kept.count > cap {
+            kept.removeLast(kept.count - cap)
+            bound = kept.last?.path
+        }
+    }
+
+    /// What survived, sorted, and whether anything offered did not.
+    public mutating func finish() -> (kept: [(path: String, value: Value)], truncated: Bool) {
+        compact()
+        return (kept, seen > cap)
+    }
+}
+
 /// Builds one root's `FolderIndex`, again and again, reusing what did not change.
 ///
 /// The app writes a note on every pause in the typing, and every write is a
@@ -204,15 +252,32 @@ public final class FolderIndexer: @unchecked Sendable {
         self.read = read
     }
 
+    /// What enumerates `root`, given the resource keys each entry is asked
+    /// for: `FileManager`'s deep enumeration, or, in a test, the same files
+    /// in an order of the test's choosing.
+    public typealias Walk = (_ root: URL, _ keys: [URLResourceKey]) -> FileManager.DirectoryEnumerator?
+
+    /// The walk the app uses: `FileIndex`'s, hidden entries and package
+    /// contents skipped.
+    public static func walk(_ fileManager: FileManager = .default) -> Walk {
+        { root, keys in
+            fileManager.enumerator(at: root, includingPropertiesForKeys: keys,
+                                   options: [.skipsHiddenFiles, .skipsPackageDescendants])
+        }
+    }
+
     /// Walk the root as `FileIndex` does, read what changed, and assemble.
     /// Blocking: the caller runs it off the main thread.
-    public func build(fileManager: FileManager = .default) -> FolderIndex {
+    public func build(walk: Walk = FolderIndexer.walk()) -> FolderIndex {
         let rootPath = root.standardizedFileURL.path
         let keys: [URLResourceKey] = [.isRegularFileKey, .contentModificationDateKey, .fileSizeKey]
-        var notes: [(path: String, stamp: Stamp)] = []
+        // The walk visits the whole root whatever the note count: a walk cut
+        // at a count would keep whichever notes it met first, and the walk's
+        // order is not a fact about the folder. What is bounded is what is
+        // kept, by path, the same rule as the extension's.
+        var notes = SmallestByPath<Stamp>(cap: cap)
         var files: [String] = []
-        if let walk = fileManager.enumerator(at: root, includingPropertiesForKeys: keys,
-                                             options: [.skipsHiddenFiles, .skipsPackageDescendants]) {
+        if let walk = walk(root, keys) {
             for case let url as URL in walk {
                 // Dependencies are never notes of the folder; the VS Code
                 // walk excludes the same tree (`noteWalkExclude`), and
@@ -222,28 +287,24 @@ public final class FolderIndexer: @unchecked Sendable {
                       let rel = DirectoryListing.relativePath(of: url, in: root) else { continue }
                 let abs = rootPath + "/" + rel
                 if FolderIndex.isNotePath(abs) {
-                    notes.append((abs, Stamp(modified: values.contentModificationDate, size: values.fileSize)))
-                    // One past the cap, so a folder holding exactly the cap
-                    // is not called truncated.
-                    if notes.count > cap { break }
+                    notes.offer(abs, Stamp(modified: values.contentModificationDate, size: values.fileSize))
                 }
                 if files.count < fileCap { files.append(abs) }
             }
         }
-        let truncated = notes.count > cap
-        let kept = notes.sorted { $0.path.utf16.lexicographicallyPrecedes($1.path.utf16) }.prefix(cap)
+        let (kept, truncated) = notes.finish()
 
         var fresh: [String: (stamp: Stamp, reading: NoteLinks.Reading?)] = [:]
         var current: [String: NoteLinks.Reading] = [:]
         lastReadCount = 0
-        for note in kept {
-            if let cached = readings[note.path], cached.stamp == note.stamp, cached.stamp.modified != nil {
-                fresh[note.path] = cached
+        for (path, stamp) in kept {
+            if let cached = readings[path], cached.stamp == stamp, cached.stamp.modified != nil {
+                fresh[path] = cached
             } else {
                 lastReadCount += 1
-                fresh[note.path] = (note.stamp, read(note.path).map(NoteLinks.readNote))
+                fresh[path] = (stamp, read(path).map(NoteLinks.readNote))
             }
-            if let reading = fresh[note.path]?.reading { current[note.path] = reading }
+            if let reading = fresh[path]?.reading { current[path] = reading }
         }
         readings = fresh
 
