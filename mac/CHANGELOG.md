@@ -12,6 +12,11 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ## [Unreleased]
 
+### Fixed
+
+- An `/ai` run in Birta Writer for Mac no longer starts when the save it makes first is refused because another app changed the file and the panel holds edits of its own. Before, the run started anyway, from the panel rather than from the file, and if nothing was typed while it worked its landing read the agent's version over those edits. Now the run is refused with a message naming the question to answer (Reload from Disk or Keep My Changes), and the same request goes through once it is answered.
+- Go to File in a Birta Writer for Mac window rooted at a folder holding more than 20,000 files reaches the same files on every launch: the first 20,000 by path, rather than whichever the disk happened to list first.
+
 ---
 
 ## [2026.927.0] - 2026, September 27
