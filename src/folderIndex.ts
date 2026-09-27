@@ -113,20 +113,21 @@ export function isNotePath(fsPath: string): boolean {
  */
 export function smallestPaths(paths: Iterable<string>, cap: number): { kept: string[]; truncated: boolean } {
     const kept: string[] = [];
+    // The largest path kept since the last compaction: nothing at or past it can survive.
     let bound: string | null = null;
     let seen = 0;
     const compact = () => {
         kept.sort();
-        if (kept.length > cap) {
-            kept.length = cap;
-            bound = kept[cap - 1]!;
-        }
+        if (kept.length > cap) { kept.length = cap; }
     };
     for (const p of paths) {
         seen++;
         if (bound !== null && p >= bound) { continue; }
         kept.push(p);
-        if (kept.length >= 2 * cap) { compact(); }
+        if (kept.length >= 2 * cap) {
+            compact();
+            bound = kept[cap - 1]!;
+        }
     }
     compact();
     return { kept, truncated: seen > cap };
