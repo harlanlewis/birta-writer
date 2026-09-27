@@ -37,6 +37,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding, 
     private var fileMenu: NSMenu?
     private var closeItem: NSMenuItem?
     private var terminationSignal: DispatchSourceSignal?
+    /// The socket `bwr --wait` connects to. Nil when it could not be bound,
+    /// in which case the command reports that nothing answered.
+    private var controlListener: ControlListener?
     /// The view the overflow menu was opened from, for the sharing picker,
     /// which needs somewhere on screen to point at.
 
@@ -344,6 +347,41 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding, 
         // whatever the settings hooks above built.
         if launchedWith != nil || Self.summonedFromShell() { windows.summonAll() }
         installTerminationSignal()
+        listenForWaitingShells()
+    }
+
+    /// Bind the socket a `bwr --wait` connects to, and hand what arrives on
+    /// it to the windows.
+    ///
+    /// After the windows, because a wait names a document and the windows
+    /// are what close one. `ControlSocket` is where the path and the wire
+    /// form are spelled for both programs; `BIRTA_MAC_CLI_SUPPORT` moves the
+    /// socket for a checking run, read here for the reason the command reads
+    /// it: two ends that met in different folders would never meet.
+    ///
+    /// A socket that cannot be bound is logged and the app runs without one.
+    /// Every other thing the command does still works, and the shell is told
+    /// nothing answered rather than being left to wait.
+    private func listenForWaitingShells() {
+        let support = ControlSocket.supportDirectory(environment: ProcessInfo.processInfo.environment) {
+            FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+        }
+        guard let support else { return }
+        let listener = ControlListener(socket: ControlSocket.url(support: support, flavour: AppFlavor.current))
+        listener.onRequest = { [weak self] connection, request in
+            switch request {
+            case let .wait(path): self?.windows.shellWaits(connection, on: path)
+            }
+        }
+        listener.onDisconnect = { [weak self] connection in self?.windows.shellWentAway(connection) }
+        windows.answerShell = { [weak listener] answer in listener?.answer(answer) }
+        do {
+            try listener.start()
+        } catch {
+            NSLog("Birta Writer: bwr --wait has no socket to answer on: \(error)")
+            return
+        }
+        controlListener = listener
     }
 
     /// SIGTERM runs the same flush-then-quit path as the menu's Quit.
@@ -390,6 +428,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding, 
 
     func applicationWillTerminate(_ notification: Notification) {
         windows.finalWrite()
+        // After the writes and after every wait was answered on the way
+        // through `prepareToTerminate`; what is left is descriptors and the
+        // socket file, which would otherwise read to the next `bwr --wait`
+        // as an app that refuses rather than one that is not there.
+        controlListener?.stop()
     }
 
     // MARK: menus

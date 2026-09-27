@@ -13,9 +13,15 @@ import Foundation
 /// directory, creating a file that does not exist yet, and putting piped text
 /// somewhere before there is anything to open.
 ///
+/// The one thing `open(1)` cannot express is `--wait`, and for that the app
+/// talks back: this command connects to the socket the app listens on, names
+/// the file, and blocks until one line comes back saying the document closed
+/// and its bytes landed, or why not. `ControlSocket` spells the socket's path,
+/// the line, and the exit status each answer earns, for both programs.
+///
 /// Where the decisions live: `CliInvocation` for what the words mean,
 /// `CommandInstall` for how the name gets onto `PATH`. What is here is the
-/// running of it, and the two seams a check needs.
+/// running of it, and the three seams a check needs.
 
 /// Standard error, one line.
 func fail(_ message: String) {
@@ -68,7 +74,10 @@ func appBundle() -> URL? {
 ///
 /// The filesystem half still runs. Creating the file a path names and writing
 /// piped text are this command's own work rather than the app's, and a check
-/// that skipped them would be checking the printing.
+/// that skipped them would be checking the printing. So does the socket half
+/// of `--wait`: it launches nothing, and it connects to whatever is already
+/// listening, which is how the check drives a wait against an app it started
+/// itself rather than against whichever copy LaunchServices would pick.
 let dryRun = ProcessInfo.processInfo.environment["BIRTA_MAC_CLI_DRY_RUN"] == "1"
 
 func report(_ line: String) {
@@ -87,12 +96,14 @@ let usage = """
     options:
       -h, --help      this
       -v, --version   the version of the app this command belongs to
-      -w, --wait      wait until the document is closed (not available yet)
+      -w, --wait      block until the document is closed and written, then
+                      exit 0; so EDITOR='\(programName) --wait' works
       --              stop reading options, so a file may begin with a hyphen
 
     Files open where Open With opens them, which depends on what is already
     open and on the "Open files in" setting. Birta Writer opens
-    \(CliInvocation.openedSpelling) files.
+    \(CliInvocation.openedSpelling) files; under --wait a file with no
+    extension is opened too, since git names its message files that way.
     """
 
 /// Run `open(1)` for one thing, and say whether it worked.
@@ -134,6 +145,64 @@ func requireApp() -> URL {
     return app
 }
 
+/// Which build this command belongs to, read off the bundle even under a dry
+/// run: a development build keeps its piped text and its socket apart from
+/// the release's, and a dry run that assumed the release would check the
+/// wrong folder and call it right.
+let flavour = AppFlavor.forBundle(app.flatMap { Bundle(url: $0)?.bundleIdentifier })
+
+/// The Application Support folder this command and the app meet in, for the
+/// piped file and for the `--wait` socket alike.
+///
+/// `BIRTA_MAC_CLI_SUPPORT` points both at a throwaway folder for a checking
+/// run, as `BIRTA_MAC_THEMES_DIR` does for the theme library and for the same
+/// reason: the real one holds somebody's own files, and a check that writes
+/// there has to tidy up after itself in a directory it did not make.
+func supportDirectory() -> URL {
+    let support = ControlSocket.supportDirectory(environment: ProcessInfo.processInfo.environment) {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+    }
+    guard let support else {
+        fail("cannot find Application Support")
+        exit(1)
+    }
+    return support
+}
+
+/// How long a cold launch is given to start answering on its socket. The app
+/// binds it at the end of its launch, after the windows; a laptop waking up
+/// can take a while to get there, and a shell that gave up sooner would leave
+/// the document open with nobody waiting on it.
+let connectTimeout: TimeInterval = 20
+
+/// A connection to the app's `--wait` socket, launching the app when nothing
+/// answers.
+///
+/// Connect first, launch only on a refusal, and retry only after a launch
+/// this command made: under a dry run nothing is launched, so a socket that
+/// is not there is not going to appear, and waiting for it would be a
+/// timeout dressed as a check. The bare launch carries no file and no
+/// summon; the file opened a moment later is what brings the window up.
+func connectToApp(at socket: URL) -> Int32 {
+    guard ControlSocket.fits(socket.path) else {
+        fail("the socket path is too long for a Unix socket: \(socket.path)")
+        exit(1)
+    }
+    if let fd = ControlSocket.connect(to: socket) { return fd }
+    if dryRun {
+        fail("Birta Writer is not running (nothing answers at \(socket.path))")
+        exit(1)
+    }
+    guard launch(requireApp(), arguments: []) else { exit(1) }
+    let deadline = Date().addingTimeInterval(connectTimeout)
+    while Date() < deadline {
+        if let fd = ControlSocket.connect(to: socket) { return fd }
+        usleep(100_000)
+    }
+    fail("Birta Writer started but nothing answers at \(socket.path)")
+    exit(1)
+}
+
 /// Whether text is arriving on standard input.
 ///
 /// A pipe, a socket, or a redirected file. Deliberately not "is not a
@@ -167,15 +236,6 @@ do {
     exit(2)
 } catch {
     fail(error.localizedDescription)
-    exit(2)
-}
-
-// Refused here rather than in the parser, which validates it: the flag's
-// meaning is settled and the channel that would carry the app's answer back is
-// not built, so the honest answer is to say so rather than to return the moment
-// the document opens.
-if request.waitsForClose {
-    fail("--wait is not available yet")
     exit(2)
 }
 
@@ -223,24 +283,11 @@ case .readStandardInput:
         fail("nothing on standard input")
         exit(1)
     }
-    let flavour = AppFlavor.forBundle(app.flatMap { Bundle(url: $0)?.bundleIdentifier })
-    // `BIRTA_MAC_CLI_SUPPORT` points this at a throwaway folder for a checking
-    // run, as `BIRTA_MAC_THEMES_DIR` does for the theme library and for the
-    // same reason: the real one holds somebody's own files, and a check that
-    // writes there has to tidy up after itself in a directory it did not make.
-    let named = ProcessInfo.processInfo.environment["BIRTA_MAC_CLI_SUPPORT"] ?? ""
-    let support = named.isEmpty
-        ? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
-        : URL(fileURLWithPath: named)
-    guard let support else {
-        fail("cannot find Application Support")
-        exit(1)
-    }
     // Piped text has no name and no folder of its own, so it goes in the app's
     // own, under the flavour's name: a development build must not drop files
     // in among the release's. A note somebody wants to keep is one Save As
     // away from anywhere they like.
-    let directory = support
+    let directory = supportDirectory()
         .appendingPathComponent(flavour.displayName, isDirectory: true)
         .appendingPathComponent("Piped", isDirectory: true)
     let file = CliInvocation.pipedFile(in: directory) {
@@ -277,10 +324,51 @@ case let .open(targets):
             }
             if dryRun { report("create \(url.path)") }
         }
+    }
+    // The waits are registered BEFORE anything is opened, on a connection
+    // per file, and the order is the point rather than tidiness: a file with
+    // no extension is one the app turns away unless a shell has already
+    // declared it is waiting on it (`WindowSet.openDocument`), and a wait
+    // registered after the open could arrive after a close nobody was
+    // listening for.
+    var waiting: [(fd: Int32, target: CliInvocation.Target)] = []
+    if request.waitsForClose {
+        let socket = ControlSocket.url(support: supportDirectory(), flavour: flavour)
+        for target in targets {
+            let fd = connectToApp(at: socket)
+            guard ControlSocket.send(ControlSocket.encode(.wait(path: target.url.path)), on: fd) else {
+                fail("Birta Writer stopped answering at \(socket.path)")
+                exit(1)
+            }
+            waiting.append((fd, target))
+            if dryRun { report("wait \(target.url.path)") }
+        }
+    }
+    for target in targets {
         if dryRun {
             report("open \(target.url.path)")
             continue
         }
         guard launch(requireApp(), arguments: [target.url.path]) else { exit(1) }
     }
+    // Block on each in the order typed. The answers sit in each connection's
+    // buffer until read, so a second file closing before the first is not
+    // lost by being read second. The exit is the worst of them, because a
+    // caller reads one status and "one of these was not finished" is a
+    // failure of the whole.
+    var status: Int32 = 0
+    for (fd, target) in waiting {
+        let name = target.url.lastPathComponent
+        guard let line = ControlSocket.readLine(on: fd), let reply = ControlSocket.decodeReply(line) else {
+            // End of file with no answer: the app went without saying so,
+            // which is a crash or a kill rather than a close.
+            fail("Birta Writer went away before \(name) was closed")
+            status = max(status, 1)
+            continue
+        }
+        let outcome = ControlSocket.exit(for: reply, file: name)
+        if let message = outcome.message { fail(message) }
+        status = max(status, outcome.status)
+    }
+    if request.waitsForClose { exit(status) }
 }
