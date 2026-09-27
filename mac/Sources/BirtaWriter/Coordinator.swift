@@ -3091,6 +3091,21 @@ final class Coordinator {
         flushThen { [weak self] in
             guard let self else { return }
             self.write(.explicitSave)
+            // The save above can be refused: the file changed outside the app
+            // since it was last read, and the panel holds edits of its own
+            // (`reconcileWithDisk`'s conflict). The question that refusal put
+            // is the one to answer first. A run that started anyway would open
+            // a file the panel does not hold, with `handoff` taken from the
+            // panel, and a landing with nothing typed meanwhile would read the
+            // agent's version over the edits (MAR-490). A refusal that could
+            // put no question (the panel off screen) is the same refusal; the
+            // next summon asks.
+            guard !self.driftUnresolved else {
+                self.measure.trace("agent refused reason=drift at=\(self.boundURL.lastPathComponent)")
+                self.reportAgent(requestId: id, .init(status: "failed", harness: nil, text: nil,
+                                                      message: DiskDrift.runRefused(document: self.boundURL.lastPathComponent)))
+                return
+            }
             // The bytes the agent opens, and the file they belong to. A
             // finished run compares against both: the bytes to tell its own
             // edit from one typed into the panel while it ran, the file

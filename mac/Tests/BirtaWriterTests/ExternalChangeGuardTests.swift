@@ -251,4 +251,32 @@ final class ExternalChangeGuardTests: XCTestCase {
         XCTAssertTrue(after[..<end.lowerBound].contains("reconcileWithDisk("),
                       "a summon that does not look is how a file edited elsewhere stays invisible")
     }
+
+    /// An `/ai` run writes the note before it starts, so the agent opens the
+    /// bytes on screen. That write goes through the same check as every other
+    /// and can be refused the same way, and a run that starts anyway opens a
+    /// file the panel does not hold: with nothing typed meanwhile the landing
+    /// reads `buffer == handoff`, settles, and reloads the agent's version
+    /// over the panel's edits (MAR-490). So between the save and the run, the
+    /// refusal is consulted, and it ends the run rather than the run going
+    /// ahead. Pinned as an order because each of the three calls is correct
+    /// on its own; only the sequence is the rule.
+    func testARunShouldNotStartOnAPreRunSaveTheConflictRefused() throws {
+        let body = try functionBody(named: "runAgent", in: source())
+        let code = body.components(separatedBy: "\n")
+            .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
+            .joined(separator: "\n")
+        let save = try XCTUnwrap(code.range(of: "write(.explicitSave)"),
+                                 "the run no longer writes the note first, so the agent opens stale bytes")
+        let refused = try XCTUnwrap(code.range(of: "guard !self.driftUnresolved else {"),
+                                    "the run no longer asks whether its pre-run save was refused")
+        let run = try XCTUnwrap(code.range(of: "self.agent.run("),
+                                "the run's start is gone or renamed, and this guard names it")
+        XCTAssertTrue(save.lowerBound < refused.lowerBound,
+                      "asked before the save, the flag describes the previous write, not this one")
+        XCTAssertTrue(refused.lowerBound < run.lowerBound,
+                      "asked after the run starts, the agent is already reading the file")
+        XCTAssertTrue(code[refused.lowerBound..<run.lowerBound].contains("DiskDrift.runRefused("),
+                      "the refusal says which question to answer, in the sheet's own words")
+    }
 }
