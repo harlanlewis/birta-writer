@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+---
+
+## [2026.928.0] - 2026, September 28
+
 ### Fixed
 
 - A folder holding more than 2000 notes draws the same graph and the same backlinks on every open, and the same in VS Code and in Birta Writer for Mac. Which notes the index kept past its cap used to depend on the order the file system listed them, which is not stable between runs and differs between the two hosts; the kept set is now the first 2000 by path.
