@@ -8,7 +8,7 @@
 # fault and how a directory of stale plists accumulates unnoticed.
 #
 # A hook rather than a rule, for the reason this repository already has
-# `no-piped-gate.sh` and `prose-guard`: where guidance is broken repeatedly,
+# `.claude/gate-pipe-guard` and `prose-guard`: where guidance is broken repeatedly,
 # the rule becomes code. A cleanup nobody has to remember is the only kind
 # that runs, and this one has to survive sessions with no reason to read a
 # script header.
