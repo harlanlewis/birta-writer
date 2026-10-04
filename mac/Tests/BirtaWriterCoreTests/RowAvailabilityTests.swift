@@ -191,4 +191,38 @@ final class RowAvailabilityTests: XCTestCase {
             XCTAssertEqual(row.problemsOnly.isEnabled, row.isEnabled)
         }
     }
+
+    /// The channel's reason holds whatever the flavour says: a store copy is
+    /// the store's to update, development build or not.
+    func testAStoreCopyShouldHaveItsUpdateRowDeadWhateverTheFlavour() {
+        for flavour in AppFlavor.allCases {
+            let row = RowAvailability.autoUpdate(flavour: flavour, distribution: .appStore)
+            XCTAssertFalse(row.isEnabled, flavour.rawValue)
+            XCTAssertTrue(row.isProblem, flavour.rawValue)
+            XCTAssertTrue(row.note.contains("App Store"), flavour.rawValue)
+        }
+    }
+
+    /// A direct build answers for its flavour exactly as the older rule did,
+    /// so nothing an existing install shows has moved.
+    func testADirectCopyShouldAnswerForItsFlavour() {
+        XCTAssertEqual(RowAvailability.autoUpdate(flavour: .release, distribution: .direct),
+                       RowAvailability.autoUpdate(updatesItself: true))
+        XCTAssertEqual(RowAvailability.autoUpdate(flavour: .dev, distribution: .direct),
+                       RowAvailability.autoUpdate(updatesItself: false))
+    }
+
+    /// Both rows the sandbox takes away are dead and say so in the ink that
+    /// means withheld, and both name where the thing does exist.
+    func testTheTerminalCommandAndTheAgentShouldBeBlockedOnlyWhenNotOffered() {
+        for make in [RowAvailability.terminalCommand(offered:), RowAvailability.agent(offered:)] {
+            XCTAssertTrue(make(true).isEnabled)
+            XCTAssertFalse(make(true).isProblem)
+            let blocked = make(false)
+            XCTAssertFalse(blocked.isEnabled)
+            XCTAssertTrue(blocked.isProblem)
+            XCTAssertTrue(blocked.note.contains("App Store"))
+            XCTAssertTrue(blocked.note.contains("download"))
+        }
+    }
 }

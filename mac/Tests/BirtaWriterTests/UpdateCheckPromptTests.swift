@@ -34,7 +34,7 @@ final class UpdateCheckPromptTests: XCTestCase {
     }
 
     func testAnAnswerWithNothingToOfferShouldHaveOneButtonReturnTakes() {
-        for answer in [UpdatePolicy.CheckAnswer.upToDate, .unreachable, .busy, .notThisBuild] {
+        for answer in [UpdatePolicy.CheckAnswer.upToDate, .unreachable, .busy, .notThisBuild, .storeManaged] {
             let alert = UpdateCheckPrompt.build(report(answer))
             XCTAssertEqual(alert.buttons.count, 1, "\(answer)")
             XCTAssertEqual(alert.buttons.first?.keyEquivalent, "\r", "\(answer)")

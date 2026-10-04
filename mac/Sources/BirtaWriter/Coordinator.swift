@@ -3699,6 +3699,7 @@ final class Coordinator {
 
     private func makeWelcome() -> WelcomeView {
         let view = WelcomeView(flavour: .current,
+                               distribution: .current,
                                onHotkeyChange: { [weak self] in self?.onHotkeyChanged?() ?? -1 },
                                refusedSummonCombo: { [weak self] in self?.refusedSummonCombo?() })
         view.translatesAutoresizingMaskIntoConstraints = false

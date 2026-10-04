@@ -61,10 +61,17 @@ final class WelcomeView: NSView {
     /// explicitly by the one production caller.
     let flavour: AppFlavor
 
+    /// Which channel this screen is drawing for, taken for the same reason:
+    /// the test process is never sandboxed, so the store arm of the update
+    /// row is unreachable through `Distribution.current` here too.
+    let distribution: Distribution
+
     init(flavour: AppFlavor,
+         distribution: Distribution,
          onHotkeyChange: @escaping () -> OSStatus,
          refusedSummonCombo: @escaping () -> HotkeyCombo? = { nil }) {
         self.flavour = flavour
+        self.distribution = distribution
         self.onHotkeyChange = onHotkeyChange
         self.refusedSummonCombo = refusedSummonCombo
         super.init(frame: .zero)
@@ -368,7 +375,7 @@ final class WelcomeView: NSView {
         // documenting the answers: a row that works needs no sentence here,
         // and one that cannot needs the same sentence Settings gives it.
         let availability = RowAvailability
-            .autoUpdate(updatesItself: flavour.updatesItself).problemsOnly
+            .autoUpdate(flavour: flavour, distribution: distribution).problemsOnly
         updateSwitch.isEnabled = availability.isEnabled
         updateSwitch.state = Prefs.autoUpdate && availability.isEnabled ? .on : .off
         rowViews[.autoUpdate]?.apply(availability)

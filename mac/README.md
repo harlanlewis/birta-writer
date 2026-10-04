@@ -47,6 +47,12 @@ A release cut before that, or one built without the secrets, is ad-hoc signed an
 
 The unconditional quarantine strip this replaced was a no-op on this path, which is worth knowing before anybody reinstates it: `curl` sets `com.apple.provenance` and not `com.apple.quarantine`, so the flag was never on the bundle the script unpacks. It is the browser download from a release page that carries it, and notarization is what makes that one open.
 
+## The App Store build
+
+The same app inside the App Sandbox, and the sandbox is what makes it different rather than anything decided here. `BirtaWriterCore.Distribution` reads whether this process is sandboxed and answers four questions from that, each a thing the sandbox refuses: `/ai` (a command on your PATH, which a sandboxed process cannot run with the access it needs), Open from Terminal (`bwr` is a link written outside the container to a binary that runs outside it), updating itself (the App Store does that, and a sandboxed app cannot replace its own bundle), and adding the themes an installed VS Code holds (`~/.vscode` is outside the container; choosing a theme file and browsing Open VSX both still work). Each of those is a Settings row that says so, in the ink that means something is withheld, and names the download above as where the thing does exist. `/ai` leaves the page through the same capability filter its switch uses, so the page needs no profile of its own for the store.
+
+Read off the sandbox rather than set by a build flag, for the reason `AppFlavor` reads the bundle id: a flag that said "direct" on a sandboxed build would offer four things that then fail. Nothing in the tree yet builds a sandboxed copy, `build-app.sh` writes no entitlements, and in every build that exists `Distribution.current` is `.direct`, so the seam changes nothing until a store build does. What such a build needs before it is usable is the file access the sandbox takes away, which is tracked on its own rather than assumed here.
+
 ## Updating itself
 
 Three steps, and only the last one is ever in front of anybody. CHECK asks the project's own release host what the newest release is, at launch and every couple of hours after it (`UpdatePolicy.recheckInterval`). STAGE fetches that release, verifies the checksum published beside it, unpacks it and leaves it in the temporary directory with nothing replaced. ARM hands the swap to a script that runs once this process is gone, since an app cannot reliably replace the bundle it is executing out of.

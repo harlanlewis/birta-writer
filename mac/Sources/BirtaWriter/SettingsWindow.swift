@@ -336,6 +336,13 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     /// where it is written instead of spread across four reads.
     let flavour: AppFlavor
 
+    /// Which channel this window is drawing for, taken for the reason the
+    /// flavour is: a `static let` read at the point of use is the test
+    /// process's, which is never sandboxed, so the store arm of every row
+    /// below would be unreachable under `swift test`. The one production
+    /// caller passes `.current` explicitly, as it does the flavour.
+    let distribution: Distribution
+
     private let onHotkeyChange: () -> OSStatus
     /// The chord macOS refused, or nil while it holds one.
     ///
@@ -413,6 +420,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     private let onReset: () -> Void
 
     init(flavour: AppFlavor,
+         distribution: Distribution,
          onHotkeyChange: @escaping () -> OSStatus,
          refusedSummonCombo: @escaping () -> HotkeyCombo? = { nil },
          onChange: @escaping (BeforeReload?) -> Void,
@@ -428,6 +436,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
          onEditorCommand: @escaping (String) -> Void = { _ in },
          onFormattingRowChange: @escaping (Bool) -> Void = { _ in }) {
         self.flavour = flavour
+        self.distribution = distribution
         self.themeStore = themeStore
         self.bundledThemes = bundledThemes
         self.onAppearanceChange = onAppearanceChange
@@ -893,7 +902,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         hotkeyRecorder.setCombo(Prefs.hotkey)
         agentField.stringValue = Prefs.agentCommand
         newNoteField.stringValue = Prefs.newNoteNameTemplate
-        agentEnabledSwitch.state = Prefs.agentEnabled ? .on : .off
+        agentEnabledSwitch.state = Prefs.agentEnabled && distribution.offersAgent ? .on : .off
         let sets = Prefs.syntaxSets
         for (set, control) in syntaxSwitches {
             control.state = sets.contains(set) ? .on : .off
@@ -987,11 +996,16 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     /// to name, and a field sitting there editable would be a setting for a
     /// thing that does not run.
     private func showAgent() {
+        // The switch itself is dead on a channel that cannot run a command,
+        // and the sentence under it says where one can.
+        let availability = RowAvailability.agent(offered: distribution.offersAgent)
+        agentEnabledSwitch.isEnabled = availability.isEnabled
+        rowViews[.agentEnabled]?.apply(availability)
         guard let agentGroup else { return }
         SettingsWindowController.setRowHidden(
             agentGroup,
             row: SettingsForm.index(of: .agentCommand, inPane: SettingsForm.aiAgent) ?? 1,
-            hidden: !Prefs.agentEnabled)
+            hidden: !Prefs.agentEnabled || !distribution.offersAgent)
         fitWindowToPane()
     }
 
@@ -1013,7 +1027,14 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         // What a rename has to take with it, remembered here because this is
         // the one place that reads the disk.
         commandLinkedName = installed ? name : nil
-        rowViews[.commandLine]?.apply(commandAvailability(name: name, link: link, installed: installed))
+        // A channel that cannot offer the command says so first; what the
+        // disk says about the link is only worth drawing where it could.
+        let availability = distribution.offersTerminalCommand
+            ? commandAvailability(name: name, link: link, installed: installed)
+            : RowAvailability.terminalCommand(offered: false)
+        commandSwitch.isEnabled = availability.isEnabled
+        commandField.isEnabled = availability.isEnabled
+        rowViews[.commandLine]?.apply(availability)
         // While the command is there, and also while the last attempt was
         // REFUSED. A refusal is usually ABOUT the name (something else already
         // answers to it), and the refused attempt leaves nothing installed, so
@@ -1184,7 +1205,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     /// than sitting there switched on and doing nothing: replacing it would
     /// delete the change it was installed to show.
     private func showAutoUpdate() {
-        let availability = RowAvailability.autoUpdate(updatesItself: flavour.updatesItself)
+        let availability = RowAvailability.autoUpdate(flavour: flavour, distribution: distribution)
         updateSwitch.isEnabled = availability.isEnabled
         updateButton.isEnabled = availability.isEnabled
         updateSwitch.state = Prefs.autoUpdate && availability.isEnabled ? .on : .off
@@ -2481,9 +2502,11 @@ extension SettingsWindowController {
         addThemeButton.pullsDown = true
         addThemeButton.controlSize = .small
         addThemeButton.removeAllItems()
-        addThemeButton.addItems(withTitles: [ThemesMenu.addTitle, Self.addThemeFromFileTitle,
-                                             Self.addThemeFromVSCodeTitle, Self.browseThemesTitle,
-                                             Self.restoreDefaultThemesTitle])
+        // The installed-editor entry exists only where `~/.vscode` can be
+        // read, which a store build's sandbox cannot; the other ways in stay.
+        addThemeButton.addItems(withTitles: [ThemesMenu.addTitle, Self.addThemeFromFileTitle]
+            + (distribution.readsInstalledEditorThemes ? [Self.addThemeFromVSCodeTitle] : [])
+            + [Self.browseThemesTitle, Self.restoreDefaultThemesTitle])
         addThemeButton.target = self
         addThemeButton.action = #selector(addTheme(_:))
 
@@ -2754,11 +2777,14 @@ extension SettingsWindowController {
     }
 
     @objc private func addTheme(_ sender: NSPopUpButton) {
-        switch sender.indexOfSelectedItem {
-        case 1: chooseThemeFiles()
-        case 2: importInstalledThemes()
-        case 3: browseThemes()
-        case 4: restoreDefaultThemes()
+        // By title rather than index: the list has one entry fewer on a
+        // channel that cannot read an installed editor's themes.
+        guard let title = sender.titleOfSelectedItem else { return }
+        switch title {
+        case Self.addThemeFromFileTitle: chooseThemeFiles()
+        case Self.addThemeFromVSCodeTitle: importInstalledThemes()
+        case Self.browseThemesTitle: browseThemes()
+        case Self.restoreDefaultThemesTitle: restoreDefaultThemes()
         default: break
         }
     }

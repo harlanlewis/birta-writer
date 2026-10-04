@@ -19,7 +19,7 @@ final class CommandRowTests: XCTestCase {
     }
 
     private func makeController() -> SettingsWindowController {
-        SettingsWindowController(flavour: .release, onHotkeyChange: { 0 }, onChange: { _ in },
+        SettingsWindowController(flavour: .release, distribution: .direct, onHotkeyChange: { 0 }, onChange: { _ in },
                                  onChangeEverywhere: {}, onShowWelcome: {},
                                  onCheckForUpdates: {})
     }

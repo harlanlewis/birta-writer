@@ -380,7 +380,7 @@ final class UpdatePolicyTests: XCTestCase {
         // back is a button that looks broken, whatever the network said.
         let answers: [UpdatePolicy.CheckAnswer] = [
             .found(latest: "v2026.905.0", staged: false), .found(latest: "v2026.905.0", staged: true),
-            .upToDate, .unreachable, .busy, .notThisBuild, .armed(latest: "v2026.905.0"),
+            .upToDate, .unreachable, .busy, .notThisBuild, .storeManaged, .armed(latest: "v2026.905.0"),
             .couldNotInstall(reason: "The update did not arrive intact. Nothing was installed."),
         ]
         for answer in answers {
@@ -427,6 +427,7 @@ final class UpdatePolicyTests: XCTestCase {
         case .unreachable: return "checkReport.unreachable"
         case .busy: return "checkReport.busy"
         case .notThisBuild: return "checkReport.notThisBuild"
+        case .storeManaged: return "checkReport.storeManaged"
         case .armed: return "checkReport.armed"
         case .couldNotInstall: return "checkReport.couldNotInstall"
         }
@@ -456,9 +457,10 @@ final class UpdatePolicyTests: XCTestCase {
             .unreachable,
             .busy,
             .notThisBuild,
+            .storeManaged,
             .couldNotInstall(reason: "Could not download the update."),
         ]
-        XCTAssertEqual(Set(answers.map(name(of:))).count, 7,
+        XCTAssertEqual(Set(answers.map(name(of:))).count, 8,
                        "a CheckAnswer case has no sample here, so the sweep never reaches it")
 
         var swept = answers.map { answer -> (surface: String, text: String) in
@@ -492,7 +494,8 @@ final class UpdatePolicyTests: XCTestCase {
         let silent = swept.filter { !$0.text.contains(Self.sweptVersion) }.map(\.surface).sorted()
         XCTAssertEqual(silent, ["checkReport.busy", "checkReport.couldNotInstall",
                                 "checkReport.found", "checkReport.found",
-                                "checkReport.notThisBuild", "checkReport.unreachable",
+                                "checkReport.notThisBuild", "checkReport.storeManaged",
+                                "checkReport.unreachable",
                                 "releaseGap"])
         XCTAssertEqual(swept.count - silent.count, 6,
                        "fewer sentences named a version than this sweep was written to cover")

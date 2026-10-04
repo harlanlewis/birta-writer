@@ -83,6 +83,36 @@ public struct RowAvailability: Sendable, Equatable {
             : .blocked("A development build does not replace itself.")
     }
 
+    /// The auto-update row for a build of this flavour on this channel.
+    ///
+    /// The channel is asked first, because its reason holds whatever the
+    /// flavour says: a store copy is the store's to update. A direct build
+    /// then answers for its flavour exactly as before.
+    public static func autoUpdate(flavour: AppFlavor, distribution: Distribution) -> RowAvailability {
+        distribution.updatesItself
+            ? autoUpdate(updatesItself: flavour.updatesItself)
+            : .blocked("The App Store keeps this copy up to date.")
+    }
+
+    /// The Open from Terminal row, given whether this build may offer it.
+    ///
+    /// A store build cannot: the command is a link written outside the
+    /// sandbox to a binary that runs outside it. The sentence names where the
+    /// command does exist rather than only that it does not here.
+    public static func terminalCommand(offered: Bool) -> RowAvailability {
+        offered
+            ? .available()
+            : .blocked("An App Store copy cannot put a command on your PATH. The download from the project can.")
+    }
+
+    /// The `/ai` switch, given whether this build may offer it. Same reason,
+    /// one step further: `/ai` runs a command, and the sandbox runs none.
+    public static func agent(offered: Bool) -> RowAvailability {
+        offered
+            ? .available()
+            : .blocked("An App Store copy cannot run a command on this Mac, which is what /ai does. The download from the project can.")
+    }
+
     /// A presence row (the menu-bar icon, the Dock icon), from where the app
     /// can be reached right now.
     ///

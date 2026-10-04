@@ -314,6 +314,8 @@ public enum UpdatePolicy {
         case busy
         /// A build that does not replace itself: the development flavour.
         case notThisBuild
+        /// A build the App Store keeps current, which never replaces itself.
+        case storeManaged
         /// A swap already armed to run after the next quit, by tag. Answered
         /// without a request, because the question is no longer what is
         /// newest but whether to take it now.
@@ -388,6 +390,11 @@ public enum UpdatePolicy {
             return CheckReport(
                 title: "A development build does not replace itself.",
                 detail: "The copy in Applications checks for updates and installs them; this build is here to be looked at.",
+                buttons: ["OK"])
+        case .storeManaged:
+            return CheckReport(
+                title: "The App Store keeps this copy up to date.",
+                detail: "Updates to \(appName) arrive through the App Store, which has its own setting for installing them on its own.",
                 buttons: ["OK"])
         case let .armed(latest):
             return CheckReport(

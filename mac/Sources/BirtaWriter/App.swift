@@ -1279,7 +1279,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding, 
             case let .found(tag): answer = .found(latest: tag, staged: self.updater.staged?.tag == tag)
             case .upToDate: answer = .upToDate
             case .failed: answer = .unreachable
-            case .refused: answer = AppFlavor.current.updatesItself ? .busy : .notThisBuild
+            case .refused:
+                // Refused for a fact about this build, and the person is told
+                // which: the flavour's reason is reached only on a channel
+                // that would otherwise allow the swap.
+                if Distribution.current.updatesItself(flavour: AppFlavor.current) { answer = .busy }
+                else if Distribution.current.updatesItself { answer = .notThisBuild }
+                else { answer = .storeManaged }
             }
             // Off the completion's own drain before anything modal, for the
             // reason `onUpdateAvailable` gives above.
@@ -1472,6 +1478,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding, 
                 // this literal is the whole of what a test cannot cover, and
                 // it is legible here.
                 flavour: .current,
+                distribution: .current,
                 onHotkeyChange: { [weak self] in self?.windows.registerHotkey() ?? -1 },
                 refusedSummonCombo: { [weak self] in self?.windows.refusedSummonCombo },
                 onChange: { [weak self] work in self?.front?.preferencesChanged(beforeReload: work) },
