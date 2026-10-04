@@ -122,6 +122,7 @@ macOS shown; Ctrl on Windows/Linux unless noted. Most are contributed commands a
 | `Cmd+F` · `Cmd+Alt+F` | Find · Replace (`Ctrl+H` on Windows/Linux) |
 | `Cmd+D` · `Cmd+Shift+L` | Next occurrence · all occurrences |
 | `Cmd+Alt+[` / `Cmd+Alt+]` | Fold / unfold (`Ctrl+Shift+[` / `]` on Windows/Linux) |
+| `Cmd+Alt+.` | Show / hide the table of contents |
 | `Cmd+Shift+O` | Go to heading |
 | `Ctrl+G` | Go to line |
 | `Cmd+K` | Insert / edit link |

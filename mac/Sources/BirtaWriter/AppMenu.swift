@@ -275,10 +275,20 @@ enum AppMenu {
         /// is another entry in this list rather than another `if` in the
         /// repaint.
         let needs: [MenuToggle]
+        /// A second chord the row answers to, never printed. A menu item draws
+        /// one chord, and the cheatsheet and the palette print that one, so
+        /// this is for a chord kept beside it rather than one to teach. Built
+        /// as a hidden twin item that keeps its key equivalent
+        /// (`allowsKeyEquivalentWhenHidden`), sending the same action through
+        /// the same validation. Only for a row with no `needs`: `applyState`
+        /// finds items by the row's address and never reaches the twin, so a
+        /// gate could withdraw the row and leave its second chord live.
+        let also: (key: String, modifiers: NSEvent.ModifierFlags)?
 
         init(title: String, key: String = "", modifiers: NSEvent.ModifierFlags = [],
              action: Action, menu: Menu, submenu: String? = nil, group: Int = 0,
-             state: RowState? = nil, needs: [MenuToggle] = []) {
+             state: RowState? = nil, needs: [MenuToggle] = [],
+             also: (key: String, modifiers: NSEvent.ModifierFlags)? = nil) {
             self.title = title
             self.key = key
             self.modifiers = modifiers
@@ -288,6 +298,12 @@ enum AppMenu {
             self.group = group
             self.state = state
             self.needs = needs
+            self.also = also
+        }
+
+        /// What the hidden twin carrying `also` answers to.
+        var alsoItemIdentifier: NSUserInterfaceItemIdentifier {
+            NSUserInterfaceItemIdentifier(itemIdentifier.rawValue + "#also")
         }
 
         /// What the built item answers to, so a repaint finds it again.
@@ -649,7 +665,11 @@ enum AppMenu {
         .init(title: "Unfold All",
               action: .command("unfoldAll"), menu: .view, submenu: "Folding", group: 1),
 
-        .init(title: "Show Table of Contents",
+        // The two sidebars on the two keys beside each other, each on the side
+        // of the keyboard its panel is on: Option+Command+Comma for the files
+        // on the left, Option+Command+Period for the outline on the right.
+        // The same chords in VS Code, where only the outline exists.
+        .init(title: "Show Table of Contents", key: ".", modifiers: [.command, .option],
               action: .command("toggleToc"), menu: .view, group: 3,
               state: .title(.tocShown, whenOn: "Hide Table of Contents")),
         // The file explorer, which only a window rooted at a folder has. Both
@@ -660,12 +680,14 @@ enum AppMenu {
         // holds. `.app` rows rather than command rows, because the second
         // flips a setting the APP owns and fans it out to every rooted window
         // (`WindowSet.setShowHiddenFiles`), and the first is the page's
-        // command sent to the window in front. Cmd+Shift+E is the chord VS
-        // Code's own explorer answers to; Cmd+Shift+. is the Finder's for
-        // hidden files (MAR-457).
-        .init(title: "Show Files", key: "e", modifiers: [.command, .shift],
+        // command sent to the window in front. Option+Command+Comma is the
+        // printed chord, the outline's neighbour; Cmd+Shift+E, the chord VS
+        // Code's own explorer answers to, still works beside it. Cmd+Shift+.
+        // is the Finder's for hidden files (MAR-457).
+        .init(title: "Show Files", key: ",", modifiers: [.command, .option],
               action: .app(#selector(AppDelegate.menuToggleExplorer)), menu: .view, group: 3,
-              state: .title(.explorerShown, whenOn: "Hide Files")),
+              state: .title(.explorerShown, whenOn: "Hide Files"),
+              also: (key: "e", modifiers: [.command, .shift])),
         .init(title: "Show Hidden Files", key: ".", modifiers: [.command, .shift],
               action: .app(#selector(AppDelegate.menuToggleHiddenFiles)), menu: .view, group: 3,
               state: .title(.hiddenFilesShown, whenOn: "Hide Hidden Files")),
@@ -1041,6 +1063,16 @@ enum AppMenu {
             } else {
                 item.target = target
                 item.representedObject = row.action.payload
+                if let also = row.also {
+                    let twin = nsMenu.addItem(withTitle: row.title, action: row.action.selector,
+                                              keyEquivalent: also.key)
+                    twin.keyEquivalentModifierMask = also.modifiers
+                    twin.isHidden = true
+                    twin.allowsKeyEquivalentWhenHidden = true
+                    twin.target = target
+                    twin.representedObject = row.action.payload
+                    twin.identifier = row.alsoItemIdentifier
+                }
             }
         }
     }

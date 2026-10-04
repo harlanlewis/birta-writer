@@ -270,11 +270,13 @@ final class Coordinator {
         !noteMissing && FileManager.default.fileExists(atPath: boundURL.path)
     }
 
+    /// The file a folder's window opens on, which is `WindowSet`'s to answer
+    /// because it turns on what the other windows hold
+    /// (`WindowSet.folderDefault`). Nil when there is nothing to open, not
+    /// even a new note.
+    var onFolderDefault: ((URL) -> URL?)?
+
     /// Ask, as a sheet on this window, then move `url` to the Trash.
-    ///
-    /// The file this tab is on is not a special case: the watcher sees it go
-    /// and the panel offers to put it back, the same as a deletion from the
-    /// Finder.
     private func confirmMoveToTrash(_ url: URL) {
         let words = ExplorerMenu.trashConfirmation(name: url.lastPathComponent)
         let alert = NSAlert()
@@ -284,11 +286,48 @@ final class Coordinator {
         alert.addButton(withTitle: words.cancel)
         alert.beginSheetModal(for: panel) { [weak self] response in
             guard response == .alertFirstButtonReturn else { return }
-            do {
-                try FileManager.default.trashItem(at: url, resultingItemURL: nil)
-            } catch {
-                self?.flashStatus("Could not move \(url.lastPathComponent) to the Trash.")
-            }
+            self?.moveToTrash(url)
+        }
+    }
+
+    /// Move `url` to the Trash, and when it is the file this tab is on in a
+    /// folder window, move the tab to the folder's own choice of file
+    /// (`onFolderDefault`), as opening the folder would: the reader threw the
+    /// file away on purpose, so the card about a file that went missing is the
+    /// wrong thing to show them.
+    ///
+    /// The buffer is settled first, on the rule the explorer's own click uses
+    /// (`replaceFile`): written when autosave is on. A buffer still ahead of
+    /// the file after that (autosave off, or a write that failed) keeps the
+    /// card instead, because the card's Save It Back is the only place those
+    /// bytes still exist. A file trashed that this tab is not on, and a window
+    /// on a loose file, take the card's path unchanged.
+    private func moveToTrash(_ url: URL) {
+        guard let root = explorerRoot, FileIdentity.sameFile(url, boundURL) else {
+            trash(url)
+            return
+        }
+        flushThen(persisting: false) { [weak self] in
+            guard let self else { return }
+            self.write(.panelHidden)
+            let unsaved = self.hasUnwrittenBytes
+            // Trash and rebind in one turn. The watcher's report of the trash
+            // never reaches the new binding, because rebinding unregisters
+            // the old file's presenter (`NoteWatcherTests` holds that).
+            guard self.trash(url), !unsaved, let next = self.onFolderDefault?(root) else { return }
+            self.openInPlace(next, slot: nil)
+        }
+    }
+
+    /// One trash, its failure said in the status line. Whether it happened.
+    @discardableResult
+    private func trash(_ url: URL) -> Bool {
+        do {
+            try FileManager.default.trashItem(at: url, resultingItemURL: nil)
+            return true
+        } catch {
+            flashStatus("Could not move \(url.lastPathComponent) to the Trash.")
+            return false
         }
     }
 
@@ -1504,6 +1543,13 @@ final class Coordinator {
             if obj["type"] as? String == "__birtaOpenDirectory", let path = obj["path"] as? String {
                 measure.mark("debug-open-directory")
                 onOpenDirectoryRequest?(URL(fileURLWithPath: path, isDirectory: true))
+                return
+            }
+            // Move to Trash on this tab's own file, as the confirmed sheet
+            // runs it; a shell cannot click the sheet's button.
+            if obj["type"] as? String == "__birtaMoveToTrash" {
+                measure.mark("debug-move-to-trash")
+                moveToTrash(boundURL)
                 return
             }
             // One listing, as the page asks for it when a folder is opened,

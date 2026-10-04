@@ -109,7 +109,7 @@ final class TitleBarView: NSView {
     ///
     /// Built here rather than handed in like the file actions, because there
     /// is nothing to decide: it is one button, running the menu row the
-    /// window's own ⇧⌘E runs. What the coordinator says about it is whether
+    /// window's own ⌥⌘, runs. What the coordinator says about it is whether
     /// this window HAS an explorer (`setSidebarAvailable`); a window with none
     /// draws no button and reserves no room for one, so the name starts
     /// against the traffic lights rather than after a blank stretch of band.
