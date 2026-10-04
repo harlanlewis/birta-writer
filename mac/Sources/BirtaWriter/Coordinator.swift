@@ -4666,7 +4666,8 @@ final class Coordinator {
         traceTitleActions()
     }
 
-    /// The two file buttons the titlebar draws, at rest and hovered.
+    /// The file buttons the titlebar draws before the name, at rest and
+    /// hovered, with where the name starts so a check can say they end first.
     ///
     /// The same shape as `traceChevron` and for the same reasons, plus one
     /// claim that view cannot make: the buttons' GEOMETRY has to be identical
@@ -4691,11 +4692,11 @@ final class Coordinator {
             frames.map { String(format: "%.1f:%.1f", $0.origin.x, $0.width) }.joined(separator: ",")
         }
         measure.trace(String(
-            format: "titleactions count=%d symbols=%d restShown=%@ overShown=%@ restBoxes=%@ overBoxes=%@ chevronMaxX=%.1f",
+            format: "titleactions count=%d symbols=%d restShown=%@ overShown=%@ restBoxes=%@ overBoxes=%@ labelMinX=%.1f",
             over.frames.count, over.symbols,
             rest.shown ? "yes" : "no", over.shown ? "yes" : "no",
             box(rest.frames), box(over.frames),
-            view.labelFrameInWindow().width + view.chromeWidth - view.actionsView.room))
+            view.labelFrameInView.minX))
     }
 
     /// The title's hover affordance, at rest and hovered.
@@ -4719,7 +4720,7 @@ final class Coordinator {
             over.hasImage ? "yes" : "no",
             over.frame.origin.x, over.frame.width, over.frame.height,
             rest.alpha, over.alpha, rest.ink, over.ink,
-            view.labelFrameInWindow().width + 8))
+            view.labelFrameInView.maxX))
     }
 
     /// Name the bound file in the titlebar, and say whether the reader has

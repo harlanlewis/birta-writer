@@ -756,6 +756,11 @@ final class TitleBarView: NSView {
     /// Set the hover state and read back what it decided, the way
     /// `chevronForMeasurement` does and for the same reason: a probe that wrote
     /// the answer would be answering itself.
+    /// The name's box in this view's own coordinates, the space
+    /// `actionsForMeasurement` and `chevronForMeasurement` report in, so a
+    /// check can compare them without rebuilding the layout from widths.
+    var labelFrameInView: NSRect { label.frame }
+
     func actionsForMeasurement(hovered: Bool) -> (shown: Bool, frames: [NSRect], symbols: Int) {
         setHoverForMeasurement(hovered)
         layoutSubtreeIfNeeded()
