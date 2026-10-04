@@ -93,7 +93,8 @@ final class TitleBarView: NSView {
     /// edits one file from a panel and is not an `NSDocument` app, so the
     /// choice is to draw the affordance or to have none.
     private let chevron = NSImageView()
-    /// New Note and Open, drawn after the chevron on hover.
+    /// New Note, Open and the Command Palette, drawn between the sidebar
+    /// toggle and the name.
     ///
     /// Built empty and filled by `setActions`, because what the buttons DO is
     /// the coordinator's and this view is the only thing that knows the
@@ -389,7 +390,7 @@ final class TitleBarView: NSView {
     func setActions(_ list: [TitlebarActionsView.Action]) {
         let tooltip = actions.onTooltip
         actions.removeFromSuperview()
-        actions = TitlebarActionsView(actions: list)
+        actions = TitlebarActionsView(actions: list, edge: .leading)
         actions.onTooltip = tooltip
         actions.setWindowKey(isKey)
         addSubview(actions)
@@ -521,8 +522,8 @@ final class TitleBarView: NSView {
         // for a second one: a window with no name is a window with no file,
         // and a file explorer's toggle in front of nothing is a control for a
         // window that is not showing anything yet.
-        let leading = text > 0 ? sidebar.room : 0
-        let trailing = text > 0 ? Self.chevronRoom + actions.room : 0
+        let leading = text > 0 ? sidebar.room + actions.room : 0
+        let trailing = text > 0 ? Self.chevronRoom : 0
         setFrameSize(NSSize(width: Self.leadingGap + leading + text + trailing, height: bounds.height))
         invalidateIntrinsicContentSize()
         needsLayout = true
@@ -554,12 +555,15 @@ final class TitleBarView: NSView {
         // did.
         let room = max(0, bounds.width - chromeWidth)
         let textWidth = min(drawnTextWidth(), textCeiling, room)
-        // The sidebar toggle first, then the name: the full band height, like
-        // the file buttons, because the strip above and below the symbol
-        // belongs to nothing else.
+        // Every button before the name: the sidebar toggle, then the file
+        // buttons, then the name and its chevron. The full band height,
+        // because the strip above and below the symbols belongs to nothing
+        // else.
         sidebar.frame = NSRect(x: Self.leadingGap, y: 0, width: sidebar.room, height: bounds.height)
         sidebar.layoutSubtreeIfNeeded()
-        label.frame = NSRect(x: sidebar.frame.maxX,
+        actions.frame = NSRect(x: sidebar.frame.maxX, y: 0, width: actions.room, height: bounds.height)
+        actions.layoutSubtreeIfNeeded()
+        label.frame = NSRect(x: actions.frame.maxX,
                              y: ((bounds.height - size.height) / 2).rounded(),
                              width: textWidth,
                              height: size.height)
@@ -567,14 +571,6 @@ final class TitleBarView: NSView {
                                y: ((bounds.height - Self.chevronWidth) / 2).rounded(),
                                width: Self.chevronWidth,
                                height: Self.chevronWidth)
-        // The full band height, not the chevron's box: a taller target is free
-        // here, because the strip above and below the symbol belongs to nothing
-        // else.
-        actions.frame = NSRect(x: chevron.frame.maxX,
-                               y: 0,
-                               width: actions.room,
-                               height: bounds.height)
-        actions.layoutSubtreeIfNeeded()
     }
 
     // MARK: state

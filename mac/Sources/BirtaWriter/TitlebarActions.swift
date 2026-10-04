@@ -3,12 +3,14 @@ import BirtaWriterCore
 
 /// The buttons the titlebar draws around the window's title.
 ///
-///     ◉ ◉ ◉   ▤   Note 2026-08-25.md ⌄   ✎  📁  ⌘
-///             │                         └ this view ┘
-///             └ and this one, before the name
+///     ◉ ◉ ◉   ▤   ✎  📁  ⌘   Note 2026-08-25.md ⌄
+///             │   └ this view ┘
+///             └ and this one, first
 ///
-/// Two instances of one view: the file actions after the name, and the file
-/// explorer's toggle before it. The same view because they are the same kind
+/// Two instances of one view, both before the name: the file explorer's
+/// toggle nearest the traffic lights, then the file actions. Every control in
+/// the title row sits on one side of the name, so the name and its chevron
+/// end the row and the drag strip starts there. The same view because they are the same kind
 /// of control (a bare symbol repeating a menu row) held to the same box, the
 /// same axis and the same rule about geometry; what differs is which side of
 /// the row the air sits on (`Edge`).
@@ -215,8 +217,8 @@ final class TitlebarActionsView: NSView {
         .init(selector: #selector(AppDelegate.menuOpenPalette), symbol: "command"),
     ]
 
-    /// The set drawn BEFORE the name, which is one button: the file
-    /// explorer's.
+    /// The set drawn first, nearest the traffic lights, which is one button:
+    /// the file explorer's.
     ///
     /// Where it is, is the whole argument. A sidebar toggle belongs at the
     /// leading edge of the window, on the side the sidebar is on, next to the

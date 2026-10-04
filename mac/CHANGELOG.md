@@ -18,6 +18,7 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ### Changed
 
+- The titlebar's New Note, Open and Command Palette buttons in Birta Writer for Mac sit before the file name, beside the file explorer's toggle, so every titlebar control is on the left and the name ends the row.
 - Move to Trash on a file explorer row now asks before moving the file, with the same sheet.
 - Opening a folder that holds thousands of files directly inside it starts loading its window sooner in Birta Writer for Mac. Before, the app checked every file in the folder against every open window before choosing the one to open; it now checks the newest first and stops at the first it can open.
 

@@ -253,14 +253,18 @@ final class TitlebarActionsTests: XCTestCase {
         XCTAssertGreaterThan(truncated, 0, "no width truncated, so the ceiling was never reached")
     }
 
-    func testTheButtonsShouldSitAfterTheNameAndInsideTheView() {
+    /// Every button sits before the name, after the sidebar toggle.
+    func testTheButtonsShouldSitBeforeTheNameAndInsideTheView() {
         let view = boundTitle()
         let frames = view.actionsForMeasurement(hovered: true).frames
         let label = view.labelFrameInWindow()
+        XCTAssertGreaterThan(label.width, 0, "the name was laid out")
+        XCTAssertFalse(frames.isEmpty, "the file buttons were laid out")
+        XCTAssertLessThanOrEqual(view.sidebarView.frame.maxX, view.actionsView.frame.minX,
+                                 "the sidebar toggle comes first")
         for frame in frames {
-            XCTAssertGreaterThan(frame.minX, label.width, "a button overlaps the name")
-            XCTAssertLessThanOrEqual(frame.maxX, view.bounds.width + 0.5,
-                                     "a button is drawn outside the accessory")
+            XCTAssertLessThanOrEqual(frame.maxX, label.minX, "a button overlaps or follows the name")
+            XCTAssertGreaterThanOrEqual(frame.minX, 0, "a button is drawn outside the accessory")
         }
         XCTAssertEqual(frames.map(\.minX), frames.map(\.minX).sorted(),
                        "the buttons should be drawn in the order the File menu lists them")
