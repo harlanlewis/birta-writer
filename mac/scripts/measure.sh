@@ -994,7 +994,7 @@ else
     echo "$CHEV" >&2; exit 1
 fi
 
-# The two file buttons beside the title: New Note and Open.
+# The file buttons before the title: New Note, Open and the Command Palette.
 #
 # `symbols` against `count` is the arm that stops everything else here
 # reporting healthily about two blank boxes, for the reason `hasImage` exists
@@ -1018,8 +1018,9 @@ AC_REST="$(echo "$ACTS" | sed -n 's/.*restShown=\([a-z]*\).*/\1/p')"
 AC_OVER="$(echo "$ACTS" | sed -n 's/.*overShown=\([a-z]*\).*/\1/p')"
 AC_REST_BOX="$(echo "$ACTS" | sed -n 's/.*restBoxes=\([0-9.,:]*\).*/\1/p')"
 AC_OVER_BOX="$(echo "$ACTS" | sed -n 's/.*overBoxes=\([0-9.,:]*\).*/\1/p')"
-AC_CHEV_MAX="$(echo "$ACTS" | sed -n 's/.*chevronMaxX=\([0-9.-]*\).*/\1/p')"
-AC_FIRST_X="$(echo "$AC_OVER_BOX" | cut -d, -f1 | cut -d: -f1)"
+AC_LABEL_MIN="$(echo "$ACTS" | sed -n 's/.*labelMinX=\([0-9.-]*\).*/\1/p')"
+# Where the last button ends: its x plus its width, from the last box.
+AC_LAST_END="$(echo "$AC_OVER_BOX" | awk -F, '{split($NF, b, ":"); print b[1] + b[2]}')"
 # How many buttons there SHOULD be, read from the one place that decides it
 # rather than written down here. A literal is a number a fourth button never
 # joins: it would draw correctly, resolve its symbol, and fail this line with a
@@ -1042,10 +1043,10 @@ fi
 if [ "$AC_COUNT" = "$AC_WANT" ] && [ "$AC_SYMS" = "$AC_WANT" ] \
    && [ "$AC_REST" = "no" ] && [ "$AC_OVER" = "yes" ] \
    && [ -n "$AC_REST_BOX" ] && [ "$AC_REST_BOX" = "$AC_OVER_BOX" ] \
-   && awk "BEGIN{exit !($AC_FIRST_X >= $AC_CHEV_MAX)}"; then
-    echo "titlebar buttons     ok: $AC_WANT symbols, hidden at rest and offered on hover, room held either way ($AC_OVER_BOX)"
+   && awk "BEGIN{exit !($AC_LAST_END <= $AC_LABEL_MIN)}"; then
+    echo "titlebar buttons     ok: $AC_WANT symbols, hidden at rest and offered on hover, room held either way, all before the name ($AC_OVER_BOX)"
 else
-    echo "titlebar buttons     FAILED: a button or a symbol is missing (wanted $AC_WANT), the buttons never appear, or the room moves on hover" >&2
+    echo "titlebar buttons     FAILED: a button or a symbol is missing (wanted $AC_WANT), the buttons never appear, the room moves on hover, or a button is not before the name" >&2
     echo "$ACTS" >&2; exit 1
 fi
 

@@ -216,10 +216,13 @@ final class Coordinator {
             row.representedObject = ExplorerMenuPick(url: url, action: action)
             menu.addItem(row)
         }
-        // The web view is not flipped: its y grows upward from the bottom,
-        // the page's downward from the top, and the page fills the view.
-        let point = NSPoint(x: x, y: host.webView.bounds.height - y)
-        menu.popUp(positioning: nil, at: point, in: host.webView)
+        // `isFlipped` read off the view, never assumed: a WKWebView is
+        // flipped, so the page's point is already the view's, and mirroring
+        // it put the menu at the other end of the sidebar from the row.
+        let view = host.webView
+        let point = CaretAnchor.point(x: x, y: y, viewHeight: view.bounds.height,
+                                      isFlipped: view.isFlipped)
+        menu.popUp(positioning: nil, at: point, in: view)
     }
 
     /// One row of the explorer's menu, carried on the menu item.
@@ -245,13 +248,46 @@ final class Coordinator {
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(pick.url.path, forType: .string)
         case .moveToTrash:
-            // The file this tab is on is not a special case: the watcher
-            // sees it go and the panel offers to put it back, the same as a
-            // deletion from the Finder.
+            confirmMoveToTrash(pick.url)
+        }
+    }
+
+    /// File > Move to Trash…, which the palette lists too: the file this tab
+    /// is on, after asking. A note that has never been written has no file to
+    /// move, and says so rather than asking about nothing.
+    func moveBoundFileToTrash() {
+        guard canMoveBoundFileToTrash else {
+            flashStatus("This note has not been saved to a file yet.")
+            return
+        }
+        confirmMoveToTrash(boundURL)
+    }
+
+    /// Whether this window's note is a file there to move: written at least
+    /// once, and not already reported gone. The menu row and the palette ask
+    /// this through `AppDelegate.allows`.
+    var canMoveBoundFileToTrash: Bool {
+        !noteMissing && FileManager.default.fileExists(atPath: boundURL.path)
+    }
+
+    /// Ask, as a sheet on this window, then move `url` to the Trash.
+    ///
+    /// The file this tab is on is not a special case: the watcher sees it go
+    /// and the panel offers to put it back, the same as a deletion from the
+    /// Finder.
+    private func confirmMoveToTrash(_ url: URL) {
+        let words = ExplorerMenu.trashConfirmation(name: url.lastPathComponent)
+        let alert = NSAlert()
+        alert.messageText = words.message
+        alert.informativeText = words.detail
+        alert.addButton(withTitle: words.confirm)
+        alert.addButton(withTitle: words.cancel)
+        alert.beginSheetModal(for: panel) { [weak self] response in
+            guard response == .alertFirstButtonReturn else { return }
             do {
-                try FileManager.default.trashItem(at: pick.url, resultingItemURL: nil)
+                try FileManager.default.trashItem(at: url, resultingItemURL: nil)
             } catch {
-                flashStatus("Could not move \(pick.url.lastPathComponent) to the Trash.")
+                self?.flashStatus("Could not move \(url.lastPathComponent) to the Trash.")
             }
         }
     }
@@ -4630,7 +4666,8 @@ final class Coordinator {
         traceTitleActions()
     }
 
-    /// The two file buttons the titlebar draws, at rest and hovered.
+    /// The file buttons the titlebar draws before the name, at rest and
+    /// hovered, with where the name starts so a check can say they end first.
     ///
     /// The same shape as `traceChevron` and for the same reasons, plus one
     /// claim that view cannot make: the buttons' GEOMETRY has to be identical
@@ -4655,11 +4692,11 @@ final class Coordinator {
             frames.map { String(format: "%.1f:%.1f", $0.origin.x, $0.width) }.joined(separator: ",")
         }
         measure.trace(String(
-            format: "titleactions count=%d symbols=%d restShown=%@ overShown=%@ restBoxes=%@ overBoxes=%@ chevronMaxX=%.1f",
+            format: "titleactions count=%d symbols=%d restShown=%@ overShown=%@ restBoxes=%@ overBoxes=%@ labelMinX=%.1f",
             over.frames.count, over.symbols,
             rest.shown ? "yes" : "no", over.shown ? "yes" : "no",
             box(rest.frames), box(over.frames),
-            view.labelFrameInWindow().width + view.chromeWidth - view.actionsView.room))
+            view.labelFrameInView.minX))
     }
 
     /// The title's hover affordance, at rest and hovered.
@@ -4683,7 +4720,7 @@ final class Coordinator {
             over.hasImage ? "yes" : "no",
             over.frame.origin.x, over.frame.width, over.frame.height,
             rest.alpha, over.alpha, rest.ink, over.ink,
-            view.labelFrameInWindow().width + 8))
+            view.labelFrameInView.maxX))
     }
 
     /// Name the bound file in the titlebar, and say whether the reader has

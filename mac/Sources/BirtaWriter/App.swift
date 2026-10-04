@@ -942,6 +942,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding, 
         Prefs.recentDocuments = []
     }
     @objc func menuSaveAs() { front?.saveAs() }
+    @objc func menuMoveToTrash() { front?.moveBoundFileToTrash() }
     @objc private func revealLastSave() { front?.revealLastSave() }
     /// Run the editor command a menu row carries.
     ///
@@ -1585,6 +1586,9 @@ extension AppDelegate: NSMenuDelegate, NSMenuItemValidation {
             return front?.hasContent ?? false
         case #selector(revealLastSave):
             return front?.lastSavedURL != nil
+        case #selector(menuMoveToTrash):
+            // A note never written, or one already gone, has no file to move.
+            return front?.canMoveBoundFileToTrash ?? false
         case #selector(menuClearRecentDocuments):
             return !Prefs.recentDocuments.isEmpty
         case #selector(menuToggleExplorer), #selector(menuToggleHiddenFiles):
@@ -1609,7 +1613,7 @@ extension AppDelegate: NSMenuDelegate, NSMenuItemValidation {
     private static let documentCommands: Set<Selector> = [
         #selector(menuNewNote), #selector(menuNewTab), #selector(menuOpenDocument),
         #selector(menuOpenMenu(_:)), #selector(menuOpenRecent(_:)), #selector(menuOpenRecentDocument(_:)),
-        #selector(menuSaveNow), #selector(menuSaveAs),
+        #selector(menuSaveNow), #selector(menuSaveAs), #selector(menuMoveToTrash),
         #selector(copyEverything), #selector(shareNote), #selector(revealLastSave),
         #selector(menuBackToNotes), #selector(menuRunEditorCommand(_:)),
     ]

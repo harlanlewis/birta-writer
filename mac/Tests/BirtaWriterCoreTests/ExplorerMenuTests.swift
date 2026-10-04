@@ -33,4 +33,12 @@ final class ExplorerMenuTests: XCTestCase {
         }
         XCTAssertGreaterThan(rows, 10, "the sweep reached every kind's rows")
     }
+
+    func testTheTrashConfirmationShouldNameTheFileAndLeadWithTheDestructiveButton() {
+        let words = ExplorerMenu.trashConfirmation(name: "Notes.md")
+        XCTAssertTrue(words.message.contains("“Notes.md”"))
+        XCTAssertEqual(words.confirm, "Move to Trash")
+        XCTAssertEqual(words.cancel, "Cancel")
+        XCTAssertFalse(words.detail.isEmpty)
+    }
 }

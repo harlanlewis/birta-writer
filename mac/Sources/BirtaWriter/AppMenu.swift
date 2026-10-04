@@ -417,6 +417,10 @@ enum AppMenu {
               action: .app(#selector(AppDelegate.menuSaveNow)), menu: .file),
         .init(title: "Save a Copy As…", key: "s", modifiers: [.command, .shift],
               action: .app(#selector(AppDelegate.menuSaveAs)), menu: .file),
+        // The open note, after a confirmation; the palette lists it from here.
+        // No chord: Cmd+Delete belongs to the editor, which deletes text with it.
+        .init(title: "Move to Trash…",
+              action: .app(#selector(AppDelegate.menuMoveToTrash)), menu: .file, group: 1),
     ]
 
     // MARK: edit

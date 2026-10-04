@@ -253,7 +253,7 @@ final class AppMenuTests: XCTestCase {
 
     func testTheFileMenuShouldOpenRecentThroughASubmenuOfItsOwn() {
         let file = build(.file)
-        XCTAssertEqual(titles(of: file), ["New Note", "New Tab", "Open…", "Open Recent", "Go to File…", "Save", "Save a Copy As…"])
+        XCTAssertEqual(titles(of: file), ["New Note", "New Tab", "Open…", "Open Recent", "Go to File…", "Save", "Save a Copy As…", "-", "Move to Trash…"])
         let item = file.items.first { $0.title == "Open Recent" }
         // A submenu row and nothing else. The selector the table gives this
         // row is for the titlebar's button; leaving it on the menu item would
