@@ -10,7 +10,7 @@
 # A script rather than a rule in a header, which is not where somebody writing
 # ten lines of Swift to answer one question will read it. Where guidance is
 # broken repeatedly the rule becomes code: the same tradition as
-# `.claude/hooks/no-piped-gate.sh` and `.claude/prose-guard`.
+# `.claude/gate-pipe-guard` and `.claude/prose-guard`.
 #
 #   bash mac/scripts/reap.sh            report what is there, change nothing
 #   bash mac/scripts/reap.sh --reap     also remove it
