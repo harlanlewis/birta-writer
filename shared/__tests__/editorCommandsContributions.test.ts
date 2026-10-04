@@ -384,6 +384,11 @@ describe("editor command keybinding contributions", () => {
         // + block menu.
         fold: [{ key: "ctrl+shift+[", mac: "cmd+alt+[" }],
         unfold: [{ key: "ctrl+shift+]", mac: "cmd+alt+]" }],
+        // The outline's toggle, beside the Mac app's file list on
+        // Option+Command+Comma. Ctrl+Alt elsewhere to keep the one shape on
+        // every surface, which accepts the AltGr hazard noted above for one
+        // punctuation key; ctrl+shift+. is VS Code's breadcrumbs focus.
+        toggleToc: [{ key: "ctrl+alt+.", mac: "cmd+alt+." }],
         // Refile (MAR-118): VS Code's own indent/outdentLines chords, free to
         // claim here because those defaults are editorTextFocus-scoped and
         // inert while the custom editor's webview has focus.

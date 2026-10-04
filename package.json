@@ -1001,6 +1001,12 @@
                 "when": "activeCustomEditorId == 'birta.editor'"
             },
             {
+                "command": "birta.editor.toggleToc",
+                "key": "ctrl+alt+.",
+                "mac": "cmd+alt+.",
+                "when": "activeCustomEditorId == 'birta.editor'"
+            },
+            {
                 "command": "birta.editor.openBlockMenu",
                 "key": "ctrl+.",
                 "mac": "cmd+.",

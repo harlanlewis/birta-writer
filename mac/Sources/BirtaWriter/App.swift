@@ -737,7 +737,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding, 
         windows.closeWindow(front)
     }
 
-    /// Cmd+Shift+E: the file explorer of the window in front, which is the
+    /// Option+Command+Comma (and Cmd+Shift+E): the file explorer of the window in front, which is the
     /// page's own command; the row is withdrawn where there is no root.
     @objc func menuToggleExplorer() {
         front?.runEditorCommand("toggleFileExplorer", arg: nil)

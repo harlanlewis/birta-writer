@@ -585,11 +585,11 @@ final class TitlebarActionsTests: XCTestCase {
         }
         view.setSidebarShown(false)
         XCTAssertEqual(button.accessibilityLabel(), "Show Files")
-        XCTAssertEqual(button.label, "Show Files  ⇧⌘E", "the chord is the menu row's, not a literal")
+        XCTAssertEqual(button.label, "Show Files  ⌥⌘,", "the chord is the menu row's, not a literal")
         view.setSidebarShown(true)
         XCTAssertEqual(button.accessibilityLabel(), "Hide Files",
                        "the toggle goes on offering to show an explorer that is showing")
-        XCTAssertEqual(button.label, "Hide Files  ⇧⌘E")
+        XCTAssertEqual(button.label, "Hide Files  ⌥⌘,")
     }
 
     func testTheSidebarToggleShouldSendTheMenusOwnSelector() {
