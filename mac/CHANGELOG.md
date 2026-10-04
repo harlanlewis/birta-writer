@@ -19,6 +19,7 @@ Versions are shared. Both files are stamped with the same release version, and a
 ### Changed
 
 - Move to Trash on a file explorer row now asks before moving the file, with the same sheet.
+- Opening a folder that holds thousands of files directly inside it starts loading its window sooner in Birta Writer for Mac. Before, the app checked every file in the folder against every open window before choosing the one to open; it now checks the newest first and stops at the first it can open.
 
 ### Fixed
 

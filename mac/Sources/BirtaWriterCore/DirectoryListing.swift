@@ -142,14 +142,18 @@ public enum DirectoryListing {
         let keys: [URLResourceKey] = [.contentModificationDateKey, .isDirectoryKey]
         guard let urls = try? fileManager.contentsOfDirectory(at: root, includingPropertiesForKeys: keys,
                                                               options: [.skipsHiddenFiles]) else { return nil }
-        let files = urls.filter { url in
+        // Newest first, and `accepts` asked only until one passes. The caller's
+        // `accepts` is not cheap (`WindowSet.openDirectory` compares each
+        // candidate with every open window's file, a stat apiece), so asking it
+        // of every file in a large flat folder put that walk on the main thread
+        // before the window could start loading. Ties keep the directory's
+        // order, as the `max` this replaced did.
+        let dated: [(url: URL, date: Date, order: Int)] = urls.enumerated().compactMap { order, url in
             let values = try? url.resourceValues(forKeys: Set(keys))
-            return values?.isDirectory != true && accepts(url)
+            guard values?.isDirectory != true else { return nil }
+            return (url, values?.contentModificationDate ?? .distantPast, order)
         }
-        return files.max { a, b in
-            let da = (try? a.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
-            let db = (try? b.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
-            return da < db
-        }
+        let newestFirst = dated.sorted { $0.date != $1.date ? $0.date > $1.date : $0.order < $1.order }
+        return newestFirst.first(where: { accepts($0.url) })?.url
     }
 }
