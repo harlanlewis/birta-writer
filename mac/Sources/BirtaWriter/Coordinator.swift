@@ -216,10 +216,13 @@ final class Coordinator {
             row.representedObject = ExplorerMenuPick(url: url, action: action)
             menu.addItem(row)
         }
-        // The web view is not flipped: its y grows upward from the bottom,
-        // the page's downward from the top, and the page fills the view.
-        let point = NSPoint(x: x, y: host.webView.bounds.height - y)
-        menu.popUp(positioning: nil, at: point, in: host.webView)
+        // `isFlipped` read off the view, never assumed: a WKWebView is
+        // flipped, so the page's point is already the view's, and mirroring
+        // it put the menu at the other end of the sidebar from the row.
+        let view = host.webView
+        let point = CaretAnchor.point(x: x, y: y, viewHeight: view.bounds.height,
+                                      isFlipped: view.isFlipped)
+        menu.popUp(positioning: nil, at: point, in: view)
     }
 
     /// One row of the explorer's menu, carried on the menu item.
@@ -245,13 +248,39 @@ final class Coordinator {
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(pick.url.path, forType: .string)
         case .moveToTrash:
-            // The file this tab is on is not a special case: the watcher
-            // sees it go and the panel offers to put it back, the same as a
-            // deletion from the Finder.
+            confirmMoveToTrash(pick.url)
+        }
+    }
+
+    /// File > Move to Trash…, which the palette lists too: the file this tab
+    /// is on, after asking. A note that has never been written has no file to
+    /// move, and says so rather than asking about nothing.
+    func moveBoundFileToTrash() {
+        guard FileManager.default.fileExists(atPath: boundURL.path) else {
+            flashStatus("This note has not been saved to a file yet.")
+            return
+        }
+        confirmMoveToTrash(boundURL)
+    }
+
+    /// Ask, as a sheet on this window, then move `url` to the Trash.
+    ///
+    /// The file this tab is on is not a special case: the watcher sees it go
+    /// and the panel offers to put it back, the same as a deletion from the
+    /// Finder.
+    private func confirmMoveToTrash(_ url: URL) {
+        let words = ExplorerMenu.trashConfirmation(name: url.lastPathComponent)
+        let alert = NSAlert()
+        alert.messageText = words.message
+        alert.informativeText = words.detail
+        alert.addButton(withTitle: words.confirm)
+        alert.addButton(withTitle: words.cancel)
+        alert.beginSheetModal(for: panel) { [weak self] response in
+            guard response == .alertFirstButtonReturn else { return }
             do {
-                try FileManager.default.trashItem(at: pick.url, resultingItemURL: nil)
+                try FileManager.default.trashItem(at: url, resultingItemURL: nil)
             } catch {
-                flashStatus("Could not move \(pick.url.lastPathComponent) to the Trash.")
+                self?.flashStatus("Could not move \(url.lastPathComponent) to the Trash.")
             }
         }
     }

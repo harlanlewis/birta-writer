@@ -12,6 +12,18 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ## [Unreleased]
 
+### Added
+
+- File > Move to Trash… in Birta Writer for Mac moves the open note to the Trash, and the Command Palette lists it too. It asks first, as a sheet naming the file.
+
+### Changed
+
+- Move to Trash on a file explorer row now asks before moving the file, with the same sheet.
+
+### Fixed
+
+- Right-clicking a row in the Birta Writer for Mac file explorer opens its menu at the row. Before, the menu opened mirrored top to bottom, so a row near the top of the sidebar got its menu near the bottom, and only rows near the middle landed where they were clicked.
+
 ---
 
 ## [2026.928.0] - 2026, September 28

@@ -28,4 +28,13 @@ public enum CaretAnchor {
         let y = isFlipped ? top : viewHeight - bottom
         return CGRect(x: left, y: y, width: 1, height: height)
     }
+
+    /// A point the page reported (a right-click's `clientX`/`clientY`) in
+    /// `view`'s coordinates, on the same rule: identity in a flipped view,
+    /// mirrored about the height in one that is not. The explorer's row menu
+    /// pops up here.
+    public static func point(x: Double, y: Double,
+                             viewHeight: Double, isFlipped: Bool) -> CGPoint {
+        CGPoint(x: x, y: isFlipped ? y : viewHeight - y)
+    }
 }

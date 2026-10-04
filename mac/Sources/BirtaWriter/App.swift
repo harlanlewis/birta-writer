@@ -942,6 +942,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding, 
         Prefs.recentDocuments = []
     }
     @objc func menuSaveAs() { front?.saveAs() }
+    @objc func menuMoveToTrash() { front?.moveBoundFileToTrash() }
     @objc private func revealLastSave() { front?.revealLastSave() }
     /// Run the editor command a menu row carries.
     ///
