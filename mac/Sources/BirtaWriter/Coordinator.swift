@@ -256,11 +256,18 @@ final class Coordinator {
     /// is on, after asking. A note that has never been written has no file to
     /// move, and says so rather than asking about nothing.
     func moveBoundFileToTrash() {
-        guard FileManager.default.fileExists(atPath: boundURL.path) else {
+        guard canMoveBoundFileToTrash else {
             flashStatus("This note has not been saved to a file yet.")
             return
         }
         confirmMoveToTrash(boundURL)
+    }
+
+    /// Whether this window's note is a file there to move: written at least
+    /// once, and not already reported gone. The menu row and the palette ask
+    /// this through `AppDelegate.allows`.
+    var canMoveBoundFileToTrash: Bool {
+        !noteMissing && FileManager.default.fileExists(atPath: boundURL.path)
     }
 
     /// Ask, as a sheet on this window, then move `url` to the Trash.
