@@ -18,6 +18,7 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ### Changed
 
+- Moving the open note to the Trash in a Birta Writer for Mac folder window now opens the folder's next note in its place, the one opening the folder would choose, instead of the card saying the file is in the Trash. With autosave off and unsaved text in the note, the card still appears, because its Save It Back is the only place that text is kept.
 - The two sidebars in Birta Writer for Mac have neighbouring shortcuts: Option+Command+Comma shows and hides the file list, and Option+Command+Period the table of contents. Shift+Command+E still toggles the file list too.
 - The titlebar's New Note, Open and Command Palette buttons in Birta Writer for Mac sit before the file name, beside the file explorer's toggle, so every titlebar control is on the left and the name ends the row.
 - Move to Trash on a file explorer row now asks before moving the file, with the same sheet.

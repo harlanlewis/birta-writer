@@ -163,6 +163,7 @@ final class WindowSet {
             guard let coordinator else { return }
             self?.newNote(in: folder, beside: coordinator)
         }
+        coordinator.onFolderDefault = { [weak self] root in self?.folderDefault(in: root) }
         coordinator.onFolderIndexRequest = { [weak self, weak coordinator] in
             guard let coordinator else { return }
             self?.folderIndexRequested(by: coordinator)
@@ -713,26 +714,9 @@ final class WindowSet {
             if !atLaunch { open.show() }
             return open
         }
-        // A file in the folder that is open as a loose window already is not
-        // a candidate: a window is one buffer, and a second one over the same
-        // path is the hazard `openDocument` guards against for every other
-        // route in. The folder's window opens on the next candidate, or on a
-        // new note when the open file was the only one.
-        let openElsewhere: (URL) -> Bool = { [windows] candidate in
-            windows.contains { FileIdentity.sameFile($0.boundFile, candidate) }
-        }
-        let file: URL
-        if let found = DirectoryListing.firstToOpen(in: root, recents: Prefs.recentDocuments,
-                                                    accepts: { DocumentTypes.accepts($0) && !openElsewhere($0) }) {
-            file = found
-        } else {
-            do {
-                file = try Coordinator.makeNoteFile(in: root)
-            } catch {
-                NSLog("Birta Writer: could not make a note in \(root.path): \(error)")
-                key?.flashStatus("Could not open \(root.lastPathComponent).")
-                return nil
-            }
+        guard let file = folderDefault(in: root) else {
+            key?.flashStatus("Could not open \(root.lastPathComponent).")
+            return nil
         }
         // The folder joins the recents list, as the file a window is bound to
         // does (`Coordinator.boundURL`, `close`). Here rather than at the
@@ -748,6 +732,32 @@ final class WindowSet {
         let made = makeWindow(on: file, slot: slot(for: file), explorerRoot: root)
         if !atLaunch { open(made) }
         return made
+    }
+
+    /// The file a folder's window opens on: `DirectoryListing.firstToOpen`'s
+    /// rule, else a new note made in the folder, nil when even that fails.
+    /// The same answer for opening the folder and for a window whose file was
+    /// just trashed from it.
+    ///
+    /// A file open in another window already is not a candidate: a window is
+    /// one buffer, and a second one over the same path is the hazard
+    /// `openDocument` guards against for every other route in. The window
+    /// opens on the next candidate, or on a new note when the open file was
+    /// the only one.
+    func folderDefault(in root: URL) -> URL? {
+        let openElsewhere: (URL) -> Bool = { [windows] candidate in
+            windows.contains { FileIdentity.sameFile($0.boundFile, candidate) }
+        }
+        if let found = DirectoryListing.firstToOpen(in: root, recents: Prefs.recentDocuments,
+                                                    accepts: { DocumentTypes.accepts($0) && !openElsewhere($0) }) {
+            return found
+        }
+        do {
+            return try Coordinator.makeNoteFile(in: root)
+        } catch {
+            NSLog("Birta Writer: could not make a note in \(root.path): \(error)")
+            return nil
+        }
     }
 
     /// The hidden-files setting, flipped from a menu row or a page, applied
