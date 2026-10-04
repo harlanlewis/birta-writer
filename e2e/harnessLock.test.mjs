@@ -1,8 +1,8 @@
 /**
  * The harness lock's contract: the kind table, staleness, the heartbeat that
  * keeps a live capture from being reaped, the child token, and what a release
- * may remove. `birta-labs:HARNESS_LOCK.md` is the contract; this holds our
- * implementation to it.
+ * may remove. The contract is shared by every repository that takes the lock
+ * and kept outside this one; this holds our implementation to it.
  *
  * REAL LOCK FILES, IN A DIRECTORY OF THEIR OWN. Never `$TMPDIR/hl-harness.lock`:
  * that file is the machine's, a peer session may hold it, and a test that

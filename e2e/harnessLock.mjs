@@ -15,11 +15,12 @@
  * machine's: `$TMPDIR/hl-harness.lock`, named for the resource and not for a
  * repository, and taken by every repository on this machine that runs a
  * browser sweep or a timing capture. A capture here refuses while a sweep in
- * another repository runs, and theirs refuse while ours does. The contract
- * every implementation keeps is `birta-labs:HARNESS_LOCK.md`: the path, the
- * record, the kind table, refusing rather than waiting, staleness, the child
- * token and the exit codes. This file is one implementation of it, since a
- * module reached across repositories breaks the day the other checkout moves.
+ * another repository runs, and theirs refuse while ours does. Every
+ * implementation keeps one contract, which lives outside all of them: the
+ * path, the record, the kind table, refusing rather than waiting, staleness,
+ * the child token and the exit codes. This file is one implementation of it,
+ * since a module reached across repositories breaks the day the other
+ * checkout moves.
  *
  * ── The record, and the kinds ────────────────────────────────────────────
  *
