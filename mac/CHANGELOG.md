@@ -12,6 +12,10 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ## [Unreleased]
 
+---
+
+## [2026.1005.0] - 2026, October 5
+
 ### Added
 
 - File > Move to Trash… in Birta Writer for Mac moves the open note to the Trash, and the Command Palette lists it too. It asks first, as a sheet naming the file.

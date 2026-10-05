@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+---
+
+## [2026.1005.0] - 2026, October 5
+
 ### Added
 
 - Option+Command+Period (Ctrl+Alt+Period on Windows and Linux) shows and hides the table of contents.
