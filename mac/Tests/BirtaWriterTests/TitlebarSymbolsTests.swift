@@ -85,6 +85,20 @@ final class TitlebarSymbolsTests: XCTestCase {
     /// file buttons at the other end of the name rather than only with itself.
     private static let allShipped = TitlebarActionsView.leadingShipped + TitlebarActionsView.shipped
 
+    /// Half a pixel, and the number is load-bearing rather than picked to look
+    /// careful. It has to admit the difference between two marks that both
+    /// look centred and refuse the difference a reader can see, and the case
+    /// this was written for is a whole pixel out. A tolerance of a pixel would
+    /// call that set balanced, which is the one answer it must not give.
+    private static let balanceTolerance = 0.5
+
+    /// The statistic the set is judged by: how far apart the highest and the
+    /// lowest balance points are. One function, so the arm below asks the
+    /// gate's own question rather than a neighbouring one.
+    private static func spread(_ centres: [Double]) -> Double {
+        (centres.max() ?? 0) - (centres.min() ?? 0)
+    }
+
     func testEveryShippedSymbolShouldBalanceOnTheSameLineAsTheOthers() {
         let measured = Self.allShipped.map { (String(describing: $0.glyph), ink(of: $0.glyph)) }
         // The instrument's own arm, twice over. A symbol name the system does
@@ -103,14 +117,7 @@ final class TitlebarSymbolsTests: XCTestCase {
         XCTAssertEqual(centres.count, Self.allShipped.count)
         XCTAssertGreaterThan(centres.count, 1, "one symbol cannot disagree with anything")
 
-        let spread = (centres.max() ?? 0) - (centres.min() ?? 0)
-        // Half a pixel, and the number is load-bearing rather than picked to
-        // look careful. It has to admit the difference between two marks that
-        // both look centred and refuse the difference a reader can see, and
-        // the case this was written for is a whole pixel out. A tolerance of a
-        // pixel would call that set balanced, which is the one answer it must
-        // not give.
-        XCTAssertLessThan(spread, 0.5, """
+        XCTAssertLessThan(Self.spread(centres), Self.balanceTolerance, """
             the titlebar's symbols do not balance on one line: \
             \(measured.map { "\($0.0) \(String(format: "%+.2f", $0.1?.centre ?? 0))" }.joined(separator: ", "))
             """)
@@ -259,19 +266,25 @@ final class TitlebarSymbolsTests: XCTestCase {
     func testTheMeasurementShouldSeeAGlyphThatHangsLow() {
         // The arm that says the check above can fail at all. `square.and.pencil`
         // is the mark this row used to carry and the reason the measurement
-        // exists, so it stands in as a known-bad input: it must come out
-        // clearly lower than the two symbols still shipped beside it.
+        // exists, so it stands in as a known-bad input: put back into the
+        // shipped set, the set must stop balancing.
         //
         // Without this, a measurement that returned the same number for
         // everything would pass the set silently, and it did: the bounding-box
         // version put this glyph within half a pixel of the others.
-        guard let low = ink(of: .symbol("square.and.pencil")),
-              let folder = ink(of: .symbol("folder")),
-              let command = ink(of: .symbol("command")) else {
-            return XCTFail("a symbol used as a reference did not resolve")
+        //
+        // The question is the gate's own, asked of the whole set, and never a
+        // distance to one hand-picked neighbour. A neighbour is only a centred
+        // reference on the OS it was picked on: symbol drawings change between
+        // macOS releases, and when one of the shipped marks moves toward the
+        // bad one, a pairwise arm goes red while the gate it vouches for is
+        // still sound.
+        guard let low = ink(of: .symbol("square.and.pencil")) else {
+            return XCTFail("the known-bad symbol did not resolve")
         }
-        XCTAssertGreaterThan(low.centre - folder.centre, 0.5,
-                             "the measurement cannot tell a low glyph from a centred one")
-        XCTAssertGreaterThan(low.centre - command.centre, 0.5)
+        let shipped = Self.allShipped.compactMap { ink(of: $0.glyph)?.centre }
+        XCTAssertEqual(shipped.count, Self.allShipped.count, "a shipped symbol drew no ink")
+        XCTAssertGreaterThanOrEqual(Self.spread(shipped + [low.centre]), Self.balanceTolerance,
+                                    "the measurement cannot tell a low glyph from a centred one")
     }
 }
