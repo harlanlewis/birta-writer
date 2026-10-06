@@ -236,6 +236,13 @@ public final class LinkLocator: @unchecked Sendable {
             .map { root.path + "/" + $0.lastPathComponent }
     }
 
+    /// The files a link can name under `root`, from the kept list when it is
+    /// fresh: what link completion offers, so a burst of keystrokes shares
+    /// one walk with each other and with the popup's lookups.
+    public func candidates(under root: URL, deep: Bool) -> [String] {
+        files(under: root, deep: deep, fresh: false)
+    }
+
     private func files(under root: URL, deep: Bool, fresh: Bool) -> [String] {
         let key = root.path
         if !fresh, let kept, kept.root == key, kept.deep == deep,

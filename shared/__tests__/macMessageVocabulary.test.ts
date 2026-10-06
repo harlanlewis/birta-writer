@@ -154,13 +154,6 @@ const DELIBERATELY_UNPARSED: Record<string, string> = {
  * the fix rather than a tidy-up.
  */
 const KNOWN_GAPS: Record<string, string> = {
-    // These three were listed as declined for "no workspace", which stopped
-    // being true when directory windows gave a Mac window a folder (MAR-457);
-    // `openFile` and `resolveLinkTarget`, declined on the same premise, were
-    // the Cmd-click and the link popup's Open doing nothing.
-    getLinkTargetSuggestions: "MAR-498: `[[` and link-path completion ask, and get no list",
-    getPathSuggestions: "MAR-498: path completion in the path-link and image fields asks, and gets no list; the field stays typable",
-    pickLinkTarget: "MAR-498: the link editor's Browse asks for a file, and no picker opens",
     resolveEmbedCard:
         "MAR-390: `queueEmbedCardResolution` states in its own header that it is deliberately NOT gated on the connection, because the extension reads a public resource anonymously. So the page asks for a card on every connector-capable embed it finds, on every host, and the Mac app answers none: each request settles null at `CARD_REPLY_TIMEOUT_MS` and no card is drawn where the extension would draw one. Quieter than `getProjectImages`, which sat on Loading, but the same class",
 };

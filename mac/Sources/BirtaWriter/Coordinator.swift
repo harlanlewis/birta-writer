@@ -279,6 +279,58 @@ final class Coordinator {
         }
     }
 
+    /// Answer link completion: the files under this window's folder (the
+    /// note's own, one level, in a window with none) that a link can name,
+    /// ranked against what was typed. Shares `linkLocator`'s kept walk, so a
+    /// burst of keystrokes walks the folder once.
+    private func answerLinkSuggestions(id: String, query: String) {
+        let doc = boundURL.standardizedFileURL.path
+        let root = linkRoot
+        let locator = linkLocator
+        linkQueue.async { [weak self] in
+            let files = locator.candidates(under: root.url, deep: root.deep)
+            let items = LinkSuggestions.linkTargets(query: query, files: files, doc: doc, root: root.url.path)
+            DispatchQueue.main.async {
+                self?.host.send(.linkTargetSuggestions(id: id, items: items))
+            }
+        }
+    }
+
+    /// Answer path completion: the direct children of the folder the typed
+    /// path names, read from disk on each ask, as the extension reads them.
+    private func answerPathSuggestions(id: String, query: String) {
+        let docDir = boundURL.standardizedFileURL.deletingLastPathComponent().path
+        let root = linkRoot.url.path
+        linkQueue.async { [weak self] in
+            let items = LinkSuggestions.pathItems(query: query, docDir: docDir, root: root,
+                                                  list: LinkSuggestions.listFolder)
+            DispatchQueue.main.async {
+                self?.host.send(.pathSuggestions(id: id, items: items))
+            }
+        }
+    }
+
+    /// The link editor's Browse: a file picker over this window, opening in
+    /// the note's folder, answered with the pick relative to that folder.
+    /// Every way out answers, a cancel included, because the page's field
+    /// waits on the reply.
+    private func pickLinkTarget(id: String) {
+        let docDir = boundURL.standardizedFileURL.deletingLastPathComponent()
+        let chooser = NSOpenPanel()
+        chooser.canChooseFiles = true
+        chooser.canChooseDirectories = false
+        chooser.allowsMultipleSelection = false
+        chooser.directoryURL = docDir
+        chooser.prompt = "Select Link Target"
+        chooser.beginSheetModal(for: panel) { [weak self] response in
+            MainActor.assumeIsolated {
+                let picked = response == .OK ? chooser.url?.standardizedFileURL : nil
+                let path = picked.map { LinkSuggestions.relative(from: docDir.path, to: $0.path) }
+                self?.host.send(.linkTargetPicked(id: id, path: path))
+            }
+        }
+    }
+
     /// The document line the next page this window builds opens on, held
     /// from `reveal(line:)` until `initDoc` carries it and then cleared: a
     /// line asked for while the page is cold or loading has no page to be
@@ -2226,6 +2278,12 @@ final class Coordinator {
             openLink(path, wiki: wiki)
         case let .resolveLinkTarget(id, path, wiki):
             answerLinkTarget(id: id, raw: path, wiki: wiki)
+        case let .getLinkTargetSuggestions(id, query):
+            answerLinkSuggestions(id: id, query: query)
+        case let .getPathSuggestions(id, query):
+            answerPathSuggestions(id: id, query: query)
+        case let .pickLinkTarget(id):
+            pickLinkTarget(id: id)
         case .openHostPreferences:
             openPreferences?()
         case let .askAgent(prompt, requestId, model, effort, skill):
