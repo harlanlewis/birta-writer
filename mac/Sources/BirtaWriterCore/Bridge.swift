@@ -62,6 +62,15 @@ public enum WebviewMessage: Equatable {
     /// The link popup asking where a link would go, without going: answered
     /// with `linkTargetResolved` carrying the same `id`.
     case resolveLinkTarget(id: String, path: String, wiki: Bool)
+    /// Link completion (the URL field, a bare `[[`): the files a link can
+    /// name, ranked against `query`; answered with `linkTargetSuggestions`.
+    case getLinkTargetSuggestions(id: String, query: String)
+    /// Path completion in a link or image field: the direct children of the
+    /// folder the typed path names; answered with `pathSuggestions`.
+    case getPathSuggestions(id: String, query: String)
+    /// The link editor's Browse: a file picked, answered with
+    /// `linkTargetPicked` as a note-relative path, or null when cancelled.
+    case pickLinkTarget(id: String)
     case openHostPreferences
     /// `/ai`: the request typed after the pill, with the id the page will
     /// match every `agentRun` report against.
@@ -252,6 +261,14 @@ public enum WebviewMessage: Equatable {
         case "viewState": return .viewState(json: json("state") ?? "{}")
         case "openUrl": return str("url").map { .openUrl($0) } ?? .other(type: type)
         case "openFile": return str("path").map { .openFile(path: $0, wiki: bool("wiki") ?? false) } ?? .other(type: type)
+        case "getLinkTargetSuggestions":
+            guard let id = str("id") else { return .other(type: type) }
+            return .getLinkTargetSuggestions(id: id, query: str("query") ?? "")
+        case "getPathSuggestions":
+            guard let id = str("id") else { return .other(type: type) }
+            return .getPathSuggestions(id: id, query: str("query") ?? "")
+        case "pickLinkTarget":
+            return str("id").map { .pickLinkTarget(id: $0) } ?? .other(type: type)
         case "resolveLinkTarget":
             guard let id = str("id"), let path = str("path") else { return .other(type: type) }
             return .resolveLinkTarget(id: id, path: path, wiki: bool("wiki") ?? false)
@@ -497,6 +514,12 @@ public enum HostMessage: Equatable {
     /// Reply to `resolveLinkTarget`: the file the link names, root-relative
     /// when under the window's folder, or nil for a link that names nothing.
     case linkTargetResolved(id: String, resolved: String?)
+    /// Reply to `getLinkTargetSuggestions`.
+    case linkTargetSuggestions(id: String, items: [LinkSuggestions.Target])
+    /// Reply to `getPathSuggestions`.
+    case pathSuggestions(id: String, items: [LinkSuggestions.PathItem])
+    /// Reply to `pickLinkTarget`: note-relative, POSIX, or nil when cancelled.
+    case linkTargetPicked(id: String, path: String?)
     /// Which of the root's files this window is on, root-relative, so the
     /// page selects and reveals its row; nil for a file outside the root.
     case currentProjectFile(path: String?)
@@ -665,6 +688,12 @@ public enum HostMessage: Equatable {
                                       "entries": entries.map { $0.map(\.jsonObject) } ?? NSNull()]
             if let error { out["error"] = error }
             return out
+        case let .linkTargetSuggestions(id, items):
+            return ["type": "linkTargetSuggestions", "id": id, "items": items.map(\.jsonObject)]
+        case let .pathSuggestions(id, items):
+            return ["type": "pathSuggestions", "id": id, "items": items.map(\.jsonObject)]
+        case let .linkTargetPicked(id, path):
+            return ["type": "linkTargetPicked", "id": id, "path": path ?? NSNull()]
         case let .linkTargetResolved(id, resolved):
             return ["type": "linkTargetResolved", "id": id, "resolved": resolved ?? NSNull()]
         case let .currentProjectFile(path):

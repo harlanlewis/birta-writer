@@ -16,6 +16,10 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 - With Automatically update on, Birta Writer for Mac installs an update without asking whenever you are not using it: nothing unsaved, no `/ai` run going, and either another app in front or no input on the machine for five minutes. A window left open no longer stops it; the app relaunches in the background and brings its windows back on screen without taking the front. The update sheet now appears only while Birta Writer for Mac is in front, so the Dock icon no longer bounces when an update is found.
 
+### Fixed
+
+- Link completion works in Birta Writer for Mac. Typing `[[` lists the notes in the window's folder, the link editor's URL field and the path fields in the link and image toolbars suggest files as you type, and the link editor's Browse button opens a file picker. Before, all four did nothing. In a window with no folder, the suggestions are the files beside the note.
+
 ---
 
 ## [2026.1006.1] - 2026, October 6

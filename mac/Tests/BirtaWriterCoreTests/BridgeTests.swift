@@ -32,6 +32,19 @@ final class BridgeTests: XCTestCase {
         XCTAssertEqual(resolved["resolved"] as? String, "Daily/Page.md")
         // A miss is an explicit null, which the popup draws as "not found".
         XCTAssertTrue(HostMessage.linkTargetResolved(id: "r2", resolved: nil).jsonObject()["resolved"] is NSNull)
+        // Completion and Browse, which the page's fields wait on.
+        XCTAssertEqual(WebviewMessage.parse(#"{"type":"getLinkTargetSuggestions","id":"s1","query":""}"#),
+                       .getLinkTargetSuggestions(id: "s1", query: ""))
+        XCTAssertEqual(WebviewMessage.parse(#"{"type":"getPathSuggestions","id":"p1","query":"./a"}"#),
+                       .getPathSuggestions(id: "p1", query: "./a"))
+        XCTAssertEqual(WebviewMessage.parse(#"{"type":"pickLinkTarget","id":"k1"}"#), .pickLinkTarget(id: "k1"))
+        let targets = HostMessage.linkTargetSuggestions(
+            id: "s1", items: [.init(relative: "a.md", rootRelative: "/a.md")]).jsonObject()
+        XCTAssertEqual((targets["items"] as? [[String: Any]])?.first?["rootRelative"] as? String, "/a.md")
+        let paths = HostMessage.pathSuggestions(id: "p1", items: [.init(path: "./a/", isDir: true)]).jsonObject()
+        XCTAssertEqual((paths["items"] as? [[String: Any]])?.first?["isDir"] as? Bool, true)
+        // A cancelled pick is an explicit null: the field reads it as "keep what is typed".
+        XCTAssertTrue(HostMessage.linkTargetPicked(id: "k1", path: nil).jsonObject()["path"] is NSNull)
         // The host-prompt seam (MAR-395). A step that parses arrives whole.
         XCTAssertEqual(
             WebviewMessage.parse(#"{"type":"hostPrompt","id":"p1","step":{"kind":"input","title":"t","prompt":"q"}}"#),
