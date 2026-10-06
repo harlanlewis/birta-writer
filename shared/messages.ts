@@ -605,6 +605,15 @@ export type ToExtensionMessage =
     // because its tab is the active custom editor with focus parked in the
     // Explorer (MAR-104).
     | { type: "focusState"; focused: boolean }
+    // The page's first screen is up: the editor mounted from `init` (or the
+    // banner drawn that stands in for it), and the side panels the host's
+    // declaration builds at boot settled, then one painted frame; at once on a
+    // page that is hidden, which paints nothing until it is shown. Once per
+    // page. A host that would otherwise show a page mid-build (a tab opened
+    // beside another, a window's page reloaded in place) waits for this
+    // instead (webview/firstScreen.ts). Nothing else depends on it, so the
+    // extension, whose panels VS Code shows itself, ignores it.
+    | { type: "firstScreen" }
     // An uncaught webview error (window.onerror), unhandled promise
     // rejection, or a NodeView failure the per-node crash boundary contained
     // (webview/crashReporter.ts, webview/nodeViewBoundary.ts; MAR-169).

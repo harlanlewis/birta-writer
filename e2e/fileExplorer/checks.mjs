@@ -91,6 +91,21 @@ export async function run({ page, check, baseUrl }) {
     await page.waitForSelector(rowSel("readme.md"), { timeout: 10000 });
     await page.waitForTimeout(SETTLE);
 
+    // The first screen a waiting host would show: posted once, after ready,
+    // and not before the tree had its rows (webview/firstScreen.ts). The root
+    // lists six entries with its dotfile hidden.
+    const first = await page.evaluate(() => ({
+        at: window.__firstScreen ?? null,
+        types: window.__posted.map((m) => m.type),
+    }));
+    check("firstScreen is posted once, after ready",
+        first.types.filter((t) => t === "firstScreen").length === 1
+            && first.types.indexOf("ready") < first.types.indexOf("firstScreen"),
+        JSON.stringify(first.types));
+    check("when firstScreen is posted the editor, the panel and the root's rows are all drawn, none still loading",
+        Boolean(first.at?.editor && first.at.panel && first.at.rows >= 6 && first.at.loading === 0),
+        JSON.stringify(first.at));
+
     const geom = await page.evaluate(() => {
         const el = document.querySelector(".files-panel");
         const panel = el.getBoundingClientRect();

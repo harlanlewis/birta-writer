@@ -1808,6 +1808,10 @@ export class MarkdownEditorProvider
                         // focus (MAR-104).
                         this._setWebviewFocus(uriKey, message.focused);
                         break;
+                    case "firstScreen":
+                        // For a host that shows the page itself; VS Code
+                        // already does, and has nothing to wait for.
+                        break;
                     case "crash":
                         // The webview's crash boundary reported an uncaught
                         // error / unhandled rejection (MAR-169). Log every

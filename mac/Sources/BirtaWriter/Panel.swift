@@ -335,6 +335,25 @@ final class AppPanel: NSPanel {
     }
 }
 
+/// A tab that waits behind the one in front while its page builds.
+///
+/// A new tab's page is built from nothing: paper first, then the editor at
+/// full width, then the file list pushing it over. Shown at once, the tab
+/// shows all of that. `addTabbedWindow` puts it in the bar without bringing
+/// it forward (`HeldTabTests` holds AppKit to that), so the tab the reader
+/// was in stays on screen until `WindowSet.open` shows the new one, which it
+/// does when the new page is finished.
+extension NSWindow {
+    /// The tab of this window's group that is in front and on screen, when
+    /// it is not this one: what a tab held back while its page builds leaves
+    /// the reader looking at. Nil for a window that is itself in front, in no
+    /// group, or in a group nobody can see.
+    var tabShowingInstead: NSWindow? {
+        guard let selected = tabGroup?.selectedWindow, selected !== self, selected.isVisible else { return nil }
+        return selected
+    }
+}
+
 /// The panel's content view: hosts the web view, forwards appearance changes so
 /// the page's theme class follows the system, and reports whether the pointer is
 /// over the window, which is what the chrome is shown by.

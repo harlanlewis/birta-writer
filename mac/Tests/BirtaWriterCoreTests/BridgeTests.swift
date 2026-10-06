@@ -115,6 +115,7 @@ final class BridgeTests: XCTestCase {
         XCTAssertEqual(WebviewMessage.parse(#"{"type":"setFontSize","size":110}"#), .setFontSize(110))
         XCTAssertEqual(WebviewMessage.parse(#"{"type":"setContentWidth","mode":"fixed"}"#), .setContentWidth("fixed"))
         XCTAssertEqual(WebviewMessage.parse(#"{"type":"focusState","focused":true}"#), .focusState(true))
+        XCTAssertEqual(WebviewMessage.parse(#"{"type":"firstScreen"}"#), .firstScreen)
         XCTAssertEqual(WebviewMessage.parse(#"{"type":"crash","message":"boom","source":"error"}"#), .crash(message: "boom", source: "error"))
         // "hi" as base64, in the `$bytes` wrapper the page-side shim writes.
         XCTAssertEqual(

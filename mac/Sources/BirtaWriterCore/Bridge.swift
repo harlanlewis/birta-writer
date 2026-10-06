@@ -45,6 +45,10 @@ public struct PaletteCommand: Equatable, Sendable {
 
 public enum WebviewMessage: Equatable {
     case ready
+    /// The page's first screen is up: `init` handled, the explorer's first
+    /// tree drawn, a frame painted (at once on a hidden page). Once per page
+    /// (`webview/firstScreen.ts`).
+    case firstScreen
     case update(content: String, baseSyncVersion: Int, seq: Int)
     /// The frontmatter panel was edited. It carries a base version and no seq
     /// on purpose: the panel rewrites only its own block, so there is nothing
@@ -249,6 +253,7 @@ public enum WebviewMessage: Equatable {
         }
         switch type {
         case "ready": return .ready
+        case "firstScreen": return .firstScreen
         case "update":
             guard let c = str("content"), let b = int("baseSyncVersion"), let s = int("seq") else { return .other(type: type) }
             return .update(content: c, baseSyncVersion: b, seq: s)

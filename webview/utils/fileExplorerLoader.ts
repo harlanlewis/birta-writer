@@ -16,6 +16,12 @@
  * then `currentProjectFile`, then answers the root listing, all inside the
  * chunk's fetch. A `projectRoot` with a null root empties the buffer and
  * takes the panel down, and a later non-null root builds it again.
+ *
+ * The tree is part of the page's first screen (`settled`,
+ * `webview/firstScreen.ts`), which a host may hold the window back for. The
+ * chunk is still fetched on the first `projectRoot` and not at boot: a host
+ * may declare `projectFiles` and then name no folder, and that window pays
+ * nothing for a panel it will never build.
  */
 import { hostHas } from "../../shared/hostProfile";
 import type { ProjectRoot } from "../../shared/messages";
@@ -45,6 +51,13 @@ export interface FileExplorerGate {
     dockedReserve(): number;
     /** Re-decide docked against overlay; nothing to decide before the panel exists. */
     checkResponsiveMode(): void;
+    /**
+     * Resolves once the window's first tree is drawn: at once on a page that
+     * will build none (no `projectFiles`) or whose explorer starts hidden,
+     * when the panel's first walk is answered otherwise, and when a null root
+     * says there is no tree after all.
+     */
+    settled(): Promise<void>;
     /** How many messages wait for the chunk: a test's view of the buffer, which
      *  must stay empty on a host that will never load it. */
     queuedForTesting(): number;
@@ -63,6 +76,13 @@ export function createFileExplorerGate(deps: FileExplorerDeps): FileExplorerGate
     let widthFloor: number | undefined;
     /** What arrived before the panel existed, in order. */
     const queue: Array<(c: FileExplorerController) => void> = [];
+
+    let settle!: () => void;
+    const settled = new Promise<void>((resolve) => { settle = resolve; });
+    // Nothing to wait for where no tree will be drawn: a host with no folder
+    // to offer, or an explorer the reader left hidden, whose rows are not on
+    // the first screen however long they take.
+    if (!hostHas("projectFiles") || window.__i18n?.fileExplorerVisible === false) { settle(); }
 
     /** Run now, or once the panel exists; dropped when no folder is open. */
     const withController = (fn: (c: FileExplorerController) => void): void => {
@@ -90,6 +110,7 @@ export function createFileExplorerGate(deps: FileExplorerDeps): FileExplorerGate
                 });
                 if (flyoutTrigger) { controller.setFlyoutTrigger(flyoutTrigger); }
                 for (const fn of queue.splice(0)) { fn(controller); }
+                void controller.settled().then(settle);
             })
             .finally(() => {
                 if (pending === load$) { pending = null; }
@@ -103,6 +124,7 @@ export function createFileExplorerGate(deps: FileExplorerDeps): FileExplorerGate
                 queue.length = 0;
                 controller?.dispose();
                 controller = null;
+                settle();
                 return;
             }
             // Before the root is recorded: with no capability nothing will
@@ -134,6 +156,7 @@ export function createFileExplorerGate(deps: FileExplorerDeps): FileExplorerGate
         },
         dockedReserve: () => controller?.dockedReserve() ?? 0,
         checkResponsiveMode: () => controller?.checkResponsiveMode(),
+        settled: () => settled,
         queuedForTesting: () => queue.length,
     };
 }

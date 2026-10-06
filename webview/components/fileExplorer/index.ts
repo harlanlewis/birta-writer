@@ -104,6 +104,13 @@ export interface FileExplorerController {
     dockedReserve: () => number;
     /** Re-decide docked against overlay: what the TOC's `onReserveChange` runs. */
     checkResponsiveMode: () => void;
+    /**
+     * Resolves the first time no listing is in flight: the tree as the window
+     * opened it, with the root, the folders it remembered open and the path to
+     * the current file all answered (or drawn as errors). Part of the page's
+     * first screen (`webview/firstScreen.ts`).
+     */
+    settled: () => Promise<void>;
     dispose: () => void;
 }
 
@@ -218,6 +225,18 @@ export function createFileExplorer(host: FileExplorerHost): FileExplorerControll
     /** In-flight requests by id; a folder has at most one, the newest. */
     const inflight = new Map<string, { path: string; timer: ReturnType<typeof setTimeout> }>();
     const inflightByPath = new Map<string, string>();
+    let settle!: () => void;
+    const settled = new Promise<void>((resolve) => { settle = resolve; });
+    /**
+     * Called after every answer, never after a request: the requests a reply
+     * leads to (the next folder down a reveal) are made before it is asked,
+     * so quiet here means the whole first walk has been answered. A
+     * `currentProjectFile` cannot land after it, because the host sends it
+     * beside `projectRoot`, ahead of any answer to the panel's first request.
+     */
+    function settleIfQuiet(): void {
+        if (inflight.size === 0) { settle(); }
+    }
 
     /**
      * Ask the host for one folder. A folder already listed keeps its rows
@@ -237,6 +256,7 @@ export function createFileExplorer(host: FileExplorerHost): FileExplorerControll
             inflightByPath.delete(path);
             model.setError(path, t("No answer from the host"));
             render();
+            settleIfQuiet();
         }, LISTING_TIMEOUT_MS);
         inflight.set(id, { path, timer });
         inflightByPath.set(path, id);
@@ -268,6 +288,7 @@ export function createFileExplorer(host: FileExplorerHost): FileExplorerControll
             requestAll(model.revealPath(selectedPath));
         }
         render();
+        settleIfQuiet();
     }
 
     // ── Rows ──────────────────────────────────────────────────────────────
@@ -575,6 +596,7 @@ export function createFileExplorer(host: FileExplorerHost): FileExplorerControll
         isOpen: () => shell.isOpen(),
         dockedReserve: shell.dockedReserve,
         checkResponsiveMode: shell.checkResponsiveMode,
+        settled: () => settled,
         dispose() {
             for (const { timer } of inflight.values()) { clearTimeout(timer); }
             inflight.clear();

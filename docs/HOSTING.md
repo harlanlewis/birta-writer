@@ -50,6 +50,7 @@ What a host consumes:
 | The editor posts | When | What to do with it |
 | --- | --- | --- |
 | `update { content, seq, baseSyncVersion }` | On a typing pause, and at a bounded wait during continuous typing (`webview/syncScheduler.ts`) | Hold it as the document's current bytes. In VS Code this is what hot exit backs up, so it is the crash-safety window, and a host that persists on its own cadence persists these |
+| `firstScreen` | Once per page: after `init` has mounted the editor, the side panels the host declared at boot have settled, and a frame has painted; at once on a hidden page | Optional. A host that would otherwise show a page while it builds holds it back until this arrives, and bounds that wait in case it never does. Birta Writer for Mac holds a new tab or window, and covers a page reloaded in place, this way (`webview/firstScreen.ts`) |
 | `focusState { focused }` | Focus enters or leaves the frame | Optional. VS Code gates document-mutating keybindings on it |
 | `wordCount { doc, selection }` | After an edit, debounced | Optional. A status line, if the host has one |
 | `viewState { state }` | The view-state bag changed | Optional. VS Code keeps the last bag per document, in memory and in workspace state, and hands it back in `init` as `viewState` |

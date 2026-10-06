@@ -210,6 +210,11 @@ export function notifyFocusState(focused: boolean): void {
     vscode.postMessage({ type: "focusState", focused });
 }
 
+/** The page's first screen is up (`webview/firstScreen.ts` decides when). */
+export function notifyFirstScreen(): void {
+    vscode.postMessage({ type: "firstScreen" });
+}
+
 export function notifyOpenFile(relativePath: string, opts?: { wiki?: true }): void {
     vscode.postMessage({
         type: "openFile",
