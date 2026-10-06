@@ -16,7 +16,7 @@
  * the exit transition finishes, so it never animates back through the full
  * drawer (the visible "shrink to hidden full size" artifact).
  */
-import { hideTooltip } from "@/ui/tooltip";
+import { yieldToPreview } from "@/ui/tooltip";
 import { claimExclusiveChrome, releaseExclusiveChrome } from "@/ui/exclusiveChrome";
 import { clearHostStrip, getTopbarBottom } from "@/utils/headingUtils";
 
@@ -178,9 +178,11 @@ export function createFlyout(opts: FlyoutOptions): Flyout {
             return;
         }
         flyoutOpen = true;
-        // The flyout shows the panel itself, so the trigger's tooltip is
-        // redundant (and would overlap the panel): dismiss it.
-        hideTooltip();
+        // The flyout shows the panel itself, so a trigger's tooltip is
+        // redundant (and would overlap the panel): dismiss it, unless the
+        // trigger keeps its label to the side of the panel because the label
+        // says something the panel does not (`besidePreview`).
+        yieldToPreview();
         // ...and any toolbar dropdown, for the same reason one level up: two
         // transient surfaces out at once is the editor answering "what else is
         // here" twice. `hide` is the dismissal, not `teardown`, so being swept

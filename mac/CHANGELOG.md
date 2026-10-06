@@ -22,14 +22,20 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ### Changed
 
+- The file list in Birta Writer for Mac now runs the full height of the window, up through the titlebar, the way a macOS sidebar does. While it is open, the window buttons, its toggle, and New Note, Open and Command Palette sit on the file list's ground, with those three against its right edge, and the file name starts past it. With more than one tab, the tab bar starts at the file list's edge too, over the document rather than across the file list. The list itself has not moved, and neither has the document. The file list can no longer be dragged narrower than those buttons need.
 - Moving the open note to the Trash in a Birta Writer for Mac folder window now opens the folder's next note in its place, the one opening the folder would choose, instead of the card saying the file is in the Trash. With autosave off and unsaved text in the note, the card still appears, because its Save It Back is the only place that text is kept.
 - The two sidebars in Birta Writer for Mac have neighbouring shortcuts: Option+Command+Comma shows and hides the file list, and Option+Command+Period the table of contents. Shift+Command+E still toggles the file list too.
 - The titlebar's New Note, Open and Command Palette buttons in Birta Writer for Mac sit before the file name, beside the file explorer's toggle, so every titlebar control is on the left and the name ends the row.
 - Move to Trash on a file explorer row now asks before moving the file, with the same sheet.
 - Opening a folder that holds thousands of files directly inside it starts loading its window sooner in Birta Writer for Mac. Before, the app checked every file in the folder against every open window before choosing the one to open; it now checks the newest first and stops at the first it can open.
 
+### Removed
+
+- The Transparent table of contents sidebar setting in Birta Writer for Mac. The table of contents always draws on the page's own background, which was the setting's default; anyone who had turned it off gets that default back.
+
 ### Fixed
 
+- Resting the pointer on the table of contents button in Birta Writer for Mac while the table of contents is closed now shows its label and its shortcut, Option+Command+Period. Before, the preview that slides out on hover hid every label, so the shortcut was only shown while the table of contents was already open.
 - Right-clicking a row in the Birta Writer for Mac file explorer opens its menu at the row. Before, the menu opened mirrored top to bottom, so a row near the top of the sidebar got its menu near the bottom, and only rows near the middle landed where they were clicked.
 
 ---

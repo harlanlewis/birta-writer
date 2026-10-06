@@ -473,6 +473,12 @@ export type ToExtensionMessage =
     // move; the host persists it and injects it back as `--files-width` on
     // `:root`, the way `tocWidth` comes back as `--toc-width`.
     | { type: "fileExplorerWidth"; width: number }
+    // Under `filesUnderTitlebar`: where the docked-open panel ends, in
+    // viewport pixels from the leading edge, on every commit that moved it
+    // (open, close, every step of a sash drag, a window narrow enough to pin
+    // it), or null while nothing is docked open. The host lays its band out
+    // against it: its own buttons inside the panel, the window's title past it.
+    | { type: "fileExplorerEdge"; edge: number | null }
     // ── The folder edge index (MAR-467), to a host declaring `folderIndex` ──
     // Ask for the index of this document's folder. The host answers with
     // `folderIndex`, now and again whenever the folder changes under it, until
@@ -1022,6 +1028,10 @@ export type ToWebviewMessage =
     // The dotfile switch changed under the panel, from the host's own menu
     // row or as the echo of `setFileExplorerShowHidden`.
     | { type: "fileExplorerConfig"; showHidden: boolean }
+    // Under `filesUnderTitlebar`: the least the docked panel may be, in CSS
+    // pixels, because the host draws chrome inside it up in the band. Sent
+    // whenever that chrome's extent changes; the panel never draws narrower.
+    | { type: "fileExplorerFloor"; width: number }
     // ── The folder edge index (MAR-467), from a host declaring `folderIndex` ──
     // The index of this document's folder, and where this document sits in it
     // (`self`, root-relative). A null index is a document with no folder to

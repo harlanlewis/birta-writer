@@ -882,6 +882,22 @@ body.files-open {
     &:not(.toc-right) .toc-toggle-tab {
         margin-left: var(--files-reserve);
     }
+
+    /* A drawer that runs up through the titlebar (filesUnderTitlebar) is
+       drawn under the bar, which sits above every drawer, so the bar gives
+       up the drawer's column for the drawer's ground to show. On the stacked
+       bar each row paints its own ground (dock.css) and the formatting row
+       already stands in by the reserve, so it is the first row alone that
+       moves; an unstacked bar paints its own box and moves whole. */
+    &.files-from-top {
+        .editor-topbar--stacked > .toolbar {
+            margin-left: var(--files-reserve);
+        }
+
+        .editor-topbar:not(.editor-topbar--stacked) {
+            left: var(--files-reserve);
+        }
+    }
 }
 
 /* The cases where the explorer's clearance is a margin of its own: a right

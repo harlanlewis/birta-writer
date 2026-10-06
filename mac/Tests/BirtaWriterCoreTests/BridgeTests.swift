@@ -323,6 +323,15 @@ final class BridgeTests: XCTestCase {
                        .fileExplorerVisibility(false))
         XCTAssertEqual(WebviewMessage.parse(#"{"type":"setFileExplorerShowHidden","value":true}"#),
                        .setFileExplorerShowHidden(true))
+        // The edge is a number or null, and null is a message of its own:
+        // nothing is docked open, so the titlebar stops splitting at it.
+        XCTAssertEqual(WebviewMessage.parse(#"{"type":"fileExplorerEdge","edge":236.5}"#), .fileExplorerEdge(236.5))
+        XCTAssertEqual(WebviewMessage.parse(#"{"type":"fileExplorerEdge","edge":null}"#), .fileExplorerEdge(nil))
+        XCTAssertEqual(WebviewMessage.parse(#"{"type":"fileExplorerEdge","edge":"wide"}"#),
+                       .other(type: "fileExplorerEdge"), "an edge that is not a number is refused, not read as none")
+        let floor = HostMessage.fileExplorerFloor(width: 214).jsonObject()
+        XCTAssertEqual(floor["type"] as? String, "fileExplorerFloor")
+        XCTAssertEqual(floor["width"] as? Double, 214)
 
         let rooted = HostMessage.projectRoot(name: "notes", path: "/n", showHidden: false, expanded: ["a", "a/b"]).jsonObject()
         XCTAssertEqual(rooted["type"] as? String, "projectRoot")
@@ -473,7 +482,8 @@ final class BridgeTests: XCTestCase {
         XCTAssertEqual(host?["arrangements"] as? [String],
                        ["typographyInGearMenu", "formattingInSecondRow", "fixedToolbarLayout",
                         "barMenusOnClick", "nativeFindBar", "nativeDatePicker",
-                        "fixedTocSide", "tocToggleInBar", "filesToggleInHostChrome"])
+                        "fixedTocSide", "tocToggleInBar", "filesToggleInHostChrome",
+                        "filesUnderTitlebar"])
         XCTAssertNotNil(host?["shortcuts"] as? [[String: String]])
         XCTAssertEqual((i18n["toolbar"] as? [String: Any])?["placements"] as? [String: String], ["bold": "hidden"])
 

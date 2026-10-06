@@ -106,6 +106,7 @@ import { reportWordCount } from "./wordCountReporter";
 import { createEventManager } from "./eventManager";
 import { observeNativeThemeChanges } from "./nativeThemeBridge";
 import { syncMermaidCanvasClass } from "./components/codeBlock";
+import { labelBesidePreview } from "./ui/tooltip";
 
 // ── Module-level state ─────────────────────────────────────
 let currentEditor: Editor | null = null;
@@ -739,7 +740,14 @@ measure("initToolbar", "toolbar-start", "toolbar-end");
 // panel it toggles through a command id. `setFlyoutTrigger` is a no-op on every
 // other surface, so no branch is needed around it.
 const barTocBtn = topbar?.querySelector<HTMLElement>(".tb-toc-btn");
-if (toc && barTocBtn) { toc.setFlyoutTrigger(barTocBtn); }
+if (toc && barTocBtn) {
+    toc.setFlyoutTrigger(barTocBtn);
+    // Its label names the key that opens the outline for good, which the
+    // preview it brings out does not say, so the label stays up beside it.
+    // The bar carries this button only under `tocToggleInBar`, which is
+    // exactly where it is the preview's trigger (toolbar/registry.ts).
+    labelBesidePreview(barTocBtn);
+}
 // The file explorer's button is the same shape: the gate holds the trigger
 // until the panel exists, so it is registered here whether or not a folder
 // ever opens. Absent where the host carries that control itself
@@ -1128,6 +1136,7 @@ const handlers = createMessageHandlers({
         setCurrentProjectFile: (path) => fileExplorer.setCurrentProjectFile(path),
         directoryChanged: (paths) => fileExplorer.directoryChanged(paths),
         setFileExplorerShowHidden: (showHidden) => fileExplorer.setShowHidden(showHidden),
+        setFileExplorerFloor: (width) => fileExplorer.setWidthFloor(width),
     },
     topbarTb,
 });

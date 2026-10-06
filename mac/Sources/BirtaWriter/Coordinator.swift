@@ -50,6 +50,10 @@ final class Coordinator {
     /// What the page's trailing controls take from the band, as last reported.
     /// Held so a resize can resize the strip without asking the page again.
     private var titlebarControlsWidth: CGFloat = 0
+    /// The floor last sent to the page under `fileExplorerFloor`, so a layout
+    /// pass that moved nothing sends nothing. Nil until a page has one: a
+    /// page that has just loaded is told again.
+    private var sentExplorerFloor: CGFloat?
 
     /// How tall the titlebar band is right now.
     ///
@@ -91,6 +95,58 @@ final class Coordinator {
     func tabsChanged() {
         layoutTitlebarDrag()
         refreshTitle()
+    }
+
+    /// The tab bar view this window last inset, watched for AppKit moving it
+    /// back (`insetTabBar`).
+    private weak var insetTabBarView: NSView?
+    private var tabBarFrameObserver: NSObjectProtocol?
+
+    /// Start the tab bar where the docked explorer ends, so the tabs belong
+    /// to the document and the explorer's ground runs up past them, the way
+    /// a macOS sidebar sits beside a window's tabs rather than under them.
+    ///
+    /// The bar is AppKit's: `NSTabBar`, inside the titlebar accessory AppKit
+    /// adds for a tab group, and no public API places it. So it is found by
+    /// class name and given a frame, and the titlebar's own background is
+    /// hidden on this window (`titlebarAppearsTransparent`), so the strip it
+    /// gives up shows the page under it, which there is the explorer. AppKit
+    /// lays the tabs out inside whatever width the bar has, the new-tab
+    /// button included.
+    ///
+    /// Two things keep it honest. It is re-applied on every pass that could
+    /// move the edge or the bar (`layoutTitlebarDrag` runs on resize, on a
+    /// tab coming or going and on the edge moving), and the bar's own frame
+    /// is watched, because AppKit relays it out on passes of its own. And it
+    /// degrades rather than breaks: a macOS that renames the class leaves
+    /// the bar where AppKit put it, across the whole window, which is how it
+    /// looked before this existed.
+    func insetTabBar() {
+        guard let accessory = panel.titlebarAccessoryViewControllers.first(where: { $0 !== titleBar }) else { return }
+        func find(_ view: NSView) -> NSView? {
+            if String(describing: type(of: view)) == "NSTabBar" { return view }
+            for sub in view.subviews { if let hit = find(sub) { return hit } }
+            return nil
+        }
+        guard let bar = find(accessory.view), let host = bar.superview else { return }
+        // One point past the edge when there is one, because AppKit draws the
+        // first tab a point BEFORE the bar's origin (its left border sits off
+        // the bar), and the explorer's divider is the last column inside the
+        // explorer. Started at the edge itself, the first tab's fill lands on
+        // that column and the divider breaks across the tab row.
+        let edge = titleBar.titleView.dockedSidebarEdge.map { min($0 + 1, host.bounds.width) } ?? 0
+        let target = NSRect(x: edge, y: bar.frame.minY, width: host.bounds.width - edge, height: bar.frame.height)
+        if bar.frame != target { bar.frame = target }
+        guard insetTabBarView !== bar else { return }
+        if let tabBarFrameObserver { NotificationCenter.default.removeObserver(tabBarFrameObserver) }
+        insetTabBarView = bar
+        bar.postsFrameChangedNotifications = true
+        // Setting the frame from here posts again, and the second pass finds
+        // the frame already right and sets nothing, so this cannot loop.
+        tabBarFrameObserver = NotificationCenter.default.addObserver(
+            forName: NSView.frameDidChangeNotification, object: bar, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.insetTabBar() }
+        }
     }
 
     // MARK: the file explorer (MAR-457)
@@ -1944,6 +2000,12 @@ final class Coordinator {
             // had handed over: it cannot ask for something to be taken away
             // that it does not know it gave.
             stripTooltipWindow.hide()
+            // Nor any explorer docked under the band, whatever the last page
+            // had reported, and it has not been told the floor either. The
+            // explorer reports its edge once it mounts; the floor goes on the
+            // next layout pass, which the width query below makes.
+            titleBar.titleView.setSidebarEdge(nil)
+            sentExplorerFloor = nil
             // The file is the source only at launch and after the bound file
             // changes; after a content-process death `latest` is fresher than
             // the disk can be (a write may still be in flight), and it is what
@@ -2206,6 +2268,11 @@ final class Coordinator {
             Prefs.explorerVisibility = visible ? "shown" : "hidden"
             menuState.record(.explorerShown, on: visible)
             titleBar.titleView.setSidebarShown(visible)
+        case let .fileExplorerEdge(edge):
+            // The page's CSS pixels are the window's points: the web view
+            // fills the content view from its leading edge and is not zoomed.
+            titleBar.titleView.setSidebarEdge(edge.map { CGFloat($0) })
+            layoutTitlebarDrag()
         case let .setFileExplorerShowHidden(value):
             // The setting is the app's, so every rooted window's page hears
             // about it, this one included; `WindowSet` fans it out.
@@ -4365,6 +4432,7 @@ final class Coordinator {
     /// a leading accessory after them, so nothing here repeats a number the
     /// system owns.
     func layoutTitlebarDrag() {
+        insetTabBar()
         let titleView = titleBar.titleView
         // The title's ceiling and the strip's span are two answers to one
         // question, so they are taken from one place and in this order: the
@@ -4381,6 +4449,7 @@ final class Coordinator {
             titleOriginX: titleView.convert(titleView.bounds, to: contentView).minX,
             titleChromeWidth: titleView.chromeWidth,
             trailingControlsWidth: titlebarControlsWidth))
+        sendExplorerFloor(titleOriginX: titleView.convert(titleView.bounds, to: contentView).minX)
         let leading = titleView.convert(titleView.bounds, to: contentView).maxX
         // The TITLE ROW, not the whole band. With tabs the band has a second
         // row under the title, the tab bar, and a strip laid over the whole
@@ -4411,6 +4480,22 @@ final class Coordinator {
                                     y: contentView.bounds.height - bandHeight,
                                     width: span.width,
                                     height: bandHeight)
+    }
+
+    /// Tell the page how narrow its explorer may be, now that this window's
+    /// chrome has been placed: wide enough for the toggle and the file
+    /// actions the band draws on its ground (`SidebarBand.floor`).
+    ///
+    /// Here, on the layout pass, because the floor starts from where AppKit
+    /// put the title, which moves with things this file does not choose (full
+    /// screen takes the traffic lights away). A window with no explorer has
+    /// no page panel to hold to it, and is sent nothing.
+    private func sendExplorerFloor(titleOriginX: CGFloat) {
+        guard explorerRoot != nil else { return }
+        let floor = titleBar.titleView.sidebarFloor(titleOriginX: titleOriginX).rounded(.up)
+        guard floor != sentExplorerFloor else { return }
+        sentExplorerFloor = floor
+        host.send(.fileExplorerFloor(width: Double(floor)))
     }
 
     /// Ask the page how much of the band its controls take, then refit.

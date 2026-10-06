@@ -508,3 +508,94 @@ describe("the file explorer gate", () => {
         expect(eager.has("components/fileExplorer/styles.ts")).toBe(false);
     });
 });
+
+/**
+ * `filesUnderTitlebar`: the docked drawer runs from the window's top through
+ * the bar's first row, and the host lays its band out against the edge the
+ * page reports. Asked against a bar of known height, because with no bar the
+ * content area's top is 0, and a drawer from the window's top would then be
+ * indistinguishable from one under the bar.
+ */
+describe("the file explorer under a host's titlebar", () => {
+    let gate: FileExplorerGate;
+    const BAR = 40;
+    const edges = () => posted()
+        .filter((m): m is Extract<Posted, { type: "fileExplorerEdge" }> => m.type === "fileExplorerEdge")
+        .map((m) => m.edge);
+
+    function declare(arrangements: string[]): void {
+        (globalThis as { __i18n?: unknown }).__i18n = {
+            translations: {},
+            isMac: true,
+            host: { capabilities: ["projectFiles"], arrangements, shortcuts: [] },
+        };
+    }
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+        Object.defineProperty(window, "innerWidth", { value: 1200, configurable: true });
+        vi.stubGlobal("requestAnimationFrame", (cb: FrameRequestCallback) => { cb(0); return 0; });
+        document.body.className = "";
+        document.body.innerHTML = "";
+        document.documentElement.style.cssText = "";
+        const bar = document.createElement("div");
+        bar.className = "editor-topbar";
+        bar.getBoundingClientRect = () => DOMRect.fromRect({ x: 0, y: 0, width: 1200, height: BAR });
+        document.body.appendChild(bar);
+    });
+
+    afterEach(() => {
+        gate.setProjectRoot(null, false);
+        vi.unstubAllGlobals();
+        delete (globalThis as { __i18n?: unknown }).__i18n;
+    });
+
+    it("declared, the docked drawer should start at the window's top with its rows where the content starts", async () => {
+        declare(["filesUnderTitlebar"]);
+        gate = makeGate();
+        await mounted(gate);
+        expect(panel()!.style.top).toBe("0px");
+        expect(panel()!.style.getPropertyValue("--side-panel-content-top")).toBe(`${BAR}px`);
+        expect(document.body.classList.contains("files-from-top")).toBe(true);
+        // Flush: no inset, so the drawer's edge is its width and nothing less.
+        expect(panel()!.style.getPropertyValue("--side-panel-inset")).toBe("0px");
+    });
+
+    it("undeclared, the drawer should stay under the bar and report no edge", async () => {
+        declare([]);
+        gate = makeGate();
+        await mounted(gate);
+        expect(panel()!.style.top).toBe(`${BAR}px`);
+        expect(document.body.classList.contains("files-from-top")).toBe(false);
+        gate.toggle();
+        gate.toggle();
+        expect(edges()).toEqual([]);
+    });
+
+    it("declared, every open and close should report the edge once, and null while nothing is docked open", async () => {
+        declare(["filesUnderTitlebar"]);
+        gate = makeGate();
+        await mounted(gate);
+        const open = gate.dockedReserve();
+        expect(open).toBeGreaterThan(0);
+        gate.toggle();
+        gate.toggle();
+        expect(edges()).toEqual([open, null, open]);
+    });
+
+    it("a host floor should hold the drawer at least that wide, from before the panel exists and after", async () => {
+        declare(["filesUnderTitlebar"]);
+        gate = makeGate();
+        // Sent before any folder opens: the host lays its window out first.
+        gate.setWidthFloor(300);
+        await mounted(gate);
+        expect(gate.dockedReserve()).toBe(300);
+        expect(edges().at(-1)).toBe(300);
+        // Raised with the panel up, which is full screen arriving or leaving:
+        // the drawer follows and the host hears the new edge.
+        gate.setWidthFloor(340);
+        expect(gate.dockedReserve()).toBe(340);
+        expect(edges().at(-1)).toBe(340);
+        expect(document.documentElement.style.getPropertyValue("--files-width")).toBe("340px");
+    });
+});

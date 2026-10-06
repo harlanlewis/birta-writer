@@ -181,8 +181,16 @@ final class TitlebarActionsView: NSView {
     /// changing it.
     var room: CGFloat {
         guard isAvailable else { return 0 }
-        return Self.nameGap
-            + Self.buttonWidth * CGFloat(buttons.count)
+        return Self.nameGap + span
+    }
+
+    /// The buttons alone, without the air the row holds beside them: what a
+    /// row placed against an edge rather than against the name has to fit
+    /// (`SidebarBand`), where the air between it and the name is someone
+    /// else's to decide.
+    var span: CGFloat {
+        guard isAvailable else { return 0 }
+        return Self.buttonWidth * CGFloat(buttons.count)
             + Self.buttonGap * CGFloat(max(0, buttons.count - 1))
     }
 

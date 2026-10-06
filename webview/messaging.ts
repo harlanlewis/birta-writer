@@ -454,6 +454,15 @@ export function notifyFileExplorerWidth(width: number): void {
     vscode.postMessage({ type: "fileExplorerWidth", width });
 }
 
+/**
+ * Where the docked-open panel ends, in viewport pixels from the leading edge,
+ * or null when nothing is docked open: for a host that lays its band out
+ * against the panel (`filesUnderTitlebar`).
+ */
+export function notifyFileExplorerEdge(edge: number | null): void {
+    vscode.postMessage({ type: "fileExplorerEdge", edge });
+}
+
 /** An explicit show or hide of the panel, for the host to remember. */
 export function notifyFileExplorerVisibility(visible: boolean): void {
     vscode.postMessage({ type: "fileExplorerVisibility", visible });

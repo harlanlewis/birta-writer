@@ -55,9 +55,8 @@ export const FILE_EXPLORER_CSS = `
     /* The shade unless a host says otherwise. --files-panel-ground is this
        card's ground and nothing else's, so a host that wants the file list
        to read as page (the Mac app's Transparent file list sidebar) declares
-       it without touching the palette's own sideBar shade. That shade has
-       another reader of its own, the hidden toolbar's tab, and is what the
-       outline's ground is set TO when a host asks for one. */
+       it without touching the palette's own sideBar shade, which has
+       another reader of its own, the hidden toolbar's tab. */
     background: var(--files-panel-ground, var(--vscode-sideBar-background));
     /* Rounded where it stands in from the window and square where it does
        not. The drawer is flush with the chrome above it (SIDE_PANEL_INSET is
@@ -66,6 +65,22 @@ export const FILE_EXPLORER_CSS = `
        toolbar that read as a rendering fault rather than as a shape. */
     border-radius: 0 0 var(--ui-radius-l) var(--ui-radius-l);
     margin-right: var(--ui-space-3);
+}
+
+/* Run up through the titlebar (filesUnderTitlebar): a column of the window
+   rather than a surface set into the page, so square, flush, and filling its
+   box, with the host's window buttons drawn on its ground in the band above
+   the rows. The rows start where the content area does (the shell writes that
+   offset as --side-panel-content-top), so docking the drawer this way moves
+   nothing in it. The hairline is the column's edge: on a transparent file
+   list the ground is the page's own and nothing else would say where the
+   drawer stops. Docked only; the flyout floats below the bar as it always
+   has, and keeps the card it is drawn as. */
+.files-panel--from-top:not(.files-panel--flyout) .files-card {
+    border-radius: 0;
+    margin-right: 0;
+    padding-top: var(--side-panel-content-top, 0px);
+    box-shadow: inset -1px 0 0 var(--vscode-panel-border);
 }
 
 .files-header {

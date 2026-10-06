@@ -915,6 +915,43 @@ export async function run({ page, check, baseUrl }) {
     await page.keyboard.press("Escape");
     await page.waitForTimeout(200);
 
+    // The outline's toggle names its key too, and it has to be SEEN doing
+    // it, which is a different question here than for the link button. On
+    // this surface the bar's toggle is also the hover trigger of the
+    // outline's preview (`tocToggleInBar`), so a pointer resting on it while
+    // the outline is shut brings the preview out, and every tooltip is
+    // withheld while a preview is out. Asked with a real pointer and a real
+    // wait, because a dispatched mouseenter reaches the tooltip and not the
+    // preview, and would find the label that the gesture never shows.
+    const tocShut = await page.evaluate(() =>
+        !document.body.classList.contains("toc-open") && !document.body.classList.contains("toc-overlay-open"));
+    await page.mouse.move(5, 300);
+    await page.waitForTimeout(300);
+    await page.locator('.tb-item[data-item-id="toc"] .tb-toc-btn').hover();
+    await page.waitForTimeout(900);
+    const tocTip = await page.evaluate(() => {
+        const tip = document.querySelector(".custom-tooltip");
+        const shown = !!tip && getComputedStyle(tip).display !== "none" && tip.getBoundingClientRect().height > 0;
+        const flyout = document.querySelector(".toc-panel--flyout");
+        const tb = tip?.getBoundingClientRect();
+        const fb = flyout?.getBoundingClientRect();
+        return {
+            shown,
+            text: shown ? tip.textContent : null,
+            previewOut: !!flyout,
+            // A label drawn under the preview card is a label nobody reads.
+            overlapsPreview: !!(tb && fb && tb.left < fb.right && tb.right > fb.left
+                && tb.top < fb.bottom && tb.bottom > fb.top),
+        };
+    });
+    check("mac: the outline's toggle is probed with the outline shut, where its preview comes out on hover",
+        tocShut, JSON.stringify({ tocShut }));
+    check("mac: resting on the outline's toggle shows its label with the key the app binds (⌥⌘.)",
+        !!tocTip.shown && /⌥⌘\./.test(tocTip.text ?? ""), JSON.stringify(tocTip));
+    check("mac: …clear of the preview it brought out", !tocTip.overlapsPreview, JSON.stringify(tocTip));
+    await page.mouse.move(5, 300);
+    await page.waitForTimeout(400);
+
     // Typing works.
     await page.locator(".milkdown .ProseMirror p").first().click();
     await page.keyboard.press("End");

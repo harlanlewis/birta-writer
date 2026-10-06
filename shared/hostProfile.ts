@@ -444,7 +444,26 @@ export type HostArrangement =
      * hover preview that hangs off one (`setFlyoutTrigger`), which a host
      * outside the page cannot arm.
      */
-    | "filesToggleInHostChrome";
+    | "filesToggleInHostChrome"
+    /**
+     * The docked file explorer runs the full height of the window, through
+     * the titlebar band, and the host lays its own chrome in that band out
+     * against the explorer's edge: its window buttons and file actions inside
+     * the explorer's ground, the window's title past it.
+     *
+     * The page's half is the drawer's box and one report. The drawer is drawn
+     * flush to the frame from the top of the window, its rows starting where
+     * the content area starts (so nothing under it moves), the band's first
+     * row gives up the explorer's column so the drawer's ground shows through
+     * it, and the page reports the drawer's trailing edge to the host on every
+     * change (`fileExplorerEdge`) and takes a floor on its width back
+     * (`fileExplorerFloor`), which is how wide the host's chrome in the band
+     * needs the drawer to be.
+     *
+     * An arrangement: the explorer and its controls exist either way, and a
+     * host with no titlebar band has nowhere for this to happen.
+     */
+    | "filesUnderTitlebar";
 
 export const ALL_HOST_ARRANGEMENTS: readonly HostArrangement[] = [
     "typographyInGearMenu",
@@ -456,6 +475,7 @@ export const ALL_HOST_ARRANGEMENTS: readonly HostArrangement[] = [
     "fixedTocSide",
     "tocToggleInBar",
     "filesToggleInHostChrome",
+    "filesUnderTitlebar",
 ];
 
 /** One key the host binds itself, for the keyboard cheatsheet to print. */

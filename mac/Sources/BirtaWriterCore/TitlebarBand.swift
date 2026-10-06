@@ -71,6 +71,58 @@ public enum TitlebarBand {
     }
 }
 
+/// The title row while the file explorer is docked open under it.
+///
+///     ◉ ◉ ◉  ▤ ·········· ✎ 📁 ⌘ ┃  Note.md ⌄
+///     └──── the explorer's ground ──┘
+///
+/// The explorer runs up through the band (`filesUnderTitlebar`), so the row
+/// splits at its edge: the window's buttons, the sidebar toggle and the file
+/// actions belong to the sidebar and sit on its ground, the actions against
+/// its far edge, and the window's title belongs to the document and starts
+/// past it. Everything here is in the title view's own coordinates, whose
+/// origin AppKit sets after the traffic lights; `edge` has been converted into
+/// them by the caller.
+///
+/// The explorer is held at least `floor` wide, so the two groups never meet.
+/// The `max`es below are for the moment before the page has heard the floor,
+/// when the edge can briefly be nearer than that: the actions then sit
+/// against the toggle rather than over it, and the title past them rather
+/// than under them.
+public enum SidebarBand {
+    /// From the last action button to the explorer's edge: the air a row of
+    /// the explorer keeps from its own edge, so the buttons line up with the
+    /// list under them rather than with the hairline.
+    public static let trailingInset: CGFloat = 8
+    /// From the explorer's edge to the title.
+    public static let titleGap: CGFloat = 12
+
+    /// Where the file actions start and where the title starts.
+    ///
+    /// `leadingRoom` is everything before the actions that is not theirs: the
+    /// air after the traffic lights and the sidebar toggle with the air after
+    /// it. `actionsSpan` is the buttons alone, without the air the row holds
+    /// after them, because here that air is the title gap's job.
+    public static func layout(edge: CGFloat,
+                              leadingRoom: CGFloat,
+                              actionsSpan: CGFloat) -> (actionsX: CGFloat, labelX: CGFloat) {
+        let actionsX = max(leadingRoom, edge - trailingInset - actionsSpan)
+        let labelX = max(edge, actionsX + actionsSpan + trailingInset) + titleGap
+        return (actionsX, labelX)
+    }
+
+    /// The narrowest the explorer may be, in window coordinates: wide enough
+    /// that `layout` puts the actions exactly against the toggle's air and no
+    /// nearer. `titleOriginX` is where AppKit placed the title view, which is
+    /// after the traffic lights, so the lights' own extent is not restated
+    /// here.
+    public static func floor(titleOriginX: CGFloat,
+                             leadingRoom: CGFloat,
+                             actionsSpan: CGFloat) -> CGFloat {
+        max(0, titleOriginX) + leadingRoom + actionsSpan + trailingInset
+    }
+}
+
 /// What a double click on the titlebar does, which is the user's choice and
 /// not this app's.
 ///

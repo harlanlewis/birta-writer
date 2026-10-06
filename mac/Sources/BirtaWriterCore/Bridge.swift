@@ -150,6 +150,10 @@ public enum WebviewMessage: Equatable {
     case fileExplorerWidth(Int)
     case fileExplorerVisibility(Bool)
     case setFileExplorerShowHidden(Bool)
+    /// Where the docked-open explorer ends, in the page's CSS pixels from the
+    /// window's leading edge, or nil while nothing is docked open: what the
+    /// titlebar lays itself out against (`filesUnderTitlebar`).
+    case fileExplorerEdge(Double?)
     /// Every folder the tree has open, root-relative, on each change; the
     /// window keeps it for the next page on this root and for a tab it spawns.
     case fileExplorerExpanded([String])
@@ -313,6 +317,11 @@ public enum WebviewMessage: Equatable {
         case "fileExplorerWidth": return int("width").map { .fileExplorerWidth($0) } ?? .other(type: type)
         case "fileExplorerVisibility": return bool("visible").map { .fileExplorerVisibility($0) } ?? .other(type: type)
         case "setFileExplorerShowHidden": return bool("value").map { .setFileExplorerShowHidden($0) } ?? .other(type: type)
+        case "fileExplorerEdge":
+            // A null edge is a message, not a malformed one: nothing is docked
+            // open. Anything else that is not a number is refused.
+            if dict["edge"] is NSNull { return .fileExplorerEdge(nil) }
+            return (dict["edge"] as? NSNumber).map { .fileExplorerEdge($0.doubleValue) } ?? .other(type: type)
         case "fileExplorerExpanded":
             return (dict["paths"] as? [String]).map { .fileExplorerExpanded($0) } ?? .other(type: type)
         case "paletteCommands":
@@ -478,6 +487,9 @@ public enum HostMessage: Equatable {
     case folderIndex(FolderIndex?, self: String?)
     /// The hidden-files setting moved, from this window's row or another's.
     case fileExplorerConfig(showHidden: Bool)
+    /// The least the docked explorer may be, in CSS pixels: wide enough for
+    /// the window buttons and file actions the titlebar draws on its ground.
+    case fileExplorerFloor(width: Double)
     /// Whether this page carries the formatting row. The app's setting
     /// (`Prefs.formattingRowExpanded`, Settings > Appearance), sent to every
     /// page when it changes and on every load. A page's gear switch may ask
@@ -639,6 +651,8 @@ public enum HostMessage: Equatable {
             return ["type": "folderIndex", "index": index?.jsonObject ?? NSNull(), "self": selfPath ?? NSNull()]
         case let .fileExplorerConfig(showHidden):
             return ["type": "fileExplorerConfig", "showHidden": showHidden]
+        case let .fileExplorerFloor(width):
+            return ["type": "fileExplorerFloor", "width": width]
         case let .setFormattingRowExpanded(expanded):
             return ["type": "setFormattingRowExpanded", "expanded": expanded]
         case let .setLineNumbers(enabled):
@@ -900,9 +914,14 @@ public struct BootConfig: Equatable {
             //     macOS puts a sidebar toggle. The bar draws none, and the
             //     preview that hung off the bar's button goes with it: a
             //     control outside the page cannot be hovered by it.
+            //   filesUnderTitlebar        the docked explorer is the window's
+            //     sidebar, so it runs up through the titlebar the way a macOS
+            //     sidebar does: the traffic lights, the toggle and the file
+            //     buttons sit on its ground and the title starts past it
+            //     (`TitleBarView.setSidebarEdge`, fed by `fileExplorerEdge`).
             "host": [
                 "capabilities": hostCapabilities,
-                "arrangements": ["typographyInGearMenu", "formattingInSecondRow", "fixedToolbarLayout", "barMenusOnClick", "nativeFindBar", "nativeDatePicker", "fixedTocSide", "tocToggleInBar", "filesToggleInHostChrome"],
+                "arrangements": ["typographyInGearMenu", "formattingInSecondRow", "fixedToolbarLayout", "barMenusOnClick", "nativeFindBar", "nativeDatePicker", "fixedTocSide", "tocToggleInBar", "filesToggleInHostChrome", "filesUnderTitlebar"],
                 "shortcuts": hostShortcuts.map { shortcut -> [String: Any] in
                 // The optional halves are omitted rather than sent as null: an
                 // absent `command` is the claim "this key runs no editor
