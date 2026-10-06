@@ -18,8 +18,9 @@
  *   - unchecked task checkboxes     — `list_item` with `checked === false`
  *   - custom literal strings        — from `birta.notes.customMarkers`
  *
- * Bare keyword tokens are word-boundaried so `TODO`/a custom `TK` can never
- * light up inside `pseudoTODO` / `networks`.
+ * Every marker matches in any case (`[tk]`, `Todo:`, a custom `draft`). Bare
+ * keyword tokens are word-boundaried so `TODO`/a custom `TK` can never light
+ * up inside `pseudoTODO` / `networks`.
  */
 import type { Node as ProseNode } from "../pm";
 import { appendedAtEnd, singleTextblockInlineEdit, singleTopLevelBlockEdit } from "../utils/textblockEdit";
@@ -79,12 +80,16 @@ function resolveLabel(explicit: string | undefined, blockText: string): string {
 
 const BUILTIN_KIND: Record<string, NoteKind> = { TK: "placeholder", TODO: "todo", FIXME: "fixme" };
 
+// Every marker matches in any case: how a writer cased `[tk]` is not part of
+// what it means. The keyword is upper-cased after the match, so the sidebar
+// shows one spelling however it was typed.
+//
 // Bracketed form: [TK], [TK: label], [TODO], [TODO: label], [FIXME], [FIXME: label].
-const BRACKET_RE = /\[(TK|TODO|FIXME)(?::[ \t]*([^\]]*?))?[ \t]*\]/g;
+const BRACKET_RE = /\[(TK|TODO|FIXME)(?::[ \t]*([^\]]*?))?[ \t]*\]/gi;
 // Unbracketed colon form: TODO: … / FIXME: … (NOT TK — bare "TK:" is too
 // false-positive-prone; TK stays bracket-only). Word-boundaried on the left so
 // "pseudoTODO:" never matches.
-const COLON_RE = /(?<![A-Za-z0-9_])(TODO|FIXME):[ \t]*([^\n]*)/g;
+const COLON_RE = /(?<![A-Za-z0-9_])(TODO|FIXME):[ \t]*([^\n]*)/gi;
 
 /** True when [a,b) overlaps any [from,to) range already claimed. */
 function overlaps(ranges: Array<[number, number]>, a: number, b: number): boolean {
@@ -128,10 +133,12 @@ export function findTextMarkers(text: string, customMarkers: readonly string[] =
         if (!marker) { continue; }
         // A plain alphanumeric token matches only as a whole word; anything with
         // punctuation (e.g. "@ai", "[REVIEW]") matches as a literal substring.
+        // Either way in any case, as the built-ins do; the row keeps the
+        // spelling the marker was configured with.
         const body = escapeRe(marker);
         const re = /^\w+$/.test(marker)
-            ? new RegExp(`(?<![A-Za-z0-9_])${body}(?![A-Za-z0-9_])`, "g")
-            : new RegExp(body, "g");
+            ? new RegExp(`(?<![A-Za-z0-9_])${body}(?![A-Za-z0-9_])`, "gi")
+            : new RegExp(body, "gi");
         for (const m of text.matchAll(re)) {
             const start = m.index ?? 0;
             const end = start + m[0].length;

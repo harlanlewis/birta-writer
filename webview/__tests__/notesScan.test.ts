@@ -85,6 +85,59 @@ describe("findTextMarkers — custom markers", () => {
     });
 });
 
+describe("findTextMarkers — case", () => {
+    // A marker is a word the writer typed, and how they cased it is not part
+    // of what it means: [tk], [Tk] and [TK] are one placeholder. Every casing
+    // of every keyword, enumerated rather than sampled.
+    const casings = (kw: string): string[] => [
+        kw.toUpperCase(), kw.toLowerCase(),
+        kw[0]!.toUpperCase() + kw.slice(1).toLowerCase(),
+        kw[0]!.toLowerCase() + kw.slice(1).toUpperCase(),
+    ];
+    const KINDS = { TK: "placeholder", TODO: "todo", FIXME: "fixme" } as const;
+
+    it("every casing of a bracketed keyword should match as the one marker, with or without a label", () => {
+        let asked = 0;
+        for (const [kw, kind] of Object.entries(KINDS)) {
+            for (const spelled of casings(kw)) {
+                for (const text of [`a [${spelled}] b`, `a [${spelled}: the spec] b`]) {
+                    const hits = findTextMarkers(text);
+                    expect(hits, text).toHaveLength(1);
+                    expect(hits[0]!.kind, text).toBe(kind);
+                    // One spelling in the sidebar, however it was typed.
+                    expect(hits[0]!.marker, text).toBe(kw);
+                    asked += 1;
+                }
+            }
+        }
+        expect(asked).toBe(24);
+    });
+
+    it("every casing of the colon form should match, and keep its label", () => {
+        for (const kw of ["TODO", "FIXME"] as const) {
+            for (const spelled of casings(kw)) {
+                const hits = findTextMarkers(`${spelled}: write it`);
+                expect(hits, spelled).toHaveLength(1);
+                expect(hits[0]!.kind, spelled).toBe(KINDS[kw]);
+                expect(hits[0]!.label, spelled).toBe("write it");
+            }
+        }
+    });
+
+    it("the guards should hold in any case: no colon form inside a word, and no bare tk:", () => {
+        expect(findTextMarkers("pseudotodo: not a task")).toHaveLength(0);
+        expect(findTextMarkers("tk: not matched unbracketed")).toHaveLength(0);
+        expect(findTextMarkers("Tk: nor this")).toHaveLength(0);
+    });
+
+    it("a custom marker should match in any case, whole-word or literal, and keep the spelling it was configured with", () => {
+        const word = findTextMarkers("one draft, one Draft, one DRAFT, but no redrafted", ["DRAFT"]);
+        expect(word.map((h) => h.marker)).toEqual(["DRAFT", "DRAFT", "DRAFT"]);
+        const literal = findTextMarkers("please @AI tighten, and @Ai too", ["@ai"]);
+        expect(literal.map((h) => h.marker)).toEqual(["@ai", "@ai"]);
+    });
+});
+
 // ── scanNotes against a real document ──────────────────────────────────────
 
 const schema = new Schema({
