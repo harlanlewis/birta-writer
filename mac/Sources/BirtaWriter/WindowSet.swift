@@ -1444,8 +1444,10 @@ final class WindowSet {
         if isAnyVisible && NSApp.isActive { dismissAll() } else { summonAll() }
     }
 
-    func summonAll() {
-        windows.forEach { $0.show() }
+    /// `activating: false` puts the windows back on screen without taking
+    /// the front, for the relaunch after an unattended swap.
+    func summonAll(activating: Bool = true) {
+        windows.forEach { $0.show(activating: activating) }
     }
 
     /// Dismiss first, flush after, which is `Coordinator.hide`'s rule and the

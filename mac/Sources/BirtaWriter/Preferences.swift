@@ -60,6 +60,7 @@ enum Prefs {
         case lastUpdateCheck
         case updateDeclinedTag
         case updateInstalledTag
+        case updateRestoreWindows
         case lastNotesDirectory
         case lastScratchpadFile
         case tocVisibility
@@ -1077,6 +1078,25 @@ enum Prefs {
             return tag.isEmpty ? nil : tag
         }
         set { d.set(newValue ?? "", forKey: Key.updateInstalledTag.rawValue) }
+    }
+
+    /// Whether the app's windows were on screen when it quit into an
+    /// unattended swap, so the relaunch puts them back rather than leaving
+    /// them hidden the way a plain launch does.
+    ///
+    /// One-shot: written just before that quit, and removed by the first
+    /// read, so it says something about the launch after a swap and nothing
+    /// about any launch after that. Removed rather than set false, so a key
+    /// that has been answered is a key that is absent, which is what
+    /// `isFirstLaunch` reads.
+    static func setRestoreWindowsAfterUpdate(_ restore: Bool) {
+        d.set(restore, forKey: Key.updateRestoreWindows.rawValue)
+    }
+
+    static func takeRestoreWindowsAfterUpdate() -> Bool {
+        let restore = d.bool(forKey: Key.updateRestoreWindows.rawValue)
+        d.removeObject(forKey: Key.updateRestoreWindows.rawValue)
+        return restore
     }
 
     /// Whether the app checks for a newer release on its own.
