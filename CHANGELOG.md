@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+---
+
+## [2026.1006.0] - 2026, October 6
+
 ### Changed
 
 - The table of contents sidebar appears only when it has something to show: headings, or entries on one of its other tabs (links, backlinks, the graph, notes, or proofreading findings while proofreading is on). On a document with none, the sidebar, its reveal tab and its toolbar button are not drawn, the slash menu leaves out Toggle Table of Contents, Swap Table of Contents Side and Focus Review Sidebar, and those commands do nothing when run from VS Code's Command Palette or a keybinding. A remembered show or hide is kept and applies once there is something to show.

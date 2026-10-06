@@ -12,6 +12,10 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ## [Unreleased]
 
+---
+
+## [2026.1006.0] - 2026, October 6
+
 ### Changed
 
 - While the table of contents has nothing to show, Birta Writer for Mac dims View > Show Table of Contents and its shortcut, and the Command Palette leaves it out, along with the other table of contents commands.
