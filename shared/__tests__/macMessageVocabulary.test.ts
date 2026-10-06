@@ -97,15 +97,10 @@ const DELIBERATELY_UNPARSED: Record<string, string> = {
     // Capabilities the Mac app does not declare, so the commands that post these are
     // never offered. `HOST_PROFILES.mac` is the declaration.
     connectService: "posted only by a locked embed card's Connect affordance, and no card ever resolves in the Mac app, so the affordance is never drawn",
-    openFile: "no `textEditor` capability: there is no editor to open a file into",
     openKeybindings: "no `hostSettings` capability, which is what gates `openKeyboardShortcuts`: the hotkey is the Mac app's own setting",
     openSettings: "the extension's own settings window; the Mac app answers `openHostPreferences` instead",
     switchToTextEditor: "no `textEditor` capability: the panel is the only surface",
     resolveSyncConflict: "the Mac app never sends `setSyncConflict`, so the badge that posts this cannot appear",
-    pickLinkTarget: "no workspace to pick a target from",
-    getLinkTargetSuggestions: "no workspace to suggest targets from",
-    getPathSuggestions: "no workspace to suggest paths from, so the field offers nothing and stays typable rather than hanging",
-    resolveLinkTarget: "no workspace: a link to a project file cannot resolve",
     resolveImagePath: "images are stored relatively beside the note; nothing to resolve against a workspace",
     getProjectImages: "no `projectImages` capability, so the insert panel is handed no loader and hides its Project tab: the question is never asked",
     requestFmSuggestions: "frontmatter suggestions come from a workspace's other documents",
@@ -159,6 +154,13 @@ const DELIBERATELY_UNPARSED: Record<string, string> = {
  * the fix rather than a tidy-up.
  */
 const KNOWN_GAPS: Record<string, string> = {
+    // These three were listed as declined for "no workspace", which stopped
+    // being true when directory windows gave a Mac window a folder (MAR-457);
+    // `openFile` and `resolveLinkTarget`, declined on the same premise, were
+    // the Cmd-click and the link popup's Open doing nothing.
+    getLinkTargetSuggestions: "MAR-498: `[[` and link-path completion ask, and get no list",
+    getPathSuggestions: "MAR-498: path completion in the path-link and image fields asks, and gets no list; the field stays typable",
+    pickLinkTarget: "MAR-498: the link editor's Browse asks for a file, and no picker opens",
     resolveEmbedCard:
         "MAR-390: `queueEmbedCardResolution` states in its own header that it is deliberately NOT gated on the connection, because the extension reads a public resource anonymously. So the page asks for a card on every connector-capable embed it finds, on every host, and the Mac app answers none: each request settles null at `CARD_REPLY_TIMEOUT_MS` and no card is drawn where the extension would draw one. Quieter than `getProjectImages`, which sat on Loading, but the same class",
 };

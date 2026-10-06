@@ -54,6 +54,14 @@ public enum WebviewMessage: Equatable {
     case flushResult(id: String, content: String, baseSyncVersion: Int, seq: Int)
     case viewState(json: String)
     case openUrl(String)
+    /// A local link or a wikilink the reader asked to follow (Cmd-click, or
+    /// the link popup's Open). `path` still carries its fragment; `wiki` says
+    /// it is a wikilink's `target#heading` rather than a Markdown link's
+    /// path (`LinkTarget`).
+    case openFile(path: String, wiki: Bool)
+    /// The link popup asking where a link would go, without going: answered
+    /// with `linkTargetResolved` carrying the same `id`.
+    case resolveLinkTarget(id: String, path: String, wiki: Bool)
     case openHostPreferences
     /// `/ai`: the request typed after the pill, with the id the page will
     /// match every `agentRun` report against.
@@ -243,6 +251,10 @@ public enum WebviewMessage: Equatable {
             return .flushResult(id: id, content: c, baseSyncVersion: b, seq: s)
         case "viewState": return .viewState(json: json("state") ?? "{}")
         case "openUrl": return str("url").map { .openUrl($0) } ?? .other(type: type)
+        case "openFile": return str("path").map { .openFile(path: $0, wiki: bool("wiki") ?? false) } ?? .other(type: type)
+        case "resolveLinkTarget":
+            guard let id = str("id"), let path = str("path") else { return .other(type: type) }
+            return .resolveLinkTarget(id: id, path: path, wiki: bool("wiki") ?? false)
         case "openHostPreferences": return .openHostPreferences
         case "askAgent", "askAgentAdvanced":
             // `skill` is carried although this host declares no `agentSkills`
@@ -482,6 +494,9 @@ public enum HostMessage: Equatable {
     /// `error` is a folder that could not be read, or a path that would leave
     /// the root; the page draws the error where the rows would be.
     case directoryListing(id: String, path: String, entries: [DirectoryListing.Entry]?, error: String?)
+    /// Reply to `resolveLinkTarget`: the file the link names, root-relative
+    /// when under the window's folder, or nil for a link that names nothing.
+    case linkTargetResolved(id: String, resolved: String?)
     /// Which of the root's files this window is on, root-relative, so the
     /// page selects and reveals its row; nil for a file outside the root.
     case currentProjectFile(path: String?)
@@ -650,6 +665,8 @@ public enum HostMessage: Equatable {
                                       "entries": entries.map { $0.map(\.jsonObject) } ?? NSNull()]
             if let error { out["error"] = error }
             return out
+        case let .linkTargetResolved(id, resolved):
+            return ["type": "linkTargetResolved", "id": id, "resolved": resolved ?? NSNull()]
         case let .currentProjectFile(path):
             return ["type": "currentProjectFile", "path": path ?? NSNull()]
         case let .directoryChanged(paths):
