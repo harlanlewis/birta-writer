@@ -88,7 +88,7 @@ final class SummonReassertTests: XCTestCase {
             body(of: "func adopt(").contains { $0.contains("onWillShow") && $0.contains("windowWillShow") },
             "adopt no longer routes a window's show through windowWillShow")
         XCTAssertFalse(
-            body(of: "func summonAll()").contains { $0.contains("summonActivation.summoned(") },
+            body(of: "func summonAll(").contains { $0.contains("summonActivation.summoned(") },
             "summonAll arms the re-assertion itself, which covers the hotkey and no other route forward")
     }
 

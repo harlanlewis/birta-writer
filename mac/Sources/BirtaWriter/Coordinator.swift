@@ -1929,17 +1929,29 @@ final class Coordinator {
         measure.mark("hotkey")
     }
 
-    func show() {
+    /// Put the window on screen. `activating` is a summon: the window takes
+    /// the keyboard and the app takes the front. Without it the window comes
+    /// back behind whatever is in front, which is the relaunch after an
+    /// unattended swap, and nothing on this path may ask a question, since a
+    /// sheet on a window of an app in the background bounces the Dock icon.
+    func show(activating: Bool = true) {
         // Taken before anything else on this path, and run at the end, so a
         // handler that summons or hides cannot re-enter its own slot.
-        let held = onNextShow
-        onNextShow = nil
+        let held = activating ? onNextShow : nil
+        if activating { onNextShow = nil }
         defer { held?() }
-        onWillShow?()
+        // What the window set does before a summon is about the activation
+        // (the app to return to, the Space switch), so it has no part in a
+        // show that does not activate.
+        if activating { onWillShow?() }
         panel.placeIfUnplaced()
         if panel.isMiniaturized { panel.deminiaturize(nil) }
-        panel.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
+        if activating {
+            panel.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+        } else {
+            panel.orderFront(nil)
+        }
         // The first-run screen owns the keyboard while it is up. A hidden view
         // is out of hit testing, so the mouse is already walled off, and
         // `makeFirstResponder` does not refuse a hidden view: without this the
@@ -1963,7 +1975,7 @@ final class Coordinator {
         // away. A summon is when somebody comes back to the note, which makes
         // it both the moment a stale panel is worth correcting and the only
         // moment there is a window to put a question on (MAR-469).
-        reconcileWithDisk(asking: true)
+        reconcileWithDisk(asking: activating)
         // ...and where a buffer went that could not be written to its own file
         // when a window went. Here because this is the first moment there is
         // anywhere to say it; the run that kept the file had no window left.

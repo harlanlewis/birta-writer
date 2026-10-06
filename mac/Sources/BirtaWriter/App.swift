@@ -345,7 +345,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding, 
         // hotkey-summoned app and wrong for one somebody just double-clicked a
         // file in: the file has to appear. Last, so the panel comes up over
         // whatever the settings hooks above built.
-        if launchedWith != nil || Self.summonedFromShell() { windows.summonAll() }
+        if launchedWith != nil || Self.summonedFromShell() {
+            windows.summonAll()
+        } else if Prefs.takeRestoreWindowsAfterUpdate() {
+            // The swap quit an app whose windows were up, and nobody asked
+            // for it, so they come back where they were without taking the
+            // front from whatever the person is doing now.
+            windows.summonAll(activating: false)
+        }
         installTerminationSignal()
         listenForWaitingShells()
     }
@@ -1170,6 +1177,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding, 
         // defensive, and more so the shorter that interval is.
         guard !offering else { return }
         guard UpdatePolicy.shouldOffer(tag: tag, declined: Prefs.updateDeclinedTag) else { return }
+        // Only while this app is in front. A sheet on a window of an app in
+        // the background makes the Dock icon bounce, and an update needs
+        // nobody's attention: with automatic updates on, the swap goes in on
+        // its own once the person is elsewhere (`UpdatePolicy.isUnattended`),
+        // and otherwise the offer waits for them to come back.
+        guard NSApp.isActive else {
+            offerWhenActive(tag)
+            return
+        }
         guard let host = promptHost else {
             front?.onNextShow = { [weak self] in self?.offerUpdate(tag) }
             return
@@ -1197,6 +1213,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding, 
                 return
             }
             self.installUpdate()
+        }
+    }
+
+    /// The observer holding an offer until this app is next in front, so a
+    /// second deferral replaces the first rather than queuing behind it.
+    private var activationOffer: NSObjectProtocol?
+
+    private func offerWhenActive(_ tag: String) {
+        if let activationOffer { NotificationCenter.default.removeObserver(activationOffer) }
+        activationOffer = NotificationCenter.default.addObserver(
+            forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                if let observer = self.activationOffer { NotificationCenter.default.removeObserver(observer) }
+                self.activationOffer = nil
+                // Off the activation's own dispatch, for the reason
+                // `onUpdateAvailable` gives: an alert spun from inside it
+                // would hold every main-queue block behind a nested run loop.
+                RunLoop.main.perform(inModes: [.common]) {
+                    MainActor.assumeIsolated { self.offerUpdate(tag) }
+                }
+            }
         }
     }
 
@@ -1313,10 +1352,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding, 
             // pressed for must not have the app quit and replace itself
             // underneath it. The modal is safe today for a reason nobody
             // chose, which is that `updateTimer` is a default-mode timer and
-            // a nested modal run loop does not service it, and `runModal` is
-            // also the one answer `isAnyWindowVisible` cannot see, since it
-            // counts the panel, Settings and About and an alert is none of
-            // those. Two accidents holding one invariant up is one accident
+            // a nested modal run loop does not service it, and the presence
+            // check alone would not hold it: an alert left up on a machine
+            // nobody has touched for five minutes reads as somebody who has
+            // left. Two accidents holding one invariant up is one accident
             // away from not holding it.
             NSApp.activate(ignoringOtherApps: true)
             offering = true
@@ -1382,7 +1421,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding, 
             offerOnScreen: offering,
             workInFlight: windows.windows.contains(where: \.hasAgentRunInFlight),
             attendance: UpdatePolicy.Attendance(
-                anyWindowVisible: isAnyWindowVisible,
+                appIsActive: NSApp.isActive,
                 hasUnwrittenBytes: windows.windows.contains(where: \.hasUnwrittenBytes),
                 idle: Updater.systemIdleSeconds()))
         guard UpdatePolicy.mayInstallUnattended(state) else { return }
@@ -1392,23 +1431,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding, 
         // ever attempted. It is not yet a claim that the swap WORKED:
         // `recordSilentUpdate` asks the next launch's own version about that.
         Prefs.updateInstalledTag = staged.tag
+        // A window on screen may be one somebody keeps open while they work
+        // elsewhere, and a plain launch shows none, so the relaunch is told
+        // to put them back (`restoreWindowsAfterSwap`).
+        Prefs.setRestoreWindowsAfterUpdate(windows.isAnyVisible)
         // Quitting is what performs the swap, through the ordinary terminate
         // path so the buffer is flushed on the way out. Nobody is here to
         // answer a sheet, so no window may raise one.
         windows.quitUnattended()
         NSApp.perform(#selector(NSApplication.terminate(_:)), with: nil, afterDelay: 0)
-    }
-
-    /// Any window of this app on screen, not only a panel.
-    ///
-    /// Settings and About count. A person reading the About window is as
-    /// present as a person typing, and an app that vanished and came back
-    /// underneath either of them would be the interruption this whole path is
-    /// built to avoid.
-    private var isAnyWindowVisible: Bool {
-        windows.isAnyVisible
-            || settingsWindow?.window?.isVisible == true
-            || aboutWindow?.window?.isVisible == true
     }
 
     /// Write down what the app did to itself while nobody was watching, and

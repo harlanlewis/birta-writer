@@ -245,7 +245,7 @@ final class ExternalChangeGuardTests: XCTestCase {
     /// corrected and the only place there is a window to put the question on.
     func testTheSummonShouldReconcileToo() throws {
         let text = try source()
-        let show = try XCTUnwrap(text.range(of: "\n    func show() {"))
+        let show = try XCTUnwrap(text.range(of: "\n    func show(activating: Bool = true) {"))
         let after = text[show.upperBound...]
         let end = try XCTUnwrap(after.range(of: "\n    }\n"))
         XCTAssertTrue(after[..<end.lowerBound].contains("reconcileWithDisk("),

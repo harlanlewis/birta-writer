@@ -12,6 +12,10 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ## [Unreleased]
 
+### Changed
+
+- With Automatically update on, Birta Writer for Mac installs an update without asking whenever you are not using it: nothing unsaved, no `/ai` run going, and either another app in front or no input on the machine for five minutes. A window left open no longer stops it; the app relaunches in the background and brings its windows back on screen without taking the front. The update sheet now appears only while Birta Writer for Mac is in front, so the Dock icon no longer bounces when an update is found.
+
 ---
 
 ## [2026.1006.1] - 2026, October 6
