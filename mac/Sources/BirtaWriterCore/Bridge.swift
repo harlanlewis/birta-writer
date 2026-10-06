@@ -154,14 +154,20 @@ public enum WebviewMessage: Equatable {
     /// window's leading edge, or nil while nothing is docked open: what the
     /// titlebar lays itself out against (`filesUnderTitlebar`).
     case fileExplorerEdge(Double?)
+    /// The page's trailing controls changed which of them are drawn, so the
+    /// width the titlebar is laid out against has to be measured again.
+    case topbarControlsChanged
     /// Every folder the tree has open, root-relative, on each change; the
     /// window keeps it for the next page on this root and for a tab it spawns.
     case fileExplorerExpanded([String])
     /// The reply to `requestPaletteCommands`: every editor command the page
     /// can run on this host right now, for the app's own palette (MAR-458).
     /// Posted again on its own whenever the publishing targets change, once
-    /// asked.
-    case paletteCommands(items: [PaletteCommand])
+    /// asked. `idle` is the commands the page can run here that have nothing
+    /// to act on right now (Toggle Table of Contents on a document whose
+    /// outline is empty): `items` already leaves them out, and the app's menu
+    /// rows that run them are dimmed by it.
+    case paletteCommands(items: [PaletteCommand], idle: Set<String> = [])
     case focusState(Bool)
     case crash(message: String, source: String)
     case uploadImage(id: String, data: Data, mimeType: String, altText: String)
@@ -317,6 +323,7 @@ public enum WebviewMessage: Equatable {
         case "fileExplorerWidth": return int("width").map { .fileExplorerWidth($0) } ?? .other(type: type)
         case "fileExplorerVisibility": return bool("visible").map { .fileExplorerVisibility($0) } ?? .other(type: type)
         case "setFileExplorerShowHidden": return bool("value").map { .setFileExplorerShowHidden($0) } ?? .other(type: type)
+        case "topbarControlsChanged": return .topbarControlsChanged
         case "fileExplorerEdge":
             // A null edge is a message, not a malformed one: nothing is docked
             // open. Anything else that is not a number is refused.
@@ -332,7 +339,7 @@ public enum WebviewMessage: Equatable {
                       let id = row["id"] as? String, let title = row["title"] as? String else { return nil }
                 return PaletteCommand(id: id, title: title, section: row["section"] as? String ?? "Editor")
             }
-            return .paletteCommands(items: items)
+            return .paletteCommands(items: items, idle: Set(dict["idle"] as? [String] ?? []))
         case "focusState": return bool("focused").map { .focusState($0) } ?? .other(type: type)
         case "crash": return .crash(message: str("message") ?? "", source: str("source") ?? "")
         case "uploadImage":

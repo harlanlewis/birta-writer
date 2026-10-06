@@ -43,7 +43,13 @@
   // hit the page computes for itself. It is here so the suite can ask whether
   // the underlines actually DRAW on this surface, which is the half no check
   // over the Checks menu can answer.
-  const CONTENT = "# One\n\nSome text.\n\n## Two\n\ntext\n\n## Three\n\ntext\n\n## Four\n\ntext\n\n## Five\n\ntext\n\nThis is really important.\n";
+  //
+  // `?doc=prose` opens a document with no headings and nothing to review
+  // instead, which is the outline with nothing to show: no panel, and no
+  // control for one.
+  const CONTENT = new URLSearchParams(location.search).get("doc") === "prose"
+    ? "Some text, and nothing else.\n"
+    : "# One\n\nSome text.\n\n## Two\n\ntext\n\n## Three\n\ntext\n\n## Four\n\ntext\n\n## Five\n\ntext\n\nThis is really important.\n";
   window.acquireVsCodeApi = () => ({
     postMessage: (msg) => {
       window.__posted.push(msg);

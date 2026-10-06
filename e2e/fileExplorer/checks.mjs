@@ -61,14 +61,22 @@ export async function run({ page, check, baseUrl }) {
         performance.getEntriesByType("resource").some((e) => /fileExplorer/i.test(e.name)));
     check("single-file window: the explorer's chunk is never fetched", !fetchedWithoutRoot);
 
-    // The host palette's list: answered because the stub asked, once, and it
-    // names the explorer's three commands beside the palette-flagged ones.
+    // The host palette's list: answered because the stub asked, and it names
+    // the explorer's three commands beside the palette-flagged ones. Posted
+    // again only when the list CHANGED: here the outline starts with nothing
+    // to show and gains it when the document's headings arrive, which brings
+    // Toggle Table of Contents in, so the latest answer is the one to read and
+    // no answer may repeat the one before it.
     const palette = await posted("paletteCommands");
-    const paletteIds = palette[0]?.items.map((i) => i.id) ?? [];
-    check("requestPaletteCommands is answered once with the surface's runnable commands",
-        palette.length === 1 && ["toggleFileExplorer", "focusFileExplorer", "toggleHiddenFiles", "toggleBold"].every((id) => paletteIds.includes(id))
+    const idsOf = (post) => post.items.map((i) => i.id);
+    const paletteIds = palette.length ? idsOf(palette[palette.length - 1]) : [];
+    const repeats = palette.slice(1).filter((post, i) =>
+        JSON.stringify(idsOf(post)) === JSON.stringify(idsOf(palette[i])) && JSON.stringify(post.idle) === JSON.stringify(palette[i].idle));
+    check("requestPaletteCommands is answered with the surface's runnable commands, and re-posted only on a change",
+        palette.length >= 1 && repeats.length === 0
+            && ["toggleFileExplorer", "focusFileExplorer", "toggleHiddenFiles", "toggleBold", "toggleToc"].every((id) => paletteIds.includes(id))
             && !paletteIds.includes("tableInsertRowAbove") && !paletteIds.includes("editRawMarkdown"),
-        `${palette.length} posts, ${paletteIds.length} items`);
+        `${palette.length} posts, ${repeats.length} repeats, ${paletteIds.length} items`);
 
     // ── The directory window ─────────────────────────────────────────────
     await page.goto(`${baseUrl}/index.html`);

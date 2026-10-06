@@ -807,6 +807,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding, 
         context.menuState = menuState()
         context.syntaxSets = Prefs.syntaxSets
         context.pageCommands = front?.paletteCommands ?? []
+        context.idleCommands = front?.idleCommands ?? []
         context.recents = Prefs.recentDocuments
         context.themes = windows.themeStore.list()
         context.currentTheme = windows.appearance.themeId
@@ -1564,6 +1565,13 @@ extension AppDelegate: NSMenuDelegate, NSMenuItemValidation {
     /// between openings.
     func validateMenuItem(_ item: NSMenuItem) -> Bool {
         guard let action = item.action else { return true }
+        // A row that runs one of the page's commands is dimmed while the page
+        // says that command has nothing to act on (Toggle Table of Contents
+        // on a document with no outline), and so is its key equivalent.
+        if let command = item.representedObject as? AppMenu.Command,
+           front?.idleCommands.contains(command.id) == true {
+            return false
+        }
         return allows(action)
     }
 

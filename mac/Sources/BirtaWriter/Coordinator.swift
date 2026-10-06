@@ -742,6 +742,10 @@ final class Coordinator {
     /// The editor commands the page says it can run in this window, as last
     /// answered (`requestPaletteCommands`), for the app's palette (MAR-458).
     private(set) var paletteCommands: [PaletteCommand] = []
+    /// The page's commands with nothing to act on right now, from the same
+    /// answer: the menu rows that run them are dimmed, and the palette leaves
+    /// them out (`AppDelegate.validateMenuItem`, `PaletteSources.offered`).
+    private(set) var idleCommands: Set<String> = []
 
     /// The folder this window is rooted at, for a directory window, or nil
     /// for a window on a loose file (MAR-457). Decided at construction and
@@ -2268,6 +2272,12 @@ final class Coordinator {
             Prefs.explorerVisibility = visible ? "shown" : "hidden"
             menuState.record(.explorerShown, on: visible)
             titleBar.titleView.setSidebarShown(visible)
+        case .topbarControlsChanged:
+            // The page pushes this when a control in the trailing cluster
+            // comes or goes (the outline's button, while the outline has
+            // nothing to show), which is the case `refreshTitlebarControlsWidth`
+            // says asking cannot see.
+            refreshTitlebarControlsWidth()
         case let .fileExplorerEdge(edge):
             // The page's CSS pixels are the window's points: the web view
             // fills the content view from its leading edge and is not zoomed.
@@ -2279,11 +2289,13 @@ final class Coordinator {
             onShowHiddenChanged?(value)
         case let .fileExplorerExpanded(paths):
             explorerExpanded = paths
-        case let .paletteCommands(items):
+        case let .paletteCommands(items, idle):
             // What the page can run here right now, kept for the app's
             // palette (MAR-458); the page re-posts it when the publishing
-            // targets change, so this is always the current list.
+            // targets change or a command goes idle or live, so this is
+            // always the current list.
             paletteCommands = items
+            idleCommands = idle
         case let .focusState(focused):
             if focused { measure.mark("caret-ready") }
         case let .crash(message, source):
@@ -4506,15 +4518,16 @@ final class Coordinator {
     /// stored value correct between calls.
     ///
     /// The constraint that makes storing it safe: the cluster is right-aligned,
-    /// so its width moves only when the SET of controls does. Two things in the
-    /// page could do that without passing through here, and both are status
-    /// badges pinned to the front of that cluster (`renderPinned` in
-    /// webview/components/toolbar/layout.ts): the drift warning and the Logseq
-    /// indicator. Neither is reachable in this shell, because the messages that
-    /// raise them are the extension's and this app's bridge does not send them. If
-    /// it ever sends one, the strip will still be sized for a cluster that has
-    /// since grown, and it will cover the badge it grew for. That is the day
-    /// this needs the page to push its width rather than be asked.
+    /// so its width moves only when the SET of controls does. The page says so
+    /// when its set changes (`topbarControlsChanged`, the outline's button
+    /// coming and going with the outline's content), and that is what calls
+    /// this again. Two status badges pinned to the front of the cluster
+    /// (`renderPinned` in webview/components/toolbar/layout.ts), the drift
+    /// warning and the Logseq indicator, change it without saying so, and are
+    /// unreachable in this shell only because the messages that raise them are
+    /// the extension's and this app's bridge does not send them. A bridge that
+    /// sends one has to have the page push for it too, or the strip will be
+    /// sized for a cluster that has since grown and cover the badge it grew for.
     func refreshTitlebarControlsWidth() {
         // Bring the page's band height up to date BEFORE the measuring query,
         // and the order is the whole reason this line is here rather than only

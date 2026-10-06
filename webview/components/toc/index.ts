@@ -11,13 +11,14 @@ import type { TocVisibility } from "../../../shared/messages";
 import { revealPosition } from "@/editing/blockOps";
 import { IconArrowLeftRight } from "@/ui/icons";
 import { hostArranges } from "../../../shared/hostProfile";
-import { commandAvailable } from "../../../shared/commandAvailability";
+import { commandAvailable, setCommandsIdle } from "../../../shared/commandAvailability";
 import type { EventManager } from "@/eventManager";
 import {
     getTopbarBottom,
     scrollElementBelowTopbar,
     findActiveHeading,
     collectDocHeadings,
+    docHasHeading,
 } from "@/utils/headingUtils";
 import { initTocDnd } from "./dnd";
 import { wireRoving } from "../sidePanel/keyboardNav";
@@ -52,6 +53,12 @@ const TOC_MAX_WIDTH = 600;
 const DOCKED_MIN_CONTENT_WIDTH = 720;
 const HEADING_SELECTOR = "h1,h2,h3,h4,h5,h6";
 const tocAutoHideThreshold = window.__i18n?.tocAutoHideThreshold ?? 3;
+
+/**
+ * The commands that act on this panel, and so have nothing to act on while it
+ * has nothing to show (`setCommandsIdle`): showing it, moving it, focusing it.
+ */
+export const TOC_COMMANDS = ["toggleToc", "swapTocSide", "focusReviewSidebar"] as const;
 // ToC show/hide preference (birta.tocVisibility, via window.__i18n).
 // "auto" (or absent) → the auto-open-by-heading-count heuristic governs.
 const tocVisibility = window.__i18n?.tocVisibility ?? "auto";
@@ -66,6 +73,9 @@ export interface TocOptions {
     neighborReserve?: () => number;
     /** This panel's docked footprint changed; the neighbour re-decides. */
     onReserveChange?: () => void;
+    /** The panel came to have nothing to show, or something again: for the
+     *  controls outside it (the bar's button, the command lists). */
+    onEmptyChange?: (empty: boolean) => void;
 }
 
 export function initToc(eventManager: EventManager, getEditorView: () => EditorView | null, options: TocOptions = {}): {
@@ -95,6 +105,8 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
     setWidth: (width: number) => void;
     /** Current open/docked-side state — drives the slash menu's dynamic toggle labels. */
     isOpen: () => boolean;
+    /** Nothing to show: no headings and no review tab with entries. */
+    isEmpty: () => boolean;
     isRight: () => boolean;
     /** Apply a birta.notes.customMarkers change to the Notes tab (rescan if shown). */
     setNotesMarkers: (markers: string[]) => void;
@@ -655,6 +667,7 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
      *  like the reveal tab — then move focus into it. */
     function focusPanel(): void {
         shell.hideFlyoutImmediate(); // focus wants the stable docked panel, not the transient flyout
+        if (shell.isEmpty()) { return; } // nothing in it to focus
         if (!shell.isOpen()) {
             applyVisiblePreference(true);
             notifyTocVisibility("shown");
@@ -691,32 +704,93 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
     let tabVisibilityScheduled = false;
     let tabVisibilityIdle: { cancel: () => void } | null = null;
 
+    // ── Whether there is anything to show at all ──────────────────────────
+    // Every view's "has entries", in ONE list, so the tab strip and the
+    // nothing-to-show decision cannot disagree about what counts. Ordered
+    // cheapest first, because the closed panel asks only whether ANY holds
+    // and stops at the first: the heading list is the walk the outline pays
+    // for anyway, so a document with a heading answers at once, and the
+    // review counts (each cached or early-exit) are asked only of a document
+    // with none. The strip's own order is the DOM's, not this one's.
+    //
+    // Backlinks and the graph come LAST, and that is a cost rule rather than
+    // a preference: reading the folder index is what asks the host to build
+    // it (`readFolderIndex`), and a sidebar nobody opens must not ask for it
+    // while anything cheaper can answer. So the index is asked for by a closed
+    // panel only on a document with nothing else to show, once per page, and
+    // only where the host has an index to give. Knowing is the price of
+    // withdrawing the control correctly: a note whose only entries are its
+    // backlinks would otherwise have its outline, and so its backlinks, taken
+    // away for want of a question nobody asked.
+    const PRESENCE: ReadonlyArray<readonly [ReviewTab, (view: EditorView) => boolean]> = [
+        ["contents", (view) => docHasHeading(view.state.doc)],
+        ["notes", (view) => notesView.count(view) > 0],
+        ["links", (view) => linksView.count(view) > 0],
+        ["proofreading", (view) => proofreadingEnabled && hasProofreadFindings(view)],
+        ["backlinks", () => backlinksView.count() > 0],
+        ["graph", () => selfHasReferences()],
+    ];
+    const TAB_BUTTON: Record<ReviewTab, HTMLButtonElement> = {
+        contents: tabContents, links: tabLinks, backlinks: tabBacklinks,
+        graph: tabGraph, notes: tabNotes, proofreading: tabProofread,
+    };
+    /** Strip order, for picking the first tab with something in it. */
+    const STRIP_ORDER: readonly ReviewTab[] = ["contents", "links", "backlinks", "graph", "notes", "proofreading"];
+
+    /**
+     * Nothing to show, or something again: the drawer, its controls and the
+     * host hear it together. The shell holds the drawer shut and withdraws
+     * its tab and preview; `onEmptyChange` is for controls outside the panel
+     * (the bar's button, the command lists).
+     */
+    function applyEmpty(next: boolean): void {
+        if (next === shell.isEmpty()) { return; }
+        shell.setEmpty(next);
+        setCommandsIdle(TOC_COMMANDS, next);
+        options.onEmptyChange?.(next);
+    }
+
     function scheduleTabVisibility(): void {
         tabVisibilityDirty = true;
-        if (!shell.isVisible()) { return; }
         if (tabVisibilityScheduled) { return; }
         tabVisibilityScheduled = true;
         tabVisibilityIdle = requestIdle(() => {
             tabVisibilityScheduled = false;
-            updateTabVisibility();
+            if (shell.isVisible()) { updateTabVisibility(); } else { updateAvailability(); }
         }, 300);
+    }
+
+    /**
+     * The closed panel's pass: only whether ANY view has something, stopping
+     * at the first. Leaves the tab strip dirty, because nobody is looking at
+     * it; the full pass runs when the panel next shows (`renderActiveView`).
+     */
+    function updateAvailability(): void {
+        const view = getEditorView();
+        if (!view) { return; }
+        applyEmpty(!PRESENCE.some(([, has]) => has(view)));
     }
 
     function updateTabVisibility(): void {
         const view = getEditorView();
         if (!view) { return; } // stays dirty; recomputed once the editor exists
         tabVisibilityDirty = false;
-        // Never yank the tab the user is IN — an emptied tab hides on switch-away.
-        const show = (btn: HTMLButtonElement, tab: ReviewTab, has: boolean): void => {
-            btn.hidden = !(has || activeTab === tab);
-        };
-        show(tabLinks, "links", linksView.count(view) > 0);
-        show(tabBacklinks, "backlinks", backlinksView.count() > 0);
-        show(tabGraph, "graph", selfHasReferences());
-        show(tabNotes, "notes", notesView.count(view) > 0);
-        show(tabProofread, "proofreading", proofreadingEnabled && hasProofreadFindings(view));
+        const has = Object.fromEntries(PRESENCE.map(([tab, test]) => [tab, test(view)])) as Record<ReviewTab, boolean>;
+        // Contents is the default rather than a choice, so it never stands
+        // empty: with no headings it goes, and the panel opens on the first
+        // tab that has something. A review tab the user is IN is kept, and
+        // counts as something, until they switch away: never yank the tab
+        // under the reader, and never shut the panel on them either.
+        if (!has.contents && activeTab === "contents") {
+            const first = STRIP_ORDER.find((tab) => has[tab]);
+            if (first) { activeTab = first; updateTabButtons(); renderActiveView(); }
+        }
+        for (const tab of STRIP_ORDER) {
+            TAB_BUTTON[tab].hidden = !(has[tab] || (tab !== "contents" && activeTab === tab));
+        }
         if (!proofreadingEnabled) { tabProofread.hidden = true; }
         syncTabOverflow(); // the visible-tab set changed → remeasure the row
+        applyEmpty(STRIP_ORDER.every((tab) => TAB_BUTTON[tab].hidden));
     }
 
     const flipTip = applyTooltip(flipBtn, "", { placement: "below" });
@@ -1157,6 +1231,7 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
      */
     function refresh(): void {
         const headings = getHeadings();
+        if (headings.length > 0) { applyEmpty(false); }
         syncAutoOpenState(headings);
         syncTocState(headings);
         // One of the two load-reveal commits (see initialLoad). Transitions
@@ -1189,13 +1264,18 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
      * change, and it takes the full sync.
      */
     function refreshContent(): void {
-        // The doc changed: mark tab visibility stale. Costs a flag write when the
-        // panel is closed; schedules one coalesced idle recompute when open.
+        // The doc changed: mark tab visibility stale and schedule one coalesced
+        // idle pass. Open, it re-derives the tab strip; closed, it asks only
+        // whether anything at all is left to show, stopping at the first view
+        // that has something (`updateAvailability`).
         scheduleTabVisibility();
         if (!shell.isVisible() && !autoOpenPossible()) {
             return; // nothing to render, and nothing left to auto-decide
         }
         const headings = getHeadings();
+        // A heading is something to show, and this walk has just seen one:
+        // no need to wait for the idle pass to say so.
+        if (headings.length > 0) { applyEmpty(false); }
         const wasVisible = shell.isVisible();
         syncAutoOpenState(headings);
         if (shell.isVisible() !== wasVisible) {
@@ -1245,6 +1325,10 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         // COMMAND instead (`tocToggleInBar`) and every other route to the same
         // command — the palette, a chord, the slash row — arrives without it.
         shell.hideFlyoutImmediate();
+        // Nothing to show, nothing to toggle: the chord and the palette row
+        // reach here even with the bar's button gone, and a remembered "shown"
+        // written now would open the panel the moment content appeared.
+        if (shell.isEmpty()) { return; }
         const next = !shell.isOpen();
         applyVisiblePreference(next);
         // Report the explicit choice; the extension writes birta.tocVisibility and
@@ -1372,6 +1456,14 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
     };
     window.addEventListener("proofread-config-changed", onProofreadConfigChanged);
 
+    // Nothing to show until a pass says otherwise: the first heading the
+    // outline sees ends it at once (`refresh`, `refreshContent`), and a
+    // document with none waits for the first availability pass. Starting the
+    // other way would draw a control on every heading-less document and then
+    // take it away. Here, after everything the commit reads exists.
+    shell.setEmpty(true);
+    setCommandsIdle(TOC_COMMANDS, true);
+
     requestAnimationFrame(() => {
         const mode = shell.settleMode();
         const headings = getHeadings();
@@ -1407,6 +1499,7 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         // does this on mouseup, but per-move `setWidth` deliberately doesn't.
         setWidth: (width: number) => { shell.setWidth(width); shell.checkResponsiveMode(); },
         isOpen: () => shell.isOpen(),
+        isEmpty: () => shell.isEmpty(),
         isRight: () => shell.isRight(),
         dockedReserve: shell.dockedReserve,
         checkResponsiveMode: shell.checkResponsiveMode,
@@ -1429,13 +1522,29 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
             // guard anyway (the tab is hidden when off).
             if (!proofreadingEnabled) { return; }
             // Explicit intent overrides has-entries visibility: show the tab even
-            // before findings arrive (it renders its own empty state).
+            // before findings arrive (it renders its own empty state). The same
+            // intent overrides the panel having nothing else to show: the tab
+            // the reader is in counts as something while they are in it
+            // (`updateTabVisibility`).
+            applyEmpty(false);
             tabProofread.hidden = false;
             shell.hideFlyoutImmediate();
-            setActiveTab("proofreading");
+            // The tab is made the active one BEFORE the panel opens, and
+            // without a pass of its own: opening renders, rendering runs the
+            // visibility pass, and that pass has to already see the tab the
+            // reader asked for, which it counts as something while they are
+            // in it. Run with Contents still active it would find nothing on
+            // a document with no headings and shut the panel it was opening.
+            if (activeTab !== "proofreading") {
+                activeTab = "proofreading";
+                updateTabButtons();
+                syncTabOverflow();
+            }
             if (!shell.isOpen()) {
                 applyVisiblePreference(true); // open + remember the intent
                 notifyTocVisibility("shown");
+            } else {
+                renderActiveView();
             }
             // "Show issues" means "take me to the issues": moving focus into
             // the freshly shown list makes the action keyboard-complete
@@ -1455,6 +1564,8 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
             window.removeEventListener("proofread-config-changed", onProofreadConfigChanged);
             tabVisibilityIdle?.cancel();
             tabVisibilityIdle = null;
+            // The commands outlive the panel; a panel that is gone holds none idle.
+            setCommandsIdle(TOC_COMMANDS, false);
             dnd.dispose();
             shell.dispose();
         },

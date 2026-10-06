@@ -2172,4 +2172,41 @@ export async function run({ page, check, baseUrl }) {
         document.documentElement.style.removeProperty("--mac-tabbar-height");
         document.getElementById("strip-chain")?.remove();
     });
+
+    // ── An outline with nothing to show ────────────────────────────────
+    // No headings and nothing to review: the bar carries no button for the
+    // outline and no panel is drawn, from the first frame rather than after a
+    // flash. Then the first heading brings the button back, and the host is
+    // told to measure its trailing controls again, because the title and the
+    // drag strip are laid out against them. Asked of the real bar on its own
+    // load, so nothing above has set any of it up.
+    await mount("index.html?doc=prose");
+    // The availability pass runs on idle; give it the time an idle has.
+    await page.waitForTimeout(600);
+    const tocButtonShown = () => page.evaluate(() => {
+        const item = document.querySelector('.tb-zone--right > .tb-item[data-item-id="toc"]');
+        return !!item && !item.hidden && item.getBoundingClientRect().width > 0;
+    });
+    const bare = await page.evaluate(() => ({
+        panelOpen: document.body.classList.contains("toc-open"),
+        gear: !!document.querySelector('.tb-zone--right > .tb-item[data-item-id="settings"]'),
+    }));
+    check("outline: a document with nothing to show draws no outline button on the bar",
+        bare.gear && !(await tocButtonShown()), JSON.stringify(bare));
+    check("outline: …and no outline panel", !bare.panelOpen, JSON.stringify(bare));
+    const measuresBefore = await page.evaluate(() =>
+        window.__posted.filter((m) => m.type === "topbarControlsChanged").length);
+    await page.locator(".milkdown .ProseMirror p").first().click();
+    await page.keyboard.press("Home");
+    await page.keyboard.type("# ", { delay: 30 });
+    await page.waitForTimeout(600);
+    const grown = await page.evaluate(() => ({
+        heading: !!document.querySelector(".ProseMirror h1"),
+        measures: window.__posted.filter((m) => m.type === "topbarControlsChanged").length,
+    }));
+    check("outline: the probe made a heading, so the next two checks are about one",
+        grown.heading, JSON.stringify(grown));
+    check("outline: the first heading brings the outline button back", await tocButtonShown());
+    check("outline: …and tells the host to measure the bar's trailing controls again",
+        grown.measures > measuresBefore, JSON.stringify({ measuresBefore, ...grown }));
 }

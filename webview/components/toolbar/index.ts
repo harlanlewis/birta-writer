@@ -94,6 +94,13 @@ export function initToolbar(
     onSwitchToSource?: () => void,
     onShowProofreading?: () => void,
 ): {
+    /**
+     * An item as built, whether or not it is placed on the bar right now. For
+     * wiring done once to a control that comes and goes: the outline's button
+     * is built on every host that has one and placed only while the outline
+     * has something to show, so a query of the bar at startup can miss it.
+     */
+    builtItem: (id: ToolbarItemId) => HTMLElement | undefined;
     onSelectionChange: (view: EditorView) => void;
     /** Blank the bar while focus is in a nested editable island (a callout title). */
     setDetached: () => void;
@@ -540,6 +547,7 @@ export function initToolbar(
     };
 
     return {
+        builtItem: (id) => items[id],
         onSelectionChange(view: EditorView): void {
             // One derivation of "what state is the caret in"; the toolbar mirrors it.
             applyActiveState(computeToolbarActiveState(view.state));

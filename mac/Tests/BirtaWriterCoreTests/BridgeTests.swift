@@ -329,6 +329,9 @@ final class BridgeTests: XCTestCase {
         XCTAssertEqual(WebviewMessage.parse(#"{"type":"fileExplorerEdge","edge":null}"#), .fileExplorerEdge(nil))
         XCTAssertEqual(WebviewMessage.parse(#"{"type":"fileExplorerEdge","edge":"wide"}"#),
                        .other(type: "fileExplorerEdge"), "an edge that is not a number is refused, not read as none")
+        // The page's push when its trailing controls change set: no payload,
+        // because what to do is measure again, not believe a number.
+        XCTAssertEqual(WebviewMessage.parse(#"{"type":"topbarControlsChanged"}"#), .topbarControlsChanged)
         let floor = HostMessage.fileExplorerFloor(width: 214).jsonObject()
         XCTAssertEqual(floor["type"] as? String, "fileExplorerFloor")
         XCTAssertEqual(floor["width"] as? Double, 214)

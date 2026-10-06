@@ -41,6 +41,9 @@ export interface FlyoutOptions {
     tab: HTMLElement;
     armTab: boolean;
     isOpen: () => boolean;
+    /** False while the panel has nothing to show: a preview of nothing is
+     *  not offered, from the tab or from any trigger armed later. */
+    canShow: () => boolean;
     isRight: () => boolean;
     /** A document drag holds the flyout open: the pointer roams off the
      *  trigger and must not yank the panel out from under it. */
@@ -171,7 +174,7 @@ export function createFlyout(opts: FlyoutOptions): Flyout {
     function show(): void {
         cancelHide();
         cancelCleanup(); // interrupt a pending exit teardown, if any
-        if (opts.isOpen()) { return; }
+        if (opts.isOpen() || !opts.canShow()) { return; }
         if (flyoutOpen) {
             // Re-entered mid-exit-fade: just re-assert the shown state.
             opts.setPanelState("flyout-in", true);

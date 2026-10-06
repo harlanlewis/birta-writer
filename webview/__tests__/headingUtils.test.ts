@@ -25,6 +25,8 @@ import {
     getVisibleHeadings,
     findHeadingPos,
     findActiveHeading,
+    collectDocHeadings,
+    docHasHeading,
 } from "../utils/headingUtils";
 
 function addTopbar(rect: { height: number; bottom: number }): HTMLElement {
@@ -271,6 +273,35 @@ afterEach(async () => {
     editors = [];
     document.body.innerHTML = "";
     vi.restoreAllMocks();
+});
+
+describe("docHasHeading", () => {
+    // The early-exit question must answer exactly what the full walk answers,
+    // because the outline's nothing-to-show decision asks one and its tab
+    // strip the other. Built from the real editor's schema, so a container
+    // the real document nests a heading in is one the check can see.
+    const CASES = [
+        "",
+        "Just text.",
+        "# Title",
+        "#\n\nText under an empty heading.",
+        "> # Quoted heading",
+        "- item\n\n  text",
+        "Text first.\n\n- list\n\n## Late heading",
+        "| a |\n| - |\n| b |",
+    ];
+    it("every case should agree with the full outline walk", async () => {
+        let withHeadings = 0;
+        for (const markdown of CASES) {
+            const view = await makeEditor(markdown);
+            const walked = collectDocHeadings(view.state.doc).length > 0;
+            expect(docHasHeading(view.state.doc), JSON.stringify(markdown)).toBe(walked);
+            if (walked) { withHeadings += 1; }
+        }
+        // Both answers occur, or agreement would say nothing.
+        expect(withHeadings).toBeGreaterThan(0);
+        expect(withHeadings).toBeLessThan(CASES.length);
+    });
 });
 
 describe("findHeadingPos", () => {

@@ -212,6 +212,9 @@ export interface SidePanelShell {
     mode: () => SidePanelMode;
     /** Record the open state; `sync` commits it. */
     setOpen: (open: boolean) => void;
+    /** The composer has nothing to show, or has something again; commits. */
+    setEmpty: (empty: boolean) => void;
+    isEmpty: () => boolean;
     open: () => void;
     close: () => void;
     toggle: () => void;
@@ -266,6 +269,8 @@ export function createSidePanelShell(opts: SidePanelShellOptions): SidePanelShel
     let right = opts.initialRight;
     let mode: SidePanelMode = "overlay";
     let isOpen = false;
+    /** Nothing to show (`setEmpty`): held shut, its tab and preview withdrawn. */
+    let empty = false;
 
     const panel = document.createElement("div");
     panel.className = ["side-panel", `${prefix}-panel`, ...(opts.panelClasses ?? [])].join(" ");
@@ -417,7 +422,7 @@ export function createSidePanelShell(opts: SidePanelShellOptions): SidePanelShel
     }
 
     function isVisible(): boolean {
-        return isOpen || flyout.isOpen();
+        return (isOpen && !empty) || flyout.isOpen();
     }
 
     /**
@@ -447,6 +452,10 @@ export function createSidePanelShell(opts: SidePanelShellOptions): SidePanelShel
         if (instant) {
             setInstant(true);
         }
+        // An empty drawer stays shut whatever was recorded: every route to
+        // open (the composer's policy, a preference, the mode coming back)
+        // commits through here, so this is the one place that holds it.
+        if (empty) { isOpen = false; }
         setPanelState("open", isOpen);
         setPanelState("docked", mode === "docked");
         setPanelState("overlay", mode === "overlay");
@@ -474,6 +483,31 @@ export function createSidePanelShell(opts: SidePanelShellOptions): SidePanelShel
 
     function close(): void {
         isOpen = false;
+        sync();
+    }
+
+    /**
+     * The composer has nothing to show, or has something again.
+     *
+     * Empty, the drawer is shut and stays shut, and the controls that would
+     * reveal it go with it: the reveal tab is withdrawn and no preview flies
+     * out, because a control for a panel of nothing is a control that answers
+     * with nothing. What the reader asked for is NOT forgotten: the composer's
+     * own state (a remembered show, an auto-open rule) is untouched, and when
+     * there is something again the drawer opens or stays shut by that same
+     * policy (`openOnDock`), exactly as it does when the mode comes back.
+     */
+    function setEmpty(next: boolean): void {
+        if (next === empty) { return; }
+        empty = next;
+        tabEl.hidden = next;
+        body.classList.toggle(`${prefix}-empty`, next);
+        if (next) {
+            flyout.hideImmediate();
+            isOpen = false;
+        } else {
+            isOpen = mode === "docked" ? opts.openOnDock() : false;
+        }
         sync();
     }
 
@@ -608,6 +642,7 @@ export function createSidePanelShell(opts: SidePanelShellOptions): SidePanelShel
         tab: tabEl,
         armTab: opts.trigger.kind === "tab",
         isOpen: () => isOpen,
+        canShow: () => !empty,
         isRight: () => right,
         dragInFlight,
         setPanelState,
@@ -689,11 +724,13 @@ export function createSidePanelShell(opts: SidePanelShellOptions): SidePanelShel
         panel,
         tabEl,
         controlsSlot,
-        isOpen: () => isOpen,
+        isOpen: () => isOpen && !empty,
         isVisible,
         isRight: () => right,
         mode: () => mode,
         setOpen: (next) => { isOpen = next; },
+        setEmpty,
+        isEmpty: () => empty,
         open,
         close,
         toggle,
