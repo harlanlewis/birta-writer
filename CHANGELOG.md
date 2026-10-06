@@ -4,6 +4,11 @@
 
 ## [Unreleased]
 
+### Changed
+
+- The table of contents sidebar appears only when it has something to show: headings, or entries on one of its other tabs (links, backlinks, the graph, notes, or proofreading findings while proofreading is on). On a document with none, the sidebar, its reveal tab and its toolbar button are not drawn, the slash menu leaves out Toggle Table of Contents, Swap Table of Contents Side and Focus Review Sidebar, and those commands do nothing when run from VS Code's Command Palette or a keybinding. A remembered show or hide is kept and applies once there is something to show.
+- The Contents tab appears only when the document has headings. A document with only notes or links opens the sidebar on that tab.
+
 ---
 
 ## [2026.1005.0] - 2026, October 5
@@ -11,11 +16,6 @@
 ### Added
 
 - Option+Command+Period (Ctrl+Alt+Period on Windows and Linux) shows and hides the table of contents.
-
-### Changed
-
-- The table of contents sidebar appears only when it has something to show: headings, or entries on one of its other tabs (links, backlinks, the graph, notes, or proofreading findings while proofreading is on). On a document with none, the sidebar, its reveal tab and its toolbar button are not drawn, the slash menu leaves out Toggle Table of Contents, Swap Table of Contents Side and Focus Review Sidebar, and those commands do nothing when run from VS Code's Command Palette or a keybinding. A remembered show or hide is kept and applies once there is something to show.
-- The Contents tab appears only when the document has headings. A document with only notes or links opens the sidebar on that tab.
 
 ---
 
