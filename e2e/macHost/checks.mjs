@@ -2196,8 +2196,19 @@ export async function run({ page, check, baseUrl }) {
     check("outline: …and no outline panel", !bare.panelOpen, JSON.stringify(bare));
     const measuresBefore = await page.evaluate(() =>
         window.__posted.filter((m) => m.type === "topbarControlsChanged").length);
+    // The caret goes to the paragraph's start by a range, not by Home: in
+    // WebKit on macOS Home does not move the caret to the line's start, and
+    // the `# ` typed after it lands mid-line and makes no heading.
     await page.locator(".milkdown .ProseMirror p").first().click();
-    await page.keyboard.press("Home");
+    await page.evaluate(() => {
+        const p = document.querySelector(".milkdown .ProseMirror p");
+        const range = document.createRange();
+        range.setStart(p.firstChild ?? p, 0);
+        range.collapse(true);
+        const selection = getSelection();
+        selection.removeAllRanges();
+        selection.addRange(range);
+    });
     await page.keyboard.type("# ", { delay: 30 });
     await page.waitForTimeout(600);
     const grown = await page.evaluate(() => ({
