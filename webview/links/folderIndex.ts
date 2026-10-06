@@ -96,11 +96,10 @@ export function selfHasReferences(): boolean {
  * literally, which both resolution modes open.
  *
  * A host with a file explorer (`projectFiles`, the Mac app's directory
- * windows) opens a root-relative path directly and parses no `openFile`,
- * because it has no text editor to open one into; its index is of the same
- * root, so the path goes as the index names it, and the line rides beside
- * it as the message's own optional field rather than as a fragment, because
- * that host resolves no fragment and its file names may hold `#`.
+ * windows) opens a root-relative path directly: its index is of the same
+ * root, so the path goes as the index names it, with nothing to resolve, and
+ * the line rides beside it as the message's own optional field rather than
+ * as a fragment, because its file names may hold `#`.
  */
 export function openIndexedNote(self: string, path: string, line?: number): void {
     if (hostHas("projectFiles")) {

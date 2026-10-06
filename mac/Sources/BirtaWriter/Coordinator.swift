@@ -223,6 +223,62 @@ final class Coordinator {
         }
     }
 
+    /// Where this window's links land (`LinkLocator`): its folder walk and
+    /// the short-lived list both asks share, touched only on `linkQueue`.
+    private let linkLocator = LinkLocator()
+    private let linkQueue = DispatchQueue(label: "com.birtalabs.birta-writer.links", qos: .userInitiated)
+
+    /// What a link in this note resolves against: the window's folder,
+    /// walked whole, or the note's own folder, one level, in a window with
+    /// none (`LinkLocator.walkFolder`).
+    private var linkRoot: (url: URL, deep: Bool) {
+        ((explorerRoot ?? boundURL.deletingLastPathComponent()).standardizedFileURL, explorerRoot != nil)
+    }
+
+    /// Follow a link the page asked to open (`openFile`): a Markdown link's
+    /// path or a wikilink's name, resolved from this note (`LinkLocator`),
+    /// then routed as a Cmd-clicked explorer row is: a tab beside this note,
+    /// so the note the link was in stays open. A heading or line fragment is
+    /// carried as the line to land on. A link that names nothing says so in
+    /// the status line rather than doing nothing.
+    private func openLink(_ raw: String, wiki: Bool) {
+        let doc = boundURL.standardizedFileURL.path
+        let root = linkRoot
+        let locator = linkLocator
+        linkQueue.async { [weak self] in
+            let located = locator.locate(raw, wiki: wiki, from: doc, root: root.url, deep: root.deep, forOpen: true)
+            DispatchQueue.main.async {
+                guard let self else { return }
+                guard let located else {
+                    if !LinkTarget.split(raw, wiki: wiki).path.isEmpty {
+                        self.statusOverlay.flash("Could not find \u{201C}\(raw)\u{201D}.")
+                    }
+                    return
+                }
+                let file = URL(fileURLWithPath: located.path)
+                if DocumentTypes.accepts(file) {
+                    self.onOpenProjectFile?(file, true, located.line)
+                } else {
+                    NSWorkspace.shared.open(file)
+                }
+            }
+        }
+    }
+
+    /// Answer the link popup's `resolveLinkTarget`: where a click on this
+    /// link would go, by the same resolver the click uses, or nil.
+    private func answerLinkTarget(id: String, raw: String, wiki: Bool) {
+        let doc = boundURL.standardizedFileURL.path
+        let root = linkRoot
+        let locator = linkLocator
+        linkQueue.async { [weak self] in
+            let located = locator.locate(raw, wiki: wiki, from: doc, root: root.url, deep: root.deep, forOpen: false)
+            DispatchQueue.main.async {
+                self?.host.send(.linkTargetResolved(id: id, resolved: located.map { LinkLocator.display($0.path, root: root.url) }))
+            }
+        }
+    }
+
     /// The document line the next page this window builds opens on, held
     /// from `reveal(line:)` until `initDoc` carries it and then cleared: a
     /// line asked for while the page is cold or loading has no page to be
@@ -2154,6 +2210,10 @@ final class Coordinator {
             Prefs.setViewStateJSON(json, for: boundURL)
         case let .openUrl(url):
             if let u = URL(string: url) { NSWorkspace.shared.open(u) }
+        case let .openFile(path, wiki):
+            openLink(path, wiki: wiki)
+        case let .resolveLinkTarget(id, path, wiki):
+            answerLinkTarget(id: id, raw: path, wiki: wiki)
         case .openHostPreferences:
             openPreferences?()
         case let .askAgent(prompt, requestId, model, effort, skill):

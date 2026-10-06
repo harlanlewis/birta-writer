@@ -1,0 +1,59 @@
+<!doctype html>
+<!-- e2e harness: following a link. A local Markdown link, a wikilink, a
+     wikilink to a heading, an external link and a reference link, each on a
+     line of its own, so a click can be aimed at one; the host is a stub that
+     records what the page posts. -->
+<meta charset="utf-8">
+<style>
+  :root {
+    --vscode-editor-background: #1e1e1e; --vscode-editor-foreground: #d4d4d4;
+    --vscode-foreground: #cccccc; --vscode-descriptionForeground: #999999;
+    --vscode-editor-font-family: monospace; --vscode-font-family: -apple-system, sans-serif; --vscode-font-size: 13px;
+    --vscode-editorWidget-background: #252526; --vscode-editorWidget-border: #454545;
+    --vscode-editorHoverWidget-background: #252526;
+    --vscode-editorHoverWidget-border: #454545;
+    --vscode-focusBorder: #007fd4; --vscode-list-hoverBackground: #2a2d2e;
+    --vscode-list-activeSelectionBackground: #094771; --vscode-list-activeSelectionForeground: #ffffff;
+    --vscode-input-background: #3c3c3c; --vscode-input-foreground: #cccccc;
+    --vscode-textLink-foreground: #3794ff; --vscode-panel-border: rgba(128, 128, 128, 0.2);
+    --vscode-editor-selectionBackground: #264f78; --vscode-icon-foreground: #cccccc;
+    --vscode-toolbar-hoverBackground: #2a2d2e;
+  }
+  body { background: var(--vscode-editor-background); color: var(--vscode-editor-foreground); margin: 0; }
+  /* Real toolbar height (~40px in VS Code at default font) so the measured
+     --editor-topbar-height, and everything laid out from it, matches production. */
+  .editor-topbar { height: 40px; box-sizing: border-box; }
+</style>
+<script>
+  window.__i18n = { translations: {}, isMac: true, toolbar: { placements: {}, order: [] } };
+  window.__posted = [];
+  const DOC = [
+    "# Links",
+    "",
+    "[Notable Todo](notes/Notable%20Todo.md)",
+    "",
+    "- [[2025-04-10 Thursday April 10]]",
+    "- [[Plan#Next Steps|the plan]]",
+    "",
+    "[an article](https://example.com/article)",
+    "",
+    "[by reference][ref]",
+    "",
+    "Omega",
+    "",
+    "[ref]: other.md#12",
+  ].join("\n");
+  window.acquireVsCodeApi = () => ({
+    postMessage: (msg) => {
+      window.__posted.push(msg);
+      if (msg.type === "ready")
+        window.postMessage({ type: "init", content: DOC + "\n", frontmatter: "", syncVersion: 1 }, "*");
+    },
+    getState: () => undefined,
+    setState: () => {},
+  });
+</script>
+<link rel="stylesheet" href="dist/webview.css">
+<div class="editor-topbar"></div>
+<div id="editor"></div>
+<script type="module" src="dist/webview.js"></script>

@@ -1018,6 +1018,10 @@ export function setupLinkPopup(
                 const wikiHref = wikiHrefOf(anchor);
                 if (!wikiHref || wikiHref.startsWith("#")) return; // same-page: click handler jumps
                 e.stopPropagation();
+                // The browser's own caret placement would land inside the
+                // link's hidden source, which reveals it for editing exactly
+                // as a plain click does; following a link must not.
+                e.preventDefault();
                 notifyOpenFile(wikiHref, { wiki: true });
                 scheduleHide(50);
                 return;

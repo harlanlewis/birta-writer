@@ -19,6 +19,19 @@ final class BridgeTests: XCTestCase {
         XCTAssertEqual(WebviewMessage.parse(#"{"type":"frontmatterUpdate","frontmatter":"","baseSyncVersion":0}"#),
                        .frontmatterUpdate(frontmatter: "", baseSyncVersion: 0))
         XCTAssertEqual(WebviewMessage.parse(#"{"type":"openUrl","url":"https://a.b"}"#), .openUrl("https://a.b"))
+        // A followed local link or wikilink: a Cmd-click and the link popup's
+        // Open both send this, and a host that drops it opens nothing.
+        XCTAssertEqual(WebviewMessage.parse(##"{"type":"openFile","path":"notes/a.md#27"}"##),
+                       .openFile(path: "notes/a.md#27", wiki: false))
+        XCTAssertEqual(WebviewMessage.parse(##"{"type":"openFile","path":"Page#Heading","wiki":true}"##),
+                       .openFile(path: "Page#Heading", wiki: true))
+        XCTAssertEqual(WebviewMessage.parse(##"{"type":"resolveLinkTarget","id":"r1","path":"Page","wiki":true}"##),
+                       .resolveLinkTarget(id: "r1", path: "Page", wiki: true))
+        let resolved = HostMessage.linkTargetResolved(id: "r1", resolved: "Daily/Page.md").jsonObject()
+        XCTAssertEqual(resolved["type"] as? String, "linkTargetResolved")
+        XCTAssertEqual(resolved["resolved"] as? String, "Daily/Page.md")
+        // A miss is an explicit null, which the popup draws as "not found".
+        XCTAssertTrue(HostMessage.linkTargetResolved(id: "r2", resolved: nil).jsonObject()["resolved"] is NSNull)
         // The host-prompt seam (MAR-395). A step that parses arrives whole.
         XCTAssertEqual(
             WebviewMessage.parse(#"{"type":"hostPrompt","id":"p1","step":{"kind":"input","title":"t","prompt":"q"}}"#),

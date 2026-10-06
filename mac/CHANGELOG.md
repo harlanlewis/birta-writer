@@ -27,6 +27,7 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ### Fixed
 
+- Links to other files open in Birta Writer for Mac. Command-click a Markdown link to a local file or a `[[wikilink]]`, or use Open in its popup, and the file opens in a new tab beside the note, or is brought forward if it is already open; a link to a heading or a line lands there, and a link to a file the editor does not open goes to its default app. Before, nothing happened. A wikilink is found by name anywhere in the window's folder, or beside the note when the window has no folder, and a link that names nothing says so at the bottom of the window. The link popup also shows which file a link goes to, or that it was not found, as it does in VS Code.
 - Resting the pointer on the table of contents button in Birta Writer for Mac while the table of contents is closed now shows its label and its shortcut, Option+Command+Period. Before, the preview that slides out on hover hid every label, so the shortcut was only shown while the table of contents was already open.
 
 ---

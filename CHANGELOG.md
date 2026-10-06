@@ -15,6 +15,7 @@
 
 ### Fixed
 
+- Command-clicking a `[[wikilink]]` (Ctrl-click on Windows and Linux) follows it without also opening its source for editing. Before, the link opened and the `[[...]]` source was shown and the caret left inside it.
 - Editor notes are found in any case: `[tk]`, `[Tk: ...]`, `todo:` and `Fixme:` are listed in the Notes tab and highlighted in the text, and so is a custom marker from `birta.notes.customMarkers` however it is cased in the document. Before, only the exact casing matched, so `[tk]` was missed.
 
 ---
