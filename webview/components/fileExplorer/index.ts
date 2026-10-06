@@ -35,7 +35,9 @@ import { wireRoving } from "../sidePanel/keyboardNav";
 import { ensureFileExplorerStyles } from "./styles";
 import { createTreeModel, type TreeRow } from "./treeModel";
 import { t } from "@/i18n";
+import { hostArranges } from "../../../shared/hostProfile";
 import {
+    notifyFileExplorerEdge,
     notifyFileExplorerExpanded,
     notifyFileExplorerVisibility,
     notifyFileExplorerWidth,
@@ -76,10 +78,14 @@ export interface FileExplorerHost {
     visible?: boolean;
     /** Folders to open on arrival: what the last page on this root had open. */
     expanded?: readonly string[];
+    /** The host's floor on the panel's width (`fileExplorerFloor`), when it has sent one. */
+    widthFloor?: number;
 }
 
 export interface FileExplorerController {
     readonly panel: HTMLElement;
+    /** The host's chrome in the band needs at least this much drawer. */
+    setWidthFloor: (width: number) => void;
     /** A different root for the same window; forgets every listing. */
     setRoot: (root: ProjectRoot, showHidden: boolean, expanded?: readonly string[]) => void;
     applyListing: (msg: DirectoryListingMessage) => void;
@@ -110,6 +116,15 @@ export function createFileExplorer(host: FileExplorerHost): FileExplorerControll
     let pendingReveal = false;
     let userCollapsed = host.visible === false;
     let initialLoad = true;
+    let widthFloor = host.widthFloor ?? 0;
+    // Under `filesUnderTitlebar` the drawer is a column of the WINDOW, from
+    // its top edge to its foot and flush against its frame, with the host's
+    // window buttons and file actions drawn in its ground up in the band.
+    // Everywhere else it is a surface set into the page below the bar.
+    const underTitlebar = hostArranges("filesUnderTitlebar");
+    /** The trailing edge last reported to the host, so a commit that moved nothing sends nothing. */
+    let reportedEdge: number | null | undefined;
+    let shellBuilt = false;
 
     const shell = createSidePanelShell({
         prefix: "files",
@@ -121,15 +136,26 @@ export function createFileExplorer(host: FileExplorerHost): FileExplorerControll
         // Drawn as a surface set into the window rather than a column flush
         // against the frame. The inset comes out of the panel's own box, so
         // `--files-reserve` and the formatting row's margin stay the width
-        // and nothing else.
-        inset: SIDE_PANEL_INSET,
+        // and nothing else. A drawer that runs up through the titlebar is
+        // flush instead: the window's own buttons are drawn on its ground,
+        // and an inset would leave a strip of page between them and the
+        // window's corner.
+        inset: underTitlebar ? 0 : SIDE_PANEL_INSET,
+        fromWindowTop: underTitlebar,
         width: {
             cssVar: "--files-width",
             default: FILES_DEFAULT_WIDTH,
             min: FILES_MIN_WIDTH,
             max: FILES_MAX_WIDTH,
+            floor: () => widthFloor,
             onCommit: notifyFileExplorerWidth,
         },
+        // The host lays its band out against this panel's edge, so it hears
+        // about every commit that could have moved it: open, close, a drag
+        // of the sash, a window narrow enough to pin the drawer. Only the
+        // docked-open drawer has an edge in the band; the flyout floats below
+        // it and is reported as no edge at all.
+        onPresentationSync: underTitlebar ? reportEdge : undefined,
         narrow: { kind: "hold" },
         neighborReserve: host.neighborReserve,
         onReserveChange: host.onReserveChange,
@@ -146,6 +172,23 @@ export function createFileExplorer(host: FileExplorerHost): FileExplorerControll
         focusEditor: () => host.getEditorView()?.focus(),
     });
     const { panel } = shell;
+    shellBuilt = true;
+    // What the bar's first row reads to give up the drawer's column (style.css).
+    document.body.classList.toggle("files-from-top", underTitlebar);
+    panel.classList.toggle("files-panel--from-top", underTitlebar);
+
+    function reportEdge(): void {
+        // Declared before the shell exists and handed to it, so a commit the
+        // shell makes while it is still being built has nothing to read yet;
+        // the composer's own first commit below reports.
+        if (!shellBuilt) { return; }
+        const reserve = shell.dockedReserve();
+        const edge = reserve > 0 ? reserve : null;
+        if (edge === reportedEdge) { return; }
+        reportedEdge = edge;
+        notifyFileExplorerEdge(edge);
+    }
+
     panel.setAttribute("role", "complementary");
     panel.setAttribute("aria-label", t("Files"));
 
@@ -524,6 +567,11 @@ export function createFileExplorer(host: FileExplorerHost): FileExplorerControll
             notifySetFileExplorerShowHidden(showHidden);
         },
         setFlyoutTrigger: (el) => shell.setFlyoutTrigger(el),
+        setWidthFloor(next) {
+            if (next === widthFloor) { return; }
+            widthFloor = next;
+            shell.refloor();
+        },
         isOpen: () => shell.isOpen(),
         dockedReserve: shell.dockedReserve,
         checkResponsiveMode: shell.checkResponsiveMode,

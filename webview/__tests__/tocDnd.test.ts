@@ -460,6 +460,9 @@ describe("initToc drag integration", () => {
         document.body.appendChild(toc.panel); // the webview entry does this
         disposers.push(toc.dispose);
         flushRaf(); // run the init frame (mode/state commit)
+        // The editor exists: the page refreshes the outline now, which is when
+        // the panel first sees it has headings to show and can be opened.
+        toc.refresh();
         toc.toggle(); // open the panel (docked by default; overlay when narrowed)
         return { editor, v, toc };
     }

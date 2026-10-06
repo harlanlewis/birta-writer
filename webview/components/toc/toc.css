@@ -23,19 +23,12 @@
    the strip comes off follows the docked edge, since this drawer can sit on
    either.
 
-   The GROUND is the page's own paper unless a host says otherwise, so the
-   outline reads as part of the page while the file list reads as a surface
-   on it; the two are one switch each in the Mac app's Appearance pane.
-   --toc-panel-ground is this drawer's ground and nothing else's, aliased to
-   --toc-surface so everything in the card that paints the ground moves with
-   it. The alias is set on the panel and read by its descendants, so the
-   default belongs on the two lines that set it and nowhere else. The flyout
-   is a card of the shell's own: it takes neither the ground nor the
-   geometry, which is what every `:not(.toc-panel--flyout)` here is for. */
+   The GROUND is the page's own paper, so the outline reads as part of the
+   page while the file list reads as a surface on it. --toc-surface names it
+   once, on the panel, for everything in the card that paints the ground. The
+   flyout is a card of the shell's own: it takes none of the geometry, which
+   is what every `:not(.toc-panel--flyout)` here is for. */
 .toc-panel { --toc-surface: var(--vscode-editor-background); }
-.toc-panel:not(.toc-panel--flyout) {
-    --toc-surface: var(--toc-panel-ground, var(--vscode-editor-background));
-}
 
 .toc-card {
     flex: 1 1 auto;

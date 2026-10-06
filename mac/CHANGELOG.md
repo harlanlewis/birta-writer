@@ -12,6 +12,19 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ## [Unreleased]
 
+### Changed
+
+- While the table of contents has nothing to show, Birta Writer for Mac dims View > Show Table of Contents and its shortcut, and the Command Palette leaves it out, along with the other table of contents commands.
+- The file list in Birta Writer for Mac now runs the full height of the window, up through the titlebar, the way a macOS sidebar does. While it is open, the window buttons, its toggle, and New Note, Open and Command Palette sit on the file list's ground, with those three against its right edge, and the file name starts past it. With more than one tab, the tab bar starts at the file list's edge too, over the document rather than across the file list. The list itself has not moved, and neither has the document. The file list can no longer be dragged narrower than those buttons need.
+
+### Removed
+
+- The Transparent table of contents sidebar setting in Birta Writer for Mac. The table of contents always draws on the page's own background, which was the setting's default; anyone who had turned it off gets that default back.
+
+### Fixed
+
+- Resting the pointer on the table of contents button in Birta Writer for Mac while the table of contents is closed now shows its label and its shortcut, Option+Command+Period. Before, the preview that slides out on hover hid every label, so the shortcut was only shown while the table of contents was already open.
+
 ---
 
 ## [2026.1005.0] - 2026, October 5

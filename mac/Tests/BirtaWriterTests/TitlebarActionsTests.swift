@@ -606,6 +606,112 @@ final class TitlebarActionsTests: XCTestCase {
         button.performClick(nil)
         XCTAssertEqual(spy.received, ["menuToggleExplorer"])
     }
+
+    // MARK: the row split at a docked explorer
+
+    /// A bound title in a real window, at a known x, because the explorer's
+    /// edge arrives in WINDOW coordinates and only a view in a window can
+    /// convert it. The origin stands in for the traffic lights AppKit puts
+    /// before a leading accessory.
+    private func titleInWindow(origin: CGFloat = 78) -> (TitleBarView, NSWindow) {
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 900, height: 200),
+                              styleMask: [.titled], backing: .buffered, defer: true)
+        // Held by the test, so `close()` must not also release it.
+        window.isReleasedWhenClosed = false
+        let view = boundTitle()
+        window.contentView?.addSubview(view)
+        view.setFrameOrigin(NSPoint(x: origin, y: 0))
+        view.layoutSubtreeIfNeeded()
+        return (view, window)
+    }
+
+    /// Window-coordinate frames of what the row draws, read off the built view.
+    private func placed(_ view: TitleBarView) -> (toggle: NSRect, actions: [NSRect], label: NSRect) {
+        let toggle = view.sidebarView.buttons.first.map { $0.convert($0.bounds, to: nil) } ?? .zero
+        let actions = view.actionsView.buttons.map { $0.convert($0.bounds, to: nil) }
+        return (toggle, actions, view.labelFrameInWindow())
+    }
+
+    /// The layout the mockup asks for: the toggle where it always was, the
+    /// file actions against the explorer's far edge, and the name past it.
+    func testADockedExplorerShouldHoldTheActionsInsideItAndTheNamePastIt() {
+        let (view, window) = titleInWindow()
+        defer { window.close() }
+        let before = placed(view)
+        let edge: CGFloat = 320
+        view.setSidebarEdge(edge)
+        view.layoutSubtreeIfNeeded()
+        let after = placed(view)
+
+        XCTAssertEqual(after.toggle, before.toggle, "the toggle stays beside the traffic lights")
+        XCTAssertEqual(after.actions.count, TitlebarActionsView.shipped.count)
+        XCTAssertEqual(after.actions.last?.maxX, edge - SidebarBand.trailingInset,
+                       "the last action sits against the explorer's edge")
+        XCTAssertGreaterThan(after.actions.first?.minX ?? 0, after.toggle.maxX)
+        XCTAssertGreaterThanOrEqual(after.label.minX, edge, "the name is past the explorer, on the document")
+
+        // And back: closing the explorer puts the row as it was, so the name
+        // does not wander between the two states.
+        view.setSidebarEdge(nil)
+        view.layoutSubtreeIfNeeded()
+        XCTAssertEqual(placed(view).actions, before.actions)
+        XCTAssertEqual(placed(view).label, before.label)
+    }
+
+    /// The tab bar starts where the row splits, so it reads the edge by the
+    /// row's own rule: an edge while split, nil otherwise, and nil in a window
+    /// whose explorer cannot be offered even if an edge was reported.
+    func testTheTabBarShouldReadTheEdgeOnlyWhileTheRowIsSplit() {
+        let (view, window) = titleInWindow()
+        defer { window.close() }
+        XCTAssertNil(view.dockedSidebarEdge)
+        view.setSidebarEdge(320)
+        XCTAssertEqual(view.dockedSidebarEdge, 320)
+        view.setSidebarAvailable(false)
+        XCTAssertNil(view.dockedSidebarEdge, "no explorer, no split, and no inset tabs")
+        view.setSidebarAvailable(true)
+        view.setSidebarEdge(nil)
+        XCTAssertNil(view.dockedSidebarEdge)
+    }
+
+    /// The floor the page is told is the width at which the split row fits
+    /// with nothing overlapping, asked of the view rather than recomputed.
+    func testAnExplorerAtTheFloorShouldFitTheRowWithoutOverlap() {
+        let (view, window) = titleInWindow()
+        defer { window.close() }
+        let floor = view.sidebarFloor(titleOriginX: 78)
+        view.setSidebarEdge(floor)
+        view.layoutSubtreeIfNeeded()
+        let row = placed(view)
+        XCTAssertGreaterThan(row.actions.first?.minX ?? 0, row.toggle.maxX, "actions clear of the toggle")
+        XCTAssertLessThanOrEqual(row.actions.last?.maxX ?? .infinity, floor, "and inside the explorer")
+    }
+
+    /// The explorer's ground between the toggle and the name is titlebar, so
+    /// it drags the window rather than falling through to the page, which
+    /// would take the click and do nothing. The buttons on it still win.
+    func testTheGroundBetweenTheButtonsShouldDragTheWindow() {
+        let (view, window) = titleInWindow()
+        defer { window.close() }
+        view.setSidebarEdge(320)
+        view.layoutSubtreeIfNeeded()
+        _ = view.actionsForMeasurement(hovered: true)
+        let row = placed(view)
+        guard let superview = view.superview, let firstAction = row.actions.first else {
+            return XCTFail("the row was not built")
+        }
+        func hit(_ windowX: CGFloat) -> NSView? {
+            view.hitTest(superview.convert(NSPoint(x: windowX, y: row.toggle.midY), from: nil))
+        }
+        XCTAssertTrue(hit((row.toggle.maxX + firstAction.minX) / 2) is TitlebarDragView,
+                      "the gap between the toggle and the actions drags")
+        XCTAssertTrue(hit(firstAction.midX) is TitlebarActionButton, "a button still takes its own click")
+        XCTAssertTrue(hit(row.label.midX) === view, "and the name its own")
+        // With nothing docked there is no ground to drag, and no strip.
+        view.setSidebarEdge(nil)
+        view.layoutSubtreeIfNeeded()
+        XCTAssertFalse(hit((row.toggle.maxX + firstAction.minX) / 2) is TitlebarDragView)
+    }
 }
 
 /// Stands in for the application's delegate, so a click that leaves the button

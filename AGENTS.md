@@ -223,7 +223,7 @@ mac/Sources/BirtaWriter/DirectoryWatcher.swift   FSEvents on a directory window'
 mac/Sources/BirtaWriterCore/FuzzyMatch.swift     The palette's subsequence scorer: word starts and runs outrank buried letters, and the matched ranges come back for drawing; no dependency, on purpose
 mac/Sources/BirtaWriterCore/PaletteModel.swift   What the palette lists and in what order, with no window: modes, sections, nested rows, recents
 mac/Sources/BirtaWriterCore/Appearance.swift     How the page looks, resolved with no window: the mode, a theme slot per mode, the kind last held (what the pane's switch brings back), the colour mod over either; the one seam the menu, the palette, the pane and every window read
-mac/Sources/BirtaWriterCore/AppearanceOverlay.swift  The colour mod (accent, tint, and each drawer's ground) as the declarations a theme is; restates the palette's seeds, held to hostPalette.css by its test
+mac/Sources/BirtaWriterCore/AppearanceOverlay.swift  The colour mod (accent, tint, and the file list's ground) as the declarations a theme is; restates the palette's seeds, held to hostPalette.css by its test
 mac/Sources/BirtaWriterCore/VSCodeTheme.swift    A VS Code colour theme as the page wears it: every colour id its variable, tokenColors resolved per Prism class into --host-token-* (the table codeBlock.css reads)
 mac/Sources/BirtaWriterCore/ThemeStore.swift     The folder of added themes, and what a file, an extension folder, a VSIX or an installed editor becomes in it
 mac/Sources/BirtaWriterCore/JSONC.swift          Plain JSON out of a theme file written for VS Code's forgiving parser: comments and trailing commas stripped, strings left exactly as written, which is why it walks characters rather than running regular expressions

@@ -92,6 +92,14 @@ export interface SidePanelWidth {
     default: number;
     min: number;
     max: number;
+    /**
+     * A floor the HOST imposes on top of `min`, read at every clamp: the
+     * width something outside the page has to fit inside the drawer (the Mac
+     * app's window buttons, under `filesUnderTitlebar`). A function because
+     * the host answers after the panel exists and may answer again; the
+     * composer calls `refloor` when it does.
+     */
+    floor?: () => number;
     /** The width the user settled on (mouseup, or the double-click reset):
      *  what the composer persists. Never per pointer move. */
     onCommit: (width: number) => void;
@@ -140,9 +148,21 @@ export interface SidePanelShellOptions {
      * and the formatting row above that content keep the width as their one
      * number. It also takes the drawer's reveal tab in, since the tab has to
      * land on a hide button that went in with the panel. Default 0, a drawer
-     * flush to the frame; both drawers that exist take `SIDE_PANEL_INSET`.
+     * flush to the frame. Both drawers take `SIDE_PANEL_INSET`, except the
+     * file explorer under `filesUnderTitlebar`, which is a column of the
+     * window rather than a surface set into it (`fromWindowTop`).
      */
     inset?: number;
+    /**
+     * Docked, the drawer starts at the top of the WINDOW rather than at the
+     * content area's, so its ground runs up through the bar's first row. Its
+     * rows still start where the content does: the content area's top is
+     * written on the panel as `--side-panel-content-top` for the composer to
+     * pad by, so nothing in the drawer moves. The overlay and the flyout are
+     * unchanged, because both float over the page, and a ground in the bar's
+     * row would be drawn over the controls in it.
+     */
+    fromWindowTop?: boolean;
     eventManager: EventManager;
     /** The docked edge at mount; `setSide` moves it. */
     initialRight: boolean;
@@ -192,6 +212,9 @@ export interface SidePanelShell {
     mode: () => SidePanelMode;
     /** Record the open state; `sync` commits it. */
     setOpen: (open: boolean) => void;
+    /** The composer has nothing to show, or has something again; commits. */
+    setEmpty: (empty: boolean) => void;
+    isEmpty: () => boolean;
     open: () => void;
     close: () => void;
     toggle: () => void;
@@ -219,6 +242,8 @@ export interface SidePanelShell {
      *  on mouseup). A one-shot change from a settings echo also wants
      *  `checkResponsiveMode`. */
     setWidth: (width: number) => void;
+    /** Re-clamp against `width.floor`, which has moved. */
+    refloor: () => void;
     showFlyout: () => void;
     hideFlyout: () => void;
     hideFlyoutImmediate: () => void;
@@ -244,6 +269,8 @@ export function createSidePanelShell(opts: SidePanelShellOptions): SidePanelShel
     let right = opts.initialRight;
     let mode: SidePanelMode = "overlay";
     let isOpen = false;
+    /** Nothing to show (`setEmpty`): held shut, its tab and preview withdrawn. */
+    let empty = false;
 
     const panel = document.createElement("div");
     panel.className = ["side-panel", `${prefix}-panel`, ...(opts.panelClasses ?? [])].join(" ");
@@ -274,8 +301,12 @@ export function createSidePanelShell(opts: SidePanelShellOptions): SidePanelShel
         const parsed = parseInt(raw, 10);
         return Number.isFinite(parsed) ? clampWidth(parsed) : opts.width.default;
     }
+    /** The least the drawer may be: the composer's `min`, raised by the host's floor. */
+    function minWidth(): number {
+        return Math.max(opts.width.min, opts.width.floor?.() ?? 0);
+    }
     function clampWidth(width: number): number {
-        return Math.min(opts.width.max, Math.max(opts.width.min, Math.round(width)));
+        return Math.min(opts.width.max, Math.max(minWidth(), Math.round(width)));
     }
     let width = readInitialWidth();
 
@@ -295,7 +326,7 @@ export function createSidePanelShell(opts: SidePanelShellOptions): SidePanelShel
         if (opts.narrow.kind !== "hold") {
             return width;
         }
-        return Math.max(opts.width.min, Math.min(width, window.innerWidth - HELD_CONTENT_GLIMPSE));
+        return Math.max(minWidth(), Math.min(width, window.innerWidth - HELD_CONTENT_GLIMPSE));
     }
 
     /**
@@ -391,7 +422,7 @@ export function createSidePanelShell(opts: SidePanelShellOptions): SidePanelShel
     }
 
     function isVisible(): boolean {
-        return isOpen || flyout.isOpen();
+        return (isOpen && !empty) || flyout.isOpen();
     }
 
     /**
@@ -421,6 +452,10 @@ export function createSidePanelShell(opts: SidePanelShellOptions): SidePanelShel
         if (instant) {
             setInstant(true);
         }
+        // An empty drawer stays shut whatever was recorded: every route to
+        // open (the composer's policy, a preference, the mode coming back)
+        // commits through here, so this is the one place that holds it.
+        if (empty) { isOpen = false; }
         setPanelState("open", isOpen);
         setPanelState("docked", mode === "docked");
         setPanelState("overlay", mode === "overlay");
@@ -448,6 +483,31 @@ export function createSidePanelShell(opts: SidePanelShellOptions): SidePanelShel
 
     function close(): void {
         isOpen = false;
+        sync();
+    }
+
+    /**
+     * The composer has nothing to show, or has something again.
+     *
+     * Empty, the drawer is shut and stays shut, and the controls that would
+     * reveal it go with it: the reveal tab is withdrawn and no preview flies
+     * out, because a control for a panel of nothing is a control that answers
+     * with nothing. What the reader asked for is NOT forgotten: the composer's
+     * own state (a remembered show, an auto-open rule) is untouched, and when
+     * there is something again the drawer opens or stays shut by that same
+     * policy (`openOnDock`), exactly as it does when the mode comes back.
+     */
+    function setEmpty(next: boolean): void {
+        if (next === empty) { return; }
+        empty = next;
+        tabEl.hidden = next;
+        body.classList.toggle(`${prefix}-empty`, next);
+        if (next) {
+            flyout.hideImmediate();
+            isOpen = false;
+        } else {
+            isOpen = mode === "docked" ? opts.openOnDock() : false;
+        }
         sync();
     }
 
@@ -526,8 +586,10 @@ export function createSidePanelShell(opts: SidePanelShellOptions): SidePanelShel
      */
     function updatePosition(): void {
         const edge = mode === "docked" ? getContentAreaTop() : getTopbarBottom();
-        panel.style.top = `${edge}px`;
-        panel.style.height = `calc(100vh - ${edge + inset}px)`;
+        const top = mode === "docked" && opts.fromWindowTop ? 0 : edge;
+        panel.style.top = `${top}px`;
+        panel.style.height = `calc(100vh - ${top + inset}px)`;
+        panel.style.setProperty("--side-panel-content-top", `${edge - top}px`);
         tab.setTop(edge);
     }
 
@@ -580,6 +642,7 @@ export function createSidePanelShell(opts: SidePanelShellOptions): SidePanelShel
         tab: tabEl,
         armTab: opts.trigger.kind === "tab",
         isOpen: () => isOpen,
+        canShow: () => !empty,
         isRight: () => right,
         dragInFlight,
         setPanelState,
@@ -661,11 +724,13 @@ export function createSidePanelShell(opts: SidePanelShellOptions): SidePanelShel
         panel,
         tabEl,
         controlsSlot,
-        isOpen: () => isOpen,
+        isOpen: () => isOpen && !empty,
         isVisible,
         isRight: () => right,
         mode: () => mode,
         setOpen: (next) => { isOpen = next; },
+        setEmpty,
+        isEmpty: () => empty,
         open,
         close,
         toggle,
@@ -683,6 +748,10 @@ export function createSidePanelShell(opts: SidePanelShellOptions): SidePanelShel
          *  the layout is asking about. */
         width: () => drawnWidth(),
         setWidth,
+        // The reader's width is re-clamped too, not only the drawn one: a
+        // floor is a fact about what the drawer has to hold, so a width under
+        // it is not one to come back to.
+        refloor: () => setWidth(width),
         showFlyout: flyout.show,
         hideFlyout: flyout.hide,
         hideFlyoutImmediate: flyout.hideImmediate,

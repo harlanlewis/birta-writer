@@ -115,13 +115,23 @@ describe("focusPanel — the deliberate keyboard entry (MAR-294)", () => {
         document.body.appendChild(toc.panel);
         toc.refresh();
 
+        // Nothing to show at all: there is no panel to focus, so focus stays.
+        const before = document.activeElement;
         toc.focusPanel();
+        expect(document.activeElement).toBe(before);
+        expect(toc.panel.contains(document.activeElement)).toBe(false);
 
-        // No outline rows to land on — the strip's active tab carries focus.
+        // The reachable empty view: Show issues opens Proofreading before any
+        // finding exists (no proofread plugin in this harness), and Contents,
+        // with no headings, is not offered. Focusing the panel again finds no
+        // row to land on, and the strip's active tab carries focus.
+        toc.showProofreadingTab();
+        view.dom.focus();
+        toc.focusPanel();
         const active = document.activeElement as HTMLElement;
         expect(toc.panel.contains(active)).toBe(true);
         expect(active.classList.contains("toc-tab")).toBe(true);
-        expect(active.textContent).toBe("Contents");
+        expect(active.textContent).toBe("Proofread");
     });
 
     it("showProofreadingTab should move focus into the panel as its side effect", () => {

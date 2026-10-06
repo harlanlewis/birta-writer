@@ -14,7 +14,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
-import { commandAvailable, commandSyntax } from "../commandAvailability";
+import { commandAvailable, commandSyntax, setCommandsIdle } from "../commandAvailability";
 import { EDITOR_COMMANDS } from "../editorCommands";
 import { ALL_SYNTAX_FEATURES, type SyntaxSet } from "../syntaxSets";
 
@@ -140,6 +140,18 @@ describe("commandAvailable", () => {
     it("an unknown id should be available, the way the host predicate answers it", () => {
         withSets([], () => {
             expect(commandAvailable("notACommand")).toBe(true);
+        });
+    });
+
+    it("a command with nothing to act on should be withdrawn until it has something again, and only that one", () => {
+        withSets(["gfm"], () => {
+            expect(setCommandsIdle(["insertTable"], true)).toBe(true);
+            expect(commandAvailable("insertTable")).toBe(false);
+            expect(commandAvailable("toggleStrikethrough")).toBe(true);
+            // Saying it again changes nothing, so the caller re-offers nothing.
+            expect(setCommandsIdle(["insertTable"], true)).toBe(false);
+            expect(setCommandsIdle(["insertTable"], false)).toBe(true);
+            expect(commandAvailable("insertTable")).toBe(true);
         });
     });
 });

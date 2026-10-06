@@ -454,6 +454,23 @@ export function notifyFileExplorerWidth(width: number): void {
     vscode.postMessage({ type: "fileExplorerWidth", width });
 }
 
+/**
+ * Where the docked-open panel ends, in viewport pixels from the leading edge,
+ * or null when nothing is docked open: for a host that lays its band out
+ * against the panel (`filesUnderTitlebar`).
+ */
+export function notifyFileExplorerEdge(edge: number | null): void {
+    vscode.postMessage({ type: "fileExplorerEdge", edge });
+}
+
+/**
+ * The bar's trailing controls changed which of them are drawn, so a host that
+ * lays its own chrome out against their width has to measure again.
+ */
+export function notifyTopbarControlsChanged(): void {
+    vscode.postMessage({ type: "topbarControlsChanged" });
+}
+
 /** An explicit show or hide of the panel, for the host to remember. */
 export function notifyFileExplorerVisibility(visible: boolean): void {
     vscode.postMessage({ type: "fileExplorerVisibility", visible });
@@ -465,8 +482,8 @@ export function notifySetFileExplorerShowHidden(value: boolean): void {
 }
 
 /** What a host palette of its own may offer on this surface (webview/paletteCommands.ts). */
-export function notifyPaletteCommands(items: import("../shared/messages").PaletteCommand[]): void {
-    vscode.postMessage({ type: "paletteCommands", items });
+export function notifyPaletteCommands(items: import("../shared/messages").PaletteCommand[], idle: string[] = []): void {
+    vscode.postMessage({ type: "paletteCommands", items, idle });
 }
 
 /** Persist the review sidebar's By-type/In-order mode (birta.review.groupByType). */

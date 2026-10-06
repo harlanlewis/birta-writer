@@ -191,6 +191,7 @@ export interface EditorActions {
     setCurrentProjectFile: (path: string | null) => void;
     directoryChanged: (paths: string[]) => void;
     setFileExplorerShowHidden: (showHidden: boolean) => void;
+    setFileExplorerFloor: (width: number) => void;
 }
 
 /** Message-handler dependencies. */
@@ -801,6 +802,9 @@ export function createMessageHandlers(
         },
         fileExplorerConfig(msg) {
             actions.setFileExplorerShowHidden(msg.showHidden);
+        },
+        fileExplorerFloor(msg) {
+            actions.setFileExplorerFloor(msg.width);
         },
         lintResults(msg) {
             applyLintResults(msg.id, msg.results);

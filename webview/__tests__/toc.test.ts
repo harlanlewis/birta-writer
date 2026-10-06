@@ -3,15 +3,55 @@
  * (set by the extension from the birta.tocPosition setting).
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { initToc } from "../components/toc";
+import { initToc, TOC_COMMANDS } from "../components/toc";
 import { SIDE_PANEL_INSET } from "../components/sidePanel/shell";
 import { TAB_EDGE_INSET } from "../components/sidePanel/revealTab";
+import { setCommandsIdle } from "../../shared/commandAvailability";
 import type { EventManager } from "../eventManager";
 import { mockVscodeApi } from "./setup";
 import { Schema, EditorState } from "../pm";
 import type { EditorView } from "../pm";
 
 const fakeEventManager = { onWindow: vi.fn(() => () => {}) } as unknown as EventManager;
+
+// The panel marks its own commands idle while it has nothing to show, in a
+// set that outlives any one panel. A test that builds one and never disposes
+// it would otherwise hand the next test idle commands, and the next panel
+// would be built without the flip button `swapTocSide` carries.
+beforeEach(() => { setCommandsIdle(TOC_COMMANDS, false); });
+
+const outlineSchema = new Schema({
+    nodes: {
+        doc: { content: "block+" },
+        paragraph: { group: "block", content: "inline*" },
+        heading: { group: "block", content: "inline*", attrs: { level: { default: 1 } } },
+        text: { group: "inline" },
+    },
+});
+
+/**
+ * A view over a document with something for the outline to show: one heading
+ * by default, under the auto-open threshold, so the panel has content and
+ * still starts closed. `[]` is a document with none.
+ */
+function outlineView(headings: readonly string[] = ["Intro"]): EditorView {
+    const blocks = headings.length > 0
+        ? headings.map((text) => outlineSchema.node("heading", { level: 1 }, [outlineSchema.text(text)]))
+        : [outlineSchema.node("paragraph", null, [outlineSchema.text("body")])];
+    const doc = outlineSchema.node("doc", null, blocks);
+    return {
+        state: EditorState.create({ doc, schema: outlineSchema }),
+        dom: document.createElement("div"),
+    } as unknown as EditorView;
+}
+
+/** The panel as the page mounts it: built over a view, then refreshed once
+ *  the editor exists, which is when it first sees what it has to show. */
+function mountToc(view: EditorView = outlineView()): ReturnType<typeof initToc> {
+    const toc = initToc(fakeEventManager, () => view);
+    toc.refresh();
+    return toc;
+}
 /** The tab's inset from the window: its own, plus the drawer's, which it
  *  follows so the glyph does not move when the drawer opens. */
 const TAB_EDGE = `${TAB_EDGE_INSET + SIDE_PANEL_INSET}px`;
@@ -53,8 +93,9 @@ describe("initToc dock side", () => {
 
     it("opening the TOC should keep the reveal tab pinned to the outer edge (the header hide button takes over)", () => {
         document.body.classList.add("toc-right");
-        const { panel, toggle } = initToc(fakeEventManager, () => null);
+        const { panel, toggle } = mountToc();
         toggle();
+        expect(panel.classList.contains("toc-panel--open")).toBe(true);
         const tab = document.querySelector(".toc-toggle-tab") as HTMLElement;
         // The reveal tab no longer slides beside the panel — it stays at the
         // corner; CSS hides it while open, and the header carries a hide button.
@@ -136,7 +177,7 @@ describe("TOC header controls (side-switch, hide, reveal)", () => {
     });
 
     it("clicking the header hide button should collapse an open panel", () => {
-        const { panel, toggle } = initToc(fakeEventManager, () => null);
+        const { panel, toggle } = mountToc();
         toggle(); // open
         expect(panel.classList.contains("toc-panel--open")).toBe(true);
 
@@ -147,7 +188,7 @@ describe("TOC header controls (side-switch, hide, reveal)", () => {
     });
 
     it("clicking the reveal tab should open a closed panel", () => {
-        const { panel } = initToc(fakeEventManager, () => null);
+        const { panel } = mountToc();
         expect(panel.classList.contains("toc-panel--open")).toBe(false);
 
         document.querySelector(".toc-toggle-tab")!
@@ -266,7 +307,7 @@ describe("TOC panel position vs toolbar visibility", () => {
 
     it("opening the flyout should clear the docked inline height so the card auto-sizes to its headings", () => {
         addTopbar({ height: 40, bottom: 40 });
-        const { panel } = initToc(fakeEventManager, () => null);
+        const { panel } = mountToc();
         // The docked drawer carries a full-height inline style…
         expect(panel.style.height).toBe(heightBelow(40));
         const tab = document.querySelector(".toc-toggle-tab") as HTMLElement;
@@ -279,7 +320,7 @@ describe("TOC panel position vs toolbar visibility", () => {
 
     it("docking open from the flyout should restore the drawer's full inline height", () => {
         addTopbar({ height: 40, bottom: 40 });
-        const { panel } = initToc(fakeEventManager, () => null);
+        const { panel } = mountToc();
         const tab = document.querySelector(".toc-toggle-tab") as HTMLElement;
         tab.dispatchEvent(new MouseEvent("mouseenter"));
         expect(panel.style.height).toBe("");
@@ -311,9 +352,10 @@ describe("TOC show/hide persistence (birta.tocVisibility)", () => {
     });
 
     it("toggling the panel should report the show/hide choice to the extension (which persists the setting)", () => {
-        const { toggle } = initToc(fakeEventManager, () => null);
+        const { toggle } = mountToc();
         mockVscodeApi.postMessage.mockClear();
-        // From the initial (closed, no headings) state, a toggle opens it.
+        // From the initial state (closed: one heading is under the auto-open
+        // threshold), a toggle opens it.
         toggle();
         expect(mockVscodeApi.postMessage).toHaveBeenCalledWith({
             type: "tocVisibility",
@@ -326,14 +368,20 @@ describe("TOC show/hide persistence (birta.tocVisibility)", () => {
         });
     });
 
-    it("tocVisibility 'shown' should open a docked panel even with no headings (overriding auto-open)", async () => {
+    it("tocVisibility 'shown' should keep the panel shut while it has nothing to show, and open it the moment it has something (overriding auto-open)", async () => {
         // The module reads window.__i18n at import time, so set it then re-import.
         vi.resetModules();
         (window as unknown as { __i18n?: unknown }).__i18n = { tocVisibility: "shown" };
         const { initToc: freshInitToc } = await import("../components/toc");
-        const { panel } = freshInitToc(fakeEventManager, () => null);
-        // Auto-open needs headings > threshold; with none it would stay closed.
-        // The explicit setting forces it open, proving the seed overrides.
+        let view = outlineView([]);
+        const { panel, refresh } = freshInitToc(fakeEventManager, () => view);
+        refresh();
+        // Nothing to show: a remembered "shown" does not open a panel of nothing.
+        expect(panel.classList.contains("toc-panel--open")).toBe(false);
+        // One heading: still under the auto-open threshold, so only the
+        // remembered "shown" can open it, which proves the seed overrides.
+        view = outlineView(["Intro"]);
+        refresh();
         expect(panel.classList.contains("toc-panel--open")).toBe(true);
     });
 
@@ -346,8 +394,8 @@ describe("TOC show/hide persistence (birta.tocVisibility)", () => {
     });
 
     it("an echoed tocVisibility change should update the panel without re-persisting", () => {
-        const { panel, applyVisibility, isOpen } = initToc(fakeEventManager, () => null);
-        // A fresh docked panel with no headings starts closed.
+        const { panel, applyVisibility, isOpen } = mountToc();
+        // A fresh docked panel under the auto-open threshold starts closed.
         expect(isOpen()).toBe(false);
         mockVscodeApi.postMessage.mockClear();
         // Another editor toggled the ToC on; the config-change echo lands here.
@@ -361,10 +409,10 @@ describe("TOC show/hide persistence (birta.tocVisibility)", () => {
     });
 
     it("an echoed 'auto' should return the panel to the heading-count heuristic", () => {
-        const { panel, applyVisibility } = initToc(fakeEventManager, () => null);
+        const { panel, applyVisibility } = mountToc();
         applyVisibility("shown");
         expect(panel.classList.contains("toc-panel--open")).toBe(true);
-        // Back to auto: with no headings the heuristic keeps it closed.
+        // Back to auto: under the threshold the heuristic keeps it closed.
         applyVisibility("auto");
         expect(panel.classList.contains("toc-panel--open")).toBe(false);
     });
@@ -482,8 +530,9 @@ describe("TOC drag-to-resize", () => {
     });
 
     it("resizing should keep the reveal tab pinned to the outer edge, not tracking the width", () => {
-        const { panel, toggle } = initToc(fakeEventManager, () => null);
+        const { panel, toggle } = mountToc();
         toggle();
+        expect(panel.classList.contains("toc-panel--open")).toBe(true);
         drag(getHandle(panel), 260, 340);
         const tab = document.querySelector(".toc-toggle-tab") as HTMLElement;
         // The reveal tab sits at the docked corner regardless of panel width
@@ -587,6 +636,7 @@ describe("active-heading tracking on scroll", () => {
         const { view, headingEls } = makeScrollView(texts);
         const toc = initToc(fakeEventManager, () => view);
         document.body.appendChild(toc.panel);
+        toc.refresh(); // the editor has mounted: the outline sees its headings
         toc.toggle();
         flush();
         return { view, headingEls, onScroll: scrollHandler() };
@@ -688,6 +738,7 @@ describe("outline refresh cost (observed-diff fast path)", () => {
         const view = makeView(doc);
         const toc = initToc(fakeEventManager, () => view);
         document.body.appendChild(toc.panel);
+        toc.refresh(); // the editor has mounted: the outline sees its headings
         toc.toggle(); // user-open: panel visible, walk runs, outline rendered
         return { view, toc };
     }

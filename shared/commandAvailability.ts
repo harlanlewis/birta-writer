@@ -2,7 +2,7 @@
  * shared/commandAvailability.ts
  *
  * THE predicate every surface asks before offering or running an editor
- * command. One question, three reasons a command can be absent, and no call
+ * command. One question, four reasons a command can be absent, and no call
  * site that knows how many there are.
  *
  * The reasons are different in kind and identical in effect:
@@ -13,6 +13,13 @@
  *                               user's (`absentUnder`)
  *   the target does not spell   an Insert Table button under a CommonMark-only
  *   it                          target (`syntax`, shared/syntaxSets.ts)
+ *   there is nothing to act on  Toggle Table of Contents on a document whose
+ *                               outline has nothing to show (`setCommandsIdle`)
+ *
+ * The last is the only one the DOCUMENT decides, and it moves while the page
+ * is open, as a syntax target does: a surface that offered a command asks
+ * again when told (the toolbar's `refreshOfferedItems`, the host palette's
+ * repost), exactly as it does for a target change.
  *
  * The first two meet in `hostHasCommand`, which is the host's own question and
  * stays that. This module adds the third, and exists rather than being folded
@@ -66,5 +73,33 @@ export function commandSyntax(id: string): SyntaxFeature | undefined {
  * "no gate", never "no such command".
  */
 export function commandAvailable(id: string): boolean {
-    return hostHasCommand(id) && syntaxAllows(COMMAND_SYNTAX.get(id));
+    return hostHasCommand(id) && syntaxAllows(COMMAND_SYNTAX.get(id)) && !idleCommands.has(id);
+}
+
+/** Commands the document currently gives nothing to act on. */
+const idleCommands = new Set<string>();
+
+/**
+ * The commands idle right now, for a host whose own menus run editor
+ * commands and has to dim them for the same reason every surface here
+ * withdraws them (the `idle` half of `paletteCommands`).
+ */
+export function idleCommandIds(): string[] {
+    return [...idleCommands];
+}
+
+/**
+ * Mark `ids` as having nothing to act on, or something again. Set by the
+ * component that owns what the commands act on (the outline, for its own
+ * commands), never by a surface. Returns whether anything changed, so the
+ * caller re-offers only when it must.
+ */
+export function setCommandsIdle(ids: readonly string[], idle: boolean): boolean {
+    let changed = false;
+    for (const id of ids) {
+        if (idleCommands.has(id) === idle) { continue; }
+        if (idle) { idleCommands.add(id); } else { idleCommands.delete(id); }
+        changed = true;
+    }
+    return changed;
 }

@@ -34,6 +34,8 @@ export interface FileExplorerGate {
     setCurrentProjectFile(path: string | null): void;
     directoryChanged(paths: string[]): void;
     setShowHidden(showHidden: boolean): void;
+    /** The host's floor on the panel's width; kept for a panel not built yet. */
+    setWidthFloor(width: number): void;
     toggle(): void;
     focus(): void;
     toggleHidden(): void;
@@ -55,6 +57,10 @@ export function createFileExplorerGate(deps: FileExplorerDeps): FileExplorerGate
     let showHidden = false;
     let expanded: readonly string[] | undefined;
     let flyoutTrigger: HTMLElement | null = null;
+    // Held rather than queued: the host sends it when its window is laid
+    // out, which can be before any folder is open, and the panel built later
+    // has to be drawn at it from its first frame.
+    let widthFloor: number | undefined;
     /** What arrived before the panel existed, in order. */
     const queue: Array<(c: FileExplorerController) => void> = [];
 
@@ -80,6 +86,7 @@ export function createFileExplorerGate(deps: FileExplorerDeps): FileExplorerGate
                     showHidden,
                     expanded,
                     visible: window.__i18n?.fileExplorerVisible,
+                    widthFloor,
                 });
                 if (flyoutTrigger) { controller.setFlyoutTrigger(flyoutTrigger); }
                 for (const fn of queue.splice(0)) { fn(controller); }
@@ -113,6 +120,10 @@ export function createFileExplorerGate(deps: FileExplorerDeps): FileExplorerGate
         setShowHidden: (next) => {
             showHidden = next;
             withController((c) => c.setShowHidden(next));
+        },
+        setWidthFloor(next) {
+            widthFloor = next;
+            controller?.setWidthFloor(next);
         },
         toggle: () => withController((c) => c.toggle()),
         focus: () => withController((c) => c.focus()),
