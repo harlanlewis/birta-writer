@@ -243,7 +243,6 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     private let accentRow = SwatchRow(colors: AppearanceOverlay.accents, noneTitle: "Default")
     private let tintRow = SwatchRow(colors: AppearanceOverlay.tints, noneTitle: "None")
     private let sidebarSwitch = NSSwitch()
-    private let tocSidebarSwitch = NSSwitch()
     private let formattingRowSwitch = NSSwitch()
     private let fontControl = NSSegmentedControl(labels: SettingsWindowController.fontChoices.map(\.title), trackingMode: .selectOne,
                                                  target: nil, action: nil)
@@ -1386,7 +1385,6 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         // on screen.
         case .formattingRow: return (formattingRowSwitch, [], nil)
         case .transparentSidebar: return (sidebarSwitch, [], nil)
-        case .transparentToc: return (tocSidebarSwitch, [], nil)
         case .font: return (fontControl, [], nil)
         case .fontSize: return (fontSizeStepper, [], nil)
         // No caption. Full fills the window and Fixed caps the text at a
@@ -2471,8 +2469,6 @@ extension SettingsWindowController {
         }
         sidebarSwitch.target = self
         sidebarSwitch.action = #selector(toggleTransparentSidebar)
-        tocSidebarSwitch.target = self
-        tocSidebarSwitch.action = #selector(toggleTransparentToc)
         formattingRowSwitch.target = self
         formattingRowSwitch.action = #selector(toggleFormattingRow)
 
@@ -2594,7 +2590,6 @@ extension SettingsWindowController {
         accentRow.select(settings.accent)
         tintRow.select(settings.tint)
         sidebarSwitch.state = settings.transparentSidebar ? .on : .off
-        tocSidebarSwitch.state = settings.transparentToc ? .on : .off
         // Not part of `AppearanceSettings`: it is a defaults key of its own
         // (`Prefs.formattingRowExpanded`), read here because this is the
         // Appearance pane's own redraw and Reset comes through it.
@@ -2707,12 +2702,6 @@ extension SettingsWindowController {
     /// this one just changed.
     @objc private func toggleFormattingRow() {
         onFormattingRowChange(formattingRowSwitch.state == .on)
-    }
-
-    @objc private func toggleTransparentToc() {
-        var settings = Prefs.appearance
-        settings.transparentToc = tocSidebarSwitch.state == .on
-        apply(settings)
     }
 
     @objc private func chooseFont() {

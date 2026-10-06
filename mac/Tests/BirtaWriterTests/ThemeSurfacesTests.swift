@@ -427,7 +427,7 @@ final class DrawerGroundSwitchTests: XCTestCase {
         _ = NSApp.sendAction(sw.action!, to: sw.target, from: sw)
     }
 
-    func testEachDrawerSwitchShouldOpenOnItsOwnDefaultAndMoveItsOwnGround() throws {
+    func testTheFileListSwitchShouldOpenOnItsDefaultAndMoveItsGround() throws {
         var applied: [AppearanceSettings] = []
         let controller = SettingsWindowController(
             flavour: .release, onHotkeyChange: { 0 }, onChange: { _ in }, onChangeEverywhere: {},
@@ -437,34 +437,20 @@ final class DrawerGroundSwitchTests: XCTestCase {
         controller.selectTabForTesting("appearance")
 
         let files = try toggle(.transparentSidebar, of: controller)
-        let contents = try toggle(.transparentToc, of: controller)
         XCTAssertEqual(files.state, .off, "the file list is shaded until asked otherwise")
-        XCTAssertEqual(contents.state, .on, "the table of contents reads as page until asked otherwise")
-
-        flip(contents, to: false)
-        XCTAssertEqual(applied.last?.transparentToc, false)
-        XCTAssertEqual(applied.last?.transparentSidebar, false, "the other switch did not move")
-        // Through the defaults as well as the struct, because the key behind
-        // this one is written INVERTED (absent is transparent, as absent is
-        // the default for every other appearance key).
-        XCTAssertEqual(Prefs.appearance.transparentToc, false)
 
         flip(files, to: true)
         XCTAssertEqual(applied.last?.transparentSidebar, true)
-        XCTAssertEqual(applied.last?.transparentToc, false, "and this one did not move the other back")
-
-        // Both set the way the two switches now stand, and the grounds still
-        // disagree: the whole point of two properties.
+        XCTAssertEqual(Prefs.appearance.transparentSidebar, true)
         let overlay = Appearance.resolve(Prefs.appearance, systemIsDark: false, theme: { _ in nil }).overlay
         let grounds = Dictionary(uniqueKeysWithValues: overlay.map { ($0.name, $0.value) })
         XCTAssertEqual(grounds[AppearanceOverlay.filesGround], "var(--vscode-editor-background)")
-        XCTAssertEqual(grounds[AppearanceOverlay.tocGround], "var(--vscode-sideBar-background)")
 
-        flip(contents, to: true)
-        XCTAssertEqual(Prefs.appearance.transparentToc, true)
+        flip(files, to: false)
+        XCTAssertEqual(Prefs.appearance.transparentSidebar, false)
         XCTAssertNil(Dictionary(uniqueKeysWithValues:
             Appearance.resolve(Prefs.appearance, systemIsDark: false, theme: { _ in nil })
-                .overlay.map { ($0.name, $0.value) })[AppearanceOverlay.tocGround],
+                .overlay.map { ($0.name, $0.value) })[AppearanceOverlay.filesGround],
                      "back to the default is back to declaring nothing")
     }
 }

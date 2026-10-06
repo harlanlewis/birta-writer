@@ -69,7 +69,6 @@ public enum SettingsRow: String, CaseIterable, Sendable {
     case accent = "Accent"
     case tint = "Tint"
     case transparentSidebar = "Transparent file list sidebar"
-    case transparentToc = "Transparent table of contents sidebar"
 
     /// What the pane draws as the row's name. The raw value is the row's
     /// NAME, which the palette lists ("Appearance › Theme") and a test
@@ -363,7 +362,7 @@ public enum SettingsForm {
             SettingsGroup(rows: [.formattingRow]),
             SettingsGroup(rows: [.followSystemAppearance]),
             SettingsGroup(rows: [.theme]),
-            SettingsGroup(rows: [.transparentSidebar, .transparentToc]),
+            SettingsGroup(rows: [.transparentSidebar]),
             SettingsGroup(rows: [.accent, .tint]),
         ])
 

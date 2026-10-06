@@ -84,10 +84,6 @@ enum Prefs {
         case tintColor
         case sidebarTransparent
         case seededDefaultThemes
-        // Written only while the table of contents is NOT transparent, which
-        // is the departure from the default; absent is the default here as
-        // it is for every other key.
-        case tocSidebarOpaque
     }
 
     /// The keys a reset must NOT clear, each for a reason of its own.
@@ -656,7 +652,6 @@ enum Prefs {
                 accent: d.string(forKey: Key.accentColor.rawValue),
                 tint: d.string(forKey: Key.tintColor.rawValue),
                 transparentSidebar: d.bool(forKey: Key.sidebarTransparent.rawValue),
-                transparentToc: !d.bool(forKey: Key.tocSidebarOpaque.rawValue),
                 heldKind: d.string(forKey: Key.appearanceHeld.rawValue).flatMap(AppearanceMode.init(rawValue:))?.heldKind)
         }
         set {
@@ -671,8 +666,6 @@ enum Prefs {
             put(newValue.tint, .tintColor)
             if newValue.transparentSidebar { d.set(true, forKey: Key.sidebarTransparent.rawValue) }
             else { d.removeObject(forKey: Key.sidebarTransparent.rawValue) }
-            if newValue.transparentToc { d.removeObject(forKey: Key.tocSidebarOpaque.rawValue) }
-            else { d.set(true, forKey: Key.tocSidebarOpaque.rawValue) }
         }
     }
 
