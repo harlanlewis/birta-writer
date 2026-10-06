@@ -2609,6 +2609,20 @@ case "$ROOT_TABS" in
     *) echo "directory window     FAILED: a file under the root did not join the rooted window as a tab" >&2
        echo "  $ROOT_TABS" >&2; exit 1 ;;
 esac
+# ...and that tab came on screen finished. Its page said its first screen was
+# up while it was still hidden (so nobody watched it build), and at that
+# moment it held the editor, the file list docked open, and the list's rows.
+# Read off the page itself (`Coordinator.firstScreenArrived`), because what is
+# asserted is what the reader is shown first, and only the page knows that.
+FIRST="$(grep "^birta-trace first-screen " "$LOG" | tail -1 | sed 's/^.*visibility=//' || true)"
+read -r FS_EDITOR FS_PANEL FS_ROWS FS_OPEN FS_VIS FS_SHOWN <<< "$FIRST"
+if [ "$FS_EDITOR" = true ] && [ "$FS_PANEL" = true ] && [ "${FS_ROWS:-0}" -ge 1 ] \
+   && [ "$FS_OPEN" = true ] && [ "$FS_VIS" = hidden ] && [ "$FS_SHOWN" = "shown=true" ]; then
+    echo "held tab             ok: the tab was shown once its page was finished (editor, file list, $FS_ROWS rows), not while it built"
+else
+    echo "held tab             FAILED: the new tab's first screen was not complete and hidden (editor panel rows open visibility shown):" >&2
+    echo "  ${FIRST:-<no first-screen trace>}" >&2; exit 1
+fi
 
 # THE COMMAND PALETTE (MAR-458), over the rooted window the arm above left in
 # front. Two claims only the live app can answer, because the catalog is read

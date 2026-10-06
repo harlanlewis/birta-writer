@@ -18,6 +18,7 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ### Fixed
 
+- New tabs and windows in Birta Writer for Mac appear finished. Opening a note in a new tab (Cmd-clicking a link or a file in the file list, Cmd+T, opening a file from the Finder) used to show a blank page, then the note with no file list, then the file list arriving and pushing the note over. The new tab now appears in the tab bar at once and comes forward when the note and the file list are both drawn, and a new window appears the same way. Opening a file in place from the file list, and changing a setting, keep the window as it was until the reloaded page is ready, instead of redrawing in front of you.
 - Link completion works in Birta Writer for Mac. Typing `[[` lists the notes in the window's folder, the link editor's URL field and the path fields in the link and image toolbars suggest files as you type, and the link editor's Browse button opens a file picker. Before, all four did nothing. In a window with no folder, the suggestions are the files beside the note.
 
 ---

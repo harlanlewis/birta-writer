@@ -1070,13 +1070,20 @@ final class Coordinator {
         panel.cascade(after: other.panel, from: point)
     }
 
-    /// Make `other` a tab of this window, selected. AppKit's window tabbing:
-    /// each tab stays a window of its own, sharing this one's frame and tab
-    /// bar (MAR-393).
+    /// Make `other` a tab of this window. AppKit's window tabbing: each tab
+    /// stays a window of its own, sharing this one's frame and tab bar
+    /// (MAR-393).
+    ///
+    /// Added, not selected: the tab in front stays there until `other` is
+    /// shown, which `WindowSet.open` does once its page is finished.
     func attachTab(_ other: Coordinator) {
         other.panel.adoptGroupFrame(of: panel)
         panel.addTabbedWindow(other.panel, ordered: .above)
     }
+
+    /// The tab in front of this one, while this one waits behind it
+    /// (`NSWindow.tabShowingInstead`).
+    var tabShowingInstead: NSWindow? { panel.tabShowingInstead }
 
     /// The tab group as AppKit reports it, for the app's rules about summon,
     /// dismissal and closing: every window sharing this one's tab bar, in
@@ -1283,6 +1290,9 @@ final class Coordinator {
 
         contentView.onAppearanceChange = { [weak self] in self?.applyTheme() }
         contentView.addSubview(host.webView)
+        // Directly above the page and below everything drawn over it.
+        contentView.addSubview(reloadCover)
+        reloadCover.autoresizingMask = [.width, .height]
         contentView.addSubview(statusOverlay)
         // ABOVE the web view in z-order, which is the whole of why it works:
         // the web view covers the band, so a sibling below it would never see
@@ -1939,8 +1949,116 @@ final class Coordinator {
         }
     }
 
+    // MARK: the first screen
+
+    /// How long a window holds back its new page for the page to say its
+    /// first screen is up (`firstScreen`) before showing what there is. Long
+    /// enough for a cold page on a busy machine; short enough that a page
+    /// that will never say so (a crash in its boot) costs a pause rather
+    /// than a window that never comes.
+    nonisolated static let firstScreenBound: TimeInterval = 1.5
+
+    /// The current page has said its first screen is up. Cleared by every
+    /// load, so it describes the page now in the view and no earlier one.
+    private var firstScreenUp = false
+    private var firstScreenWaiters: [() -> Void] = []
+
+    /// Run `fn` once, when this window's page has its first screen up or
+    /// after `bound`, whichever is first; at once if it is up already.
+    func whenFirstScreen(within bound: TimeInterval = Coordinator.firstScreenBound, _ fn: @escaping () -> Void) {
+        if firstScreenUp { fn(); return }
+        var done = false
+        let once = {
+            guard !done else { return }
+            done = true
+            fn()
+        }
+        firstScreenWaiters.append(once)
+        DispatchQueue.main.asyncAfter(deadline: .now() + bound) { once() }
+    }
+
+    private func firstScreenArrived() {
+        // Only the page that was asked for: a load clears `firstScreenUp`
+        // and moves `state` off `.warm`, so a word from a page already on
+        // its way out is not taken for the one replacing it.
+        guard state == .warm, !firstScreenUp else { return }
+        firstScreenUp = true
+        measure.mark("first-screen")
+        if measure.enabled {
+            // What the page holds at the moment it says it is up, which is
+            // what a reader is shown first: whether the editor and, in a
+            // rooted window, the file list and its rows are there yet.
+            let probe = """
+                [!!document.querySelector('.ProseMirror'),
+                 !!document.querySelector('.files-panel'),
+                 document.querySelectorAll('.files-row:not(.files-row--loading)').length,
+                 document.body.classList.contains('files-open'),
+                 document.visibilityState].join(' ')
+                """
+            host.webView.evaluateJavaScript(probe) { [weak self] result, _ in
+                MainActor.assumeIsolated {
+                    self?.measure.trace("first-screen editor/panel/rows/open/visibility=\(result as? String ?? "?") shown=\(self?.panel.isVisible ?? false)")
+                }
+            }
+        }
+        let waiters = firstScreenWaiters
+        firstScreenWaiters.removeAll()
+        waiters.forEach { $0() }
+    }
+
+    /// The last frame of the page being replaced, held over the web view
+    /// while its successor builds (`loadPage`). Below everything else the
+    /// window draws over the page, so the status line, the drag strip and the
+    /// missing-file card stay live over it.
+    private let reloadCover: NSImageView = {
+        let view = NSImageView()
+        view.imageScaling = .scaleNone
+        view.imageAlignment = .alignTopLeft
+        view.isHidden = true
+        return view
+    }()
+
+    /// A snapshot is being taken for the cover, and the load waits on it.
+    /// Counted rather than flagged, so the bound of one snapshot cannot end
+    /// the wait of a later one.
+    private var coverSnapshot = 0
+    private var coverSnapshotPending = false
+
+    /// Whether an edit the page posts is this window's document. Not while a
+    /// page is loading: the only page that can post then is the one being
+    /// replaced, and every path that replaces a page has flushed its bytes
+    /// and has often already bound the window to a different file. An edit
+    /// admitted then would be the old note's text written over the new one.
+    /// The cover widens that moment (the old page stays live and focused
+    /// until its snapshot is taken), which is why the line is drawn here
+    /// rather than left to how fast a navigation happens to be.
+    private var acceptsEdits: Bool { state != .loading }
+
+    /// Long enough for a responsive page to hand over its frame, and short
+    /// enough that a page too busy to answer does not delay its own
+    /// replacement noticeably.
+    private static let coverSnapshotBound: TimeInterval = 0.25
+
+    private func liftReloadCover() {
+        if measure.enabled { measure.mark("reload-cover-lifted") }
+        reloadCover.isHidden = true
+        reloadCover.image = nil
+    }
+
+    /// Build this window's page. A page that is on screen when it is
+    /// replaced (a file opened in place, a setting that reloads, a rebind)
+    /// leaves its last frame over the window until the new page's first
+    /// screen is up, so the reader goes from one finished window to the next
+    /// and never watches the second assemble: an editor at full width, then
+    /// the file list arriving and pushing it over. Without the cover the web
+    /// view shows the new page as it paints, and it paints long before it is
+    /// finished. A page that is not on screen has nobody watching and loads
+    /// at once, and a tab opened beside another is held back by `WindowSet`
+    /// instead, where the tab in front is the cover.
     private func loadPage() {
+        let replacingVisiblePage = state == .warm && panel.isVisible
         state = .loading
+        firstScreenUp = false
         folderIndexSubscribed = false
         measure.mark("load-start")
         // Decided HERE, before the page starts, and once. The page reads the
@@ -1962,6 +2080,35 @@ final class Coordinator {
             ? ViewStateOnOpen.forRemount(remembered)
             : ViewStateOnOpen.forOpen(remembered)
         lastMountedURL = boundURL
+        // A snapshot already on its way loads whatever page is current when
+        // it lands, which is this one.
+        guard !coverSnapshotPending else { return }
+        guard replacingVisiblePage else {
+            startPageLoad()
+            return
+        }
+        coverSnapshotPending = true
+        coverSnapshot += 1
+        let snapshot = coverSnapshot
+        let begin = { [weak self] (image: NSImage?) in
+            guard let self, self.coverSnapshotPending, self.coverSnapshot == snapshot else { return }
+            self.coverSnapshotPending = false
+            if self.measure.enabled { self.measure.trace("reload-cover snapshot=\(image != nil)") }
+            if let image {
+                self.reloadCover.image = image
+                self.reloadCover.frame = self.host.webView.frame
+                self.reloadCover.isHidden = false
+                self.whenFirstScreen { [weak self] in self?.liftReloadCover() }
+            }
+            self.startPageLoad()
+        }
+        host.webView.takeSnapshot(with: nil) { image, _ in
+            MainActor.assumeIsolated { begin(image) }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.coverSnapshotBound) { begin(nil) }
+    }
+
+    private func startPageLoad() {
         host.schemeHandler.networkEnabled = Prefs.networkEnabled
         host.load(themeClass: currentThemeClass(), themeCSS: appearance.stylesheet())
     }
@@ -2203,6 +2350,10 @@ final class Coordinator {
             applyChromeVisibility()
             if panel.isVisible { host.focusEditor() }
         case let .update(content, base, seq):
+            guard acceptsEdits else {
+                measure.trace("update refused: the page that sent it is being replaced")
+                break
+            }
             switch guardState.judge(baseSyncVersion: base, seq: seq) {
             case .admit:
                 // The page serializes the BODY: the frontmatter block never
@@ -2254,6 +2405,10 @@ final class Coordinator {
             // a re-push rather than rebased, the same degradation the extension
             // settles a rejected frontmatter base with: this side replaces one
             // block and has nothing to rebase a whole document against.
+            guard acceptsEdits else {
+                measure.trace("frontmatterUpdate refused: the page that sent it is being replaced")
+                break
+            }
             guard guardState.admits(baseSyncVersion: base) else {
                 pushDocument(latest, syncVersion: guardState.version)
                 break
@@ -2428,6 +2583,8 @@ final class Coordinator {
             idleCommands = idle
         case let .focusState(focused):
             if focused { measure.mark("caret-ready") }
+        case .firstScreen:
+            firstScreenArrived()
         case let .crash(message, source):
             NSLog("Birta Writer: webview crash (\(source)): \(message)")
         case let .uploadImage(id, data, mimeType, _):

@@ -73,6 +73,16 @@
   window.acquireVsCodeApi = () => ({
     postMessage: (msg) => {
       window.__posted.push(msg);
+      // What a host that waits on `firstScreen` would show, taken at the
+      // moment the message arrives.
+      if (msg.type === "firstScreen") {
+        window.__firstScreen = {
+          editor: !!document.querySelector(".ProseMirror"),
+          panel: !!document.querySelector(".files-panel"),
+          rows: document.querySelectorAll(".files-row:not(.files-row--loading)").length,
+          loading: document.querySelectorAll(".files-row--loading").length,
+        };
+      }
       if (msg.type === "ready") {
         window.postMessage({ type: "init", content: CONTENT, frontmatter: "", syncVersion: 1 }, "*");
         reply({ type: "projectRoot", root: WITH_ROOT ? { name: "Notes", path: "/Users/me/Notes" } : null, showHidden: false });

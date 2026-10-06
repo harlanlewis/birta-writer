@@ -599,3 +599,99 @@ describe("the file explorer under a host's titlebar", () => {
         expect(document.documentElement.style.getPropertyValue("--files-width")).toBe("340px");
     });
 });
+
+describe("the file explorer's first tree", () => {
+    let gate: FileExplorerGate;
+
+    /** Whether `p` has resolved, read after letting every queued continuation run. */
+    async function isSettled(p: Promise<void>): Promise<boolean> {
+        let done = false;
+        void p.then(() => { done = true; });
+        for (let i = 0; i < 10; i++) { await Promise.resolve(); }
+        return done;
+    }
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+        declareHost();
+        Object.defineProperty(window, "innerWidth", { value: 1200, configurable: true });
+        vi.stubGlobal("requestAnimationFrame", (cb: FrameRequestCallback) => { cb(0); return 0; });
+        document.body.className = "";
+        document.body.innerHTML = "";
+        document.documentElement.style.cssText = "";
+    });
+
+    afterEach(() => {
+        gate.setProjectRoot(null, false);
+        vi.unstubAllGlobals();
+        vi.useRealTimers();
+        delete (globalThis as { __i18n?: unknown }).__i18n;
+    });
+
+    it("a rooted page should not count its tree as drawn until the root's rows have come back", async () => {
+        gate = makeGate();
+        await mounted(gate);
+        expect(await isSettled(gate.settled())).toBe(false);
+        answer(gate, "", [file("a.md")]);
+        expect(await isSettled(gate.settled())).toBe(true);
+    });
+
+    it("a rooted page whose projectRoot has not arrived should still be waiting, not settled", async () => {
+        gate = makeGate();
+        expect(await isSettled(gate.settled())).toBe(false);
+    });
+
+    it("the walk to the current file should be part of the first tree, every folder down to it answered", async () => {
+        gate = makeGate();
+        gate.setProjectRoot(ROOT, false);
+        // The host sends the current file beside the root, ahead of any answer.
+        gate.setCurrentProjectFile("docs/guide/deep.md");
+        await vi.waitFor(() => { expect(panel()).not.toBeNull(); });
+        answer(gate, "", [dir("docs")]);
+        expect(await isSettled(gate.settled())).toBe(false);
+        answer(gate, "docs", [dir("guide")]);
+        expect(await isSettled(gate.settled())).toBe(false);
+        answer(gate, "docs/guide", [file("deep.md")]);
+        expect(await isSettled(gate.settled())).toBe(true);
+        expect(row("docs/guide/deep.md")).not.toBeNull();
+    });
+
+    it("a folder the host cannot read should count as drawn: its error row is what the tree shows", async () => {
+        gate = makeGate();
+        await mounted(gate);
+        answer(gate, "", null, "Permission denied");
+        expect(await isSettled(gate.settled())).toBe(true);
+    });
+
+    it("a host that never answers should leave the tree settled once the listing gives up", async () => {
+        vi.useFakeTimers();
+        gate = makeGate();
+        gate.setProjectRoot(ROOT, false);
+        await vi.waitFor(() => { expect(panel()).not.toBeNull(); });
+        expect(await isSettled(gate.settled())).toBe(false);
+        await vi.advanceTimersByTimeAsync(LISTING_TIMEOUT_MS);
+        expect(await isSettled(gate.settled())).toBe(true);
+    });
+
+    it("a null root should settle the wait: there is no tree to draw after all", async () => {
+        gate = makeGate();
+        gate.setProjectRoot(null, false);
+        expect(await isSettled(gate.settled())).toBe(true);
+    });
+
+    it("a host without projectFiles should have nothing to wait for", async () => {
+        (globalThis as { __i18n?: unknown }).__i18n = {
+            translations: {},
+            isMac: true,
+            host: { capabilities: [], arrangements: [], shortcuts: [] },
+        };
+        gate = makeGate();
+        expect(await isSettled(gate.settled())).toBe(true);
+    });
+
+    it("an explorer the reader left hidden should not hold the first screen for rows nobody sees", async () => {
+        (globalThis as { __i18n?: { fileExplorerVisible?: boolean } }).__i18n!.fileExplorerVisible = false;
+        gate = makeGate();
+        expect(await isSettled(gate.settled())).toBe(true);
+    });
+});

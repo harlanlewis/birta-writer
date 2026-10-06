@@ -537,6 +537,11 @@ final class WindowSet {
     /// tab of the group, because each tab's page has its own tree.
     private var roots: [String: DirectoryWatcher] = [:]
 
+    /// Per tab in front, the newest tab held back behind it while its page
+    /// builds (`open`). Identities rather than references, so a held tab
+    /// closed before it is ready is not kept alive by being waited on.
+    private var newestHeldTab: [ObjectIdentifier: ObjectIdentifier] = [:]
+
     /// The windows rooted at `root`, in the set's order.
     private func windows(rootedAt root: URL) -> [Coordinator] {
         windows.filter { $0.explorerRoot.map { FileIdentity.sameFile($0, root) } ?? false }
@@ -1215,10 +1220,53 @@ final class WindowSet {
     ///   said a window (`OpenRouting.Destination.newWindow`).
     private func open(_ coordinator: Coordinator, asSeparateWindow: Bool = false) {
         coordinator.start()
-        if asSeparateWindow {
-            coordinator.withAutomaticTabbingSuspended { coordinator.show() }
-        } else {
-            coordinator.show()
+        // A tab added behind the one in front (`makeWindow`) comes forward
+        // when its page says its first screen is up, so the reader goes
+        // from the note they were in to the finished new one, and never sees
+        // the page assemble in between. It is in the bar from the start,
+        // which is the answer to the click, and it can be picked from there
+        // before it is finished.
+        if let showing = coordinator.tabShowingInstead {
+            let from = ObjectIdentifier(showing)
+            let held = ObjectIdentifier(coordinator)
+            newestHeldTab[from] = held
+            coordinator.whenFirstScreen { [weak self, weak coordinator, weak showing] in
+                guard let self, let coordinator else { return }
+                // Only the newest tab asked for from this tab comes forward:
+                // two links followed in quick succession end on the second,
+                // and the first waits in the bar.
+                guard self.newestHeldTab[from] == held else { return }
+                self.newestHeldTab[from] = nil
+                // And only while the reader is still where they asked from.
+                // A tab they picked themselves meanwhile, this one included,
+                // is where they meant to be.
+                guard let showing, coordinator.tabShowingInstead === showing else { return }
+                if NSApp.isActive {
+                    coordinator.show()
+                } else {
+                    // The reader has gone to another app: the tab changes
+                    // under them, where they left it, and nothing is brought
+                    // in front of what they went to.
+                    coordinator.selectTab()
+                }
+            }
+            return
+        }
+        // Anything else comes on screen by itself, and the same rule holds:
+        // it comes when its page is finished rather than as paper first. The
+        // page builds hidden, as a launch's prewarm does; the bound in
+        // `whenFirstScreen` is what keeps a page that never answers from
+        // keeping its window away.
+        coordinator.whenFirstScreen { [weak coordinator] in
+            // Already up: something else showed it meanwhile (a summon of
+            // every window), and showing it again would take the keyboard
+            // a second time.
+            guard let coordinator, !coordinator.isVisible else { return }
+            if asSeparateWindow {
+                coordinator.withAutomaticTabbingSuspended { coordinator.show() }
+            } else {
+                coordinator.show()
+            }
         }
     }
 

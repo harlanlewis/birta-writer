@@ -29,6 +29,7 @@ function stubDeps(): MessageHandlerDeps {
             setLineOffset: () => {},
             initEditor: async () => {},
             retryScroll: () => {},
+            announceFirstScreen: () => {},
             getEditorView: () => null,
             refreshToc: () => {},
             setLineNumbers: () => {},
@@ -652,6 +653,38 @@ describe("toolbarConfig handler", () => {
 
         // Assert
         expect(applyConfig).toHaveBeenCalledWith(config);
+    });
+});
+
+describe("init — the first screen", () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+    });
+
+    it("an init should announce the first screen only after the editor has mounted", async () => {
+        const order: string[] = [];
+        const deps = stubDeps();
+        deps.actions.initEditor = async () => {
+            await Promise.resolve();
+            order.push("mounted");
+        };
+        deps.actions.announceFirstScreen = () => { order.push("announced"); };
+        const handlers = createMessageHandlers(deps);
+        const container = document.createElement("div");
+        await handlers.init({ type: "init", content: "hello\n", syncVersion: 1 } as never, container);
+        expect(order).toEqual(["mounted", "announced"]);
+    });
+
+    it("an init whose mount throws should still announce, so a host holding the page back shows what there is", async () => {
+        const deps = stubDeps();
+        deps.actions.initEditor = async () => { throw new Error("mount failed"); };
+        const announce = vi.fn();
+        deps.actions.announceFirstScreen = announce;
+        const handlers = createMessageHandlers(deps);
+        const container = document.createElement("div");
+        await expect(handlers.init({ type: "init", content: "x\n", syncVersion: 1 } as never, container))
+            .rejects.toThrow("mount failed");
+        expect(announce).toHaveBeenCalledTimes(1);
     });
 });
 

@@ -81,6 +81,7 @@ import { initPathComplete } from "./components/pathLink/pathComplete";
 import { initFindBar } from "./components/findBar";
 import { createLineNumbersGate } from "./utils/lineNumbersLoader";
 import { createFileExplorerGate } from "./utils/fileExplorerLoader";
+import { createFirstScreen } from "./firstScreen";
 import { initHeadingIds } from "./headingIds";
 import { initToolbar } from "./components/toolbar";
 import { setupSelectionToolbar } from "./components/selectionToolbar";
@@ -1110,6 +1111,7 @@ initScrollPersistence(eventManager);
 initPaneWidthVar();
 
 // ── Message handlers ───────────────────────────────────────
+const firstScreen = createFirstScreen();
 const handlers = createMessageHandlers({
     state: {
         getEditor: () => currentEditor,
@@ -1143,6 +1145,7 @@ const handlers = createMessageHandlers({
         },
         initEditor,
         retryScroll,
+        announceFirstScreen: () => firstScreen.announce(fileExplorer.settled()),
         getEditorView,
         // An external edit changes the document, not the panel's own state.
         refreshToc: () => toc?.refreshContent(),
