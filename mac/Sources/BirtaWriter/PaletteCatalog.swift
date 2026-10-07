@@ -110,7 +110,16 @@ enum PaletteSources {
     /// the window rather than spelled here so a renamed pane cannot leave the
     /// palette opening nothing. The titles and forms are in the window's tab
     /// order, which `PaletteWindowTests` holds against the window's titles.
+    ///
+    /// Filtered by this build's channel, as the window's own tabs are: a row
+    /// the store build omits from Settings is not a palette row that opens a
+    /// pane without it, and a pane it empties is not a group.
     static var settingsPanes: [(name: String, title: String, pane: SettingsPane)] {
+        settingsPanes(offeredBy: .current)
+    }
+
+    static func settingsPanes(offeredBy distribution: Distribution)
+        -> [(name: String, title: String, pane: SettingsPane)] {
         let forms: [(String, SettingsPane)] = [
             ("General", SettingsForm.general),
             ("Markdown", SettingsForm.markdown),
@@ -118,7 +127,9 @@ enum PaletteSources {
             ("AI Agent", SettingsForm.aiAgent),
             ("Advanced", SettingsForm.advanced(showsWelcomeScreen: true)),
         ]
-        return zip(SettingsWindowController.paneNames, forms).map { ($0, $1.0, $1.1) }
+        return zip(SettingsWindowController.paneNames, forms)
+            .map { ($0, $1.0, distribution.offered($1.1)) }
+            .filter { !$0.pane.groups.isEmpty }
     }
 
     static let filesSection = "Files"

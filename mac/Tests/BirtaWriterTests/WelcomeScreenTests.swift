@@ -48,7 +48,7 @@ final class WelcomeScreenTests: XCTestCase {
     }
 
     func testTheFirstRunScreenShouldDrawEveryRowItAsksAbout() {
-        let welcome = WelcomeView(flavour: .release, onHotkeyChange: { 0 })
+        let welcome = WelcomeView(flavour: .release, distribution: .direct, onHotkeyChange: { 0 })
         welcome.layoutSubtreeIfNeeded()
         let drawn = rowLabels(in: welcome)
         let declared = SettingsForm.rows(of: SettingsForm.welcome).map(\.rawValue)
@@ -67,7 +67,7 @@ final class WelcomeScreenTests: XCTestCase {
     /// gesture; deleting `showSummon()` from `sync()` turns this red.
     func testTheFirstRunScreenShouldReportADefaultChordTheSystemRefused() {
         let refused = HotkeyCombo.release
-        let welcome = WelcomeView(flavour: .release, onHotkeyChange: { 0 },
+        let welcome = WelcomeView(flavour: .release, distribution: .direct, onHotkeyChange: { 0 },
                                  refusedSummonCombo: { refused })
         welcome.layoutSubtreeIfNeeded()
 
@@ -84,7 +84,7 @@ final class WelcomeScreenTests: XCTestCase {
     /// Without this the arm above could pass while a clean run showed a
     /// sentence too, which would make the red mean nothing.
     func testTheFirstRunScreenShouldStaySilentAboutAChordTheSystemTook() {
-        let welcome = WelcomeView(flavour: .release, onHotkeyChange: { 0 })
+        let welcome = WelcomeView(flavour: .release, distribution: .direct, onHotkeyChange: { 0 })
         welcome.layoutSubtreeIfNeeded()
 
         guard let row = welcome.rowForTesting(.summon) else {
@@ -103,11 +103,11 @@ final class WelcomeScreenTests: XCTestCase {
     /// itself is not the claim.
     func testTheTwoScreensShouldWordARefusedChordTheSameWay() {
         let refused = HotkeyCombo.release
-        let welcome = WelcomeView(flavour: .release, onHotkeyChange: { 0 },
+        let welcome = WelcomeView(flavour: .release, distribution: .direct, onHotkeyChange: { 0 },
                                  refusedSummonCombo: { refused })
         welcome.layoutSubtreeIfNeeded()
         let controller = SettingsWindowController(
-            flavour: .release, onHotkeyChange: { 0 }, refusedSummonCombo: { refused },
+            flavour: .release, distribution: .direct, onHotkeyChange: { 0 }, refusedSummonCombo: { refused },
             onChange: { _ in }, onChangeEverywhere: {}, onShowWelcome: {},
             onCheckForUpdates: {})
         defer { controller.window?.close() }
@@ -126,7 +126,7 @@ final class WelcomeScreenTests: XCTestCase {
     /// of claim nothing else on this screen can make: every other check here
     /// asks whether something is drawn.
     func testTheFirstRunScreenShouldNotWriteTheAppsNameUnderItsOwnMark() {
-        let welcome = WelcomeView(flavour: .release, onHotkeyChange: { 0 })
+        let welcome = WelcomeView(flavour: .release, distribution: .direct, onHotkeyChange: { 0 })
         welcome.layoutSubtreeIfNeeded()
 
         var text: [String] = []
@@ -157,11 +157,11 @@ final class WelcomeScreenTests: XCTestCase {
     /// question is findable in Settings rather than findable on one particular
     /// tab. Automatically update is the row that makes the distinction real.
     func testEveryRowTheFirstRunDrawsShouldBeDrawnInSettingsToo() {
-        let welcome = WelcomeView(flavour: .release, onHotkeyChange: { 0 })
+        let welcome = WelcomeView(flavour: .release, distribution: .direct, onHotkeyChange: { 0 })
         welcome.layoutSubtreeIfNeeded()
         let asked = rowLabels(in: welcome)
 
-        let controller = SettingsWindowController(flavour: .release, onHotkeyChange: { 0 },
+        let controller = SettingsWindowController(flavour: .release, distribution: .direct, onHotkeyChange: { 0 },
                                                   onChange: { _ in }, onChangeEverywhere: {}, onShowWelcome: {},
                                                   onCheckForUpdates: {})
         defer { controller.window?.close() }
@@ -195,7 +195,7 @@ final class WelcomeScreenTests: XCTestCase {
     func testOnlyADevelopmentBuildsFirstRunShouldExplainADeadUpdateRow() {
         var drawn: [AppFlavor: (dimmed: Bool, note: String, red: Bool)] = [:]
         for flavour in AppFlavor.allCases {
-            let welcome = WelcomeView(flavour: flavour, onHotkeyChange: { 0 })
+            let welcome = WelcomeView(flavour: flavour, distribution: .direct, onHotkeyChange: { 0 })
             welcome.layoutSubtreeIfNeeded()
             guard let row = updateRow(in: welcome) else {
                 return XCTFail("the first-run screen draws no update row on \(flavour)")

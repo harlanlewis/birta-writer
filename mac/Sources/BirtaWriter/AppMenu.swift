@@ -353,8 +353,21 @@ enum AppMenu {
         }
     }
 
-    /// The rows, in menu order within each menu and submenu.
-    static let rows: [Row] = appRows + fileRows + editRows + formatRows + viewRows + helpRows
+    /// The rows, in menu order within each menu and submenu, as this build's
+    /// channel offers them.
+    static let rows: [Row] = rows(offeredBy: .current)
+
+    /// The table as `distribution` offers it. Check for Updates is the one row
+    /// a channel takes away: a copy the App Store updates has nothing for it
+    /// to ask, and a row that only says so is a menu item for a thing this
+    /// copy does not do. Taken out HERE, so the menu, the palette and every
+    /// reader of `rows` lose it together.
+    static func rows(offeredBy distribution: Distribution) -> [Row] {
+        (appRows + fileRows + editRows + formatRows + viewRows + helpRows).filter { row in
+            distribution.updatesItself
+                || row.action.selector != #selector(AppDelegate.menuCheckForUpdates)
+        }
+    }
 
     /// What the recents submenu answers to, so a check can find it in a built
     /// menu without matching on a title a translation could change.

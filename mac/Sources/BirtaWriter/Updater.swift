@@ -159,7 +159,9 @@ final class Updater {
     /// a test that did not inject `download` would reach the release host for
     /// real without ever calling the method that does it.
     struct Environment {
-        var mayCheck: () -> Bool = { AppFlavor.current.updatesItself && Prefs.isUserStore }
+        var mayCheck: () -> Bool = {
+            Distribution.current.updatesItself(flavour: AppFlavor.current) && Prefs.isUserStore
+        }
         var autoUpdate: () -> Bool = { Prefs.autoUpdate }
         /// The version already answered no to, which is neither offered nor
         /// staged. Read here rather than only at the offer, because the
@@ -318,7 +320,7 @@ final class Updater {
     /// caller's to put in front of the person, on the window they pressed
     /// from, which the panel's status line may well be hidden behind.
     func checkNow(then done: @escaping (CheckResult) -> Void) {
-        guard AppFlavor.current.updatesItself else {
+        guard Distribution.current.updatesItself(flavour: AppFlavor.current) else {
             done(.refused)
             return
         }

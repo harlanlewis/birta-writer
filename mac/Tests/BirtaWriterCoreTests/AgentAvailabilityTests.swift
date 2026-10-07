@@ -34,4 +34,16 @@ final class AgentAvailabilityTests: XCTestCase {
                           "\(preset.title) has no runnable template")
         }
     }
+
+    /// The third way to have none, and the one the switch cannot see: under
+    /// the store's sandbox there is no command this process could run.
+    func testAStoreBuildShouldOfferNoAgentWhateverTheSwitchAndCommandSay() {
+        XCTAssertFalse(AgentAvailability.isAvailable(enabled: true, command: "claude -p {prompt}",
+                                                     distribution: .appStore))
+        XCTAssertTrue(AgentAvailability.isAvailable(enabled: true, command: "claude -p {prompt}",
+                                                    distribution: .direct))
+        XCTAssertFalse(AgentAvailability.isAvailable(enabled: false, command: "claude -p {prompt}",
+                                                     distribution: .direct),
+                       "a direct build still answers the switch and the command as before")
+    }
 }

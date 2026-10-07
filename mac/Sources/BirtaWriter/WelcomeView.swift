@@ -61,10 +61,17 @@ final class WelcomeView: NSView {
     /// explicitly by the one production caller.
     let flavour: AppFlavor
 
+    /// Which channel this screen is drawing for, taken for the same reason:
+    /// the test process is never sandboxed, so the store arm of the update
+    /// row is unreachable through `Distribution.current` here too.
+    let distribution: Distribution
+
     init(flavour: AppFlavor,
+         distribution: Distribution,
          onHotkeyChange: @escaping () -> OSStatus,
          refusedSummonCombo: @escaping () -> HotkeyCombo? = { nil }) {
         self.flavour = flavour
+        self.distribution = distribution
         self.onHotkeyChange = onHotkeyChange
         self.refusedSummonCombo = refusedSummonCombo
         super.init(frame: .zero)
@@ -202,7 +209,10 @@ final class WelcomeView: NSView {
         // here, because the same declaration draws Settings' General pane and
         // the two must not drift apart; this file only says what each row is
         // wired to.
-        let form = NSStackView(views: SettingsForm.welcome.map { group in
+        // Filtered by the channel the way Settings is, so a row a store build
+        // omits there is not asked here either.
+        let groups = distribution.offered(SettingsForm.welcome)
+        let form = NSStackView(views: groups.map { group in
             SettingsWindowController.group(group.rows.map { row in
                 let (control, caption) = wiring(for: row)
                 let view = SettingsWindowController.row(row.settingsRow, control: control,
@@ -212,7 +222,7 @@ final class WelcomeView: NSView {
             })
         })
         locationGroup = form.arrangedSubviews[
-            SettingsForm.welcome.firstIndex(where: { $0.rows.contains(.location) }) ?? 1]
+            groups.firstIndex(where: { $0.rows.contains(.location) }) ?? 1]
         form.orientation = .vertical
         form.alignment = .leading
         // ONE gap between cards, and that is the whole of it. This used to set
@@ -368,7 +378,7 @@ final class WelcomeView: NSView {
         // documenting the answers: a row that works needs no sentence here,
         // and one that cannot needs the same sentence Settings gives it.
         let availability = RowAvailability
-            .autoUpdate(updatesItself: flavour.updatesItself).problemsOnly
+            .autoUpdate(updatesItself: distribution.updatesItself(flavour: flavour)).problemsOnly
         updateSwitch.isEnabled = availability.isEnabled
         updateSwitch.state = Prefs.autoUpdate && availability.isEnabled ? .on : .off
         rowViews[.autoUpdate]?.apply(availability)

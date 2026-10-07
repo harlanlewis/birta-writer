@@ -115,6 +115,14 @@ public enum AgentAvailability {
     public static func isAvailable(enabled: Bool, command: String) -> Bool {
         enabled && !command.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
+
+    /// The same, on a build whose channel may forbid it. A third way to have
+    /// no agent, and the one the switch cannot see: under the App Store's
+    /// sandbox there is no command this process could run, whatever the field
+    /// says (`Distribution.offersAgent`).
+    public static func isAvailable(enabled: Bool, command: String, distribution: Distribution) -> Bool {
+        distribution.offersAgent && isAvailable(enabled: enabled, command: command)
+    }
 }
 
 public enum AgentPreset: String, CaseIterable, Sendable {

@@ -45,7 +45,9 @@ final class AboutWindowController: NSWindowController {
     /// closure rather than a selector up the responder chain, so the window
     /// can be built and pressed in a test with no delegate behind it, and so
     /// the one thing this window can DO is legible at the call that opens it.
-    init(info: AboutInfo = .current, onCheckForUpdates: @escaping () -> Void = {}) {
+    /// Nil draws no button: a copy whose channel updates it (the App Store's)
+    /// has nothing for the button to ask.
+    init(info: AboutInfo = .current, onCheckForUpdates: (() -> Void)? = {}) {
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: Metrics.minColumnWidth, height: Metrics.icon),
             styleMask: [.titled, .closable], backing: .buffered, defer: false)
@@ -81,7 +83,7 @@ final class AboutWindowController: NSWindowController {
     required init?(coder: NSCoder) { fatalError("not used") }
 
     /// The column, top to bottom.
-    private static func stack(_ info: AboutInfo, onCheckForUpdates: @escaping () -> Void) -> NSStackView {
+    private static func stack(_ info: AboutInfo, onCheckForUpdates: (() -> Void)?) -> NSStackView {
         let iconView = NSImageView(image: appIcon())
         iconView.imageScaling = .scaleProportionallyUpOrDown
         // Before the size constraints: the stack sets this for an arranged
@@ -112,17 +114,20 @@ final class AboutWindowController: NSWindowController {
         // the links leave the app and this does not, and one width with them
         // because the eye reads the column as one stack whatever the buttons
         // do. `ActionButton` is what makes it reachable from a test.
-        let check = ActionButton(title: "Check for Updates…", action: onCheckForUpdates)
-        check.bezelStyle = .rounded
-        check.controlSize = .regular
-        check.font = .systemFont(ofSize: NSFont.systemFontSize)
+        let check = onCheckForUpdates.map { action in
+            let button = ActionButton(title: "Check for Updates…", action: action)
+            button.bezelStyle = .rounded
+            button.controlSize = .regular
+            button.font = .systemFont(ofSize: NSFont.systemFontSize)
+            return button
+        }
 
         let links = linkColumn()
         // The widest TITLE among every button in the stack, so nothing here
         // can be clipped by a number chosen in advance, taken before any
         // width constraint exists: once one does, a button reports it back
         // as its fitting size and this would be the column measuring itself.
-        let buttons = [check] + links.arrangedSubviews.compactMap { $0 as? NSButton }
+        let buttons = [check].compactMap { $0 } + links.arrangedSubviews.compactMap { $0 as? NSButton }
         let width = max(Metrics.minColumnWidth, buttons.map(\.intrinsicContentSize.width).max() ?? 0)
         for button in buttons {
             // As with the icon: the stack sets this for an arranged subview,
@@ -132,13 +137,13 @@ final class AboutWindowController: NSWindowController {
             button.widthAnchor.constraint(equalToConstant: width).isActive = true
         }
 
-        let stack = NSStackView(views: [iconView, name, version, check, links])
+        let stack = NSStackView(views: [iconView, name, version] + [check].compactMap { $0 } + [links])
         stack.orientation = .vertical
         stack.alignment = .centerX
         stack.spacing = 6
         stack.setCustomSpacing(16, after: iconView)
         stack.setCustomSpacing(18, after: version)
-        stack.setCustomSpacing(18, after: check)
+        if let check { stack.setCustomSpacing(18, after: check) }
 
         // Drawn only when there is one. An empty label would reserve its line
         // and leave the window looking as though something failed to load.

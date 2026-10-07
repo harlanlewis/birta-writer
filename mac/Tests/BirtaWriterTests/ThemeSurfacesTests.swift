@@ -200,7 +200,7 @@ final class ThemeSurfacesTests: XCTestCase {
         var changed = 0
         var commands: [String] = []
         let controller = SettingsWindowController(
-            flavour: .release, onHotkeyChange: { 0 }, onChange: { _ in }, onChangeEverywhere: {},
+            flavour: .release, distribution: .direct, onHotkeyChange: { 0 }, onChange: { _ in }, onChangeEverywhere: {},
             onShowWelcome: {}, onCheckForUpdates: {},
             themeStore: store,
             onAppearanceChange: { settings in applied.append(settings); Prefs.appearance = settings },
@@ -430,7 +430,7 @@ final class DrawerGroundSwitchTests: XCTestCase {
     func testTheFileListSwitchShouldOpenOnItsDefaultAndMoveItsGround() throws {
         var applied: [AppearanceSettings] = []
         let controller = SettingsWindowController(
-            flavour: .release, onHotkeyChange: { 0 }, onChange: { _ in }, onChangeEverywhere: {},
+            flavour: .release, distribution: .direct, onHotkeyChange: { 0 }, onChange: { _ in }, onChangeEverywhere: {},
             onShowWelcome: {}, onCheckForUpdates: {},
             onAppearanceChange: { applied.append($0); Prefs.appearance = $0 })
         defer { controller.window?.close() }
@@ -526,7 +526,7 @@ final class AppearancePaneShotTests: XCTestCase {
                                   ("held", AppearanceSettings(lightTheme: "paper", darkTheme: "slate").holding("slate", kind: .dark))] {
             Prefs.appearance = settings
             let controller = SettingsWindowController(
-                flavour: .release, onHotkeyChange: { 0 }, onChange: { _ in }, onChangeEverywhere: {},
+                flavour: .release, distribution: .direct, onHotkeyChange: { 0 }, onChange: { _ in }, onChangeEverywhere: {},
                 onShowWelcome: {}, onCheckForUpdates: {}, themeStore: store,
                 onAppearanceChange: { Prefs.appearance = $0 }, onThemesChanged: {}, onEditorCommand: { _ in })
             controller.selectTabForTesting("appearance")
