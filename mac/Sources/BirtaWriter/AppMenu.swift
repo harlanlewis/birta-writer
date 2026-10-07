@@ -563,6 +563,8 @@ enum AppMenu {
               action: .command("insertImage"), menu: .format, group: 5),
         .init(title: "Callout",
               action: .command("insertCallout"), menu: .format, group: 5),
+        .init(title: "Details",
+              action: .command("insertDetails"), menu: .format, group: 5),
         .init(title: "Math",
               action: .command("insertMath"), menu: .format, group: 6),
         .init(title: "Footnote",

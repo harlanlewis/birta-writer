@@ -75,6 +75,7 @@ describe("command reach coverage", () => {
         expect(placing).toEqual([
             "insertCallout",
             "insertCodeBlock",
+            "insertDetails",
             "insertHorizontalRule",
             "insertTable",
             "setHeading1", "setHeading2", "setHeading3",

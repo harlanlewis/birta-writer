@@ -35,6 +35,7 @@ import {
     foldAtCaret,
     foldToLevel,
     insertCalloutCommand,
+    insertDetailsCommand,
     insertFootnoteCommand,
     insertHorizontalRuleCommand,
     insertParagraphAfter,
@@ -512,6 +513,16 @@ function insertCallout(getEditor: GetEditor, args?: unknown): void {
     });
 }
 
+/** Wraps the selection in a `<details>`, nesting like insertCallout does. */
+function insertDetails(getEditor: GetEditor): void {
+    const editor = getEditor();
+    if (!editor) { return; }
+    editor.action((ctx) => {
+        ctx.get(commandsCtx).call(insertDetailsCommand.key as never);
+        getView(ctx).focus();
+    });
+}
+
 /** The toolbar Quote dropdown's callout rows are menuitemcheckbox: the
  * checked row must UNCHECK (lift out), a different kind must move the
  * check (retype the innermost callout in place, title/fold preserved via
@@ -909,6 +920,7 @@ export const editorCommands: Record<EditorCommandId, EditorCommandFn> = {
     insertYesterday: (getEditor) => insertRelativeDate(getEditor, "yesterday"),
     // Optional string arg = callout kind ("warning" from the slash menu / picker)
     insertCallout: (getEditor, args) => insertCallout(getEditor, args),
+    insertDetails: (getEditor) => insertDetails(getEditor),
     toggleCallout: (getEditor, args) => toggleCallout(getEditor, args),
     openFind: () => host.openFind?.(),
     openFindReplace: () => host.openFindReplace?.(),

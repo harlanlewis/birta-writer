@@ -107,6 +107,7 @@ export const COMMAND_EFFECTS: Record<EditorCommandId, CommandEffect> = {
     insertYesterday: "mutates",
     insertCallout: "mutates",
     toggleCallout: "mutates",
+    insertDetails: "mutates",
     insertParagraphAfter: "mutates",
     insertParagraphBefore: "mutates",
     // ── Block operations ────────────────────────────────────────────────────

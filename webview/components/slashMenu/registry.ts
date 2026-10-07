@@ -25,6 +25,7 @@ import {
     IconCheckSquare,
     IconClipboardList,
     IconCode,
+    IconDetails,
     IconEraser,
     IconFileCode,
     IconFootnote,
@@ -234,6 +235,8 @@ export const SLASH_MENU_ITEMS: readonly SlashMenuItem[] = [
     { id: "callout-important", group: "insert", label: t("Important"), icon: CALLOUT_ICONS.important, keywords: ["important", "callout", "admonition"], commandId: "insertCallout", args: "important", searchOnly: true },
     { id: "callout-warning", group: "insert", label: t("Warning"), icon: CALLOUT_ICONS.warning, keywords: ["warning", "attention", "callout", "admonition", "alert"], commandId: "insertCallout", args: "warning", searchOnly: true },
     { id: "callout-caution", group: "insert", label: t("Caution"), icon: CALLOUT_ICONS.caution, keywords: ["caution", "callout", "admonition", "alert"], commandId: "insertCallout", args: "caution", searchOnly: true },
+    // A `<details>` disclosure; the summary is typed into its own row after.
+    { id: "details", group: "insert", label: t("Details"), icon: IconDetails, hint: "<details>", keywords: ["details", "summary", "disclosure", "collapsible", "toggle", "expand", "spoiler"], commandId: "insertDetails" },
     { id: "mermaid", group: "insert", label: t("Mermaid Diagram"), icon: IconNetwork, keywords: ["mermaid", "diagram", "flowchart", "graph", "chart"], commandId: "insertCodeBlock", args: "mermaid", syntax: "mermaid", detail: t("empty diagram") },
     // A ```svg fence: the picture IS the source, so unlike every other diagram
     // row this one is a place to paste markup rather than a language to write.

@@ -3,7 +3,8 @@
  *
  * Fold persistence: the T2 structural-anchor encoding that lets fold state
  * survive the tab-hide webview teardown (via the webview state bag), and
- * the T1 syntax-default seeding (`[!kind]-` callouts start collapsed).
+ * the T1 syntax-default seeding (`[!kind]-` callouts and closed `<details>`
+ * start collapsed).
  * Reads the model only; the plugin decides when to persist and restore.
  */
 import type { EditorState } from "../../pm";
@@ -15,6 +16,7 @@ import {
     cachedFoldRanges,
     foldHiddenRange,
     isCalloutNode,
+    isClosedDetails,
     isFoldableCallout,
     isHeadingNode,
 } from "./foldModel";
@@ -172,11 +174,16 @@ export function persistFoldAnchors(state: EditorState): void {
     });
 }
 
-/** T1 default state from syntax: `[!kind]-` callouts start collapsed. */
+/**
+ * T1 default state from syntax: `[!kind]-` callouts start collapsed, and so
+ * does a `<details>` without `open`, which is the same statement in HTML.
+ */
 export function seedSyntaxFolds(doc: any): Set<number> {
     const folded = new Set<number>();
     doc.descendants((node: any, pos: number) => {
         if (node.attrs?.["fold"] === "-" && isFoldableCallout(doc, pos, node)) {
+            folded.add(pos);
+        } else if (isClosedDetails(node) && foldHiddenRange(doc, pos, node) !== null) {
             folded.add(pos);
         }
         return true;

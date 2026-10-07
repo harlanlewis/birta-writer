@@ -41,6 +41,10 @@ const ISLAND_REGISTRY: Record<string, string> = {
         "title textbox → domChromeTarget's [role=\"textbox\"] path aligns onto the marker line",
     "components/directive/index.ts":
         "title textbox → domChromeTarget's [role=\"textbox\"] path aligns onto the marker line",
+    "components/details/index.ts":
+        "summary textbox → domChromeTarget's [role=\"textbox\"] path maps to the opener's first line; " +
+        "where the summary sits on the next line (GitHub's spelling) the column fails to align and " +
+        "degrades to that line, the documented fallback for an unaligned title",
     "components/codeBlock/codeBlock.css":
         "calc ledger rows (user-select: text) → domChromeTarget's .calc-row path maps row → interior line",
     "components/linkPopup/linkPopup.css":

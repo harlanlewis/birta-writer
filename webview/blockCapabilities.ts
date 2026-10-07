@@ -200,6 +200,11 @@ export const BLOCK_CAPABILITIES: Record<string, BlockCapability> = {
     // Identity-bearing (numbering, back-references): converting away needs
     // its own design (design doc §10.6).
     footnote_definition: { shape: "wrapper", content: "blocks", kind: null,           source: false, target: false },
+    // A `<details>` (plugins/details.ts): reached by its own insert, and not
+    // yet a Turn-into kind either way, so its block menu is actions-only. The
+    // summary would need somewhere to go on the way out, as a callout title
+    // does (turnInto's withCalloutTitle).
+    details:             { shape: "wrapper", content: "blocks", kind: null,           source: false, target: false },
 
     // Lists
     bullet_list:  { shape: "list",     content: "blocks",   kind: classifyBulletList, source: true,  target: true },

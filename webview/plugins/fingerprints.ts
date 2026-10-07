@@ -70,6 +70,8 @@ const MARKER_IDENTITY: Record<string, (node: ProseNode) => string> = {
             String(n.attrs["closeFence"] ?? "").replace(/^:+/, ":::"),
         ].join(SEP),
     footnote_definition: (n) => String(n.attrs["label"] ?? ""),
+    // The opener carries the summary text, which lives nowhere else.
+    details: (n) => String(n.attrs["opener"] ?? ""),
 };
 
 /**

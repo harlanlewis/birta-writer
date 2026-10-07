@@ -10,6 +10,7 @@
 import type { EditorView } from "../../pm";
 import {
     IconAlertCircle,
+    IconDetails,
     IconCheckSquare,
     IconChevronDown,
     IconChevronRight,
@@ -449,6 +450,8 @@ export function blockMarkerSpec(node: any): MarkerSpec | null {
             return { key: "callout", icon: IconAlertCircle, label: t("Callout") };
         case "container_directive":
             return { key: "directive", icon: IconAlertCircle, label: t("Directive") };
+        case "details":
+            return { key: "details", icon: IconDetails, label: t("Details") };
         case "code_block": {
             const language = String(node.attrs?.["language"] ?? "").toLowerCase();
             if (language === "mermaid") {

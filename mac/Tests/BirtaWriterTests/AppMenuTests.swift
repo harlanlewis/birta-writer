@@ -147,7 +147,7 @@ final class AppMenuTests: XCTestCase {
             "-", "Paragraph Style", "Lists",
             "-", "Indent", "Outdent",
             "-", "Link…", "Link to Section…",
-            "-", "Table", "Image…", "Callout",
+            "-", "Table", "Image…", "Callout", "Details",
             "-", "Math", "Footnote", "Horizontal Rule",
             "-", "Date",
         ])

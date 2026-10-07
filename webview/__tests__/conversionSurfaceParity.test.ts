@@ -29,6 +29,7 @@ import {
     listEnterPlugin,
     listSpreadNormalizePlugin,
     insertCalloutCommand,
+    insertDetailsCommand,
     insertHorizontalRuleCommand,
 } from "../plugins";
 import { runEditorCommand } from "../editorCommands";
@@ -53,6 +54,7 @@ async function makeEditor(markdown: string): Promise<Editor> {
         .use(listEnterPlugin)
         .use(listSpreadNormalizePlugin)
         .use(insertCalloutCommand)
+        .use(insertDetailsCommand)
         .use(insertHorizontalRuleCommand)
         .create();
     editors.push(editor);

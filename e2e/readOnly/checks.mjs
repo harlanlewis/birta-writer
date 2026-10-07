@@ -660,7 +660,7 @@ const MUTATING_COMMANDS = [
     "insertCodeBlock", "insertHorizontalRule", "insertTable", "insertLink",
     "insertSectionLink", "insertImage", "insertMath", "insertFootnote",
     "insertDate", "insertToday", "insertTomorrow", "insertYesterday",
-    "insertCallout", "toggleCallout", "insertParagraphAfter", "insertParagraphBefore",
+    "insertCallout", "toggleCallout", "insertDetails", "insertParagraphAfter", "insertParagraphBefore",
     "duplicateBlockUp", "duplicateBlockDown", "moveBlockUp", "moveBlockDown",
     "indentBlock", "outdentBlock", "deleteBlock", "joinLines",
     "transformToUppercase", "transformToLowercase", "transformToTitleCase",

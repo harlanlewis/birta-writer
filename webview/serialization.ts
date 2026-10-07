@@ -7,6 +7,7 @@ import { commonmark, remarkPreserveEmptyLinePlugin } from "@milkdown/preset-comm
 import { gfm } from "@milkdown/preset-gfm";
 import { calloutsPlugin } from "./plugins/callouts";
 import { directivesPlugin } from "./plugins/directives";
+import { detailsNodes, detailsRemark } from "./plugins/details";
 import { createSerializerPostPassPlugin } from "./plugins/serializerPostPass";
 import { highlightPlugin } from "./plugins/highlight";
 import { listItemSpreadBoolPlugins, listSpreadBooleanPlugins, listSpreadReplacedPlugins } from "./plugins/list";
@@ -142,6 +143,13 @@ const serializerPostPassPlugin = createSerializerPostPassPlugin(postSerialize);
  * remark-directive: its text-directive syntax swallows `:word` in ordinary
  * prose, a fidelity hazard.
  *
+ * `detailsRemark` + `detailsNodes` (plugins/details.ts) pair a `<details>`
+ * opener with its `</details>` closer across the blank-line-separated blocks
+ * between them, which CommonMark parses as siblings, and wrap them into one
+ * `details` node; the opener's bytes ride along as an attr. They split
+ * around the preset like the Notion aside's two halves: the transform must
+ * see block html before the preset wraps it in paragraphs.
+ *
  * `highlightPlugin` (plugins/highlight.ts) adds `==highlight==` (Obsidian):
  * a custom micromark text construct with a strict grammar (no `=` inside, no
  * edge spaces), a `highlight` PM mark, and a stringify handler that re-emits
@@ -158,6 +166,7 @@ const serializerPostPassPlugin = createSerializerPostPassPlugin(postSerialize);
  */
 export const pureCommonmark = [
     ...notionCalloutRemark,
+    ...detailsRemark,
     ...commonmark.filter((plugin) => {
         if (
             plugin === remarkPreserveEmptyLinePlugin.plugin ||
@@ -196,6 +205,7 @@ export const pureCommonmark = [
     ...calloutsPlugin,
     ...notionCalloutNodes,
     ...directivesPlugin,
+    ...detailsNodes,
     ...highlightPlugin,
     ...mathPlugin,
     ...sourceStylePlugin,
@@ -775,7 +785,9 @@ function gapMustBeBlank(
     //    not prose-shaped; and answering `footnoteDefinition` unconditionally
     //    here would fire on gaps that were never broken. Neither rule covers
     //    both types. Do not "simplify" them into one.
-    if (left.type === "notionCallout") return true;
+    //    A `details` ends in a `</details>` HTML block for the same reason, so
+    //    it takes the same answer.
+    if (left.type === "notionCallout" || left.type === "details") return true;
     // 0b. The same hazard with no node type to read it off (MAR-296): a
     //     PARAGRAPH whose own first line opens an HTML block. Unconditional for
     //     the same reason — an HTML block ends only at a blank line — and asked

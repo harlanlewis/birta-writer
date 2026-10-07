@@ -28,6 +28,7 @@ import { t } from "../i18n";
 import { showToast } from "../ui/toast";
 import { parseCalloutMarker } from "./callouts";
 import { parseOpenFence } from "./directives";
+import { parseOpener } from "./details";
 // Runtime-only cycle (contentGuard → headingFold → blockCapabilities →
 // contentGuard): these are only called inside filterTransaction bodies.
 import { foldedHiddenRanges, hiddenRangeCoversTarget } from "./headingFold";
@@ -130,6 +131,7 @@ const DISSOLVABLE = new Set([
     "container_directive",
     "notion_callout",
     "footnote_definition",
+    "details",
 ]);
 
 /**
@@ -157,6 +159,8 @@ const MARKER_IS_DEFAULT: Record<string, (bytes: string) => boolean> = {
         const open = parseOpenFence(bytes.split(SEP)[0] ?? "");
         return open !== null && open.rest.trim() === "";
     },
+    // A details with no summary: the tags carry nothing the user wrote.
+    details: (bytes) => parseOpener(bytes)?.summary === null,
 };
 
 /** A move conserves everything, modulo dissolving containers it emptied. */

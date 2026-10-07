@@ -53,13 +53,20 @@ export function isListItemNode(node: { type: { name: string } } | null | undefin
 /**
  * Containers whose own CHROME ROW survives a fold while the whole body
  * hides — the callout grammar: a container directive keeps its header
- * (name badge + title), a footnote definition its label marker. Both hold
- * that row outside the document content, exactly as `callout` holds its
- * title in an attr, so nothing the fold hides was ever the block's label.
+ * (name badge + title), a footnote definition its label marker, a
+ * `<details>` its summary. All hold that row outside the document content,
+ * exactly as `callout` holds its title in an attr, so nothing the fold hides
+ * was ever the block's label.
  */
 export function isChromeContainerNode(node: { type: { name: string } } | null | undefined): boolean {
     const name = node?.type.name;
-    return name === "container_directive" || name === "footnote_definition";
+    return name === "container_directive" || name === "footnote_definition" || name === "details";
+}
+
+/** A `<details>` the source writes without `open`: folded when a document
+ * loads (foldAnchors.ts `seedSyntaxFolds`). */
+export function isClosedDetails(node: { type: { name: string }; attrs?: Record<string, unknown> } | null | undefined): boolean {
+    return node?.type.name === "details" && node.attrs?.["open"] !== true;
 }
 
 /**

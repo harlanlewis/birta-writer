@@ -108,6 +108,7 @@ describe("every block type has a source-line mapping story", () => {
         const PLUGIN_NODE_STORY: Record<string, string> = {
             "callout": "markerLines",
             "container_directive": "markerLines",
+            "details": "markerLines",
             "notion_callout": "markerLines",
             "footnote_definition": "body shares the `[^1]: ` marker's source line — suffix",
             "footnote_reference": "inline atom",

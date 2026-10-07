@@ -179,6 +179,7 @@ CommonMark is the floor. On top of it Birta renders, live as you type, the exten
 - Math (`$...$` and `$$...$$`, rendered with KaTeX), Mermaid diagrams, PlantUML diagrams, and Graphviz diagrams (```` ```graphviz ````, ```` ```dot ````).
 - Wikilinks (`[[target]]`, `[[target|alias]]`, `[[target#heading]]`) that render, navigate, and autocomplete.
 - Highlights (`==text==`) and callouts or admonitions, in both the GitHub (`> [!NOTE]`) and Obsidian (`> [!tip]- Title`) spellings, plus `:::` container directives.
+- `<details>` disclosures, the way GitHub writes them: the summary is an editable title, the body is ordinary Markdown, and a disclosure without `open` loads folded, without the file changing when you unfold it.
 - Reference-style links, raw HTML (rendered safely, editable in place, preserved byte for byte), and image handling with local, deduplicated storage.
 
 You rarely hit a wall where the editor can't show what you wrote, and where it can't, the previous section guarantees it's preserved rather than mangled.

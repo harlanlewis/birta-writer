@@ -37,8 +37,8 @@
  * - Never inside a raw container that may hold blank lines: an HTML block of
  *   the kinds that end on a closing tag rather than a blank (`<pre>`, comments,
  *   processing instructions, declarations, CDATA), a Notion `<aside>` callout,
- *   a `$$` math block, a `:::` directive container, or a frontmatter block at
- *   the top of the text.
+ *   a `$$` math block, a `:::` directive container, a `<details>` disclosure,
+ *   or a frontmatter block at the top of the text.
  * - Never anywhere, when the text carries a link reference definition or a
  *   footnote definition outside a fence. A reference in one half resolved by a
  *   definition in the other is a different tree from the whole, and which
@@ -90,6 +90,15 @@ const RAW_HTML_STARTS: ReadonlyArray<{ start: RegExp; end: RegExp }> = [
 ];
 
 const MATH_FENCE_RE = /^ {0,3}\$\$/;
+/**
+ * Not CommonMark's either: `plugins/details.ts` pairs a `<details>` opener with
+ * its `</details>` across the blank-separated blocks between, as the aside
+ * transform does, but details NEST, so they are counted like directives rather
+ * than waited out like a raw container whose first closer ends it. An opener
+ * that also closes on its own line opens nothing.
+ */
+const DETAILS_OPEN_RE = /^ {0,3}<details[\s>]/i;
+const DETAILS_CLOSE_RE = /<\/details>/i;
 const DIRECTIVE_FENCE_RE = /^ {0,3}(:{3,})(.*)$/;
 const FRONTMATTER_FENCE_RE = /^(---|\+\+\+)[ \t]*$/;
 
@@ -120,6 +129,7 @@ export function findSafeCuts(lines: readonly string[]): number[] {
     let fenceCol = 0;
     let rawEnd: RegExp | null = null;
     let directiveDepth = 0;
+    let detailsDepth = 0;
     let listOpen = false;
     let blankBefore = false;
     // A cut needs content on both sides: a chunk of nothing but blank lines
@@ -217,6 +227,7 @@ export function findSafeCuts(lines: readonly string[]): number[] {
             blankBefore &&
             !first &&
             directiveDepth === 0 &&
+            detailsDepth === 0 &&
             leadingColumns(line) === 0 &&
             !(listOpen && isMarker)
         ) {
@@ -224,6 +235,12 @@ export function findSafeCuts(lines: readonly string[]): number[] {
             listOpen = false;
         }
         if (isMarker) listOpen = true;
+
+        if (DETAILS_OPEN_RE.test(line)) {
+            if (!DETAILS_CLOSE_RE.test(line)) detailsDepth++;
+        } else if (DETAILS_CLOSE_RE.test(line) && detailsDepth > 0) {
+            detailsDepth--;
+        }
 
         // A fence opener cannot also open an HTML or math container.
         rawEnd = step.open !== null ? null : rawOpener(line);

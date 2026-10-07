@@ -1,0 +1,58 @@
+<!doctype html>
+<!-- e2e harness page for e2e/detailsBlock: `<details>` disclosures in the
+     shapes plugins/details.ts reads, against the production bundle. Links
+     dist/hostPalette.css, what a non-VS-Code host links, so this renders what
+     the Mac panel renders. -->
+<meta charset="utf-8">
+<link rel="stylesheet" href="dist/hostPalette.css">
+<style>
+  body { background: var(--vscode-editor-background); color: var(--vscode-editor-foreground); margin: 0; }
+  .editor-topbar { height: 40px; box-sizing: border-box; }
+</style>
+<script>
+  document.addEventListener("DOMContentLoaded", () => document.body.classList.add("editor-width-auto", "vscode-light"));
+  window.__i18n = { translations: {}, isMac: true, toolbar: { placements: {}, order: [] } };
+  window.__posted = [];
+  const CONTENT = [
+    "# Notes",
+    "",
+    "<details>",
+    "<summary>Timestamps</summary>",
+    "",
+    "- `00:04` Testing.",
+    "- `00:05` 123456.",
+    "",
+    "</details>",
+    "",
+    "<details open>",
+    "<summary>Open one</summary>",
+    "",
+    "Visible body.",
+    "",
+    "</details>",
+    "",
+    "- an item",
+    "",
+    "  <details>",
+    "  <summary>In a list</summary>",
+    "",
+    "  Listed body.",
+    "",
+    "  </details>",
+    "",
+  ].join("\n");
+  window.acquireVsCodeApi = () => ({
+    postMessage: (msg) => {
+      window.__posted.push(msg);
+      if (msg.type === "ready") {
+        window.postMessage({ type: "init", content: CONTENT, frontmatter: "", syncVersion: 1 }, "*");
+      }
+    },
+    getState: () => undefined,
+    setState: () => {},
+  });
+</script>
+<link rel="stylesheet" href="dist/webview.css">
+<div class="editor-topbar"></div>
+<div id="editor"></div>
+<script type="module" src="dist/webview.js"></script>

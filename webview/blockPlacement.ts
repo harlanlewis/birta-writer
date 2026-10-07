@@ -106,6 +106,7 @@ export const COMMAND_BLOCK_REACH: Record<EditorCommandId, BlockReach> = {
     toggleBlockquote: { effect: "wrap", type: "blockquote" },
     insertCallout: { effect: "wrap", type: "callout" },
     toggleCallout: { effect: "wrap", type: "callout" },
+    insertDetails: { effect: "wrap", type: "details" },
 
     // ── Block type: insert a sibling ────────────────────────────────────────
     insertHorizontalRule: { effect: "insert", type: "hr" },

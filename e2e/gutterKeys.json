@@ -6,6 +6,7 @@
   "quote": "paragraphGutter",
   "callout": "paragraphGutter",
   "directive": "paragraphGutter",
+  "details": "paragraphGutter",
   "code": "paragraphGutter",
   "mermaid": "paragraphGutter",
   "math": "paragraphGutter",

@@ -155,7 +155,7 @@ export async function run({ page, check, baseUrl }) {
         JSON.stringify(markers.map((m) => m.pill)) === JSON.stringify([
             "Paragraph", "List item", "Blockquote", "Image", "HTML",
             "Code Block", "Task", "Mermaid Diagram", "Paragraph", "Footnote",
-            "Table", "Callout", "Callout", "Directive",
+            "Table", "Callout", "Callout", "Directive", "Details",
             "Callout", "Callout", "Blockquote", "Code Block", "Code Block", "Table",
             "Blockquote", "Heading", "Heading", "Heading", "Blockquote",
             "Numbered item", "Math Block", "Callout", "List item", "List item",
@@ -345,7 +345,7 @@ export async function run({ page, check, baseUrl }) {
             // Item markers live in their own per-flavor columns — this check
             // is about TOP-LEVEL block markers only.
             if (!m || m.closest(".block-gutter-host--item")) continue;
-            const headed = el.querySelector(".callout-title, .directive-header, .code-float-row");
+            const headed = el.querySelector(".callout-title, .directive-header, .details-summary, .code-float-row");
             const probe = headed ?? el.querySelector("p, td, code, .footnote-def-content p") ?? el;
             const pr = probe.getBoundingClientRect();
             const mr = m.getBoundingClientRect();
@@ -413,14 +413,14 @@ export async function run({ page, check, baseUrl }) {
                 lineCenter = textRect.y + textRect.height / 2;
             } else {
                 const em = parseFloat(getComputedStyle(document.getElementById("editor")).fontSize);
-                const headed = el.querySelector(".callout-title, .directive-header, .code-float-row");
+                const headed = el.querySelector(".callout-title, .directive-header, .details-summary, .code-float-row");
                 const probe = headed ?? el.querySelector("p, td") ?? el;
                 const pr = probe.getBoundingClientRect();
                 lineCenter = pr.y + Math.min(0.86 * em, pr.height / 2);
             }
             let clearance = Infinity;
             for (let anc = el.parentElement; anc && !anc.classList.contains("ProseMirror"); anc = anc.parentElement) {
-                if (anc.matches(".callout, .container-directive, blockquote, .mw-table")) {
+                if (anc.matches(".callout, .container-directive, .details-block, blockquote, .mw-table")) {
                     clearance = Math.min(clearance, Math.round((anc.getBoundingClientRect().left - mr.right) * 10) / 10);
                 }
             }

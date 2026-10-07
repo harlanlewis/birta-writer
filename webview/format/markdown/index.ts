@@ -12,6 +12,7 @@
  */
 import { createCalloutView, createNotionCalloutView } from "../../components/callout";
 import { createCodeBlockView } from "../../components/codeBlock";
+import { createDetailsView } from "../../components/details";
 import { createDirectiveView } from "../../components/directive";
 import {
     createFootnoteDefinitionView,
@@ -38,6 +39,7 @@ export const markdownFormat: FormatModule = {
         ["callout", createCalloutView],
         ["notion_callout", createNotionCalloutView],
         ["container_directive", createDirectiveView],
+        ["details", createDetailsView],
         ["footnote_reference", createFootnoteReferenceView],
         ["footnote_definition", createFootnoteDefinitionView],
         ["math_inline", createMathInlineView],

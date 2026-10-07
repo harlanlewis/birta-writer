@@ -92,6 +92,7 @@ describe("every block type has a grabber", () => {
             "callout": "covered: blockMarkerSpec case",
             "notion_callout": "covered: blockMarkerSpec case",
             "container_directive": "covered: blockMarkerSpec case",
+            "details": "covered: blockMarkerSpec case",
             "footnote_definition": "covered: blockMarkerSpec case",
             "footnote_reference": "inline atom",
             "math_inline": "inline atom",

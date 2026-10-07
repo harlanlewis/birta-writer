@@ -40,7 +40,7 @@ final class FormatMenuSyntaxTests: XCTestCase {
         AppMenu.applyState(MenuState(), syntaxSets: [], to: menu)
 
         for id in ["toggleStrikethrough", "toggleHighlight", "toggleTaskList",
-                   "insertTable", "insertCallout", "insertMath", "insertFootnote"] {
+                   "insertTable", "insertCallout", "insertDetails", "insertMath", "insertFootnote"] {
             XCTAssertEqual(item(items, id)?.isHidden, true, "\(id) should be withdrawn")
         }
     }
