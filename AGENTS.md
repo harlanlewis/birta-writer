@@ -206,6 +206,7 @@ mac/Sources/BirtaWriterCore/DocumentName.swift   What a typed filename means: th
 mac/Sources/BirtaWriterCore/AutosavePolicy.swift  When the app writes, when it does not, and when it asks instead; what the autosave setting promises in both directions
 mac/Sources/BirtaWriterCore/DockPresence.swift  What moving Show in Dock has to do, and why turning it OFF is the direction that needs the window put back
 mac/Sources/BirtaWriterCore/RowAvailability.swift Whether a settings row can do what it says, and what colour the sentence under it is; the two are independent and both surfaces read them here
+mac/Sources/BirtaWriterCore/Distribution.swift   Which channel delivered this build, direct or the Mac App Store, read off the sandbox rather than a flag; the four things the store's sandbox takes away and why, the one rule every surface filters its Settings rows through (omitted, never drawn dead), and the one resolver that says whether a build replaces itself
 mac/Sources/BirtaWriterCore/UnsavedChanges.swift What the quit sheet says when autosave is off and the buffer is ahead of the file
 mac/Sources/BirtaWriterCore/AboutInfo.swift      What the About window says, and THE repository string its two GitHub links and the updater's release feed all derive from
 mac/Sources/BirtaWriterCore/UpdatePolicy.swift   When the app asks about a new version, and the one predicate that lets it replace itself with nobody asked

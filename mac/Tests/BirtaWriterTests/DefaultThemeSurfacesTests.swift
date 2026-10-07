@@ -59,7 +59,7 @@ final class DefaultThemeSurfacesTests: XCTestCase {
     private func pane(applied: @escaping (AppearanceSettings) -> Void = { _ in },
                       changed: @escaping () -> Void = {}) -> SettingsWindowController {
         let controller = SettingsWindowController(
-            flavour: .release, onHotkeyChange: { 0 }, onChange: { _ in }, onChangeEverywhere: {},
+            flavour: .release, distribution: .direct, onHotkeyChange: { 0 }, onChange: { _ in }, onChangeEverywhere: {},
             onShowWelcome: {}, onCheckForUpdates: {},
             themeStore: store, bundledThemes: resources,
             onAppearanceChange: { settings in applied(settings); Prefs.appearance = settings },

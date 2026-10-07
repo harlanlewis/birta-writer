@@ -825,11 +825,14 @@ enum Prefs {
 
     /// Whether this host can hand a prompt to an agent at all.
     ///
-    /// Two ways to have none, and the row and the capability must agree with
-    /// both: the switch is off, or there is no command to run. Asking here
-    /// rather than at each call site is what keeps them from disagreeing.
+    /// Three ways to have none, and the row and the capability must agree
+    /// with all of them: the switch is off, there is no command to run, or
+    /// this build's channel cannot run one (`Distribution.offersAgent`).
+    /// Asking here rather than at each call site is what keeps them from
+    /// disagreeing.
     static var agentAvailable: Bool {
-        AgentAvailability.isAvailable(enabled: agentEnabled, command: agentCommand)
+        AgentAvailability.isAvailable(enabled: agentEnabled, command: agentCommand,
+                                      distribution: Distribution.current)
     }
 
     /// Whether the app has a Dock icon, and so appears in Cmd+Tab and gets an
@@ -1306,9 +1309,10 @@ enum Prefs {
             //
             // Withdrawing `agent` is a capability doing its job rather than a
             // feature flag sneaking in: a capability names what the HOST
-            // provides, and with `/ai` switched off, or with no command to
-            // run, this host provides no agent. `BootConfigTests` holds both
-            // arms.
+            // provides, and with `/ai` switched off, with no command to run,
+            // or on a channel whose sandbox cannot run one (`Distribution`),
+            // this host provides no agent. `AgentAvailabilityTests` holds all
+            // three arms of that answer; `BootConfigTests` holds the filter.
             //
             // Withdrawing `projectFiles` is the same shape: a window on a loose
             // file is a host with no directory to provide, so the page it

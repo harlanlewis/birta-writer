@@ -186,7 +186,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding, 
         // find out where their tools are takes as long as their startup files
         // take, and the alternative to paying for it now is paying for it in
         // front of a person who has just asked for an agent.
-        LoginShellPath.shared.prewarm()
+        //
+        // Only where something can ask: the agent and the terminal command's
+        // PATH check are the two readers, and a channel that offers neither
+        // would run somebody's whole startup for nothing. A late reader still
+        // gets an answer, because `value()` starts the shell itself.
+        let distribution = Distribution.current
+        if distribution.offersAgent || distribution.offersTerminalCommand {
+            LoginShellPath.shared.prewarm()
+        }
         buildMainMenu()
         // BEFORE the Coordinator, and that ordering is the point rather than
         // an arrangement. The notes folder is derived from the product name,
@@ -1320,7 +1328,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding, 
             case let .found(tag): answer = .found(latest: tag, staged: self.updater.staged?.tag == tag)
             case .upToDate: answer = .upToDate
             case .failed: answer = .unreachable
-            case .refused: answer = AppFlavor.current.updatesItself ? .busy : .notThisBuild
+            case .refused:
+                // A store copy never reaches this: every way to ask is left
+                // out on its channel. What is left is a check already running,
+                // or the development flavour.
+                answer = Distribution.current.updatesItself(flavour: AppFlavor.current) ? .busy : .notThisBuild
             }
             // Off the completion's own drain before anything modal, for the
             // reason `onUpdateAvailable` gives above.
@@ -1487,8 +1499,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding, 
 
     @objc func menuOpenAbout() {
         if aboutWindow == nil {
+            // No button on a channel that updates the copy itself, as the menu
+            // row is left out (`AppMenu.rows(offeredBy:)`).
             aboutWindow = AboutWindowController(
-                onCheckForUpdates: { [weak self] in self?.menuCheckForUpdates() })
+                onCheckForUpdates: Distribution.current.updatesItself
+                    ? { [weak self] in self?.menuCheckForUpdates() } : nil)
         }
         // An accessory app is not frontmost when its status menu is used, and
         // an ordinary-level window ordered front from a background app opens
@@ -1505,6 +1520,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding, 
                 // this literal is the whole of what a test cannot cover, and
                 // it is legible here.
                 flavour: .current,
+                distribution: .current,
                 onHotkeyChange: { [weak self] in self?.windows.registerHotkey() ?? -1 },
                 refusedSummonCombo: { [weak self] in self?.windows.refusedSummonCombo },
                 onChange: { [weak self] work in self?.front?.preferencesChanged(beforeReload: work) },

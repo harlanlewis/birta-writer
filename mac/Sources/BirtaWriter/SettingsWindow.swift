@@ -335,6 +335,13 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     /// where it is written instead of spread across four reads.
     let flavour: AppFlavor
 
+    /// Which channel this window is drawing for, taken for the reason the
+    /// flavour is: a `static let` read at the point of use is the test
+    /// process's, which is never sandboxed, so the store arm of every row
+    /// below would be unreachable under `swift test`. The one production
+    /// caller passes `.current` explicitly, as it does the flavour.
+    let distribution: Distribution
+
     private let onHotkeyChange: () -> OSStatus
     /// The chord macOS refused, or nil while it holds one.
     ///
@@ -412,6 +419,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     private let onReset: () -> Void
 
     init(flavour: AppFlavor,
+         distribution: Distribution,
          onHotkeyChange: @escaping () -> OSStatus,
          refusedSummonCombo: @escaping () -> HotkeyCombo? = { nil },
          onChange: @escaping (BeforeReload?) -> Void,
@@ -427,6 +435,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
          onEditorCommand: @escaping (String) -> Void = { _ in },
          onFormattingRowChange: @escaping (Bool) -> Void = { _ in }) {
         self.flavour = flavour
+        self.distribution = distribution
         self.themeStore = themeStore
         self.bundledThemes = bundledThemes
         self.onAppearanceChange = onAppearanceChange
@@ -588,7 +597,28 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     // MARK: toolbar
 
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        Tab.allCases.map { NSToolbarItem.Identifier($0.rawValue) }
+        tabs.map { NSToolbarItem.Identifier($0.rawValue) }
+    }
+
+    /// The tabs this window draws: every pane its channel leaves a card on.
+    /// A channel that takes away everything a pane holds takes the tab with
+    /// it (the store build's AI Agent), rather than drawing an empty page.
+    private var tabs: [Tab] { Tab.allCases.filter { !pane(for: $0).groups.isEmpty } }
+
+    /// The names of the tabs THIS window draws, for a check that a channel's
+    /// omissions reach the toolbar. `tabNames` is every pane any build has.
+    var drawnTabNames: [String] { tabs.map(\.rawValue) }
+
+    /// The pane `tab` draws on this window's flavour and channel: the
+    /// declaration, filtered once (`Distribution.offered`).
+    private func pane(for tab: Tab) -> SettingsPane {
+        switch tab {
+        case .general: return distribution.offered(SettingsForm.general)
+        case .markdown: return distribution.offered(SettingsForm.markdown)
+        case .appearance: return distribution.offered(SettingsForm.appearance)
+        case .aiAgent: return distribution.offered(SettingsForm.aiAgent)
+        case .advanced: return advancedPane
+        }
     }
 
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
@@ -632,19 +662,14 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     /// comparison that reports a disagreement on a development build and
     /// tells you nothing about either.
     func declaredRows(forTab name: String) -> [SettingsRow]? {
-        guard let tab = Tab(rawValue: name) else { return nil }
-        switch tab {
-        case .general: return SettingsForm.rows(of: SettingsForm.general)
-        case .markdown: return SettingsForm.rows(of: SettingsForm.markdown)
-        case .appearance: return SettingsForm.rows(of: SettingsForm.appearance)
-        case .aiAgent: return SettingsForm.rows(of: SettingsForm.aiAgent)
-        case .advanced: return SettingsForm.rows(of: advancedPane)
-        }
+        guard let tab = Tab(rawValue: name), tabs.contains(tab) else { return nil }
+        return SettingsForm.rows(of: pane(for: tab))
     }
 
-    /// The Advanced pane THIS window draws, which its flavour decides.
+    /// The Advanced pane THIS window draws, which its flavour and its
+    /// channel decide.
     var advancedPane: SettingsPane {
-        SettingsForm.advanced(showsWelcomeScreen: flavour.showsWelcomeScreen)
+        distribution.offered(SettingsForm.advanced(showsWelcomeScreen: flavour.showsWelcomeScreen))
     }
 
     /// One row of the pane on screen, so a check can read back the label and
@@ -682,7 +707,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     /// availability is left as the pane drew it; a row that cannot be operated
     /// still says why, which is what the reader came to see.
     func show(paneNamed name: String, revealing row: SettingsRow?) {
-        guard let tab = Tab(rawValue: name) else { return }
+        guard let tab = Tab(rawValue: name), tabs.contains(tab) else { return }
         window?.toolbar?.selectedItemIdentifier = NSToolbarItem.Identifier(tab.rawValue)
         show(tab)
         guard let row, let view = rowViews[row] else { return }
@@ -1003,6 +1028,9 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     /// on `PATH`, or if something earlier there already answers to the name,
     /// and a row reporting only the link would be silent about both.
     private func showCommand() {
+        // Not drawn on a channel that cannot offer it, and nothing here is
+        // worth reading off the disk or the login shell for a row nobody sees.
+        guard distribution.offersTerminalCommand else { return }
         let name = Prefs.commandName
         let link = Prefs.commandLink
         let installed = CommandInstall.plan(existing: CommandInstall.inspect(link: link),
@@ -1183,7 +1211,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     /// than sitting there switched on and doing nothing: replacing it would
     /// delete the change it was installed to show.
     private func showAutoUpdate() {
-        let availability = RowAvailability.autoUpdate(updatesItself: flavour.updatesItself)
+        let availability = RowAvailability.autoUpdate(updatesItself: distribution.updatesItself(flavour: flavour))
         updateSwitch.isEnabled = availability.isEnabled
         updateButton.isEnabled = availability.isEnabled
         updateSwitch.state = Prefs.autoUpdate && availability.isEnabled ? .on : .off
@@ -1408,14 +1436,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         building = true
         defer { building = false }
         if panes.isEmpty { wireControls() }
-        let sections: [NSView]
-        switch tab {
-        case .general: sections = render(SettingsForm.general)
-        case .markdown: sections = render(SettingsForm.markdown)
-        case .appearance: sections = render(SettingsForm.appearance)
-        case .aiAgent: sections = render(SettingsForm.aiAgent)
-        case .advanced: sections = render(advancedPane)
-        }
+        let sections = render(pane(for: tab))
         // After the sections exist, not before. `wireControls` runs at the top
         // of this method and `showFiles` hides a row of a card that this
         // method is about to build, so the sync above reaches a `filesGroup`
@@ -2477,9 +2498,11 @@ extension SettingsWindowController {
         addThemeButton.pullsDown = true
         addThemeButton.controlSize = .small
         addThemeButton.removeAllItems()
-        addThemeButton.addItems(withTitles: [ThemesMenu.addTitle, Self.addThemeFromFileTitle,
-                                             Self.addThemeFromVSCodeTitle, Self.browseThemesTitle,
-                                             Self.restoreDefaultThemesTitle])
+        // The installed-editor entry exists only where `~/.vscode` can be
+        // read, which a store build's sandbox cannot; the other ways in stay.
+        addThemeButton.addItems(withTitles: [ThemesMenu.addTitle, Self.addThemeFromFileTitle]
+            + (distribution.readsInstalledEditorThemes ? [Self.addThemeFromVSCodeTitle] : [])
+            + [Self.browseThemesTitle, Self.restoreDefaultThemesTitle])
         addThemeButton.target = self
         addThemeButton.action = #selector(addTheme(_:))
 
@@ -2609,6 +2632,9 @@ extension SettingsWindowController {
 
     // MARK: read back
 
+    /// The Add Theme pull-down's entries after its title row, which is what a
+    /// channel that cannot read an installed editor shortens.
+    var addThemeTitlesForTesting: [String] { Array(addThemeButton.itemTitles.dropFirst()) }
     var themeChoicesForTesting: [String] { lightStrip.titlesForTesting }
     /// Which card the light strip rings, by the name it is drawn under.
     var themeSelectionForTesting: String? { lightStrip.selectedTitleForTesting }
@@ -2743,11 +2769,14 @@ extension SettingsWindowController {
     }
 
     @objc private func addTheme(_ sender: NSPopUpButton) {
-        switch sender.indexOfSelectedItem {
-        case 1: chooseThemeFiles()
-        case 2: importInstalledThemes()
-        case 3: browseThemes()
-        case 4: restoreDefaultThemes()
+        // By title rather than index: the list has one entry fewer on a
+        // channel that cannot read an installed editor's themes.
+        guard let title = sender.titleOfSelectedItem else { return }
+        switch title {
+        case Self.addThemeFromFileTitle: chooseThemeFiles()
+        case Self.addThemeFromVSCodeTitle: importInstalledThemes()
+        case Self.browseThemesTitle: browseThemes()
+        case Self.restoreDefaultThemesTitle: restoreDefaultThemes()
         default: break
         }
     }

@@ -30,7 +30,7 @@ final class SettingsPaneTests: XCTestCase {
     /// arm here measured before the flavour was injectable and what most of
     /// them still want. The ones that care say which.
     private func makeController(_ flavour: AppFlavor = .release) -> SettingsWindowController {
-        SettingsWindowController(flavour: flavour, onHotkeyChange: { 0 }, onChange: { _ in }, onChangeEverywhere: {},
+        SettingsWindowController(flavour: flavour, distribution: .direct, onHotkeyChange: { 0 }, onChange: { _ in }, onChangeEverywhere: {},
                                  onShowWelcome: {}, onCheckForUpdates: {})
     }
 
@@ -441,7 +441,7 @@ final class SettingsPaneTests: XCTestCase {
         var frontOnly = 0
         var everywhere = 0
         let controller = SettingsWindowController(
-            flavour: .release, onHotkeyChange: { 0 },
+            flavour: .release, distribution: .direct, onHotkeyChange: { 0 },
             onChange: { _ in frontOnly += 1 }, onChangeEverywhere: { everywhere += 1 },
             onShowWelcome: {}, onCheckForUpdates: {})
         defer { controller.window?.close() }
@@ -592,7 +592,7 @@ final class SettingsPaneTests: XCTestCase {
         Prefs.agentCommand = AgentPreset.codex.template
         var told = 0
         var reloads = 0
-        let controller = SettingsWindowController(flavour: .release, onHotkeyChange: { 0 },
+        let controller = SettingsWindowController(flavour: .release, distribution: .direct, onHotkeyChange: { 0 },
                                                   onChange: { _ in reloads += 1 }, onChangeEverywhere: {},
                                                   onHostCapabilitiesChange: { told += 1 },
                                                   onShowWelcome: {}, onCheckForUpdates: {})
@@ -632,7 +632,7 @@ final class SettingsPaneTests: XCTestCase {
         Prefs.agentCommand = AgentPreset.claudeCode.template
         var told = 0
         var reloads = 0
-        let controller = SettingsWindowController(flavour: .release, onHotkeyChange: { 0 },
+        let controller = SettingsWindowController(flavour: .release, distribution: .direct, onHotkeyChange: { 0 },
                                                   onChange: { _ in reloads += 1 }, onChangeEverywhere: {},
                                                   onHostCapabilitiesChange: { told += 1 },
                                                   onShowWelcome: {}, onCheckForUpdates: {})
@@ -687,7 +687,7 @@ final class SettingsPaneTests: XCTestCase {
         Prefs.agentCommand = AgentPreset.codex.template
         var told = 0
         var reloads = 0
-        let controller = SettingsWindowController(flavour: .release, onHotkeyChange: { 0 },
+        let controller = SettingsWindowController(flavour: .release, distribution: .direct, onHotkeyChange: { 0 },
                                                   onChange: { _ in reloads += 1 }, onChangeEverywhere: {},
                                                   onHostCapabilitiesChange: { told += 1 },
                                                   onShowWelcome: {}, onCheckForUpdates: {})

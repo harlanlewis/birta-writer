@@ -119,6 +119,10 @@ public enum AppFlavor: String, CaseIterable, Sendable {
     /// False for a development build, and not as a precaution: replacing it
     /// would overwrite the change somebody built it to look at with whatever
     /// the newest release happens to be.
+    ///
+    /// Read through `Distribution.updatesItself(flavour:)` rather than here:
+    /// a build replaces itself only when its channel allows it too, and that
+    /// conjunction is written once, there.
     public var updatesItself: Bool { self == .release }
 
     /// Whether the Web Inspector may attach to the page.
