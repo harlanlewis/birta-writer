@@ -15,8 +15,8 @@ import "./directive.css";
 import type { Node as PMNode } from "@/pm";
 import type { EditorView } from "@/pm";
 import { t } from "@/i18n";
-import { isBareEscape } from "@/ui/escapeLayers";
 import { markEditableIsland } from "@/readOnly";
+import { bindTitleIsland } from "@/ui/titleIsland";
 import { createFoldEllipsis } from "@/ui/foldEllipsis";
 import { foldPluginKey, type FoldMeta } from "@/plugins/foldState";
 import { attrsFromFences, openFenceWithTitle } from "@/plugins/directives";
@@ -79,49 +79,29 @@ export function createDirectiveView(
 
     dom.append(header, content);
 
-    const commitTitle = (): void => {
-        const typed = (title.textContent ?? "").trim();
-        if (typed === ((node.attrs["title"] as string) ?? "")) return; // untouched
-        const pos = getPos();
-        if (pos === undefined) return;
-        const openFence = openFenceWithTitle(
-            (node.attrs["openFence"] as string) ?? ":::note",
-            typed,
-        );
-        view.dispatch(
-            view.state.tr.setNodeMarkup(
-                pos,
-                null,
-                attrsFromFences(
-                    openFence,
-                    (node.attrs["closeFence"] as string) ?? ":::",
-                    node.attrs["openAttached"] as boolean,
-                    node.attrs["closeAttached"] as boolean,
+    bindTitleIsland(title, {
+        current: () => (node.attrs["title"] as string) ?? "",
+        commit: (typed) => {
+            const pos = getPos();
+            if (pos === undefined) return;
+            const openFence = openFenceWithTitle(
+                (node.attrs["openFence"] as string) ?? ":::note",
+                typed,
+            );
+            view.dispatch(
+                view.state.tr.setNodeMarkup(
+                    pos,
+                    null,
+                    attrsFromFences(
+                        openFence,
+                        (node.attrs["closeFence"] as string) ?? ":::",
+                        node.attrs["openAttached"] as boolean,
+                        node.attrs["closeAttached"] as boolean,
+                    ),
                 ),
-            ),
-        );
-    };
-    title.addEventListener("keydown", (e) => {
-        if (e.key === "Enter") {
-            e.preventDefault();
-            title.blur(); // blur commits
-        } else if (isBareEscape(e)) {
-            e.preventDefault();
-            title.textContent = (node.attrs["title"] as string) ?? ""; // revert
-            title.blur();
-        } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "a") {
-            // Keep select-all inside the title island — the native behavior
-            // escapes into the surrounding contenteditable and selects the
-            // whole document.
-            e.preventDefault();
-            const range = document.createRange();
-            range.selectNodeContents(title);
-            const sel = window.getSelection();
-            sel?.removeAllRanges();
-            sel?.addRange(range);
-        }
+            );
+        },
     });
-    title.addEventListener("blur", commitTitle);
 
     const render = (): void => {
         const name = (node.attrs["name"] as string) ?? "";

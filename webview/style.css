@@ -1722,6 +1722,9 @@ body.editor-width-auto :is(.code-width-toggle-btn, .mw-bc-width) {
                padding-top above, in the CONTENT em so it holds when the user
                scales the content font. */
             --gutter-top: calc(0.5 * var(--content-em) + 0.5px);
+            /* The column steps left by the 3px bar, as footnote.css does for
+               its 2px one, so the icon lines up with the bare blocks. */
+            --gutter-left: calc(var(--gutter-column) - 3px);
             color: var(--vscode-editor-foreground);
             opacity: 0.85;
 

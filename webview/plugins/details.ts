@@ -34,11 +34,18 @@
  * (no blank lines inside), whose body a CommonMark renderer never parses as
  * Markdown either.
  *
- * What is NOT a summary is the place generators most often go wrong, and the
- * transform deliberately does not paper over it: a `<summary>` line indented
- * four spaces after a blank line is an indented code block in every
- * CommonMark renderer, GitHub's included, so it renders as code inside the
- * disclosure here too.
+ * One departure from CommonMark, on purpose: a body that is ONE indented
+ * code block is read as Markdown instead. Generators that indent the inside
+ * of the tags write exactly that shape (`<details>`, blank, then the
+ * `<summary>` line and the body four spaces in), and to CommonMark the whole
+ * body is code. Nobody writing a disclosure that way means a code block, and
+ * a fenced block is how one is written on purpose, so the editor reads the
+ * indented text as the Markdown it was meant to be: a leading `<summary>`
+ * line becomes the summary, the rest the body. Positions are mapped back
+ * onto the file's own lines, so a callout or a directive inside reads its
+ * real bytes, and the body serializes re-indented (`bodyIndent`), so the
+ * file keeps its shape. A body of anything more than that one block is
+ * CommonMark's, unchanged.
  *
  * Open or closed is the source's `open` attribute, and the editor maps it to
  * the fold layer: a details without `open` loads folded to its summary row,
@@ -60,8 +67,9 @@ export const detailsId = "details";
 const OPENER_RE =
     /^<details((?:[ \t]+open(?:[ \t]*=[ \t]*(?:"[^"]*"|'[^']*'|[^\s>]*))?)?)[ \t]*>(?:([ \t]*\n?[ \t]*)<summary>([^<]*)<\/summary>)?[ \t]*$/i;
 
-/** A `<summary>` written as its own block after a bare opener. */
-const SUMMARY_BLOCK_RE = /^<summary>([^<]*)<\/summary>[ \t]*$/i;
+/** A `<summary>` written as its own block after a bare opener, possibly
+ * indented with the body (the indented-body shape above). */
+const SUMMARY_BLOCK_RE = /^[ \t]*<summary>([^<]*)<\/summary>[ \t]*$/i;
 
 /** Any line that opens a details, recognised or not: what the depth counts. */
 const ANY_OPENER_RE = /^<details[\s>]/i;
@@ -135,7 +143,8 @@ export function openerWithSummary(opener: string, summary: string): string {
     const parts = opener.split("\n\n");
     const tag = /^<details[^>]*>/i.exec(parts[0] ?? "")?.[0] ?? "<details>";
     if (parts.length === 2) {
-        return text === "" ? tag : `${tag}\n\n<summary>${escapeSummary(text)}</summary>`;
+        const indent = /^[ \t]*/.exec(parts[1] ?? "")?.[0] ?? "";
+        return text === "" ? tag : `${tag}\n\n${indent}<summary>${escapeSummary(text)}</summary>`;
     }
     const head = OPENER_RE.exec(parts[0] ?? "");
     const separator = head?.[3] !== undefined ? (head[2] ?? "\n") : "\n";
@@ -145,11 +154,12 @@ export function openerWithSummary(opener: string, summary: string): string {
 export const DEFAULT_OPENER = "<details>";
 
 /** Attrs for an opener's bytes. Callers have already checked the grammar. */
-export function attrsFromOpener(opener: string): {
+export function attrsFromOpener(opener: string, bodyIndent = ""): {
     opener: string;
     open: boolean;
     summary: string;
     hasSummary: boolean;
+    bodyIndent: string;
 } {
     const parsed = parseOpener(opener) ?? { open: false, summary: null };
     return {
@@ -157,17 +167,93 @@ export function attrsFromOpener(opener: string): {
         open: parsed.open,
         summary: parsed.summary ?? "",
         hasSummary: parsed.summary !== null,
+        bodyIndent,
     };
 }
 
 // ─── Parse: html-block pairing ──────────────────────────────────────────────
 
+interface MdastPoint {
+    line: number;
+    column: number;
+    offset?: number;
+}
+
 interface MdastNode {
     type: string;
     value?: string;
+    lang?: string | null;
     opener?: string;
+    bodyIndent?: string;
     children?: MdastNode[];
-    position?: unknown;
+    position?: { start: MdastPoint; end: MdastPoint };
+}
+
+/** What the transform needs beyond the tree: the file, and the processor's parser. */
+interface TransformContext {
+    source: string;
+    parse: (markdown: string) => { children?: MdastNode[] };
+}
+
+/** The whole source line holding `offset`, and where it starts. */
+function sourceLineAt(source: string, offset: number): { start: number; text: string } {
+    const start = source.lastIndexOf("\n", offset - 1) + 1;
+    const nl = source.indexOf("\n", start);
+    return { start, text: source.slice(start, nl < 0 ? source.length : nl) };
+}
+
+/**
+ * The indented-body shape: an indented (never fenced) code block, read off
+ * its source line, since mdast spells the two alike once the fence is gone.
+ * Null without positions, which only a programmatic tree lacks.
+ */
+function indentedCode(node: MdastNode | undefined, source: string): { indent: string } | null {
+    if (node?.type !== "code" || typeof node.value !== "string") return null;
+    const offset = node.position?.start.offset;
+    if (offset === undefined) return null;
+    const { text } = sourceLineAt(source, offset);
+    if (/^[ \t]*(`{3,}|~{3,})/.test(text)) return null;
+    // The indent this block strips, relative to its container: four columns,
+    // spelled as spaces or as a tab in the file.
+    return { indent: /\t$/.test(text.slice(0, text.length - text.trimStart().length)) ? "\t" : "    " };
+}
+
+/**
+ * Re-parses an indented code block's text as Markdown, with every position
+ * moved from the dedented string onto the file's own line: the line maps one
+ * to one (indented code keeps interior blank lines), and the column moves by
+ * the indent that line lost.
+ */
+function reparseIndented(code: MdastNode, ctx: TransformContext): MdastNode[] {
+    const value = code.value ?? "";
+    const valueLines = value.split("\n");
+    const firstLine = code.position!.start.line;
+    const lines: { start: number; strip: number }[] = [];
+    let at = sourceLineAt(ctx.source, code.position!.start.offset!).start;
+    for (const valueLine of valueLines) {
+        const nl = ctx.source.indexOf("\n", at);
+        const text = ctx.source.slice(at, nl < 0 ? ctx.source.length : nl);
+        lines.push({ start: at, strip: Math.max(0, text.length - valueLine.length) });
+        at = nl < 0 ? ctx.source.length : nl + 1;
+    }
+    const move = (point: MdastPoint): MdastPoint => {
+        const index = Math.min(Math.max(point.line - 1, 0), lines.length - 1);
+        const line = lines[index]!;
+        return {
+            line: firstLine + index,
+            column: line.strip + point.column,
+            offset: line.start + line.strip + point.column - 1,
+        };
+    };
+    const remap = (node: MdastNode): void => {
+        if (node.position) {
+            node.position = { start: move(node.position.start), end: move(node.position.end) };
+        }
+        node.children?.forEach(remap);
+    };
+    const children = ctx.parse(value).children ?? [];
+    children.forEach(remap);
+    return children;
 }
 
 const isHtml = (node: MdastNode | undefined, re: RegExp): boolean =>
@@ -195,7 +281,7 @@ function matchingCloser(children: MdastNode[], from: number): number {
 }
 
 /** Wraps every recognised details run among one parent's children. */
-export function wrapDetails(children: MdastNode[]): MdastNode[] {
+export function wrapDetails(children: MdastNode[], ctx: TransformContext): MdastNode[] {
     const out: MdastNode[] = [];
     let i = 0;
     while (i < children.length) {
@@ -211,10 +297,23 @@ export function wrapDetails(children: MdastNode[]): MdastNode[] {
             }
             const close = matchingCloser(children, i);
             if (close >= bodyStart && parseOpener(opener)) {
-                const body = wrapDetails(children.slice(bodyStart, close));
+                let raw = children.slice(bodyStart, close);
+                let bodyIndent = "";
+                const indented = raw.length === 1 ? indentedCode(raw[0], ctx.source) : null;
+                if (indented) {
+                    raw = reparseIndented(raw[0]!, ctx);
+                    bodyIndent = indented.indent;
+                    const lead = raw[0];
+                    if (bare && opener === node.value && isHtml(lead, SUMMARY_BLOCK_RE)) {
+                        opener = `${opener}\n\n${bodyIndent}${lead!.value!.trim()}`;
+                        raw = raw.slice(1);
+                    }
+                }
+                const body = wrapDetails(raw, ctx);
                 out.push({
                     type: "details",
                     opener,
+                    ...(bodyIndent !== "" && { bodyIndent }),
                     children: body.length > 0 ? body : [{ type: "paragraph", children: [] }],
                 });
                 i = close + 1;
@@ -244,19 +343,33 @@ const detailsToMarkdown = {
             const flow: string = state.containerFlow({ ...node, type: "details" }, tracker.current());
             exit();
             const opener = node.opener ?? DEFAULT_OPENER;
-            return flow === "" ? `${opener}\n\n</details>` : `${opener}\n\n${flow}\n\n</details>`;
+            if (flow === "") return `${opener}\n\n</details>`;
+            // The indented-body shape writes its body back four columns in,
+            // which is what the parse above reads as Markdown again. Blank
+            // lines stay empty rather than carrying trailing indentation.
+            const indent = node.bodyIndent ?? "";
+            const body = indent === ""
+                ? flow
+                : flow.split("\n").map((line) => (line === "" ? line : indent + line)).join("\n");
+            return `${opener}\n\n${body}\n\n</details>`;
         },
     },
 };
 
-function remarkDetails(this: any): (tree: unknown) => void {
+function remarkDetails(this: any): (tree: unknown, file: unknown) => void {
     const data = this.data();
     const list = data["toMarkdownExtensions"] ?? (data["toMarkdownExtensions"] = []);
     list.push(detailsToMarkdown);
-    return (tree: unknown) => {
+    const processor = this;
+    return (tree: unknown, file: unknown) => {
+        const raw = (file as { value?: unknown } | undefined)?.value;
+        const ctx: TransformContext = {
+            source: typeof raw === "string" ? raw : String(raw ?? ""),
+            parse: (markdown) => processor.parse(markdown) as { children?: MdastNode[] },
+        };
         const walk = (node: MdastNode): void => {
             if (!node.children) return;
-            node.children = wrapDetails(node.children);
+            node.children = wrapDetails(node.children, ctx);
             node.children.forEach(walk);
         };
         walk(tree as MdastNode);
@@ -279,11 +392,17 @@ export const detailsSchema = $nodeSchema(detailsId, () => ({
         open: { default: false },
         summary: { default: "" },
         hasSummary: { default: false },
+        // "" for the usual shape; the indent the body is written at for the
+        // indented-body shape (module header).
+        bodyIndent: { default: "" },
     },
     parseDOM: [
         {
             tag: 'div[data-type="details"]',
-            getAttrs: (dom) => attrsFromOpener((dom as HTMLElement).dataset["opener"] ?? DEFAULT_OPENER),
+            getAttrs: (dom) => attrsFromOpener(
+                (dom as HTMLElement).dataset["opener"] ?? DEFAULT_OPENER,
+                (dom as HTMLElement).dataset["bodyIndent"] ?? "",
+            ),
         },
     ],
     toDOM: (node) => [
@@ -291,6 +410,7 @@ export const detailsSchema = $nodeSchema(detailsId, () => ({
         {
             "data-type": "details",
             "data-opener": node.attrs["opener"] as string,
+            "data-body-indent": node.attrs["bodyIndent"] as string,
             class: "details-block",
         },
         0,
@@ -299,7 +419,10 @@ export const detailsSchema = $nodeSchema(detailsId, () => ({
         match: (node) => node.type === "details",
         runner: (state, node, type) => {
             state
-                .openNode(type, attrsFromOpener((node["opener"] as string) ?? DEFAULT_OPENER))
+                .openNode(type, attrsFromOpener(
+                    (node["opener"] as string) ?? DEFAULT_OPENER,
+                    (node["bodyIndent"] as string) ?? "",
+                ))
                 .next(node.children)
                 .closeNode();
         },
@@ -308,7 +431,10 @@ export const detailsSchema = $nodeSchema(detailsId, () => ({
         match: (node) => node.type.name === detailsId,
         runner: (state, node) => {
             state
-                .openNode("details", undefined, { opener: node.attrs["opener"] as string })
+                .openNode("details", undefined, {
+                    opener: node.attrs["opener"] as string,
+                    bodyIndent: node.attrs["bodyIndent"] as string,
+                })
                 .next(node.content)
                 .closeNode();
         },

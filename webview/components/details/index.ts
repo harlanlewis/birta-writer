@@ -3,6 +3,12 @@
  * summary row holding a disclosure toggle and the editable summary, above an
  * editable body.
  *
+ * A details IS a callout with no kind: an optional title over a body that
+ * folds. So it wears the callout's chrome (`.callout`, `.callout-title`,
+ * `.callout-body`, the collapsed rules, the drop guard in blockMenu/drag.ts
+ * that reads them) with a neutral accent, and a disclosure chevron where the
+ * callout's kind icon sits. details.css holds only what differs.
+ *
  * The tags never appear in the editing surface. The opener's bytes live in
  * the node's `opener` attr and serialize back verbatim; editing the summary
  * rewrites only the `<summary>` element in them (openerWithSummary), with the
@@ -19,8 +25,8 @@ import "./details.css";
 import type { Node as PMNode } from "@/pm";
 import type { EditorView } from "@/pm";
 import { t } from "@/i18n";
-import { isBareEscape } from "@/ui/escapeLayers";
 import { markEditableIsland } from "@/readOnly";
+import { bindTitleIsland } from "@/ui/titleIsland";
 import { createFoldEllipsis } from "@/ui/foldEllipsis";
 import { foldPluginKey, type FoldMeta } from "@/plugins/foldState";
 import { IconChevronRight } from "@/ui/icons";
@@ -45,11 +51,11 @@ export function createDetailsView(
     let node = initialNode;
 
     const dom = document.createElement("div");
-    dom.className = "details-block";
+    dom.className = "callout details-block";
     dom.dataset["type"] = "details";
 
     const header = document.createElement("div");
-    header.className = "details-summary";
+    header.className = "callout-title details-summary";
     header.contentEditable = "false";
 
     const setFold = (meta: FoldMeta): void => {
@@ -58,7 +64,7 @@ export function createDetailsView(
 
     const toggle = document.createElement("button");
     toggle.type = "button";
-    toggle.className = "details-toggle";
+    toggle.className = "callout-kind details-toggle";
     toggle.innerHTML = IconChevronRight;
     toggle.setAttribute("aria-label", t("Show or hide details"));
     toggle.addEventListener("mousedown", (e) => e.preventDefault());
@@ -69,7 +75,7 @@ export function createDetailsView(
     });
 
     const summary = document.createElement("span");
-    summary.className = "details-summary-text";
+    summary.className = "callout-title-text details-summary-text";
     summary.setAttribute("role", "textbox");
     summary.setAttribute("aria-label", t("Details summary"));
     // The browser's own label for a details with no summary, so an unnamed
@@ -84,43 +90,26 @@ export function createDetailsView(
         setFold({ type: "set", pos, folded: false });
         view.focus();
     });
-    ellipsis.dom.classList.add("details-fold-ellipsis");
+    ellipsis.dom.classList.add("callout-fold-ellipsis");
 
     header.append(toggle, summary, ellipsis.dom);
 
     const content = document.createElement("div");
-    content.className = "details-body";
+    content.className = "callout-body details-body";
 
     dom.append(header, content);
 
-    const commitSummary = (): void => {
-        const typed = (summary.textContent ?? "").trim();
-        if (typed === ((node.attrs["summary"] as string) ?? "")) return; // untouched
-        const pos = getPos();
-        if (pos === undefined) return;
-        const opener = openerWithSummary((node.attrs["opener"] as string) ?? "<details>", typed);
-        view.dispatch(view.state.tr.setNodeMarkup(pos, null, attrsFromOpener(opener)));
-    };
-    summary.addEventListener("keydown", (e) => {
-        if (e.key === "Enter") {
-            e.preventDefault();
-            summary.blur(); // blur commits
-        } else if (isBareEscape(e)) {
-            e.preventDefault();
-            summary.textContent = (node.attrs["summary"] as string) ?? ""; // revert
-            summary.blur();
-        } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "a") {
-            // Keep select-all inside the island; natively it escapes into the
-            // surrounding contenteditable and selects the whole document.
-            e.preventDefault();
-            const range = document.createRange();
-            range.selectNodeContents(summary);
-            const sel = window.getSelection();
-            sel?.removeAllRanges();
-            sel?.addRange(range);
-        }
+    bindTitleIsland(summary, {
+        current: () => (node.attrs["summary"] as string) ?? "",
+        commit: (typed) => {
+            const pos = getPos();
+            if (pos === undefined) return;
+            const opener = openerWithSummary((node.attrs["opener"] as string) ?? "<details>", typed);
+            view.dispatch(view.state.tr.setNodeMarkup(
+                pos, null, attrsFromOpener(opener, (node.attrs["bodyIndent"] as string) ?? ""),
+            ));
+        },
     });
-    summary.addEventListener("blur", commitSummary);
 
     const render = (): void => {
         dom.dataset["open"] = String(node.attrs["open"] === true);
