@@ -2836,7 +2836,7 @@
         "@milkdown/prose": "7.22.1",
         "@milkdown/transformer": "7.22.1",
         "@milkdown/utils": "7.22.1",
-        "dompurify": "^3.4.15",
+        "dompurify": "^3.4.16",
         "harper.js": "^2.10.0",
         "katex": "^0.16.47",
         "mathjs": "^15.2.0",
