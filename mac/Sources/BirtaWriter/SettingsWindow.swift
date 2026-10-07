@@ -730,10 +730,10 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     /// so nothing here has to remember a previous state.
     func showEveryConditionalRowForTesting() {
         let cards: [(NSView?, SettingsRow, SettingsPane)] = [
-            (filesGroup, .location, SettingsForm.general),
-            (notesGroup, .newNoteName, SettingsForm.general),
-            (agentGroup, .agentCommand, SettingsForm.aiAgent),
-            (commandGroup, .commandName, SettingsForm.advanced(showsWelcomeScreen: true)),
+            (filesGroup, .location, pane(for: .general)),
+            (notesGroup, .newNoteName, pane(for: .general)),
+            (agentGroup, .agentCommand, pane(for: .aiAgent)),
+            (commandGroup, .commandName, advancedPane),
         ]
         for (card, row, pane) in cards {
             guard let card, let index = SettingsForm.index(of: row, inPane: pane) else { continue }
@@ -1014,7 +1014,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         guard let agentGroup else { return }
         SettingsWindowController.setRowHidden(
             agentGroup,
-            row: SettingsForm.index(of: .agentCommand, inPane: SettingsForm.aiAgent) ?? 1,
+            row: SettingsForm.index(of: .agentCommand, inPane: pane(for: .aiAgent)) ?? 1,
             hidden: !Prefs.agentEnabled)
         fitWindowToPane()
     }
@@ -1072,8 +1072,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         guard let commandGroup else { return }
         SettingsWindowController.setRowHidden(
             commandGroup,
-            row: SettingsForm.index(of: .commandName,
-                                    inPane: SettingsForm.advanced(showsWelcomeScreen: true)) ?? 1,
+            row: SettingsForm.index(of: .commandName, inPane: advancedPane) ?? 1,
             hidden: !shown)
         fitWindowToPane()
     }
@@ -1171,7 +1170,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         guard let notesGroup else { return }
         SettingsWindowController.setRowHidden(
             notesGroup,
-            row: SettingsForm.index(of: .newNoteName, inPane: SettingsForm.general) ?? 1,
+            row: SettingsForm.index(of: .newNoteName, inPane: pane(for: .general)) ?? 1,
             hidden: Prefs.noteMode != .newEachSession)
         fitWindowToPane()
     }
@@ -1194,8 +1193,10 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         if let filesGroup {
             SettingsWindowController.setRowHidden(
                 filesGroup,
-                row: SettingsForm.index(of: .location, inPane: SettingsForm.general) ?? 1,
-                hidden: Prefs.noteHome == .iCloud)
+                // Indexed in the pane as DRAWN: a channel that leaves the
+                // iCloud switch out moves the Location row up its card.
+                row: SettingsForm.index(of: .location, inPane: pane(for: .general)) ?? 1,
+                hidden: Prefs.noteHome == .iCloud && distribution.readsICloudDrive)
             // The pane just got shorter or taller, so the window follows it.
             fitWindowToPane()
         }
@@ -1955,6 +1956,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         guard let window else { return }
         NoteLocationChange.chooseLocation(
             in: window,
+            distribution: distribution,
             redraw: { [weak self] in self?.showFiles() },
             apply: { [weak self] work in self?.onChange(work) })
     }

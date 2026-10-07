@@ -22,6 +22,29 @@ final class AtomicFileTests: XCTestCase {
         XCTAssertEqual((attrs[.posixPermissions] as? NSNumber)?.intValue, 0o600)
     }
 
+    /// A folder the process may not create in, over a file it may write: the
+    /// shape a sandboxed copy is in for a file the Finder handed it. The
+    /// sibling temp is refused, so the write has to stage elsewhere; here,
+    /// with no sandbox, the rename into the read-only folder is refused too,
+    /// which is what proves the second route was taken (the first fails at
+    /// the temp, not at the rename). `mac/scripts/sandbox-check.sh` is where
+    /// the same write is seen to land inside a real sandbox.
+    func testARefusedSiblingShouldStageTheTempOnTheTargetsVolumeInstead() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("atomic-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let file = dir.appendingPathComponent("note.md")
+        try Data("before".utf8).write(to: file)
+        chmod(dir.path, 0o555)
+        defer { chmod(dir.path, 0o755); try? FileManager.default.removeItem(at: dir) }
+
+        XCTAssertThrowsError(try AtomicFile.write(Data("after".utf8), to: file)) { error in
+            XCTAssertEqual(error as? AtomicFile.WriteError, .renameFailed(file.resolvingSymlinksInPath().path),
+                           "the write never left the refused sibling")
+        }
+        XCTAssertEqual(try String(contentsOf: file, encoding: .utf8), "before", "a refused write touched the file")
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: dir.path), ["note.md"])
+    }
+
     func testReplaceIsAllOrNothing() throws {
         let target = dir.appendingPathComponent("Scratchpad.md")
         try AtomicFile.writeString("old", to: target)

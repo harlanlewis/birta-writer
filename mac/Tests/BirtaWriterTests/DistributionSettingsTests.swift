@@ -27,7 +27,8 @@ final class DistributionSettingsTests: XCTestCase {
                                  onShowWelcome: {}, onCheckForUpdates: {})
     }
 
-    private static let omitted: [SettingsRow] = [.agentEnabled, .agentCommand, .commandLine, .commandName, .autoUpdate]
+    private static let omitted: [SettingsRow] = [.agentEnabled, .agentCommand, .commandLine, .commandName, .autoUpdate,
+                                                 .storeInICloud]
 
     func testAStoreBuildShouldDrawNoAIAgentTab() {
         let direct = makeController(.direct)
@@ -51,7 +52,7 @@ final class DistributionSettingsTests: XCTestCase {
             for row in Self.omitted {
                 if distribution == .appStore {
                     XCTAssertNil(controller.rowForTesting(row), "a store build drew \(row.rawValue)")
-                } else if row != .agentCommand && row != .commandName {
+                } else if row != .agentCommand && row != .commandName && row != .storeInICloud {
                     // The two dependents are built with their cards but may be
                     // hidden under a switch that is off; the questions are drawn.
                     XCTAssertNotNil(controller.rowForTesting(row), "a direct build lost \(row.rawValue)")
@@ -131,5 +132,21 @@ final class DistributionSettingsTests: XCTestCase {
         XCTAssertNotNil(direct.rowForTesting(.autoUpdate))
         XCTAssertNil(store.rowForTesting(.autoUpdate))
         XCTAssertNotNil(store.rowForTesting(.startAtLogin), "the card the update row shared is gone too")
+        XCTAssertNil(store.rowForTesting(.storeInICloud))
+        XCTAssertNotNil(store.rowForTesting(.location))
+    }
+
+    /// The Location row is found by its place in its card, and leaving the
+    /// iCloud switch out moves it up one. Indexed in the declaration rather
+    /// than the drawn pane, the hide would land on Autosave instead.
+    func testAStoreBuildShouldDrawTheLocationRowItsSwitchNoLongerHides() {
+        let store = makeController(.appStore)
+        defer { store.window?.close() }
+        store.selectTabForTesting("general")
+        let location = store.rowForTesting(.location)
+        let autosave = store.rowForTesting(.autosave)
+        XCTAssertNotNil(location)
+        XCTAssertEqual(location?.isHidden, false, "the store build hid the one way to choose a folder")
+        XCTAssertEqual(autosave?.isHidden, false, "the hide landed on the row below")
     }
 }

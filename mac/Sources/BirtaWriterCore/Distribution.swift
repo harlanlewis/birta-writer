@@ -86,6 +86,21 @@ public enum Distribution: String, CaseIterable, Sendable {
     /// `updatesItself(flavour:)` is the one place that conjunction is written.
     public var updatesItself: Bool { self == .direct }
 
+    /// Whether this channel keeps a bookmark for every file and folder the
+    /// person hands over, so the next launch can reach it again
+    /// (`AccessGrantList`). Only a sandboxed copy forgets them at quit; the
+    /// direct build reads its stored paths as it always has.
+    public var keepsAccessGrants: Bool { self == .appStore }
+
+    /// Whether this channel can see the person's iCloud Drive folder, which
+    /// the iCloud switch puts the notes in. A sandboxed copy cannot: its home
+    /// is its container, so the folder reads as absent and the switch would
+    /// say iCloud Drive is off when it is not. The Location row still reaches
+    /// any folder, iCloud Drive's included, through a grant the person makes;
+    /// the app's own iCloud container is the other route, and needs a
+    /// provisioned build (MAR-495).
+    public var readsICloudDrive: Bool { self == .direct }
+
     /// Whether Settings offers the themes an installed VS Code holds.
     public var readsInstalledEditorThemes: Bool { self == .direct }
 
@@ -101,6 +116,7 @@ public enum Distribution: String, CaseIterable, Sendable {
         case .agentEnabled, .agentCommand: return offersAgent
         case .commandLine, .commandName: return offersTerminalCommand
         case .autoUpdate: return updatesItself
+        case .storeInICloud: return readsICloudDrive
         default: return true
         }
     }

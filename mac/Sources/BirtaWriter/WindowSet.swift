@@ -1047,6 +1047,7 @@ final class WindowSet {
         chooser.canChooseFiles = true
         chooser.directoryURL = (key?.boundFile ?? Prefs.activeURL).deletingLastPathComponent()
         guard chooser.runModal() == .OK, let url = chooser.url else { return }
+        SandboxAccess.remember(url)
         openDocument(at: url)
     }
 

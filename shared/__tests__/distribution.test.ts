@@ -87,13 +87,16 @@ describe("the distribution seam", () => {
             offersTerminalCommand: /\.offersTerminalCommand\b/,
             readsInstalledEditorThemes: /\.readsInstalledEditorThemes\b/,
             "updatesItself(flavour:)": /\.updatesItself\(flavour:/,
+            keepsAccessGrants: /\.keepsAccessGrants\b/,
+            readsICloudDrive: /\.readsICloudDrive\b/,
         };
         for (const [fact, re] of Object.entries(facts)) {
             expect(readers(outsideSeam, re), `${fact} has no consumer`).not.toEqual([]);
         }
         // And the seam declares each of them, so the regexes above are
         // matching the real names and not a near miss.
-        for (const fact of ["offersAgent", "offersTerminalCommand", "readsInstalledEditorThemes"]) {
+        for (const fact of ["offersAgent", "offersTerminalCommand", "readsInstalledEditorThemes",
+            "keepsAccessGrants", "readsICloudDrive"]) {
             expect(seam).toContain(`public var ${fact}: Bool`);
         }
         expect(seam).toContain("public func updatesItself(flavour: AppFlavor) -> Bool");
@@ -125,6 +128,36 @@ describe("the distribution seam", () => {
         expect(appSwift).toMatch(
             /if distribution\.offersAgent \|\| distribution\.offersTerminalCommand \{\s*\n\s*LoginShellPath\.shared\.prewarm\(\)/,
         );
+    });
+
+    it("the store build should be the sandboxed one, with the access a store copy needs", () => {
+        // `Distribution` reads the sandbox, so these entitlements are the whole
+        // of what makes a build the store channel; each key is one a reader in
+        // the app relies on, and the bookmarks one is what renews a grant.
+        const entitlements = readFileSync(join(REPO, "mac", "Resources", "BirtaWriter.store.entitlements"), "utf8");
+        for (const key of [
+            "com.apple.security.app-sandbox",
+            "com.apple.security.network.client",
+            "com.apple.security.files.user-selected.read-write",
+            "com.apple.security.files.bookmarks.app-scope",
+        ]) {
+            expect(entitlements, key).toContain(`<key>${key}</key>`);
+        }
+        const build = readFileSync(join(REPO, "mac", "scripts", "build-app.sh"), "utf8");
+        expect(build).toMatch(/if \[ "\$CHANNEL" != store \]; then\n\s*cp "\$CLI" "\$APP\/Contents\/MacOS\/bwr"\n\s*fi/);
+        expect(build).toContain("--entitlements mac/Resources/BirtaWriter.store.entitlements");
+    });
+
+    it("a launch should renew the store's grants before anything reads a stored path", () => {
+        // The notes-move offer is the first reader of a stored path, and the
+        // windows come after it; a renewal below either is a store launch
+        // that opens on notes it may not read.
+        const appSwift = readFileSync(join(APP_TARGET, "App.swift"), "utf8");
+        const launch = appSwift.slice(appSwift.indexOf("func applicationDidFinishLaunching"));
+        const renew = launch.indexOf("SandboxAccess.restoreAtLaunch()");
+        expect(renew, "the launch never renews its grants").toBeGreaterThan(0);
+        expect(renew).toBeLessThan(launch.indexOf("NotesMoveOffer.offerAtLaunch()"));
+        expect(renew).toBeLessThan(launch.indexOf("seedDefaultThemes()"));
     });
 
     it("the settings window should take the channel the way it takes the flavour", () => {

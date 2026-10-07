@@ -5296,6 +5296,7 @@ final class Coordinator {
                     return
                 }
                 Prefs.saveAsDirectory = url.deletingLastPathComponent()
+                SandboxAccess.remember(url)
                 self.finishSave(to: url, content: content)
             }
             if self.panel.isVisible {

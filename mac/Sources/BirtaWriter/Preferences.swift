@@ -85,6 +85,9 @@ enum Prefs {
         case tintColor
         case sidebarTransparent
         case seededDefaultThemes
+        /// The store channel's bookmarks for what the person handed over
+        /// (`AccessGrantList`). Never written on the direct build.
+        case accessGrants
     }
 
     /// The keys a reset must NOT clear, each for a reason of its own.
@@ -220,7 +223,14 @@ enum Prefs {
     }
 
     /// Whether this machine has iCloud Drive switched on.
-    static var iCloudAvailable: Bool { ScratchpadLocation.iCloudDriveRoot() != nil }
+    ///
+    /// Never on a channel that cannot see it (`Distribution.readsICloudDrive`):
+    /// inside the sandbox the folder reads as absent anyway, and saying so
+    /// here rather than leaving it to that accident is what keeps the notes
+    /// off a branch the store build cannot reach.
+    static var iCloudAvailable: Bool {
+        Distribution.current.readsICloudDrive && ScratchpadLocation.iCloudDriveRoot() != nil
+    }
 
     /// Which of the two homes the default note is in right now.
     static var scratchpadLocation: ScratchpadLocation {
@@ -884,8 +894,21 @@ enum Prefs {
     /// after a reset indistinguishable from a first launch, and Show Welcome
     /// would then write the onboarding answers over a reset that was done to
     /// get out of them.
-    static var isFirstLaunch: Bool {
-        Key.allCases.allSatisfy { d.object(forKey: $0.rawValue) == nil }
+    ///
+    /// EXCEPT `accessGrants`, which is not something a person set but a record
+    /// the store build takes the moment a file is handed over, and a launch
+    /// that came from Open With hands one over before this is read. Counted,
+    /// it would make that first launch an existing install.
+    static var isFirstLaunch: Bool { isFirstLaunch(in: d) }
+
+    static func isFirstLaunch(in store: UserDefaults) -> Bool {
+        Key.allCases.allSatisfy { $0 == .accessGrants || store.object(forKey: $0.rawValue) == nil }
+    }
+
+    /// The store channel's bookmarks, in the form `AccessGrantList` stores.
+    static var accessGrants: AccessGrantList {
+        get { AccessGrantList.decoded(d.data(forKey: Key.accessGrants.rawValue)) }
+        set { d.set(newValue.encoded(), forKey: Key.accessGrants.rawValue) }
     }
 
     /// Make true what a first run is about to act as though it had settled.

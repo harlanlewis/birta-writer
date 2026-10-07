@@ -167,6 +167,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding, 
     /// consults nothing. A folder becomes a directory window (MAR-457).
     func application(_ application: NSApplication, open urls: [URL]) {
         guard let url = DocumentTypes.firstToOpen(from: urls) else { return }
+        // While the open event's grant is live, so the next launch can reach
+        // this file or folder again on the store channel (`SandboxAccess`).
+        SandboxAccess.remember(url)
         guard !windows.windows.isEmpty else {
             pendingOpen = url
             return
@@ -195,6 +198,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding, 
         if distribution.offersAgent || distribution.offersTerminalCommand {
             LoginShellPath.shared.prewarm()
         }
+        // Before ANYTHING reads a stored path: the notes-move offer below, the
+        // windows a launch puts back, the recents. On the store channel each
+        // of those is unreadable until its grant is renewed; elsewhere this
+        // does nothing.
+        SandboxAccess.restoreAtLaunch()
         buildMainMenu()
         // BEFORE the Coordinator, and that ordering is the point rather than
         // an arrangement. The notes folder is derived from the product name,
@@ -377,7 +385,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding, 
     /// A socket that cannot be bound is logged and the app runs without one.
     /// Every other thing the command does still works, and the shell is told
     /// nothing answered rather than being left to wait.
+    ///
+    /// Not on a channel without the command: nothing could connect, and inside
+    /// the store's container the socket's path is longer than a Unix socket
+    /// may be, so binding it only logs a failure on every launch.
     private func listenForWaitingShells() {
+        guard Distribution.current.offersTerminalCommand else { return }
         let support = ControlSocket.supportDirectory(environment: ProcessInfo.processInfo.environment) {
             FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
         }
