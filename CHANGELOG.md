@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+---
+
+## [2026.1007.0] - 2026, October 7
+
 ### Added
 
 - `<details>` disclosures render as one block, drawn like a callout with no type: the summary is a title you can edit, the Markdown inside renders as Markdown, and a toggle shows and hides it. A `<details>` without `open` opens folded, like a `> [!note]-` callout, and unfolding it does not change the file. Inside a list item it stays open and has no toggle, because blocks there do not fold. Insert one with `/details` or Insert Details from the Command Palette. Before, the opening and closing tags each drew an empty box with the body loose between them. The tags sit on their own lines with a blank line between them and the body, as GitHub writes them. A body indented four spaces, as some note generators write it, also reads as Markdown with its `<summary>` line as the title, and keeps its indentation when saved; GitHub shows that same body as code, because to CommonMark it is one indented code block.

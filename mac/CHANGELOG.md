@@ -12,6 +12,10 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ## [Unreleased]
 
+---
+
+## [2026.1007.0] - 2026, October 7
+
 ### Added
 
 - Birta Writer for Mac's Format menu has a Details row, beside Callout, which inserts a `<details>` disclosure.
