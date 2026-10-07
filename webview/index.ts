@@ -81,6 +81,7 @@ import { initPathComplete } from "./components/pathLink/pathComplete";
 import { initFindBar } from "./components/findBar";
 import { createLineNumbersGate } from "./utils/lineNumbersLoader";
 import { createFileExplorerGate } from "./utils/fileExplorerLoader";
+import { createPathBarGate } from "./utils/pathBarLoader";
 import { createFirstScreen } from "./firstScreen";
 import { initHeadingIds } from "./headingIds";
 import { initToolbar } from "./components/toolbar";
@@ -724,6 +725,10 @@ const lineNumbers = createLineNumbersGate({
 });
 lineNumbers.setEnabled(window.__i18n?.lineNumbers === true);
 
+// Where the file is, at the window's foot, for a host that hands the page a
+// path (`pathBar`). Creating the gate loads nothing (utils/pathBarLoader.ts).
+const pathBar = createPathBarGate();
+
 const topbar = document.querySelector<HTMLElement>(".editor-topbar");
 // "Edit Raw Markdown" (toolbar button AND right-click menu): same switch path
 // as Cmd+Shift+M, carrying the caret (or the viewport, when the caret is off
@@ -1162,6 +1167,7 @@ const handlers = createMessageHandlers({
         directoryChanged: (paths) => fileExplorer.directoryChanged(paths),
         setFileExplorerShowHidden: (showHidden) => fileExplorer.setShowHidden(showHidden),
         setFileExplorerFloor: (width) => fileExplorer.setWidthFloor(width),
+        setPathBar: (segments) => pathBar.set(segments),
     },
     topbarTb,
 });

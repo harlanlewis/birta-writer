@@ -176,6 +176,7 @@ mac/scripts/reap.sh                           Clears what a run leaves outside e
 mac/scripts/install-app.sh                    Installs the built app to /Applications, replacing a running copy through its own flush-then-quit
 mac/scripts/menu-bar.sh                       The app's REAL menu bar, read by pid through the accessibility API; what macOS adds to a menu the app built exists nowhere else, and why System Events cannot be asked
 mac/scripts/make-icons.sh                     Regenerates AppIcon.icns, AppIconDev.icns and MenuBarTemplate.pdf from the SVGs in mac/Resources; outputs are committed
+mac/Sources/BirtaWriterCore/PathBar.swift        Where the path bar starts (iCloud Drive, home, the volume) and what each segment names; the only paths a page's `revealPath` may show; drawn by webview/components/pathBar
 mac/Sources/BirtaWriterCore/WindowTitle.swift    What a macOS window title says, with no window: whether Edited is drawn at all, and the path popup's walk
 mac/Sources/BirtaWriterCore/PanelSize.swift      How big the window opens and where it lands, decided against the screen rather than written down; the clamp lives here so it can be asked about screens this machine does not have
 mac/Sources/BirtaWriterCore/ViewStateOnOpen.swift Which remembered view state survives OPENING a file and which only survives a view coming back; the page half is `withoutScroll` in webview/messageHandlers.ts

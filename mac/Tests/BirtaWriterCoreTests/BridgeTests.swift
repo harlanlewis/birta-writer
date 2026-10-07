@@ -637,4 +637,18 @@ final class BridgeTests: XCTestCase {
         XCTAssertEqual(object["line"] as? String, "Read note.md")
         XCTAssertTrue(JSONSerialization.isValidJSONObject(object))
     }
+
+    func testThePathBarShouldTravelAsSegmentsOrNullAndAClickAsAPath() {
+        let segment = PathSegment(name: "Notes", path: "/Users/ada/Notes", kind: .folder)
+        let on = HostMessage.pathBar([segment]).jsonObject()
+        XCTAssertEqual(on["type"] as? String, "pathBar")
+        let sent = on["segments"] as? [[String: Any]]
+        XCTAssertEqual(sent?.count, 1)
+        XCTAssertEqual(sent?.first?["kind"] as? String, "folder")
+        XCTAssertEqual(sent?.first?["path"] as? String, "/Users/ada/Notes")
+        XCTAssertTrue(HostMessage.pathBar(nil).jsonObject()["segments"] is NSNull, "no bar is null, not an empty list")
+        XCTAssertEqual(WebviewMessage.parse(#"{"type":"revealPath","path":"/Users/ada/Notes"}"#),
+                       .revealPath("/Users/ada/Notes"))
+        XCTAssertEqual(WebviewMessage.parse(#"{"type":"revealPath"}"#), .other(type: "revealPath"))
+    }
 }

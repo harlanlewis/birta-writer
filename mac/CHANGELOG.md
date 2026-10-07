@@ -12,6 +12,15 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ## [Unreleased]
 
+### Added
+
+- Birta Writer for Mac can show where a note is at the foot of its window: View > Show Path Bar (Option+Command+P, the Finder's chord), or Show Path Bar in the command palette. It lists the folders down to the note, starting from iCloud Drive, your home folder or the disk. Click a folder to open it in the Finder, or the note's own name to select it there. The setting applies to every window and is off until you turn it on.
+- Birta Writer for Mac's File menu has Reveal in Finder (Option+Command+R) and Copy Path (Option+Command+C) for the note in the window, with the chords VS Code gives the same pair.
+
+### Changed
+
+- The command palette in Birta Writer for Mac finds Move to Trash when you type "delete", and now lists the File menu rows it could not find before: Copy Everything, Share and Reveal Last Save in Finder.
+
 ---
 
 ## [2026.1007.0] - 2026, October 7

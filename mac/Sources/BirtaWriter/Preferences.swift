@@ -76,6 +76,7 @@ enum Prefs {
         case explorerShowsHidden
         case formattingRowExpanded
         case lineNumbers
+        case pathBar
         case paletteRecents
         case appearanceMode
         case appearanceHeld
@@ -645,6 +646,13 @@ enum Prefs {
     static var lineNumbers: Bool {
         get { d.bool(forKey: Key.lineNumbers.rawValue) }
         set { d.set(newValue, forKey: Key.lineNumbers.rawValue) }
+    }
+
+    /// The path bar at the foot of every window (View > Show Path Bar). Off by
+    /// default, as the Finder's is.
+    static var pathBar: Bool {
+        get { d.bool(forKey: Key.pathBar.rawValue) }
+        set { d.set(newValue, forKey: Key.pathBar.rawValue) }
     }
 
     /// How the page looks (`Appearance.swift`): the mode, the theme in each

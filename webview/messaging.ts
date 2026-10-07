@@ -424,6 +424,11 @@ export function notifyOpenProjectFile(path: string, newTab: boolean, line?: numb
     vscode.postMessage({ type: "openProjectFile", path, newTab, ...(line === undefined ? {} : { line }) });
 }
 
+/** A path bar segment was clicked; the host shows it in its file manager. */
+export function notifyRevealPath(path: string): void {
+    vscode.postMessage({ type: "revealPath", path });
+}
+
 /** The folders the tree has open, for the host to hand the next page on this root. */
 export function notifyFileExplorerExpanded(paths: string[]): void {
     vscode.postMessage({ type: "fileExplorerExpanded", paths });

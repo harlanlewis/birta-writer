@@ -164,6 +164,10 @@ public enum WebviewMessage: Equatable {
     /// request subscribes the page: the host answers with `folderIndex` now
     /// and again whenever the root changes, until the page is gone.
     case requestFolderIndex
+    /// A segment of the path bar was clicked, by the absolute path the host
+    /// handed it in `pathBar`. The host shows that folder (or selects that
+    /// file) in the Finder, and refuses a path its own bar did not draw.
+    case revealPath(String)
     /// The three things the explorer remembers, as the outline panel's are
     /// remembered: its width and whether it is out, per app, and whether
     /// dotfiles are listed, which is the host's setting because the host's
@@ -349,6 +353,7 @@ public enum WebviewMessage: Equatable {
         case "openProjectFile":
             return str("path").map { .openProjectFile(path: $0, newTab: bool("newTab") ?? false, line: int("line")) } ?? .other(type: type)
         case "requestFolderIndex": return .requestFolderIndex
+        case "revealPath": return str("path").map { .revealPath($0) } ?? .other(type: type)
         case "projectFileMenu":
             guard let path = str("path"), let kind = str("kind"),
                   let x = dict["x"] as? NSNumber, let y = dict["y"] as? NSNumber else { return .other(type: type) }
@@ -551,6 +556,10 @@ public enum HostMessage: Equatable {
     /// extension's `setLineNumbers`, which the page already answers by
     /// loading the gutter's module or removing the layer.
     case setLineNumbers(Bool)
+    /// The path bar's segments for this window's file, root first, or nil for
+    /// no bar (View > Show Path Bar is off). Sent on every load and whenever
+    /// the window's file changes.
+    case pathBar([PathSegment]?)
     /// Ask the page which editor commands it can run here, answered with
     /// `paletteCommands`. A host that never asks is never sent the list.
     case requestPaletteCommands
@@ -715,6 +724,8 @@ public enum HostMessage: Equatable {
             return ["type": "setFormattingRowExpanded", "expanded": expanded]
         case let .setLineNumbers(enabled):
             return ["type": "setLineNumbers", "enabled": enabled]
+        case let .pathBar(segments):
+            return ["type": "pathBar", "segments": segments.map { $0.map(\.jsonObject) } ?? NSNull()]
         case .requestPaletteCommands:
             return ["type": "requestPaletteCommands"]
         case let .hostCapabilitiesChanged(capabilities):

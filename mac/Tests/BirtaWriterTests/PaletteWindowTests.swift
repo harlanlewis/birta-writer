@@ -141,6 +141,24 @@ final class PaletteWindowTests: XCTestCase {
                       "and with nothing idle the row is back")
     }
 
+    /// The words somebody types for an act the platform names differently:
+    /// "delete" and "trash" both reach Move to Trash, and the File menu's
+    /// former hand-built rows are rows here now that the table holds them.
+    func testEveryFileRowShouldBeFoundByItsTitleOrAnAlias() {
+        let items = realCatalog().items
+        func top(_ query: String) -> String? {
+            PaletteModel.rank(items, query: query, mode: .all, recents: []).first?.item.title
+        }
+        XCTAssertEqual(top("delete file"), "Move to Trash…")
+        XCTAssertEqual(top("trash"), "Move to Trash…")
+        XCTAssertEqual(top("reveal in finder"), "Reveal in Finder")
+        XCTAssertEqual(top("copy path"), "Copy Path")
+        XCTAssertEqual(top("share"), "Share…")
+        XCTAssertEqual(top("copy everything"), "Copy Everything")
+        XCTAssertEqual(top("path bar"), "Show Path Bar")
+        XCTAssertEqual(top("file path"), "Show Path Bar")
+    }
+
     func testARowThatRenamesItselfShouldBeOfferedUnderWhatPickingItDoes() {
         var shown = PaletteSources.Context(front: nil, allows: Self.looseFileGate)
         shown.menuState = MenuState(tocShown: true)

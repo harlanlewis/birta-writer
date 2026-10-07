@@ -284,11 +284,17 @@ enum AppMenu {
         /// finds items by the row's address and never reaches the twin, so a
         /// gate could withdraw the row and leave its second chord live.
         let also: (key: String, modifiers: NSEvent.ModifierFlags)?
+        /// Other names the palette finds this row by, never drawn. For a row
+        /// whose title is the platform's word for the act while the reader
+        /// may type another: Move to Trash is what macOS calls it, and
+        /// "delete file" is what somebody looking for it types.
+        let aliases: [String]
 
         init(title: String, key: String = "", modifiers: NSEvent.ModifierFlags = [],
              action: Action, menu: Menu, submenu: String? = nil, group: Int = 0,
              state: RowState? = nil, needs: [MenuToggle] = [],
-             also: (key: String, modifiers: NSEvent.ModifierFlags)? = nil) {
+             also: (key: String, modifiers: NSEvent.ModifierFlags)? = nil,
+             aliases: [String] = []) {
             self.title = title
             self.key = key
             self.modifiers = modifiers
@@ -299,6 +305,7 @@ enum AppMenu {
             self.state = state
             self.needs = needs
             self.also = also
+            self.aliases = aliases
         }
 
         /// What the hidden twin carrying `also` answers to.
@@ -446,10 +453,30 @@ enum AppMenu {
               action: .app(#selector(AppDelegate.menuSaveNow)), menu: .file),
         .init(title: "Save a Copy As…", key: "s", modifiers: [.command, .shift],
               action: .app(#selector(AppDelegate.menuSaveAs)), menu: .file),
+        // Where this window's file is: the Finder's two answers, with the
+        // chords VS Code gives the same pair on a Mac.
+        .init(title: "Reveal in Finder", key: "r", modifiers: [.command, .option],
+              action: .app(#selector(AppDelegate.menuRevealInFinder)), menu: .file, group: 1,
+              aliases: ["Show in Finder"]),
+        .init(title: "Copy Path", key: "c", modifiers: [.command, .option],
+              action: .app(#selector(AppDelegate.menuCopyPath)), menu: .file, group: 1),
         // The open note, after a confirmation; the palette lists it from here.
         // No chord: Cmd+Delete belongs to the editor, which deletes text with it.
         .init(title: "Move to Trash…",
-              action: .app(#selector(AppDelegate.menuMoveToTrash)), menu: .file, group: 1),
+              action: .app(#selector(AppDelegate.menuMoveToTrash)), menu: .file, group: 1,
+              aliases: ["Delete File", "Delete Note", "Remove File"]),
+        // Dead unless this window is on an older install's document setting
+        // (`AppDelegate.allows`), and kept for that window.
+        .init(title: "Back to My Notes",
+              action: .app(#selector(AppDelegate.menuBackToNotes)), menu: .file, group: 2),
+        .init(title: "Copy Everything",
+              action: .app(#selector(AppDelegate.copyEverything)), menu: .file, group: 3,
+              aliases: ["Copy All"]),
+        // Share is a File-menu verb on macOS, and this is its only route.
+        .init(title: "Share…",
+              action: .app(#selector(AppDelegate.shareNote)), menu: .file, group: 3),
+        .init(title: "Reveal Last Save in Finder",
+              action: .app(#selector(AppDelegate.revealLastSave)), menu: .file, group: 3),
     ]
 
     // MARK: edit
@@ -713,6 +740,13 @@ enum AppMenu {
         .init(title: "Show Line Numbers",
               action: .app(#selector(AppDelegate.menuToggleLineNumbers)), menu: .view, group: 3,
               state: .title(.lineNumbers, whenOn: "Hide Line Numbers")),
+        // Where the file is, at the window's foot, as the Finder's own row of
+        // the same name draws it and on the Finder's chord. The app's setting
+        // for every window, an `.app` row for the reason Line Numbers is one.
+        .init(title: "Show Path Bar", key: "p", modifiers: [.command, .option],
+              action: .app(#selector(AppDelegate.menuTogglePathBar)), menu: .view, group: 3,
+              state: .title(.pathBar, whenOn: "Hide Path Bar"),
+              aliases: ["File Path", "Breadcrumbs"]),
 
         .init(title: "Proofreading", action: .submenu, menu: .view, group: 4,
               // Not gated on itself: the disclosure that holds the gate has to
