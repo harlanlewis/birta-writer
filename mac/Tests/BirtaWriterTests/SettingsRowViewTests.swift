@@ -21,7 +21,7 @@ final class SettingsRowViewTests: XCTestCase {
     }
 
     private func makeController(_ flavour: AppFlavor) -> SettingsWindowController {
-        SettingsWindowController(flavour: flavour, onHotkeyChange: { 0 }, onChange: { _ in }, onChangeEverywhere: {},
+        SettingsWindowController(flavour: flavour, distribution: .direct, onHotkeyChange: { 0 }, onChange: { _ in }, onChangeEverywhere: {},
                                  onShowWelcome: {}, onCheckForUpdates: {})
     }
 
@@ -85,7 +85,7 @@ final class SettingsRowViewTests: XCTestCase {
     /// path a person takes rather than a call to `apply` written by the test.
     func testAHotkeyTheSystemRefusesShouldRedTheSummonRowsSentence() {
         // A non-zero status is macOS refusing the registration.
-        let controller = SettingsWindowController(flavour: .release, onHotkeyChange: { -1 },
+        let controller = SettingsWindowController(flavour: .release, distribution: .direct, onHotkeyChange: { -1 },
                                                   onChange: { _ in }, onChangeEverywhere: {}, onShowWelcome: {},
                                                   onCheckForUpdates: {})
         defer { controller.window?.close() }
@@ -305,7 +305,7 @@ final class SettingsRowViewTests: XCTestCase {
     func testCheckNowShouldAskTheAppForACheck() {
         var asked = 0
         let controller = SettingsWindowController(
-            flavour: .release, onHotkeyChange: { 0 }, onChange: { _ in },
+            flavour: .release, distribution: .direct, onHotkeyChange: { 0 }, onChange: { _ in },
             onChangeEverywhere: {}, onShowWelcome: {}, onCheckForUpdates: { asked += 1 })
         defer { controller.window?.close() }
         controller.selectTabForTesting("advanced")

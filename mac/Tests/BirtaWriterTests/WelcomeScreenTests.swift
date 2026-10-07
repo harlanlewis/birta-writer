@@ -107,7 +107,7 @@ final class WelcomeScreenTests: XCTestCase {
                                  refusedSummonCombo: { refused })
         welcome.layoutSubtreeIfNeeded()
         let controller = SettingsWindowController(
-            flavour: .release, onHotkeyChange: { 0 }, refusedSummonCombo: { refused },
+            flavour: .release, distribution: .direct, onHotkeyChange: { 0 }, refusedSummonCombo: { refused },
             onChange: { _ in }, onChangeEverywhere: {}, onShowWelcome: {},
             onCheckForUpdates: {})
         defer { controller.window?.close() }
@@ -161,7 +161,7 @@ final class WelcomeScreenTests: XCTestCase {
         welcome.layoutSubtreeIfNeeded()
         let asked = rowLabels(in: welcome)
 
-        let controller = SettingsWindowController(flavour: .release, onHotkeyChange: { 0 },
+        let controller = SettingsWindowController(flavour: .release, distribution: .direct, onHotkeyChange: { 0 },
                                                   onChange: { _ in }, onChangeEverywhere: {}, onShowWelcome: {},
                                                   onCheckForUpdates: {})
         defer { controller.window?.close() }

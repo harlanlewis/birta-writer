@@ -123,6 +123,29 @@ describe("the distribution seam", () => {
         expect(appSwift).toMatch(/flavour: \.current,\s*\n\s*distribution: \.current,/);
     });
 
+    it("every construction of the two windows, tests included, should pass the channel", () => {
+        // The parameter is required, so a caller that omits it fails to
+        // compile; but the compile runs on the macOS job and this runs on
+        // every platform. The first push of this seam left ten test callers
+        // without it, because the rewrite was fed a hand-made file list, so
+        // the count here comes from the tree and never from a list.
+        const tests = swiftSources(join(REPO, "mac", "Tests"));
+        const ctor = /(?:SettingsWindowController\(|WelcomeView\()\s*flavour: (?:\.\w+|flavour),/g;
+        let seen = 0;
+        const missing: string[] = [];
+        for (const f of [...app, ...tests]) {
+            for (const m of f.source.matchAll(ctor)) {
+                seen += 1;
+                const call = f.source.slice(m.index!, m.index! + 200);
+                if (!/distribution: (\.current|\.direct|\.appStore|distribution)/.test(call)) {
+                    missing.push(`${f.path}:${f.source.slice(0, m.index!).split("\n").length}`);
+                }
+            }
+        }
+        expect(seen, "the sweep found no constructions; fix the pattern").toBeGreaterThan(20);
+        expect(missing).toEqual([]);
+    });
+
     it("the first-run screen should take the channel too, since it draws the same update row", () => {
         // The miss this guard caught on its first run: Settings was wired and
         // the welcome screen, which draws the same row from the same rule,

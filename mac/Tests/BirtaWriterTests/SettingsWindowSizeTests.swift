@@ -32,7 +32,7 @@ final class SettingsWindowSizeTests: XCTestCase {
     /// The RELEASE window unless a test says otherwise, which is what every
     /// arm here measured before the flavour was injectable.
     private func makeController(_ flavour: AppFlavor = .release) -> SettingsWindowController {
-        SettingsWindowController(flavour: flavour, onHotkeyChange: { 0 }, onChange: { _ in }, onChangeEverywhere: {},
+        SettingsWindowController(flavour: flavour, distribution: .direct, onHotkeyChange: { 0 }, onChange: { _ in }, onChangeEverywhere: {},
                                  onShowWelcome: {}, onCheckForUpdates: {})
     }
 
@@ -263,7 +263,7 @@ final class AppearanceCardShapeSizeTests: XCTestCase {
         defer { Prefs.appearance = saved }
         Prefs.appearance = AppearanceSettings()
         let controller = SettingsWindowController(
-            flavour: .release, onHotkeyChange: { 0 }, onChange: { _ in }, onChangeEverywhere: {},
+            flavour: .release, distribution: .direct, onHotkeyChange: { 0 }, onChange: { _ in }, onChangeEverywhere: {},
             onShowWelcome: {}, onCheckForUpdates: {},
             onAppearanceChange: { Prefs.appearance = $0 })
         defer { controller.window?.close() }
