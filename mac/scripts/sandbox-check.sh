@@ -41,6 +41,9 @@ FAILED=0
 # One exit trap, for the reason measure.sh gives: a second one would replace
 # it. SIGTERM, never SIGKILL, so WebKit's helpers are asked to go.
 end_app() {
+    # Also a copy LaunchServices started whose pid was never learned: a launch
+    # that failed to find it would otherwise leave it running after the exit.
+    [ -n "$PID" ] || PID="$(pid_of_exe)"
     [ -n "$PID" ] || return 0
     kill "$PID" 2>/dev/null || true
     for _ in $(seq 1 50); do kill -0 "$PID" 2>/dev/null || break; sleep 0.1; done
@@ -49,6 +52,10 @@ end_app() {
 cleanup() {
     end_app
     [ -z "$LS" ] || kill "$LS" 2>/dev/null || true
+    # `defaults delete` first, by the plist's path since the domain lives in
+    # the container: removing the file alone leaves cfprefsd holding the
+    # domain, and it writes the plist back (measure.sh says the same).
+    defaults delete "${SUITE_PLIST%.plist}" >/dev/null 2>&1 || true
     rm -f "$SUITE_PLIST" "$CONTAINER/Documents/Birta Writer/.debug-message.json"
     rm -rf "$WORK"
 }
@@ -90,6 +97,11 @@ defaults_write hasSeenWelcome -bool YES
 # the bundle name holds [DEV], which a pattern would read as a class.
 pid_of_exe() {
     local pid
+    # Nothing to match before the build has named its executable, and an
+    # empty path would match every dev copy on the machine, somebody's own
+    # among them. The path is under this run's temporary folder, so a set
+    # one can only ever be this run's.
+    [ -n "${EXE:-}" ] || return 0
     for pid in $(pgrep -f 'MacOS/BirtaWriterDev' || true); do
         if [ "$(ps -o command= -p "$pid" | cut -c1-${#EXE})" = "$EXE" ]; then echo "$pid"; return 0; fi
     done
