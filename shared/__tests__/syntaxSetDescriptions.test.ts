@@ -65,6 +65,7 @@ const swift = readFileSync(resolve(root, "mac/Sources/BirtaWriterCore/SyntaxSets
 const PHRASES: readonly (readonly [string, SyntaxFeature])[] = [
     ["notion callout", "notionCallout"],
     ["<aside>", "notionCallout"],
+    ["<details>", "details"],
     ["fenced div", "fencedDiv"],
     ["task list", "taskList"],
     ["calculation", "calc"],

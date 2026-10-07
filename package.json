@@ -376,6 +376,11 @@
                 "category": "Birta Writer"
             },
             {
+                "command": "birta.editor.insertDetails",
+                "title": "%command.editor.insertDetails.title%",
+                "category": "Birta Writer"
+            },
+            {
                 "command": "birta.editor.toggleCallout",
                 "title": "%command.editor.toggleCallout.title%",
                 "category": "Birta Writer"
@@ -1198,6 +1203,10 @@
                 {
                     "command": "birta.editor.insertCallout",
                     "when": "activeCustomEditorId == 'birta.editor' && birta.syntax.calloutAlert"
+                },
+                {
+                    "command": "birta.editor.insertDetails",
+                    "when": "activeCustomEditorId == 'birta.editor' && birta.syntax.details"
                 },
                 {
                     "command": "birta.editor.toggleCallout",

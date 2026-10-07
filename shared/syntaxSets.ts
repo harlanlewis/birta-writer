@@ -49,16 +49,21 @@ export type SyntaxSet =
      * of it in issues and READMEs: `> [!NOTE]` alerts, and Mermaid in a fenced
      * block. Both are GitHub features rather than GFM ones, and a writer
      * targeting GitHub wants them; splitting them out would give the roster a
-     * set nobody would think to enable on its own.
+     * set nobody would think to enable on its own. `<details>` disclosures
+     * are here for the same reason: raw HTML that GitHub renders with the
+     * Markdown inside them parsed.
      */
     | "gfm"
     /**
      * Obsidian: `[[wikilinks]]`, `==highlights==`, callouts and math, over the
-     * GFM base Obsidian itself builds on.
+     * GFM base Obsidian itself builds on. Less `<details>`: Obsidian does
+     * not parse Markdown inside an HTML block, and a blank line ends the
+     * block, so a disclosure with a Markdown body falls apart there.
      */
     | "obsidian"
     /**
-     * Pandoc: footnotes, math, and `:::` fenced divs. Pandoc reads far more
+     * Pandoc: footnotes, math, `:::` fenced divs, and `<details>`, whose
+     * Markdown body Pandoc parses (`markdown_in_html_blocks`, on by default). Pandoc reads far more
      * than this; what the list holds is what this editor can WRITE, so a
      * Pandoc extension the editor has no tool for is absent rather than
      * declared and unreachable.
@@ -176,6 +181,8 @@ export type SyntaxFeature =
     | "fencedDiv"
     /** Notion's `<aside>` callouts, as an export writes them. */
     | "notionCallout"
+    /** `<details>` disclosures with a Markdown body. */
+    | "details"
     /** A `mermaid` fenced block, rendered as a diagram. */
     | "mermaid"
     /** A `calc` fenced block, evaluated as a living worksheet. */
@@ -192,6 +199,7 @@ export const ALL_SYNTAX_FEATURES: readonly SyntaxFeature[] = [
     "calloutAlert",
     "fencedDiv",
     "notionCallout",
+    "details",
     "mermaid",
     "calc",
 ];
@@ -207,7 +215,7 @@ export const ALL_SYNTAX_FEATURES: readonly SyntaxFeature[] = [
  * reader checks a claim against.
  */
 export const SYNTAX_SET_FEATURES: Record<SyntaxSet, readonly SyntaxFeature[]> = {
-    gfm: ["table", "strikethrough", "taskList", "footnote", "math", "calloutAlert", "mermaid"],
+    gfm: ["table", "strikethrough", "taskList", "footnote", "math", "calloutAlert", "mermaid", "details"],
     obsidian: [
         "table",
         "strikethrough",
@@ -219,7 +227,7 @@ export const SYNTAX_SET_FEATURES: Record<SyntaxSet, readonly SyntaxFeature[]> = 
         "calloutAlert",
         "mermaid",
     ],
-    pandoc: ["table", "strikethrough", "footnote", "math", "fencedDiv"],
+    pandoc: ["table", "strikethrough", "footnote", "math", "fencedDiv", "details"],
     notion: ["notionCallout"],
     calc: ["calc"],
 };

@@ -4,6 +4,7 @@ export { calcArrowSuggestPlugin, calcAutoInsertPlugin, calcSuggestPlugin } from 
 export { calcRefreshPlugin } from "./calcRefresh";
 export { calcStalePlugin, regateCalcCues } from "./calcStale";
 export { insertCalloutCommand } from "./callouts";
+export { insertDetailsCommand } from "./details";
 export { toggleHighlightCommand } from "./highlight";
 export { caretScrollMarginPlugin } from "./caretScrollMargin";
 export { contentGuardPlugin, tagContentGuard } from "./contentGuard";

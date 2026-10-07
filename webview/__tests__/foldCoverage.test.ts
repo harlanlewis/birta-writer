@@ -987,6 +987,7 @@ const FOLDABLE_FIXTURES: Record<string, string> = {
     "blockquote": "> first line\n>\n> tail",
     "notion_callout": "<aside>\n💡 First line\n\nbody\n\n</aside>",
     "container_directive": ":::note Title\nbody\n:::",
+    "details": "<details>\n<summary>T</summary>\n\nbody\n\n</details>",
     "footnote_definition": "ref[^1]\n\n[^1]: the note",
 };
 

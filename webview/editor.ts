@@ -66,6 +66,7 @@ import {
     horizontalRuleKeymapPlugin,
     horizontalRulePlugin,
     insertCalloutCommand,
+    insertDetailsCommand,
     insertFootnoteCommand,
     insertHorizontalRuleCommand,
     linkInputRule,
@@ -1144,6 +1145,7 @@ export async function createEditor(
         .use(caretScrollMarginPlugin)
         .use(formatKeymapPlugin)
         .use(insertCalloutCommand)
+        .use(insertDetailsCommand)
         .use(toggleHighlightCommand)
         .use(insertFootnoteCommand)
         .use(footnoteReferenceInputRule)

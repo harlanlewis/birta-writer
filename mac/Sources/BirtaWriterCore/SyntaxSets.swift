@@ -42,19 +42,20 @@ public enum SyntaxSet: String, CaseIterable, Sendable {
     /// The sentence under the row: what enabling it adds, in the syntax a
     /// reader would recognise rather than in feature names.
     ///
-    /// Obsidian's names GitHub rather than relisting seven features, and that
-    /// is a claim Obsidian's own page makes (it supports CommonMark, GitHub
-    /// Flavored Markdown and LaTeX), so the membership table holds every GitHub
-    /// feature under Obsidian too. `syntaxSetDescriptions.test.ts` holds each
-    /// caption to naming only what its target provides.
+    /// Obsidian's lists the GitHub features it shares rather than saying
+    /// "everything in the GitHub row", because one is missing: Obsidian renders
+    /// `<details>` tags but not the Markdown body between them, so the
+    /// membership table leaves `details` out of that row and the caption must
+    /// not claim it back. `syntaxSetDescriptions.test.ts` holds each caption to
+    /// naming only what its target provides.
     public var caption: String {
         switch self {
         case .gfm:
-            return "Tables, ~~strikethrough~~, task lists, footnotes, math, > [!NOTE] alerts and Mermaid diagrams."
+            return "Tables, ~~strikethrough~~, task lists, footnotes, math, > [!NOTE] alerts, Mermaid diagrams and <details> disclosures."
         case .obsidian:
-            return "Everything in the GitHub row, plus [[wikilinks]], ==highlights== and callouts."
+            return "GitHub's tables, ~~strikethrough~~, task lists, footnotes, math, alerts and Mermaid, plus [[wikilinks]], ==highlights== and callouts."
         case .pandoc:
-            return "Footnotes, math and ::: fenced divs."
+            return "Footnotes, math, ::: fenced divs and <details> disclosures."
         case .notion:
             return "Notion callouts, as an export writes them. Plain HTML anywhere else."
         case .calc:
@@ -117,6 +118,7 @@ public enum SyntaxFeature: String, CaseIterable, Sendable {
     case calloutAlert
     case fencedDiv
     case notionCallout
+    case details
     case mermaid
     case calc
 }
@@ -127,10 +129,10 @@ public enum SyntaxScope {
     /// The membership table, mirroring `SYNTAX_SET_FEATURES`.
     public static func features(of set: SyntaxSet) -> [SyntaxFeature] {
         switch set {
-        case .gfm: return [.table, .strikethrough, .taskList, .footnote, .math, .calloutAlert, .mermaid]
+        case .gfm: return [.table, .strikethrough, .taskList, .footnote, .math, .calloutAlert, .mermaid, .details]
         case .obsidian: return [.table, .strikethrough, .taskList, .footnote, .math, .highlight,
                                 .wikiLink, .calloutAlert, .mermaid]
-        case .pandoc: return [.table, .strikethrough, .footnote, .math, .fencedDiv]
+        case .pandoc: return [.table, .strikethrough, .footnote, .math, .fencedDiv, .details]
         case .notion: return [.notionCallout]
         case .calc: return [.calc]
         }
@@ -156,6 +158,7 @@ public enum SyntaxScope {
         case "insertFootnote": return .footnote
         case "insertCallout": return .calloutAlert
         case "toggleCallout": return .calloutAlert
+        case "insertDetails": return .details
         default: return nil
         }
     }

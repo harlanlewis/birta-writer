@@ -88,6 +88,8 @@ describe("no hardcoded keybindings (modifier-chord scan)", () => {
             "scopes the editor's Mod+A inside code blocks — typing-level, must run synchronously",
         "webview/components/callout/index.ts":
             "scopes Mod+A inside the title's contenteditable island — native select-all escapes into the document",
+        "webview/components/details/index.ts":
+            "scopes Mod+A inside the summary's contenteditable island — native select-all escapes into the document",
         "webview/components/directive/index.ts":
             "scopes Mod+A inside the title's contenteditable island — native select-all escapes into the document",
         "webview/plugins/tableCellClickFix.ts":

@@ -127,11 +127,14 @@ function hazardMachineryPresent(doc: ProseNode): boolean {
             return false;
         }
         const name = node.type.name;
-        if (name === "container_directive" || name === "notion_callout") {
+        // A `<details>` pairs across blank lines exactly as an aside does
+        // (plugins/details.ts), so it carries the same re-pairing hazard.
+        if (name === "container_directive" || name === "notion_callout" || name === "details") {
             present = true;
             return false;
         }
-        if (name === "html" && String(node.attrs["value"] ?? "").includes("<aside")) {
+        const html = name === "html" ? String(node.attrs["value"] ?? "") : "";
+        if (html.includes("<aside") || /<\/?details/i.test(html)) {
             present = true;
             return false;
         }

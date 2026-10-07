@@ -174,6 +174,10 @@ export const EDITOR_COMMANDS = [
     // lifts out, different-kind retypes in place, outside wraps. Not in the
     // palette — insertCallout is the plain insert everywhere else.
     { id: "toggleCallout", title: "Toggle Callout", palette: false, sections: [], syntax: "calloutAlert" },
+    // A `<details>` disclosure around the blocks the selection covers
+    // (plugins/details.ts). Gated: Obsidian, for one, renders the tags but not
+    // the Markdown body between them.
+    { id: "insertDetails", title: "Insert Details", palette: true, sections: [], syntax: "details" },
     // `/help` (MAR-395): the Send Feedback questions, put from inside the
     // document rather than from a palette the editor's own surfaces cannot
     // reach. Ungated, because what it needs is a host that can draw a prompt

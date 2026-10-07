@@ -4,6 +4,14 @@
 
 ## [Unreleased]
 
+### Added
+
+- `<details>` disclosures render as one block: the summary is a title you can edit, the Markdown inside renders as Markdown, and a toggle shows and hides it. A `<details>` without `open` opens folded, like a `> [!note]-` callout, and unfolding it does not change the file. Inside a list item it stays open and has no toggle, because blocks there do not fold. Insert one with `/details` or Insert Details from the Command Palette. Before, the opening and closing tags each drew an empty box with the body loose between them. The tags must sit on their own lines with a blank line between them and the body, as GitHub writes them; a summary indented four spaces is a code block under CommonMark, GitHub included, so it shows as code inside the disclosure.
+
+### Changed
+
+- The `gfm` and `pandoc` targets in `birta.syntax.sets` now include `<details>`. The `obsidian` target does not, because Obsidian does not render Markdown inside one, so with only Obsidian selected Insert Details is not offered.
+
 ---
 
 ## [2026.1006.2] - 2026, October 6

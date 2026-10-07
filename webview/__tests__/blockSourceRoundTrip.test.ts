@@ -78,6 +78,7 @@ describe("block source round trip", () => {
             "callout",
             "code_block",
             "container_directive",
+            "details",
             "footnote_definition",
             "heading",
             "hr",
