@@ -578,6 +578,50 @@ final class Coordinator {
         host.send(.setLineNumbers(enabled))
     }
 
+    // MARK: the path bar
+
+    /// The path bar setting moved (View > Show Path Bar, in any window): the
+    /// menu mirror records it, and a warm page draws or drops the bar.
+    func applyPathBar(_ shown: Bool) {
+        menuState.record(.pathBar, on: shown)
+        sendPathBar()
+    }
+
+    /// What the page was last told, so `refreshTitle`, which runs on every
+    /// change of the edited flag, sends nothing while the file stays put.
+    private var sentPathBar: String?
+
+    /// Hand the page the segments of this window's file, or nil to draw no
+    /// bar: the setting is off, or there is no file to place. Sent on every
+    /// load (`force`) and whenever the bound file changes.
+    private func sendPathBar(force: Bool = false) {
+        guard state == .warm else { return }
+        let shown = Prefs.pathBar && !isWelcoming
+        let key = shown ? boundURL.standardizedFileURL.path : ""
+        guard force || key != sentPathBar else { return }
+        sentPathBar = key
+        let segments = shown
+            ? PathBar.segments(for: boundURL, home: FileManager.default.homeDirectoryForCurrentUser,
+                               displayName: { FileManager.default.displayName(atPath: $0) })
+            : nil
+        host.send(.pathBar(segments))
+    }
+
+    /// A segment of the path bar was clicked: a folder opens in the Finder,
+    /// the file is selected in its folder. Only a path the bar drew for this
+    /// file is honoured (`PathBar.reveals`); anything else a page names is
+    /// dropped rather than handed to the Finder.
+    private func revealPathSegment(_ path: String) {
+        guard PathBar.reveals(path, for: boundURL, home: FileManager.default.homeDirectoryForCurrentUser)
+        else { return }
+        let url = URL(fileURLWithPath: path)
+        if url.standardizedFileURL == boundURL.standardizedFileURL {
+            NSWorkspace.shared.activateFileViewerSelecting([url])
+        } else {
+            NSWorkspace.shared.open(url)
+        }
+    }
+
     /// What this host provides moved under the page: hand the page this
     /// window's own list rather than loading it again.
     ///
@@ -844,7 +888,8 @@ final class Coordinator {
                   tocShown: Prefs.tocVisibility == "shown",
                   explorerShown: Prefs.explorerVisibility == "shown",
                   hiddenFilesShown: Prefs.explorerShowsHidden,
-                  lineNumbers: Prefs.lineNumbers)
+                  lineNumbers: Prefs.lineNumbers,
+                  pathBar: Prefs.pathBar)
     }
 
     /// The editor commands the page says it can run in this window, as last
@@ -2320,6 +2365,7 @@ final class Coordinator {
             // reasoned about.
             host.send(.setFormattingRowExpanded(Prefs.formattingRowExpanded))
             host.send(.setLineNumbers(Prefs.lineNumbers))
+            sendPathBar(force: true)
             // The explorer's two facts, on every load: which folder this
             // window is rooted at (nil keeps the explorer off a file window)
             // and which of its files this is. After `initDoc`, so the editor
@@ -2545,6 +2591,8 @@ final class Coordinator {
             answerListing(id: id, path: path)
         case let .openProjectFile(path, newTab, line):
             openProjectFile(relative: path, newTab: newTab, line: line)
+        case let .revealPath(path):
+            revealPathSegment(path)
         case .requestFolderIndex:
             folderIndexSubscribed = true
             onFolderIndexRequest?()
@@ -4688,6 +4736,21 @@ final class Coordinator {
         focusEditorIfVisible()
     }
 
+    /// File > Reveal in Finder: this window's file, selected in its folder.
+    func revealBoundFile() {
+        guard canMoveBoundFileToTrash else { return }
+        NSWorkspace.shared.activateFileViewerSelecting([boundURL])
+    }
+
+    /// File > Copy Path: this window's file's absolute path, as the
+    /// explorer's row of the same name copies a row's.
+    func copyBoundFilePath() {
+        guard canMoveBoundFileToTrash else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(boundURL.path, forType: .string)
+        flashStatus("Path copied.")
+    }
+
     func revealLastSave() {
         guard let url = lastSavedURL else { return }
         NSWorkspace.shared.activateFileViewerSelecting([url])
@@ -5173,6 +5236,7 @@ final class Coordinator {
         let edited = WindowTitle.showsEdited(hasUnwrittenBytes: isEdited,
                                              autosaveEnabled: Prefs.autosave)
         titleBar.titleView.show(url: boundURL, edited: edited)
+        sendPathBar()
         // The window's own title is hidden from the titlebar (the accessory
         // draws the name), and is still read in two places: the tab bar
         // labels each tab with it, and the Window menu lists windows by it.

@@ -197,6 +197,11 @@ export interface EditorActions {
     directoryChanged: (paths: string[]) => void;
     setFileExplorerShowHidden: (showHidden: boolean) => void;
     setFileExplorerFloor: (width: number) => void;
+    /**
+     * The host's path bar segments, or null for no bar; straight through to
+     * the lazily-loaded bar's gate (utils/pathBarLoader.ts).
+     */
+    setPathBar: (segments: readonly import("../shared/messages").PathBarSegment[] | null) => void;
 }
 
 /** Message-handler dependencies. */
@@ -614,6 +619,9 @@ export function createMessageHandlers(
         },
         setLineNumbers(msg) {
             actions.setLineNumbers(msg.enabled);
+        },
+        pathBar(msg) {
+            actions.setPathBar(msg.segments);
         },
         setFormattingRowExpanded(msg) {
             actions.setFormattingRowExpanded(msg.expanded);

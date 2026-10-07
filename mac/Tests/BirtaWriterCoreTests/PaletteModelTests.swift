@@ -96,4 +96,21 @@ final class PaletteModelTests: XCTestCase {
         XCTAssertEqual(recents.first, "id10")
         XCTAssertEqual(recents.filter { $0 == "id10" }.count, 1, "moved, not repeated")
     }
+
+    func testAKeywordShouldFindARowWhoseTitleDoesNotMatch() {
+        let trash = PaletteItem(id: "trash", title: "Move to Trash…", section: "File", kind: .command,
+                                keywords: ["Delete File"])
+        let rows = PaletteModel.rank(all + [trash], query: "delete", mode: .all, recents: [])
+        XCTAssertEqual(titles(rows).first, "Move to Trash…", "the row keeps its own title")
+        XCTAssertEqual(rows.first?.matched, [], "a keyword is not drawn, so it lights no letters")
+        XCTAssertTrue(PaletteModel.rank([italic], query: "delete", mode: .all, recents: []).isEmpty,
+                      "the keyword is that row's, not every row's")
+    }
+
+    func testATitleMatchShouldOutrankTheSameMatchOnAKeyword() {
+        let byTitle = PaletteItem(id: "a", title: "Trash", section: "File", kind: .command)
+        let byKeyword = PaletteItem(id: "b", title: "Bin", section: "File", kind: .command, keywords: ["Trash"])
+        let rows = PaletteModel.rank([byKeyword, byTitle], query: "trash", mode: .all, recents: [])
+        XCTAssertEqual(rows.map(\.item.id), ["a", "b"])
+    }
 }

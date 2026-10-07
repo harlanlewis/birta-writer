@@ -116,6 +116,17 @@ export interface PaletteCommand {
 }
 // ToC show/hide preference. Type + normalizer live in ./tocVisibility (mirrors
 // the mermaid/blockHandles enum modules); re-exported here for message typing.
+/**
+ * One place on the path bar: a root the reader names (iCloud Drive, the home
+ * folder, a volume), a folder, or the file itself. `path` is absolute and is
+ * what a click hands back in `revealPath`.
+ */
+export interface PathBarSegment {
+    name: string;
+    path: string;
+    kind: "cloud" | "home" | "volume" | "folder" | "file";
+}
+
 export type { TocVisibility } from "./tocVisibility";
 import type { TocVisibility } from "./tocVisibility";
 import type { SyntaxSet } from "./syntaxSets";
@@ -465,6 +476,11 @@ export type ToExtensionMessage =
     // as the `scrollToLine` message to a page already showing the file. An
     // explorer row sends none and opens where the note was left.
     | { type: "openProjectFile"; path: string; newTab: boolean; line?: number }
+    // A segment of the path bar was clicked (`pathBar` on the other arm), by
+    // the absolute path the host handed it. The host shows that folder in its
+    // file manager, or selects the file in its folder, and refuses a path its
+    // own bar did not draw.
+    | { type: "revealPath"; path: string }
     // A row was right-clicked at a viewport point. The host draws its own
     // menu there (a native one, with the actions only it can perform: a new
     // tab, the file manager, the pasteboard, the trash); the page draws none.
@@ -1065,6 +1081,12 @@ export type ToWebviewMessage =
     // Enabling loads the gutter's module on demand; disabling removes it from
     // the DOM entirely, so a webview that never enables it never pays for it.
     | { type: "setLineNumbers"; enabled: boolean }
+    // Where this window's file is, root first and the file last, for the path
+    // bar at the window's foot; null draws no bar. Sent by a host that has a
+    // file manager to show a folder in (the Mac app, under View > Show Path
+    // Bar) on every load and whenever the file changes. VS Code sends none:
+    // its breadcrumbs already say where the file is.
+    | { type: "pathBar"; segments: PathBarSegment[] | null }
     // Whether this page carries the formatting row, under
     // `formattingInSecondRow`. The row is a SETTING of the host's, seeded into
     // every page as `__i18n.formattingRowExpanded` and changed in the host's

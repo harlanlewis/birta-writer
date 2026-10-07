@@ -214,7 +214,7 @@ final class AppMenuTests: XCTestCase {
             "Command Palette…",
             "-", "Zoom In", "Zoom Out", "Actual Size",
             "-", "Font", "Theme", "Folding",
-            "-", "Show Table of Contents", "Show Files", "Show Hidden Files", "Show Line Numbers",
+            "-", "Show Table of Contents", "Show Files", "Show Hidden Files", "Show Line Numbers", "Show Path Bar",
             "-", "Proofreading",
             // The bracket macOS's own Enter Full Screen lands under; see
             // `AppMenu.Menu.takesSystemRows`.
@@ -296,7 +296,10 @@ final class AppMenuTests: XCTestCase {
 
     func testTheFileMenuShouldOpenRecentThroughASubmenuOfItsOwn() {
         let file = build(.file)
-        XCTAssertEqual(titles(of: file), ["New Note", "New Tab", "Open…", "Open Recent", "Go to File…", "Save", "Save a Copy As…", "-", "Move to Trash…"])
+        XCTAssertEqual(titles(of: file), ["New Note", "New Tab", "Open…", "Open Recent", "Go to File…", "Save", "Save a Copy As…",
+                                        "-", "Reveal in Finder", "Copy Path", "Move to Trash…",
+                                        "-", "Back to My Notes",
+                                        "-", "Copy Everything", "Share…", "Reveal Last Save in Finder"])
         let item = file.items.first { $0.title == "Open Recent" }
         // A submenu row and nothing else. The selector the table gives this
         // row is for the titlebar's button; leaving it on the menu item would

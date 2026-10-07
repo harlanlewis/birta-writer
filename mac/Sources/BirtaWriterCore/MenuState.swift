@@ -34,6 +34,9 @@ public enum MenuToggle: Equatable {
     /// Whether the page draws its source line numbers (the extension's
     /// `birta.lineNumbers`). The app's setting, for every window at once.
     case lineNumbers
+    /// Whether the window draws the path bar at its foot. The app's setting,
+    /// for every window at once, as the Finder's View > Show Path Bar is.
+    case pathBar
 }
 
 /// What the app knows about the state its menu rows draw, at the moment a menu
@@ -51,19 +54,22 @@ public struct MenuState: Equatable {
     public var explorerShown: Bool
     public var hiddenFilesShown: Bool
     public var lineNumbers: Bool
+    public var pathBar: Bool
 
     public init(proofreadOptions: [String: Bool] = [:],
                 noteHighlight: Bool = true,
                 tocShown: Bool = false,
                 explorerShown: Bool = true,
                 hiddenFilesShown: Bool = false,
-                lineNumbers: Bool = false) {
+                lineNumbers: Bool = false,
+                pathBar: Bool = false) {
         self.proofreadOptions = proofreadOptions
         self.noteHighlight = noteHighlight
         self.tocShown = tocShown
         self.explorerShown = explorerShown
         self.hiddenFilesShown = hiddenFilesShown
         self.lineNumbers = lineNumbers
+        self.pathBar = pathBar
     }
 
     public func isOn(_ toggle: MenuToggle) -> Bool {
@@ -78,6 +84,7 @@ public struct MenuState: Equatable {
         case .explorerShown: return explorerShown
         case .hiddenFilesShown: return hiddenFilesShown
         case .lineNumbers: return lineNumbers
+        case .pathBar: return pathBar
         }
     }
 
@@ -98,6 +105,7 @@ public struct MenuState: Equatable {
         case .explorerShown: explorerShown = on
         case .hiddenFilesShown: hiddenFilesShown = on
         case .lineNumbers: lineNumbers = on
+        case .pathBar: pathBar = on
         }
     }
 }

@@ -55,9 +55,13 @@ public struct PaletteItem: Equatable, Sendable {
     /// is why this is about the flattened title alone.
     public let crumb: String?
     public let children: [PaletteItem]
+    /// Other names a query finds this row by, never drawn: "delete file"
+    /// reaching Move to Trash. A match on one ranks just under the same match
+    /// on the title, so the row's own name wins a tie.
+    public let keywords: [String]
 
     public init(id: String, title: String, detail: String? = nil, section: String, kind: Kind,
-                crumb: String? = nil, children: [PaletteItem] = []) {
+                crumb: String? = nil, children: [PaletteItem] = [], keywords: [String] = []) {
         self.id = id
         self.title = title
         self.detail = detail
@@ -65,6 +69,7 @@ public struct PaletteItem: Equatable, Sendable {
         self.kind = kind
         self.crumb = crumb
         self.children = children
+        self.keywords = keywords
     }
 }
 
@@ -182,7 +187,7 @@ public enum PaletteModel {
     /// The better of the match on the drawn title and, for a file, the match
     /// on its detail (the folder), so a typed folder name finds files in it.
     private static func best(_ query: String, for flat: Flat) -> FuzzyMatch.Match? {
-        let onTitle = FuzzyMatch.match(query, in: flat.title)
+        let onTitle = bestOfTitleAndKeywords(query, for: flat)
         guard flat.item.kind == .file, let detail = flat.item.detail,
               let onDetail = FuzzyMatch.match(query, in: detail + "/" + flat.item.title) else { return onTitle }
         // The detail match marks letters in a string the row does not draw,
@@ -190,5 +195,18 @@ public enum PaletteModel {
         let detailScore = FuzzyMatch.Match(score: onDetail.score - 1, ranges: onTitle?.ranges ?? [])
         guard let onTitle else { return detailScore }
         return onTitle.score >= detailScore.score ? onTitle : detailScore
+    }
+
+    /// The match on the drawn title, or on a keyword when that scores better.
+    /// A keyword is not drawn, so its match lights no letters.
+    private static func bestOfTitleAndKeywords(_ query: String, for flat: Flat) -> FuzzyMatch.Match? {
+        let onTitle = FuzzyMatch.match(query, in: flat.title)
+        let onKeyword = flat.item.keywords
+            .compactMap { FuzzyMatch.match(query, in: $0) }
+            .max { $0.score < $1.score }
+            .map { FuzzyMatch.Match(score: $0.score - 1, ranges: onTitle?.ranges ?? []) }
+        guard let onKeyword else { return onTitle }
+        guard let onTitle else { return onKeyword }
+        return onTitle.score >= onKeyword.score ? onTitle : onKeyword
     }
 }

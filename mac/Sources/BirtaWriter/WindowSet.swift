@@ -803,6 +803,12 @@ final class WindowSet {
         windows.forEach { $0.applyLineNumbers(enabled) }
     }
 
+    /// View > Show Path Bar: the app's one setting, and every window's page.
+    func setPathBar(_ shown: Bool) {
+        Prefs.pathBar = shown
+        windows.forEach { $0.applyPathBar(shown) }
+    }
+
     // MARK: appearance
 
     /// The themes the app has been given, and what the page looks like

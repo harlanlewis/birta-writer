@@ -222,7 +222,8 @@ enum PaletteSources {
         case .app, .command, .link:
             return PaletteItem(id: menuId(row), title: title(of: row, context),
                                detail: row.symbols.isEmpty ? nil : row.symbols,
-                               section: section, kind: .command)
+                               section: section, kind: .command,
+                               keywords: row.aliases)
         }
     }
 

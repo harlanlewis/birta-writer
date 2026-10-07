@@ -1,16 +1,8 @@
 <!doctype html>
-<!-- e2e harness page for the mac profile (MAR-373): the capabilities that
-     shell declares, in the __i18n bootstrap. control.html beside it is the same
-     page with the field ABSENT, which must read as the VS Code host, so the
-     suite discriminates. Five headings so the TOC auto-opens on the control
-     page, and `tocVisibility: "hidden"` here because the shell sends that too
-     (`BootConfig.i18nObject`): a small window opens its sidebar when it is
-     asked to rather than because a note grew a fourth heading.
-
-     The palette is dist/hostPalette.css, the same file the Mac shell links,
-     rather than a hand-written stub: what this suite renders is then what the
-     panel renders. A stub was a second palette that nothing else used, so a
-     wrong value in the real one could not fail here. -->
+<!-- e2e harness page for the path bar: the mac profile's page (a copy of
+     e2e/macHost/index.html below this comment), so the bar is drawn beside
+     the same formatting row and drawers the Mac app has. The host's part,
+     sending `pathBar`, is played by checks.mjs. -->
 <meta charset="utf-8">
 <link rel="stylesheet" href="dist/hostPalette.css">
 <style>

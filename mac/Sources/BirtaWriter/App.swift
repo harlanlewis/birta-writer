@@ -536,16 +536,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding, 
         // saves the document being edited and Shift+Cmd+S writes a copy
         // elsewhere. Neither empties the panel.
         let fileMenu = NSMenu(title: "File")
+        // Every row up to Close is the table's (`AppMenu.fileRows`), so the
+        // command palette lists each of them; a row added here by hand is a
+        // File-menu action the palette cannot find.
         AppMenu.add(.file, to: fileMenu, target: self)
-        fileMenu.addItem(.separator())
-        fileMenu.addItem(withTitle: "Back to My Notes", action: #selector(menuBackToNotes), keyEquivalent: "")
-        fileMenu.addItem(.separator())
-        fileMenu.addItem(withTitle: "Copy Everything", action: #selector(copyEverything), keyEquivalent: "")
-        // Share is a File-menu verb on macOS, and this is now its only route:
-        // the panel's ··· menu is gone, and the other three rows it carried
-        // were already here.
-        fileMenu.addItem(withTitle: "Share…", action: #selector(shareNote), keyEquivalent: "")
-        fileMenu.addItem(withTitle: "Reveal Last Save in Finder", action: #selector(revealLastSave), keyEquivalent: "")
         fileMenu.delegate = self
         // Before Close is added: it goes to the key window through the
         // responder chain, so Cmd+W closes the Settings window when that is
@@ -749,7 +743,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding, 
 
     @objc private func togglePanel() { windows.toggle() }
     @objc private func hidePanel() { windows.dismissAll() }
-    @objc private func copyEverything() { front?.copyEverything() }
+    @objc func copyEverything() { front?.copyEverything() }
     @objc func menuSaveNow() { front?.saveNow() }
     @objc func menuNewNote() { windows.newNote() }
 
@@ -805,6 +799,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding, 
     /// once; the page draws or removes its gutter without a reload.
     @objc func menuToggleLineNumbers() {
         windows.setLineNumbers(!Prefs.lineNumbers)
+    }
+
+    /// View > Show Path Bar: the app's setting, flipped for every window at
+    /// once, as the Finder's row of the same name is.
+    @objc func menuTogglePathBar() {
+        windows.setPathBar(!Prefs.pathBar)
     }
 
     /// Cmd+Shift+P: the palette over everything, above the window in front.
@@ -972,7 +972,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding, 
     }
     @objc func menuSaveAs() { front?.saveAs() }
     @objc func menuMoveToTrash() { front?.moveBoundFileToTrash() }
-    @objc private func revealLastSave() { front?.revealLastSave() }
+    @objc func revealLastSave() { front?.revealLastSave() }
+    @objc func menuRevealInFinder() { front?.revealBoundFile() }
+    @objc func menuCopyPath() { front?.copyBoundFilePath() }
     /// Run the editor command a menu row carries.
     ///
     /// ONE selector for every command row, with the id in `representedObject`,
@@ -991,7 +993,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding, 
     }
 
 
-    @objc private func shareNote() { front?.shareNote() }
+    @objc func shareNote() { front?.shareNote() }
 
     /// Show the first-run screen, which lives IN the panel rather than in a
     /// window of its own. The Advanced button that re-shows it comes here too.
@@ -1618,7 +1620,8 @@ extension AppDelegate: NSMenuDelegate, NSMenuItemValidation {
                                       tocShown: Prefs.tocVisibility == "shown",
                                       explorerShown: Prefs.explorerVisibility == "shown",
                                       hiddenFilesShown: Prefs.explorerShowsHidden,
-                                      lineNumbers: Prefs.lineNumbers)
+                                      lineNumbers: Prefs.lineNumbers,
+                                      pathBar: Prefs.pathBar)
     }
 
     /// Enablement for the main menu and the status menu, which keep their items
@@ -1654,8 +1657,9 @@ extension AppDelegate: NSMenuDelegate, NSMenuItemValidation {
             return front?.hasContent ?? false
         case #selector(revealLastSave):
             return front?.lastSavedURL != nil
-        case #selector(menuMoveToTrash):
-            // A note never written, or one already gone, has no file to move.
+        case #selector(menuMoveToTrash), #selector(menuRevealInFinder), #selector(menuCopyPath):
+            // A note never written, or one already gone, has no file to move,
+            // show or name.
             return front?.canMoveBoundFileToTrash ?? false
         case #selector(menuClearRecentDocuments):
             return !Prefs.recentDocuments.isEmpty
@@ -1682,6 +1686,7 @@ extension AppDelegate: NSMenuDelegate, NSMenuItemValidation {
         #selector(menuNewNote), #selector(menuNewTab), #selector(menuOpenDocument),
         #selector(menuOpenMenu(_:)), #selector(menuOpenRecent(_:)), #selector(menuOpenRecentDocument(_:)),
         #selector(menuSaveNow), #selector(menuSaveAs), #selector(menuMoveToTrash),
+        #selector(menuRevealInFinder), #selector(menuCopyPath),
         #selector(copyEverything), #selector(shareNote), #selector(revealLastSave),
         #selector(menuBackToNotes), #selector(menuRunEditorCommand(_:)),
     ]
