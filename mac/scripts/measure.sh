@@ -994,7 +994,7 @@ else
     echo "$CHEV" >&2; exit 1
 fi
 
-# The two file buttons beside the title: New Note and Open.
+# The file buttons before the title: New Note, Open and the Command Palette.
 #
 # `symbols` against `count` is the arm that stops everything else here
 # reporting healthily about two blank boxes, for the reason `hasImage` exists
@@ -1018,8 +1018,9 @@ AC_REST="$(echo "$ACTS" | sed -n 's/.*restShown=\([a-z]*\).*/\1/p')"
 AC_OVER="$(echo "$ACTS" | sed -n 's/.*overShown=\([a-z]*\).*/\1/p')"
 AC_REST_BOX="$(echo "$ACTS" | sed -n 's/.*restBoxes=\([0-9.,:]*\).*/\1/p')"
 AC_OVER_BOX="$(echo "$ACTS" | sed -n 's/.*overBoxes=\([0-9.,:]*\).*/\1/p')"
-AC_CHEV_MAX="$(echo "$ACTS" | sed -n 's/.*chevronMaxX=\([0-9.-]*\).*/\1/p')"
-AC_FIRST_X="$(echo "$AC_OVER_BOX" | cut -d, -f1 | cut -d: -f1)"
+AC_LABEL_MIN="$(echo "$ACTS" | sed -n 's/.*labelMinX=\([0-9.-]*\).*/\1/p')"
+# Where the last button ends: its x plus its width, from the last box.
+AC_LAST_END="$(echo "$AC_OVER_BOX" | awk -F, '{split($NF, b, ":"); print b[1] + b[2]}')"
 # How many buttons there SHOULD be, read from the one place that decides it
 # rather than written down here. A literal is a number a fourth button never
 # joins: it would draw correctly, resolve its symbol, and fail this line with a
@@ -1042,10 +1043,10 @@ fi
 if [ "$AC_COUNT" = "$AC_WANT" ] && [ "$AC_SYMS" = "$AC_WANT" ] \
    && [ "$AC_REST" = "no" ] && [ "$AC_OVER" = "yes" ] \
    && [ -n "$AC_REST_BOX" ] && [ "$AC_REST_BOX" = "$AC_OVER_BOX" ] \
-   && awk "BEGIN{exit !($AC_FIRST_X >= $AC_CHEV_MAX)}"; then
-    echo "titlebar buttons     ok: $AC_WANT symbols, hidden at rest and offered on hover, room held either way ($AC_OVER_BOX)"
+   && awk "BEGIN{exit !($AC_LAST_END <= $AC_LABEL_MIN)}"; then
+    echo "titlebar buttons     ok: $AC_WANT symbols, hidden at rest and offered on hover, room held either way, all before the name ($AC_OVER_BOX)"
 else
-    echo "titlebar buttons     FAILED: a button or a symbol is missing (wanted $AC_WANT), the buttons never appear, or the room moves on hover" >&2
+    echo "titlebar buttons     FAILED: a button or a symbol is missing (wanted $AC_WANT), the buttons never appear, the room moves on hover, or a button is not before the name" >&2
     echo "$ACTS" >&2; exit 1
 fi
 
@@ -2608,6 +2609,20 @@ case "$ROOT_TABS" in
     *) echo "directory window     FAILED: a file under the root did not join the rooted window as a tab" >&2
        echo "  $ROOT_TABS" >&2; exit 1 ;;
 esac
+# ...and that tab came on screen finished. Its page said its first screen was
+# up while it was still hidden (so nobody watched it build), and at that
+# moment it held the editor, the file list docked open, and the list's rows.
+# Read off the page itself (`Coordinator.firstScreenArrived`), because what is
+# asserted is what the reader is shown first, and only the page knows that.
+FIRST="$(grep "^birta-trace first-screen " "$LOG" | tail -1 | sed 's/^.*visibility=//' || true)"
+read -r FS_EDITOR FS_PANEL FS_ROWS FS_OPEN FS_VIS FS_SHOWN <<< "$FIRST"
+if [ "$FS_EDITOR" = true ] && [ "$FS_PANEL" = true ] && [ "${FS_ROWS:-0}" -ge 1 ] \
+   && [ "$FS_OPEN" = true ] && [ "$FS_VIS" = hidden ] && [ "$FS_SHOWN" = "shown=true" ]; then
+    echo "held tab             ok: the tab was shown once its page was finished (editor, file list, $FS_ROWS rows), not while it built"
+else
+    echo "held tab             FAILED: the new tab's first screen was not complete and hidden (editor panel rows open visibility shown):" >&2
+    echo "  ${FIRST:-<no first-screen trace>}" >&2; exit 1
+fi
 
 # THE COMMAND PALETTE (MAR-458), over the rooted window the arm above left in
 # front. Two claims only the live app can answer, because the catalog is read

@@ -49,18 +49,8 @@ export async function run({ page, check, baseUrl }) {
     // its own width for the sash, and the panel stands in from the window by
     // the shell's inset. Only a browser answers any of it.
     //
-    // The GROUND is the page's own paper unless a host declares
-    // --toc-panel-ground (the Mac app's Transparent table of contents
-    // sidebar switch, turned off, is the one that does), and the tab strip
-    // moves with the card, since a strip left on the paper over a shaded
-    // card is the defect the alias exists to avoid. The flyout takes
-    // neither the ground nor the geometry: it is a card of the shell's own.
-    //
-    // A sentinel colour rather than the palette's shade, because this page
-    // is not the palette: what is under test is that one declaration reaches
-    // the card and everything in it that paints the ground. Which colour the
-    // Mac app puts there is its own to say, and its tests do.
-    const GROUND = "rgb(1, 2, 3)";
+    // The GROUND is the page's own paper, and the tab strip paints it too.
+    // The flyout takes none of the geometry: it is a card of the shell's own.
     const ground = async () => page.evaluate(() => {
         const probe = document.createElement("div");
         probe.style.background = "var(--vscode-editor-background)";
@@ -101,7 +91,7 @@ export async function run({ page, check, baseUrl }) {
     // undeclared variable paints nothing, so a harness page that lost its
     // one colour would make all of them agree on transparent and pass.
     check("the page's paper is a real colour, so the comparisons below measure something",
-        bare.paper !== "rgba(0, 0, 0, 0)" && bare.paper !== GROUND, JSON.stringify(bare));
+        bare.paper !== "rgba(0, 0, 0, 0)", JSON.stringify(bare));
     check("the card, its tab strip and the panel around it are the page's own paper with nothing declared",
         bare.card === bare.paper && bare.tabs === bare.paper && bare.panel === bare.paper,
         JSON.stringify(bare));
@@ -124,30 +114,6 @@ export async function run({ page, check, baseUrl }) {
             // flyout actually shows, so it is the one to read.
             && bare.flyout.panel === bare.paper,
         JSON.stringify(bare.flyout));
-    await page.evaluate((value) => {
-        const style = document.createElement("style");
-        style.id = "toc-ground-probe";
-        style.textContent = `:root { --toc-panel-ground: ${value}; }`;
-        document.head.appendChild(style);
-    }, GROUND);
-    await page.waitForTimeout(50);
-    const declared = await ground();
-    check("one declaration moves the card and its tab strip together",
-        declared.card === GROUND && declared.tabs === GROUND, JSON.stringify(declared));
-    // And stops at the card. The panel keeps the page's paper, which is what
-    // makes the strip beside the sash read as page and the sash's line stand
-    // off the card's rounded edge rather than lying along it.
-    check("and the panel around the card keeps the page's paper, so the sash's strip is page",
-        declared.panel === declared.paper && declared.panel !== declared.card, JSON.stringify(declared));
-    // Including the flyout's own panel, which is where its ground is painted:
-    // a `--toc-panel-ground` that reached `.toc-panel--flyout` would shade the
-    // floating card silently, and every other clause here would still pass.
-    check("and a declared ground reaches neither the flyout's card, its strip, nor its panel",
-        declared.flyout.card === "rgba(0, 0, 0, 0)" && declared.flyout.tabs === declared.paper
-            && declared.flyout.panel === declared.paper,
-        JSON.stringify(declared.flyout));
-    await page.evaluate(() => document.getElementById("toc-ground-probe")?.remove());
-    await page.waitForTimeout(50);
 
     // ── Docked: the list clears the floating controls chip ──
     // The side-switch/hide buttons float over the list's top corner; the

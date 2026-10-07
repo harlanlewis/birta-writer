@@ -205,7 +205,7 @@ final class SettingsFormTests: XCTestCase {
     func testTheAppearancePaneShouldLeadWithTypeThenTheSwitchThenTheThemes() {
         XCTAssertEqual(SettingsForm.rows(of: SettingsForm.appearance),
                        [.font, .fontSize, .contentWidth, .formattingRow, .followSystemAppearance,
-                        .theme, .transparentSidebar, .transparentToc, .accent, .tint])
+                        .theme, .transparentSidebar, .accent, .tint])
         // Content Width is in the typography card rather than one of its own:
         // the measure the text is read at is the same question as the face and
         // the size, asked one step out.
@@ -223,8 +223,6 @@ final class SettingsFormTests: XCTestCase {
         XCTAssertEqual(SettingsRow.followSystemAppearance.rawValue, "Auto light/dark mode")
         XCTAssertEqual(SettingsRow.transparentSidebar.rawValue, "Transparent file list sidebar",
                        "the surface it makes transparent is the file list, not any sidebar")
-        XCTAssertEqual(SettingsRow.transparentToc.rawValue, "Transparent table of contents sidebar",
-                       "named as View > Show Table of Contents names it")
     }
 
     /// Replaying the first run is a development affordance, and the reason is

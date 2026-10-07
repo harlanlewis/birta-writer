@@ -36,6 +36,22 @@ interface TooltipOptions {
     truncatedOnly?: boolean;
 }
 
+/** Anchors whose label stands beside their own sidebar preview rather than giving way to it. */
+const besidePreview = new WeakSet<HTMLElement>();
+
+/**
+ * `el` is the hover trigger of a sidebar's preview, and its label is not
+ * redundant with that preview: it carries the key that opens the sidebar for
+ * good, which the preview does not say. So its label stays while the preview
+ * it brought out is showing, and is drawn to the LEFT of it, because the
+ * preview drops below. Every other label still gives way to a preview
+ * (`yieldToPreview`). Called where an element BECOMES a trigger, which is
+ * after its tooltip was applied, so placement is decided at show time.
+ */
+export function labelBesidePreview(el: HTMLElement): void {
+    besidePreview.add(el);
+}
+
 export interface TooltipHandle {
     /** Dynamically update the tooltip text (without affecting visibility) */
     setText(t: string): void;
@@ -199,6 +215,16 @@ export function hideTooltip(): void {
     }
 }
 
+/**
+ * A sidebar preview is coming out: take down whatever label is up, unless it
+ * belongs to an anchor that keeps its label beside the preview
+ * (`besidePreview`), which is the trigger the preview came out of.
+ */
+export function yieldToPreview(): void {
+    if (ownerEl && besidePreview.has(ownerEl)) { return; }
+    hideTooltip();
+}
+
 /** Imperative: show a tooltip next to the given element right away, no event binding needed */
 /**
  * The floor for an anchor that IS an element.
@@ -288,11 +314,12 @@ export function applyTooltip(
         // No tooltips while a block drag or marquee is in flight (belt to
         // the editor's pointer-events suppression — body-mounted chrome
         // still hit-tests), nor while the ToC flyout is out (the tab's
-        // "Show table of contents" tip is redundant then and overlaps it).
+        // "Show table of contents" tip is redundant then and overlaps it),
+        // unless this anchor's label stands beside the preview it opens.
         if (
             document.body.classList.contains("block-dragging") ||
             document.body.classList.contains("block-marqueeing") ||
-            document.body.classList.contains("toc-flyout-open")
+            (document.body.classList.contains("toc-flyout-open") && !besidePreview.has(el))
         ) {
             return;
         }
@@ -317,7 +344,7 @@ export function applyTooltip(
         }
         const tip = getTooltip();
         tip.textContent = currentText;
-        position(tip, el.getBoundingClientRect(), placement, safeTopFor(el));
+        position(tip, el.getBoundingClientRect(), besidePreview.has(el) ? "left" : placement, safeTopFor(el));
         ownerEl = el;
     };
     const hideIfOwner = () => {

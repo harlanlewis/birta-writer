@@ -35,7 +35,7 @@ struct MiniWindowPalette: Equatable {
         var preview = ThemePreview.system(kind)
         let overlay = Dictionary(uniqueKeysWithValues: AppearanceOverlay.declarations(
             kind: kind, base: nil, accent: settings.accent, tint: settings.tint,
-            transparentSidebar: settings.transparentSidebar, transparentToc: settings.transparentToc
+            transparentSidebar: settings.transparentSidebar
         ).map { ($0.name, $0.value) })
         let paper = overlay[VSCodeTheme.cssVariable(for: "editor.background")] ?? preview.paper
         let sidebar = settings.transparentSidebar ? paper
@@ -51,9 +51,7 @@ struct MiniWindowPalette: Equatable {
     /// and its sidebar, and the sidebar as the paper when transparent.
     ///
     /// The one strip the card draws stands for the FILE LIST, which is the
-    /// drawer whose ground the card can show while it is closed. The
-    /// outline's own switch leaves the picture alone: a second strip would
-    /// be a window shape no window has.
+    /// drawer whose ground the card can show while it is closed.
     static func themed(_ preview: ThemePreview, kind: VSCodeTheme.Kind, settings: AppearanceSettings) -> MiniWindowPalette {
         var paper = preview.paper
         var sidebar = preview.sidebar

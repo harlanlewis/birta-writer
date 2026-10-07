@@ -155,6 +155,11 @@ export interface EditorActions {
      */
     initEditor: (container: HTMLElement, markdown: string, format?: import("../shared/messages").DocumentFormat) => Promise<void>;
     retryScroll: (fn: () => void) => void;
+    /**
+     * `init` has been handled, whether or not the editor mounted: the page's
+     * first screen is up once its side panels settle (`webview/firstScreen.ts`).
+     */
+    announceFirstScreen: () => void;
     getEditorView: () => EditorView | null;
     /** Refreshes the table-of-contents panel after an inbound diff sync. */
     refreshToc: () => void;
@@ -191,6 +196,7 @@ export interface EditorActions {
     setCurrentProjectFile: (path: string | null) => void;
     directoryChanged: (paths: string[]) => void;
     setFileExplorerShowHidden: (showHidden: boolean) => void;
+    setFileExplorerFloor: (width: number) => void;
 }
 
 /** Message-handler dependencies. */
@@ -239,7 +245,7 @@ export function createMessageHandlers(
 ): { [K in ToWebviewMessage["type"]]?: Handler<K> } {
     const { state, actions, topbarTb } = deps;
     const { getEditor, setEditor, setLineMap, getMarkdownSource, setMarkdownSource } = state;
-    const { placeCaretAtLine, scrollToDocumentLine, getSwitchTarget, getSelectionContext, setLineOffset, initEditor, retryScroll, getEditorView, refreshToc, setTocPosition, setTocVisibility, setTocWidth, setNotesMarkers, setReviewGroupByType } = actions;
+    const { placeCaretAtLine, scrollToDocumentLine, getSwitchTarget, getSelectionContext, setLineOffset, initEditor, retryScroll, announceFirstScreen, getEditorView, refreshToc, setTocPosition, setTocVisibility, setTocWidth, setNotesMarkers, setReviewGroupByType } = actions;
 
     /**
      * Rebuild the embed decorations after a gate flip. A no-op before the editor
@@ -277,26 +283,33 @@ export function createMessageHandlers(
             if (msg.tableWrap) {
                 applyTableWrap(msg.tableWrap);
             }
-            await initEditor(container, msg.content, msg.format);
-            window.focus();
-            if (msg.scrollToLine) {
-                // The caret needs only the document, so it lands now; the scroll
-                // waits for the first blocks to have a measurable height.
-                placeCaretAtLine(
-                    msg.scrollToLine,
-                    msg.scrollToColumn,
-                    msg.scrollToAnchorLine !== undefined
-                        ? { line: msg.scrollToAnchorLine, column: msg.scrollToAnchorColumn }
-                        : undefined,
-                );
-                retryScroll(() => scrollToDocumentLine(msg.scrollToLine!));
-            } else {
-                const saved = getWebviewState();
-                if (saved?.scrollY) {
-                    retryScroll(() =>
-                        window.scrollTo({ top: saved.scrollY as number }),
+            // In a finally, so a mount that throws still says so: a host
+            // holding the page back would otherwise hold back the crash
+            // banner too, until its own bound ran out.
+            try {
+                await initEditor(container, msg.content, msg.format);
+                window.focus();
+                if (msg.scrollToLine) {
+                    // The caret needs only the document, so it lands now; the scroll
+                    // waits for the first blocks to have a measurable height.
+                    placeCaretAtLine(
+                        msg.scrollToLine,
+                        msg.scrollToColumn,
+                        msg.scrollToAnchorLine !== undefined
+                            ? { line: msg.scrollToAnchorLine, column: msg.scrollToAnchorColumn }
+                            : undefined,
                     );
+                    retryScroll(() => scrollToDocumentLine(msg.scrollToLine!));
+                } else {
+                    const saved = getWebviewState();
+                    if (saved?.scrollY) {
+                        retryScroll(() =>
+                            window.scrollTo({ top: saved.scrollY as number }),
+                        );
+                    }
                 }
+            } finally {
+                announceFirstScreen();
             }
         },
         async externalUpdate(msg, container) {
@@ -801,6 +814,9 @@ export function createMessageHandlers(
         },
         fileExplorerConfig(msg) {
             actions.setFileExplorerShowHidden(msg.showHidden);
+        },
+        fileExplorerFloor(msg) {
+            actions.setFileExplorerFloor(msg.width);
         },
         lintResults(msg) {
             applyLintResults(msg.id, msg.results);

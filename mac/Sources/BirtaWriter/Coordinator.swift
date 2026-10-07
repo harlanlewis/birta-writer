@@ -50,6 +50,10 @@ final class Coordinator {
     /// What the page's trailing controls take from the band, as last reported.
     /// Held so a resize can resize the strip without asking the page again.
     private var titlebarControlsWidth: CGFloat = 0
+    /// The floor last sent to the page under `fileExplorerFloor`, so a layout
+    /// pass that moved nothing sends nothing. Nil until a page has one: a
+    /// page that has just loaded is told again.
+    private var sentExplorerFloor: CGFloat?
 
     /// How tall the titlebar band is right now.
     ///
@@ -91,6 +95,58 @@ final class Coordinator {
     func tabsChanged() {
         layoutTitlebarDrag()
         refreshTitle()
+    }
+
+    /// The tab bar view this window last inset, watched for AppKit moving it
+    /// back (`insetTabBar`).
+    private weak var insetTabBarView: NSView?
+    private var tabBarFrameObserver: NSObjectProtocol?
+
+    /// Start the tab bar where the docked explorer ends, so the tabs belong
+    /// to the document and the explorer's ground runs up past them, the way
+    /// a macOS sidebar sits beside a window's tabs rather than under them.
+    ///
+    /// The bar is AppKit's: `NSTabBar`, inside the titlebar accessory AppKit
+    /// adds for a tab group, and no public API places it. So it is found by
+    /// class name and given a frame, and the titlebar's own background is
+    /// hidden on this window (`titlebarAppearsTransparent`), so the strip it
+    /// gives up shows the page under it, which there is the explorer. AppKit
+    /// lays the tabs out inside whatever width the bar has, the new-tab
+    /// button included.
+    ///
+    /// Two things keep it honest. It is re-applied on every pass that could
+    /// move the edge or the bar (`layoutTitlebarDrag` runs on resize, on a
+    /// tab coming or going and on the edge moving), and the bar's own frame
+    /// is watched, because AppKit relays it out on passes of its own. And it
+    /// degrades rather than breaks: a macOS that renames the class leaves
+    /// the bar where AppKit put it, across the whole window, which is how it
+    /// looked before this existed.
+    func insetTabBar() {
+        guard let accessory = panel.titlebarAccessoryViewControllers.first(where: { $0 !== titleBar }) else { return }
+        func find(_ view: NSView) -> NSView? {
+            if String(describing: type(of: view)) == "NSTabBar" { return view }
+            for sub in view.subviews { if let hit = find(sub) { return hit } }
+            return nil
+        }
+        guard let bar = find(accessory.view), let host = bar.superview else { return }
+        // One point past the edge when there is one, because AppKit draws the
+        // first tab a point BEFORE the bar's origin (its left border sits off
+        // the bar), and the explorer's divider is the last column inside the
+        // explorer. Started at the edge itself, the first tab's fill lands on
+        // that column and the divider breaks across the tab row.
+        let edge = titleBar.titleView.dockedSidebarEdge.map { min($0 + 1, host.bounds.width) } ?? 0
+        let target = NSRect(x: edge, y: bar.frame.minY, width: host.bounds.width - edge, height: bar.frame.height)
+        if bar.frame != target { bar.frame = target }
+        guard insetTabBarView !== bar else { return }
+        if let tabBarFrameObserver { NotificationCenter.default.removeObserver(tabBarFrameObserver) }
+        insetTabBarView = bar
+        bar.postsFrameChangedNotifications = true
+        // Setting the frame from here posts again, and the second pass finds
+        // the frame already right and sets nothing, so this cannot loop.
+        tabBarFrameObserver = NotificationCenter.default.addObserver(
+            forName: NSView.frameDidChangeNotification, object: bar, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.insetTabBar() }
+        }
     }
 
     // MARK: the file explorer (MAR-457)
@@ -167,6 +223,114 @@ final class Coordinator {
         }
     }
 
+    /// Where this window's links land (`LinkLocator`): its folder walk and
+    /// the short-lived list both asks share, touched only on `linkQueue`.
+    private let linkLocator = LinkLocator()
+    private let linkQueue = DispatchQueue(label: "com.birtalabs.birta-writer.links", qos: .userInitiated)
+
+    /// What a link in this note resolves against: the window's folder,
+    /// walked whole, or the note's own folder, one level, in a window with
+    /// none (`LinkLocator.walkFolder`).
+    private var linkRoot: (url: URL, deep: Bool) {
+        ((explorerRoot ?? boundURL.deletingLastPathComponent()).standardizedFileURL, explorerRoot != nil)
+    }
+
+    /// Follow a link the page asked to open (`openFile`): a Markdown link's
+    /// path or a wikilink's name, resolved from this note (`LinkLocator`),
+    /// then routed as a Cmd-clicked explorer row is: a tab beside this note,
+    /// so the note the link was in stays open. A heading or line fragment is
+    /// carried as the line to land on. A link that names nothing says so in
+    /// the status line rather than doing nothing.
+    private func openLink(_ raw: String, wiki: Bool) {
+        let doc = boundURL.standardizedFileURL.path
+        let root = linkRoot
+        let locator = linkLocator
+        linkQueue.async { [weak self] in
+            let located = locator.locate(raw, wiki: wiki, from: doc, root: root.url, deep: root.deep, forOpen: true)
+            DispatchQueue.main.async {
+                guard let self else { return }
+                guard let located else {
+                    if !LinkTarget.split(raw, wiki: wiki).path.isEmpty {
+                        self.statusOverlay.flash("Could not find \u{201C}\(raw)\u{201D}.")
+                    }
+                    return
+                }
+                let file = URL(fileURLWithPath: located.path)
+                if DocumentTypes.accepts(file) {
+                    self.onOpenProjectFile?(file, true, located.line)
+                } else {
+                    NSWorkspace.shared.open(file)
+                }
+            }
+        }
+    }
+
+    /// Answer the link popup's `resolveLinkTarget`: where a click on this
+    /// link would go, by the same resolver the click uses, or nil.
+    private func answerLinkTarget(id: String, raw: String, wiki: Bool) {
+        let doc = boundURL.standardizedFileURL.path
+        let root = linkRoot
+        let locator = linkLocator
+        linkQueue.async { [weak self] in
+            let located = locator.locate(raw, wiki: wiki, from: doc, root: root.url, deep: root.deep, forOpen: false)
+            DispatchQueue.main.async {
+                self?.host.send(.linkTargetResolved(id: id, resolved: located.map { LinkLocator.display($0.path, root: root.url) }))
+            }
+        }
+    }
+
+    /// Answer link completion: the files under this window's folder (the
+    /// note's own, one level, in a window with none) that a link can name,
+    /// ranked against what was typed. Shares `linkLocator`'s kept walk, so a
+    /// burst of keystrokes walks the folder once.
+    private func answerLinkSuggestions(id: String, query: String) {
+        let doc = boundURL.standardizedFileURL.path
+        let root = linkRoot
+        let locator = linkLocator
+        linkQueue.async { [weak self] in
+            let files = locator.candidates(under: root.url, deep: root.deep)
+            let items = LinkSuggestions.linkTargets(query: query, files: files, doc: doc, root: root.url.path)
+            DispatchQueue.main.async {
+                self?.host.send(.linkTargetSuggestions(id: id, items: items))
+            }
+        }
+    }
+
+    /// Answer path completion: the direct children of the folder the typed
+    /// path names, read from disk on each ask, as the extension reads them.
+    private func answerPathSuggestions(id: String, query: String) {
+        let docDir = boundURL.standardizedFileURL.deletingLastPathComponent().path
+        let root = linkRoot.url.path
+        linkQueue.async { [weak self] in
+            let items = LinkSuggestions.pathItems(query: query, docDir: docDir, root: root,
+                                                  list: LinkSuggestions.listFolder)
+            DispatchQueue.main.async {
+                self?.host.send(.pathSuggestions(id: id, items: items))
+            }
+        }
+    }
+
+    /// The link editor's Browse: a file picker over this window, opening in
+    /// the note's folder, answered with the pick relative to that folder.
+    /// Every way out answers, a cancel included, because the page's field
+    /// waits on the reply.
+    private func pickLinkTarget(id: String) {
+        let docDir = boundURL.standardizedFileURL.deletingLastPathComponent()
+        let chooser = NSOpenPanel()
+        chooser.canChooseFiles = true
+        chooser.canChooseDirectories = false
+        chooser.allowsMultipleSelection = false
+        chooser.directoryURL = docDir
+        chooser.prompt = "Select Link Target"
+        chooser.beginSheetModal(for: panel) { [weak self] response in
+            MainActor.assumeIsolated {
+                let picked = response == .OK ? chooser.url?.standardizedFileURL : nil
+                let path = picked.map { LinkSuggestions.relative(from: docDir.path, to: $0.path) }
+                self?.host.send(.linkTargetPicked(id: id, path: path))
+            }
+        }
+    }
+
     /// The document line the next page this window builds opens on, held
     /// from `reveal(line:)` until `initDoc` carries it and then cleared: a
     /// line asked for while the page is cold or loading has no page to be
@@ -216,10 +380,13 @@ final class Coordinator {
             row.representedObject = ExplorerMenuPick(url: url, action: action)
             menu.addItem(row)
         }
-        // The web view is not flipped: its y grows upward from the bottom,
-        // the page's downward from the top, and the page fills the view.
-        let point = NSPoint(x: x, y: host.webView.bounds.height - y)
-        menu.popUp(positioning: nil, at: point, in: host.webView)
+        // `isFlipped` read off the view, never assumed: a WKWebView is
+        // flipped, so the page's point is already the view's, and mirroring
+        // it put the menu at the other end of the sidebar from the row.
+        let view = host.webView
+        let point = CaretAnchor.point(x: x, y: y, viewHeight: view.bounds.height,
+                                      isFlipped: view.isFlipped)
+        menu.popUp(positioning: nil, at: point, in: view)
     }
 
     /// One row of the explorer's menu, carried on the menu item.
@@ -245,14 +412,86 @@ final class Coordinator {
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(pick.url.path, forType: .string)
         case .moveToTrash:
-            // The file this tab is on is not a special case: the watcher
-            // sees it go and the panel offers to put it back, the same as a
-            // deletion from the Finder.
-            do {
-                try FileManager.default.trashItem(at: pick.url, resultingItemURL: nil)
-            } catch {
-                flashStatus("Could not move \(pick.url.lastPathComponent) to the Trash.")
-            }
+            confirmMoveToTrash(pick.url)
+        }
+    }
+
+    /// File > Move to Trash…, which the palette lists too: the file this tab
+    /// is on, after asking. A note that has never been written has no file to
+    /// move, and says so rather than asking about nothing.
+    func moveBoundFileToTrash() {
+        guard canMoveBoundFileToTrash else {
+            flashStatus("This note has not been saved to a file yet.")
+            return
+        }
+        confirmMoveToTrash(boundURL)
+    }
+
+    /// Whether this window's note is a file there to move: written at least
+    /// once, and not already reported gone. The menu row and the palette ask
+    /// this through `AppDelegate.allows`.
+    var canMoveBoundFileToTrash: Bool {
+        !noteMissing && FileManager.default.fileExists(atPath: boundURL.path)
+    }
+
+    /// The file a folder's window opens on, which is `WindowSet`'s to answer
+    /// because it turns on what the other windows hold
+    /// (`WindowSet.folderDefault`). Nil when there is nothing to open, not
+    /// even a new note.
+    var onFolderDefault: ((URL) -> URL?)?
+
+    /// Ask, as a sheet on this window, then move `url` to the Trash.
+    private func confirmMoveToTrash(_ url: URL) {
+        let words = ExplorerMenu.trashConfirmation(name: url.lastPathComponent)
+        let alert = NSAlert()
+        alert.messageText = words.message
+        alert.informativeText = words.detail
+        alert.addButton(withTitle: words.confirm)
+        alert.addButton(withTitle: words.cancel)
+        alert.beginSheetModal(for: panel) { [weak self] response in
+            guard response == .alertFirstButtonReturn else { return }
+            self?.moveToTrash(url)
+        }
+    }
+
+    /// Move `url` to the Trash, and when it is the file this tab is on in a
+    /// folder window, move the tab to the folder's own choice of file
+    /// (`onFolderDefault`), as opening the folder would: the reader threw the
+    /// file away on purpose, so the card about a file that went missing is the
+    /// wrong thing to show them.
+    ///
+    /// The buffer is settled first, on the rule the explorer's own click uses
+    /// (`replaceFile`): written when autosave is on. A buffer still ahead of
+    /// the file after that (autosave off, or a write that failed) keeps the
+    /// card instead, because the card's Save It Back is the only place those
+    /// bytes still exist. A file trashed that this tab is not on, and a window
+    /// on a loose file, take the card's path unchanged.
+    private func moveToTrash(_ url: URL) {
+        guard let root = explorerRoot, FileIdentity.sameFile(url, boundURL) else {
+            trash(url)
+            return
+        }
+        flushThen(persisting: false) { [weak self] in
+            guard let self else { return }
+            self.write(.panelHidden)
+            let unsaved = self.hasUnwrittenBytes
+            // Trash and rebind in one turn. The watcher's report of the trash
+            // never reaches the new binding, because rebinding unregisters
+            // the old file's presenter (`NoteWatcherTests` holds that).
+            guard self.trash(url), !unsaved, let next = self.onFolderDefault?(root) else { return }
+            self.openInPlace(next, slot: nil)
+        }
+    }
+
+    /// One trash, its failure said in the status line. Whether it happened.
+    @discardableResult
+    private func trash(_ url: URL) -> Bool {
+        do {
+            try FileManager.default.trashItem(at: url, resultingItemURL: nil)
+            return true
+        } catch {
+            flashStatus("Could not move \(url.lastPathComponent) to the Trash.")
+            return false
         }
     }
 
@@ -611,6 +850,10 @@ final class Coordinator {
     /// The editor commands the page says it can run in this window, as last
     /// answered (`requestPaletteCommands`), for the app's palette (MAR-458).
     private(set) var paletteCommands: [PaletteCommand] = []
+    /// The page's commands with nothing to act on right now, from the same
+    /// answer: the menu rows that run them are dimmed, and the palette leaves
+    /// them out (`AppDelegate.validateMenuItem`, `PaletteSources.offered`).
+    private(set) var idleCommands: Set<String> = []
 
     /// The folder this window is rooted at, for a directory window, or nil
     /// for a window on a loose file (MAR-457). Decided at construction and
@@ -827,13 +1070,20 @@ final class Coordinator {
         panel.cascade(after: other.panel, from: point)
     }
 
-    /// Make `other` a tab of this window, selected. AppKit's window tabbing:
-    /// each tab stays a window of its own, sharing this one's frame and tab
-    /// bar (MAR-393).
+    /// Make `other` a tab of this window. AppKit's window tabbing: each tab
+    /// stays a window of its own, sharing this one's frame and tab bar
+    /// (MAR-393).
+    ///
+    /// Added, not selected: the tab in front stays there until `other` is
+    /// shown, which `WindowSet.open` does once its page is finished.
     func attachTab(_ other: Coordinator) {
         other.panel.adoptGroupFrame(of: panel)
         panel.addTabbedWindow(other.panel, ordered: .above)
     }
+
+    /// The tab in front of this one, while this one waits behind it
+    /// (`NSWindow.tabShowingInstead`).
+    var tabShowingInstead: NSWindow? { panel.tabShowingInstead }
 
     /// The tab group as AppKit reports it, for the app's rules about summon,
     /// dismissal and closing: every window sharing this one's tab bar, in
@@ -1040,6 +1290,9 @@ final class Coordinator {
 
         contentView.onAppearanceChange = { [weak self] in self?.applyTheme() }
         contentView.addSubview(host.webView)
+        // Directly above the page and below everything drawn over it.
+        contentView.addSubview(reloadCover)
+        reloadCover.autoresizingMask = [.width, .height]
         contentView.addSubview(statusOverlay)
         // ABOVE the web view in z-order, which is the whole of why it works:
         // the web view covers the band, so a sibling below it would never see
@@ -1470,6 +1723,13 @@ final class Coordinator {
                 onOpenDirectoryRequest?(URL(fileURLWithPath: path, isDirectory: true))
                 return
             }
+            // Move to Trash on this tab's own file, as the confirmed sheet
+            // runs it; a shell cannot click the sheet's button.
+            if obj["type"] as? String == "__birtaMoveToTrash" {
+                measure.mark("debug-move-to-trash")
+                moveToTrash(boundURL)
+                return
+            }
             // One listing, as the page asks for it when a folder is opened,
             // traced with its entry count.
             if obj["type"] as? String == "__birtaListDirectory" {
@@ -1689,8 +1949,116 @@ final class Coordinator {
         }
     }
 
+    // MARK: the first screen
+
+    /// How long a window holds back its new page for the page to say its
+    /// first screen is up (`firstScreen`) before showing what there is. Long
+    /// enough for a cold page on a busy machine; short enough that a page
+    /// that will never say so (a crash in its boot) costs a pause rather
+    /// than a window that never comes.
+    nonisolated static let firstScreenBound: TimeInterval = 1.5
+
+    /// The current page has said its first screen is up. Cleared by every
+    /// load, so it describes the page now in the view and no earlier one.
+    private var firstScreenUp = false
+    private var firstScreenWaiters: [() -> Void] = []
+
+    /// Run `fn` once, when this window's page has its first screen up or
+    /// after `bound`, whichever is first; at once if it is up already.
+    func whenFirstScreen(within bound: TimeInterval = Coordinator.firstScreenBound, _ fn: @escaping () -> Void) {
+        if firstScreenUp { fn(); return }
+        var done = false
+        let once = {
+            guard !done else { return }
+            done = true
+            fn()
+        }
+        firstScreenWaiters.append(once)
+        DispatchQueue.main.asyncAfter(deadline: .now() + bound) { once() }
+    }
+
+    private func firstScreenArrived() {
+        // Only the page that was asked for: a load clears `firstScreenUp`
+        // and moves `state` off `.warm`, so a word from a page already on
+        // its way out is not taken for the one replacing it.
+        guard state == .warm, !firstScreenUp else { return }
+        firstScreenUp = true
+        measure.mark("first-screen")
+        if measure.enabled {
+            // What the page holds at the moment it says it is up, which is
+            // what a reader is shown first: whether the editor and, in a
+            // rooted window, the file list and its rows are there yet.
+            let probe = """
+                [!!document.querySelector('.ProseMirror'),
+                 !!document.querySelector('.files-panel'),
+                 document.querySelectorAll('.files-row:not(.files-row--loading)').length,
+                 document.body.classList.contains('files-open'),
+                 document.visibilityState].join(' ')
+                """
+            host.webView.evaluateJavaScript(probe) { [weak self] result, _ in
+                MainActor.assumeIsolated {
+                    self?.measure.trace("first-screen editor/panel/rows/open/visibility=\(result as? String ?? "?") shown=\(self?.panel.isVisible ?? false)")
+                }
+            }
+        }
+        let waiters = firstScreenWaiters
+        firstScreenWaiters.removeAll()
+        waiters.forEach { $0() }
+    }
+
+    /// The last frame of the page being replaced, held over the web view
+    /// while its successor builds (`loadPage`). Below everything else the
+    /// window draws over the page, so the status line, the drag strip and the
+    /// missing-file card stay live over it.
+    private let reloadCover: NSImageView = {
+        let view = NSImageView()
+        view.imageScaling = .scaleNone
+        view.imageAlignment = .alignTopLeft
+        view.isHidden = true
+        return view
+    }()
+
+    /// A snapshot is being taken for the cover, and the load waits on it.
+    /// Counted rather than flagged, so the bound of one snapshot cannot end
+    /// the wait of a later one.
+    private var coverSnapshot = 0
+    private var coverSnapshotPending = false
+
+    /// Whether an edit the page posts is this window's document. Not while a
+    /// page is loading: the only page that can post then is the one being
+    /// replaced, and every path that replaces a page has flushed its bytes
+    /// and has often already bound the window to a different file. An edit
+    /// admitted then would be the old note's text written over the new one.
+    /// The cover widens that moment (the old page stays live and focused
+    /// until its snapshot is taken), which is why the line is drawn here
+    /// rather than left to how fast a navigation happens to be.
+    private var acceptsEdits: Bool { state != .loading }
+
+    /// Long enough for a responsive page to hand over its frame, and short
+    /// enough that a page too busy to answer does not delay its own
+    /// replacement noticeably.
+    private static let coverSnapshotBound: TimeInterval = 0.25
+
+    private func liftReloadCover() {
+        if measure.enabled { measure.mark("reload-cover-lifted") }
+        reloadCover.isHidden = true
+        reloadCover.image = nil
+    }
+
+    /// Build this window's page. A page that is on screen when it is
+    /// replaced (a file opened in place, a setting that reloads, a rebind)
+    /// leaves its last frame over the window until the new page's first
+    /// screen is up, so the reader goes from one finished window to the next
+    /// and never watches the second assemble: an editor at full width, then
+    /// the file list arriving and pushing it over. Without the cover the web
+    /// view shows the new page as it paints, and it paints long before it is
+    /// finished. A page that is not on screen has nobody watching and loads
+    /// at once, and a tab opened beside another is held back by `WindowSet`
+    /// instead, where the tab in front is the cover.
     private func loadPage() {
+        let replacingVisiblePage = state == .warm && panel.isVisible
         state = .loading
+        firstScreenUp = false
         folderIndexSubscribed = false
         measure.mark("load-start")
         // Decided HERE, before the page starts, and once. The page reads the
@@ -1712,6 +2080,35 @@ final class Coordinator {
             ? ViewStateOnOpen.forRemount(remembered)
             : ViewStateOnOpen.forOpen(remembered)
         lastMountedURL = boundURL
+        // A snapshot already on its way loads whatever page is current when
+        // it lands, which is this one.
+        guard !coverSnapshotPending else { return }
+        guard replacingVisiblePage else {
+            startPageLoad()
+            return
+        }
+        coverSnapshotPending = true
+        coverSnapshot += 1
+        let snapshot = coverSnapshot
+        let begin = { [weak self] (image: NSImage?) in
+            guard let self, self.coverSnapshotPending, self.coverSnapshot == snapshot else { return }
+            self.coverSnapshotPending = false
+            if self.measure.enabled { self.measure.trace("reload-cover snapshot=\(image != nil)") }
+            if let image {
+                self.reloadCover.image = image
+                self.reloadCover.frame = self.host.webView.frame
+                self.reloadCover.isHidden = false
+                self.whenFirstScreen { [weak self] in self?.liftReloadCover() }
+            }
+            self.startPageLoad()
+        }
+        host.webView.takeSnapshot(with: nil) { image, _ in
+            MainActor.assumeIsolated { begin(image) }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.coverSnapshotBound) { begin(nil) }
+    }
+
+    private func startPageLoad() {
         host.schemeHandler.networkEnabled = Prefs.networkEnabled
         host.load(themeClass: currentThemeClass(), themeCSS: appearance.stylesheet())
     }
@@ -1731,17 +2128,29 @@ final class Coordinator {
         measure.mark("hotkey")
     }
 
-    func show() {
+    /// Put the window on screen. `activating` is a summon: the window takes
+    /// the keyboard and the app takes the front. Without it the window comes
+    /// back behind whatever is in front, which is the relaunch after an
+    /// unattended swap, and nothing on this path may ask a question, since a
+    /// sheet on a window of an app in the background bounces the Dock icon.
+    func show(activating: Bool = true) {
         // Taken before anything else on this path, and run at the end, so a
         // handler that summons or hides cannot re-enter its own slot.
-        let held = onNextShow
-        onNextShow = nil
+        let held = activating ? onNextShow : nil
+        if activating { onNextShow = nil }
         defer { held?() }
-        onWillShow?()
+        // What the window set does before a summon is about the activation
+        // (the app to return to, the Space switch), so it has no part in a
+        // show that does not activate.
+        if activating { onWillShow?() }
         panel.placeIfUnplaced()
         if panel.isMiniaturized { panel.deminiaturize(nil) }
-        panel.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
+        if activating {
+            panel.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+        } else {
+            panel.orderFront(nil)
+        }
         // The first-run screen owns the keyboard while it is up. A hidden view
         // is out of hit testing, so the mouse is already walled off, and
         // `makeFirstResponder` does not refuse a hidden view: without this the
@@ -1765,7 +2174,7 @@ final class Coordinator {
         // away. A summon is when somebody comes back to the note, which makes
         // it both the moment a stale panel is worth correcting and the only
         // moment there is a window to put a question on (MAR-469).
-        reconcileWithDisk(asking: true)
+        reconcileWithDisk(asking: activating)
         // ...and where a buffer went that could not be written to its own file
         // when a window went. Here because this is the first moment there is
         // anywhere to say it; the run that kept the file had no window left.
@@ -1862,6 +2271,12 @@ final class Coordinator {
             // had handed over: it cannot ask for something to be taken away
             // that it does not know it gave.
             stripTooltipWindow.hide()
+            // Nor any explorer docked under the band, whatever the last page
+            // had reported, and it has not been told the floor either. The
+            // explorer reports its edge once it mounts; the floor goes on the
+            // next layout pass, which the width query below makes.
+            titleBar.titleView.setSidebarEdge(nil)
+            sentExplorerFloor = nil
             // The file is the source only at launch and after the bound file
             // changes; after a content-process death `latest` is fresher than
             // the disk can be (a write may still be in flight), and it is what
@@ -1935,6 +2350,10 @@ final class Coordinator {
             applyChromeVisibility()
             if panel.isVisible { host.focusEditor() }
         case let .update(content, base, seq):
+            guard acceptsEdits else {
+                measure.trace("update refused: the page that sent it is being replaced")
+                break
+            }
             switch guardState.judge(baseSyncVersion: base, seq: seq) {
             case .admit:
                 // The page serializes the BODY: the frontmatter block never
@@ -1986,6 +2405,10 @@ final class Coordinator {
             // a re-push rather than rebased, the same degradation the extension
             // settles a rejected frontmatter base with: this side replaces one
             // block and has nothing to rebase a whole document against.
+            guard acceptsEdits else {
+                measure.trace("frontmatterUpdate refused: the page that sent it is being replaced")
+                break
+            }
             guard guardState.admits(baseSyncVersion: base) else {
                 pushDocument(latest, syncVersion: guardState.version)
                 break
@@ -2006,6 +2429,16 @@ final class Coordinator {
             Prefs.setViewStateJSON(json, for: boundURL)
         case let .openUrl(url):
             if let u = URL(string: url) { NSWorkspace.shared.open(u) }
+        case let .openFile(path, wiki):
+            openLink(path, wiki: wiki)
+        case let .resolveLinkTarget(id, path, wiki):
+            answerLinkTarget(id: id, raw: path, wiki: wiki)
+        case let .getLinkTargetSuggestions(id, query):
+            answerLinkSuggestions(id: id, query: query)
+        case let .getPathSuggestions(id, query):
+            answerPathSuggestions(id: id, query: query)
+        case let .pickLinkTarget(id):
+            pickLinkTarget(id: id)
         case .openHostPreferences:
             openPreferences?()
         case let .askAgent(prompt, requestId, model, effort, skill):
@@ -2124,19 +2557,34 @@ final class Coordinator {
             Prefs.explorerVisibility = visible ? "shown" : "hidden"
             menuState.record(.explorerShown, on: visible)
             titleBar.titleView.setSidebarShown(visible)
+        case .topbarControlsChanged:
+            // The page pushes this when a control in the trailing cluster
+            // comes or goes (the outline's button, while the outline has
+            // nothing to show), which is the case `refreshTitlebarControlsWidth`
+            // says asking cannot see.
+            refreshTitlebarControlsWidth()
+        case let .fileExplorerEdge(edge):
+            // The page's CSS pixels are the window's points: the web view
+            // fills the content view from its leading edge and is not zoomed.
+            titleBar.titleView.setSidebarEdge(edge.map { CGFloat($0) })
+            layoutTitlebarDrag()
         case let .setFileExplorerShowHidden(value):
             // The setting is the app's, so every rooted window's page hears
             // about it, this one included; `WindowSet` fans it out.
             onShowHiddenChanged?(value)
         case let .fileExplorerExpanded(paths):
             explorerExpanded = paths
-        case let .paletteCommands(items):
+        case let .paletteCommands(items, idle):
             // What the page can run here right now, kept for the app's
             // palette (MAR-458); the page re-posts it when the publishing
-            // targets change, so this is always the current list.
+            // targets change or a command goes idle or live, so this is
+            // always the current list.
             paletteCommands = items
+            idleCommands = idle
         case let .focusState(focused):
             if focused { measure.mark("caret-ready") }
+        case .firstScreen:
+            firstScreenArrived()
         case let .crash(message, source):
             NSLog("Birta Writer: webview crash (\(source)): \(message)")
         case let .uploadImage(id, data, mimeType, _):
@@ -4284,6 +4732,7 @@ final class Coordinator {
     /// a leading accessory after them, so nothing here repeats a number the
     /// system owns.
     func layoutTitlebarDrag() {
+        insetTabBar()
         let titleView = titleBar.titleView
         // The title's ceiling and the strip's span are two answers to one
         // question, so they are taken from one place and in this order: the
@@ -4300,6 +4749,7 @@ final class Coordinator {
             titleOriginX: titleView.convert(titleView.bounds, to: contentView).minX,
             titleChromeWidth: titleView.chromeWidth,
             trailingControlsWidth: titlebarControlsWidth))
+        sendExplorerFloor(titleOriginX: titleView.convert(titleView.bounds, to: contentView).minX)
         let leading = titleView.convert(titleView.bounds, to: contentView).maxX
         // The TITLE ROW, not the whole band. With tabs the band has a second
         // row under the title, the tab bar, and a strip laid over the whole
@@ -4332,6 +4782,22 @@ final class Coordinator {
                                     height: bandHeight)
     }
 
+    /// Tell the page how narrow its explorer may be, now that this window's
+    /// chrome has been placed: wide enough for the toggle and the file
+    /// actions the band draws on its ground (`SidebarBand.floor`).
+    ///
+    /// Here, on the layout pass, because the floor starts from where AppKit
+    /// put the title, which moves with things this file does not choose (full
+    /// screen takes the traffic lights away). A window with no explorer has
+    /// no page panel to hold to it, and is sent nothing.
+    private func sendExplorerFloor(titleOriginX: CGFloat) {
+        guard explorerRoot != nil else { return }
+        let floor = titleBar.titleView.sidebarFloor(titleOriginX: titleOriginX).rounded(.up)
+        guard floor != sentExplorerFloor else { return }
+        sentExplorerFloor = floor
+        host.send(.fileExplorerFloor(width: Double(floor)))
+    }
+
     /// Ask the page how much of the band its controls take, then refit.
     ///
     /// Called when the page has mounted and whenever its chrome could have
@@ -4340,15 +4806,16 @@ final class Coordinator {
     /// stored value correct between calls.
     ///
     /// The constraint that makes storing it safe: the cluster is right-aligned,
-    /// so its width moves only when the SET of controls does. Two things in the
-    /// page could do that without passing through here, and both are status
-    /// badges pinned to the front of that cluster (`renderPinned` in
-    /// webview/components/toolbar/layout.ts): the drift warning and the Logseq
-    /// indicator. Neither is reachable in this shell, because the messages that
-    /// raise them are the extension's and this app's bridge does not send them. If
-    /// it ever sends one, the strip will still be sized for a cluster that has
-    /// since grown, and it will cover the badge it grew for. That is the day
-    /// this needs the page to push its width rather than be asked.
+    /// so its width moves only when the SET of controls does. The page says so
+    /// when its set changes (`topbarControlsChanged`, the outline's button
+    /// coming and going with the outline's content), and that is what calls
+    /// this again. Two status badges pinned to the front of the cluster
+    /// (`renderPinned` in webview/components/toolbar/layout.ts), the drift
+    /// warning and the Logseq indicator, change it without saying so, and are
+    /// unreachable in this shell only because the messages that raise them are
+    /// the extension's and this app's bridge does not send them. A bridge that
+    /// sends one has to have the page push for it too, or the strip will be
+    /// sized for a cluster that has since grown and cover the badge it grew for.
     func refreshTitlebarControlsWidth() {
         // Bring the page's band height up to date BEFORE the measuring query,
         // and the order is the whole reason this line is here rather than only
@@ -4631,7 +5098,8 @@ final class Coordinator {
         traceTitleActions()
     }
 
-    /// The two file buttons the titlebar draws, at rest and hovered.
+    /// The file buttons the titlebar draws before the name, at rest and
+    /// hovered, with where the name starts so a check can say they end first.
     ///
     /// The same shape as `traceChevron` and for the same reasons, plus one
     /// claim that view cannot make: the buttons' GEOMETRY has to be identical
@@ -4656,11 +5124,11 @@ final class Coordinator {
             frames.map { String(format: "%.1f:%.1f", $0.origin.x, $0.width) }.joined(separator: ",")
         }
         measure.trace(String(
-            format: "titleactions count=%d symbols=%d restShown=%@ overShown=%@ restBoxes=%@ overBoxes=%@ chevronMaxX=%.1f",
+            format: "titleactions count=%d symbols=%d restShown=%@ overShown=%@ restBoxes=%@ overBoxes=%@ labelMinX=%.1f",
             over.frames.count, over.symbols,
             rest.shown ? "yes" : "no", over.shown ? "yes" : "no",
             box(rest.frames), box(over.frames),
-            view.labelFrameInWindow().width + view.chromeWidth - view.actionsView.room))
+            view.labelFrameInView.minX))
     }
 
     /// The title's hover affordance, at rest and hovered.
@@ -4684,7 +5152,7 @@ final class Coordinator {
             over.hasImage ? "yes" : "no",
             over.frame.origin.x, over.frame.width, over.frame.height,
             rest.alpha, over.alpha, rest.ink, over.ink,
-            view.labelFrameInWindow().width + 8))
+            view.labelFrameInView.maxX))
     }
 
     /// Name the bound file in the titlebar, and say whether the reader has

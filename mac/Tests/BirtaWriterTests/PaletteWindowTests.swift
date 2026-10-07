@@ -128,6 +128,19 @@ final class PaletteWindowTests: XCTestCase {
         XCTAssertTrue(withGateOn.contains("Stop Checking Spelling"))
     }
 
+    /// A command the page says has nothing to act on is left out, as the menu
+    /// dims its row, and only that command: its neighbours on the same
+    /// selector stay.
+    func testARowWhosePageCommandIsIdleShouldNotBeOffered() {
+        var idle = PaletteSources.Context(front: nil, allows: Self.looseFileGate)
+        idle.idleCommands = ["toggleToc"]
+        let titles = flattened(PaletteSources.catalog(idle).items).map(\.title)
+        XCTAssertFalse(titles.contains("Show Table of Contents"))
+        XCTAssertTrue(titles.contains("Bold"), "an idle command withdraws its own row, not the selector's")
+        XCTAssertTrue(flattened(realCatalog().items).map(\.title).contains("Show Table of Contents"),
+                      "and with nothing idle the row is back")
+    }
+
     func testARowThatRenamesItselfShouldBeOfferedUnderWhatPickingItDoes() {
         var shown = PaletteSources.Context(front: nil, allows: Self.looseFileGate)
         shown.menuState = MenuState(tocShown: true)

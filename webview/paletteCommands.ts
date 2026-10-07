@@ -31,7 +31,7 @@
  * everything else.
  */
 import { EDITOR_COMMANDS } from "../shared/editorCommands";
-import { commandAvailable } from "../shared/commandAvailability";
+import { commandAvailable, idleCommandIds } from "../shared/commandAvailability";
 import { APP_ONLY_CAPABILITIES, hostShortcuts } from "../shared/hostProfile";
 import type { PaletteCommand } from "../shared/messages";
 import { notifyPaletteCommands } from "./messaging";
@@ -69,10 +69,10 @@ let asked = false;
 /** The host asked: answer now, and keep answering as the list changes. */
 export function answerPaletteCommandsRequest(): void {
     asked = true;
-    notifyPaletteCommands(paletteCommandList());
+    notifyPaletteCommands(paletteCommandList(), idleCommandIds());
 }
 
 /** The list may have changed; a host that asked hears the new one. */
 export function repostPaletteCommandsIfAsked(): void {
-    if (asked) { notifyPaletteCommands(paletteCommandList()); }
+    if (asked) { notifyPaletteCommands(paletteCommandList(), idleCommandIds()); }
 }

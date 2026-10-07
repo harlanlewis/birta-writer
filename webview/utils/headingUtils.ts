@@ -85,15 +85,38 @@ export function collectDocHeadings(doc: PmNode): DocHeading[] {
         if (!node.isTextblock) {
             return true; // a container — keep descending
         }
-        if (node.type.name === "heading") {
-            const text = slugTextOf(node).trim();
-            if (text) {
-                headings.push({ level: node.attrs["level"] as number, text, pos });
-            }
+        const text = outlineHeadingText(node);
+        if (text) {
+            headings.push({ level: node.attrs["level"] as number, text, pos });
         }
         return false; // never walk a textblock's inline content
     });
     return headings;
+}
+
+/** A textblock's outline text when it is an outline heading (a heading with text), else null. */
+function outlineHeadingText(node: PmNode): string | null {
+    if (node.type.name !== "heading") { return null; }
+    return slugTextOf(node).trim() || null;
+}
+
+/**
+ * Whether the document has any heading the outline would list, stopping at
+ * the first: `collectDocHeadings(doc).length > 0` without the walk past it.
+ * For a question that only needs yes or no (whether the outline has anything
+ * to show) on a path that must not pay for the whole document. Same criteria,
+ * one predicate, so the two cannot disagree.
+ */
+export function docHasHeading(node: PmNode): boolean {
+    for (let i = 0; i < node.childCount; i++) {
+        const child = node.child(i);
+        if (child.isTextblock) {
+            if (outlineHeadingText(child)) { return true; }
+        } else if (docHasHeading(child)) {
+            return true;
+        }
+    }
+    return false;
 }
 
 /**

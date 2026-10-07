@@ -144,6 +144,42 @@ final class TitlebarBandTests: XCTestCase {
             titleChromeWidth: -10, trailingControlsWidth: -10), 492)
     }
 
+    // MARK: the row split at a docked explorer
+
+    /// The floor and the layout are one claim asked from two ends: an
+    /// explorer exactly `floor` wide puts the actions against the toggle's
+    /// air and no nearer. Asked of `layout` itself rather than of a table of
+    /// expected positions, so the two cannot drift apart.
+    func testAnExplorerAtItsFloorShouldPutTheActionsExactlyAgainstTheToggle() {
+        let origin: CGFloat = 78, leading: CGFloat = 40, span: CGFloat = 82
+        let floor = SidebarBand.floor(titleOriginX: origin, leadingRoom: leading, actionsSpan: span)
+        let placed = SidebarBand.layout(edge: floor - origin, leadingRoom: leading, actionsSpan: span)
+        XCTAssertEqual(placed.actionsX, leading)
+        // A point narrower and the actions could only go under the toggle;
+        // the clamp holds them where they were instead.
+        let tight = SidebarBand.layout(edge: floor - origin - 1, leadingRoom: leading, actionsSpan: span)
+        XCTAssertEqual(tight.actionsX, leading)
+    }
+
+    /// Wider than the floor, the actions ride the explorer's far edge and the
+    /// name starts past it, whatever the width: that is what keeps the file
+    /// buttons on the explorer's ground and the name on the document's.
+    func testAWideExplorerShouldHoldTheActionsToItsEdgeAndTheNamePastIt() {
+        for edge: CGFloat in [200, 260, 480] {
+            let placed = SidebarBand.layout(edge: edge, leadingRoom: 40, actionsSpan: 82)
+            XCTAssertEqual(placed.actionsX + 82 + SidebarBand.trailingInset, edge, "edge \(edge)")
+            XCTAssertEqual(placed.labelX, edge + SidebarBand.titleGap, "edge \(edge)")
+        }
+    }
+
+    /// Before the page has heard the floor the edge can be nearer than it.
+    /// Nothing may overlap then either: the name starts past the actions,
+    /// not under them.
+    func testAnExplorerUnderItsFloorShouldStillKeepTheNameClearOfTheActions() {
+        let placed = SidebarBand.layout(edge: 60, leadingRoom: 40, actionsSpan: 82)
+        XCTAssertGreaterThan(placed.labelX, placed.actionsX + 82)
+    }
+
     // MARK: double click
 
     /// The system default when nobody has set the key, which is the state

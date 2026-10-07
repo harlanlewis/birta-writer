@@ -93,7 +93,8 @@ final class TitleBarView: NSView {
     /// edits one file from a panel and is not an `NSDocument` app, so the
     /// choice is to draw the affordance or to have none.
     private let chevron = NSImageView()
-    /// New Note and Open, drawn after the chevron on hover.
+    /// New Note, Open and the Command Palette, drawn between the sidebar
+    /// toggle and the name.
     ///
     /// Built empty and filled by `setActions`, because what the buttons DO is
     /// the coordinator's and this view is the only thing that knows the
@@ -108,12 +109,28 @@ final class TitleBarView: NSView {
     ///
     /// Built here rather than handed in like the file actions, because there
     /// is nothing to decide: it is one button, running the menu row the
-    /// window's own ⇧⌘E runs. What the coordinator says about it is whether
+    /// window's own ⌥⌘, runs. What the coordinator says about it is whether
     /// this window HAS an explorer (`setSidebarAvailable`); a window with none
     /// draws no button and reserves no room for one, so the name starts
     /// against the traffic lights rather than after a blank stretch of band.
     private let sidebar = TitlebarActionsView(actions: TitlebarActionsView.leadingShipped,
                                               edge: .leading)
+    /// Where the docked-open file explorer ends, in WINDOW coordinates, or nil
+    /// while it is not docked open. The page reports it (`fileExplorerEdge`)
+    /// and the row splits there (`SidebarBand`): the toggle and the file
+    /// actions on the explorer's ground, the name past it.
+    private var sidebarEdge: CGFloat?
+    /// The explorer's edge in window coordinates while this window's row is
+    /// split at it, for the tab bar to start at (`Coordinator.insetTabBar`).
+    /// Nil whenever the row is not split, by the same rule the row uses.
+    var dockedSidebarEdge: CGFloat? { localSidebarEdge == nil ? nil : sidebarEdge }
+    /// The stretch of the explorer's ground between the toggle and the file
+    /// actions, and on past them to the name, made to drag the window. Without
+    /// it a click there falls through to the page, which is the explorer's
+    /// header and does nothing, and a strip of titlebar that cannot be grabbed
+    /// is the defect `TitlebarDragView` exists for. Hidden unless the row is
+    /// split.
+    private let sidebarDrag = TitlebarDragView()
     /// Hover over the title itself, and hover over the drag strip beside it.
     ///
     /// Two sources rather than one because the affordance is meant to be found:
@@ -202,7 +219,49 @@ final class TitleBarView: NSView {
     /// An instance property rather than a static one, because the buttons'
     /// room is theirs to report: the actions arrive after this view is built
     /// (`setActions`), so how many there are is not something a type can know.
-    var chromeWidth: CGFloat { Self.leadingGap + sidebar.room + Self.chevronRoom + actions.room }
+    var chromeWidth: CGFloat { labelX + Self.chevronRoom }
+
+    /// The explorer's edge in this view's own coordinates, while the row is
+    /// split at it. Nil when nothing is docked open, when this window has no
+    /// explorer, or before the view is in a window to measure from.
+    private var localSidebarEdge: CGFloat? {
+        guard let sidebarEdge, sidebar.isAvailable, window != nil else { return nil }
+        return sidebarEdge - convert(NSPoint.zero, to: nil).x
+    }
+
+    /// Everything before the file actions that is not theirs: the air after
+    /// the traffic lights, and the sidebar toggle with the air after it.
+    private var leadingRoom: CGFloat { Self.leadingGap + sidebar.room }
+
+    /// Where the file actions start and where the name starts. Side by side
+    /// after the toggle, unless the explorer is docked open under the band,
+    /// and then split at its edge (`SidebarBand.layout`).
+    private var rowPlacement: (actionsX: CGFloat, labelX: CGFloat) {
+        guard let edge = localSidebarEdge else {
+            return (leadingRoom, leadingRoom + actions.room)
+        }
+        return SidebarBand.layout(edge: edge, leadingRoom: leadingRoom, actionsSpan: actions.span)
+    }
+
+    private var labelX: CGFloat { rowPlacement.labelX }
+
+    /// The narrowest the explorer may be, in window coordinates, for the
+    /// toggle and the file actions to fit on its ground. `titleOriginX` is
+    /// where AppKit put this view, which the caller reads off the window.
+    func sidebarFloor(titleOriginX: CGFloat) -> CGFloat {
+        SidebarBand.floor(titleOriginX: titleOriginX, leadingRoom: leadingRoom, actionsSpan: actions.span)
+    }
+
+    /// Where the docked-open explorer ends, in window coordinates, or nil
+    /// while it is not docked open. Moves the file actions and the name, so
+    /// this view changes width and the drag strip after it moves with it;
+    /// the caller relays that (`Coordinator.layoutTitlebarDrag`).
+    func setSidebarEdge(_ edge: CGFloat?) {
+        guard edge != sidebarEdge else { return }
+        sidebarEdge = edge
+        resize()
+        layoutSubtreeIfNeeded()
+    }
     /// The height this view is BUILT at, and nothing else.
     ///
     /// AppKit stretches a titlebar accessory to the titlebar's own height, so
@@ -312,6 +371,8 @@ final class TitleBarView: NSView {
         // front of the title for anyone reading the window by keyboard.
         chevron.setAccessibilityElement(false)
         addSubview(chevron)
+        sidebarDrag.isHidden = true
+        addSubview(sidebarDrag)
         addSubview(actions)
         addSubview(sidebar)
         resize()
@@ -389,7 +450,7 @@ final class TitleBarView: NSView {
     func setActions(_ list: [TitlebarActionsView.Action]) {
         let tooltip = actions.onTooltip
         actions.removeFromSuperview()
-        actions = TitlebarActionsView(actions: list)
+        actions = TitlebarActionsView(actions: list, edge: .leading)
         actions.onTooltip = tooltip
         actions.setWindowKey(isKey)
         addSubview(actions)
@@ -521,9 +582,8 @@ final class TitleBarView: NSView {
         // for a second one: a window with no name is a window with no file,
         // and a file explorer's toggle in front of nothing is a control for a
         // window that is not showing anything yet.
-        let leading = text > 0 ? sidebar.room : 0
-        let trailing = text > 0 ? Self.chevronRoom + actions.room : 0
-        setFrameSize(NSSize(width: Self.leadingGap + leading + text + trailing, height: bounds.height))
+        let width = text > 0 ? labelX + text + Self.chevronRoom : Self.leadingGap
+        setFrameSize(NSSize(width: width, height: bounds.height))
         invalidateIntrinsicContentSize()
         needsLayout = true
     }
@@ -554,12 +614,24 @@ final class TitleBarView: NSView {
         // did.
         let room = max(0, bounds.width - chromeWidth)
         let textWidth = min(drawnTextWidth(), textCeiling, room)
-        // The sidebar toggle first, then the name: the full band height, like
-        // the file buttons, because the strip above and below the symbol
-        // belongs to nothing else.
+        // Every button before the name: the sidebar toggle, then the file
+        // buttons, then the name and its chevron. The full band height,
+        // because the strip above and below the symbols belongs to nothing
+        // else.
+        // With the explorer docked open under the band, the actions move to
+        // its far edge and the name past it (`rowPlacement`).
+        let placement = rowPlacement
         sidebar.frame = NSRect(x: Self.leadingGap, y: 0, width: sidebar.room, height: bounds.height)
         sidebar.layoutSubtreeIfNeeded()
-        label.frame = NSRect(x: sidebar.frame.maxX,
+        actions.frame = NSRect(x: placement.actionsX, y: 0, width: actions.room, height: bounds.height)
+        actions.layoutSubtreeIfNeeded()
+        // Under the buttons in the hit order (`hitTest` asks them first), so it
+        // can run unbroken from the toggle to the name.
+        sidebarDrag.isHidden = localSidebarEdge == nil
+        sidebarDrag.frame = NSRect(x: sidebar.frame.maxX, y: 0,
+                                   width: max(0, placement.labelX - sidebar.frame.maxX),
+                                   height: bounds.height)
+        label.frame = NSRect(x: placement.labelX,
                              y: ((bounds.height - size.height) / 2).rounded(),
                              width: textWidth,
                              height: size.height)
@@ -567,14 +639,6 @@ final class TitleBarView: NSView {
                                y: ((bounds.height - Self.chevronWidth) / 2).rounded(),
                                width: Self.chevronWidth,
                                height: Self.chevronWidth)
-        // The full band height, not the chevron's box: a taller target is free
-        // here, because the strip above and below the symbol belongs to nothing
-        // else.
-        actions.frame = NSRect(x: chevron.frame.maxX,
-                               y: 0,
-                               width: actions.room,
-                               height: bounds.height)
-        actions.layoutSubtreeIfNeeded()
     }
 
     // MARK: state
@@ -760,6 +824,11 @@ final class TitleBarView: NSView {
     /// Set the hover state and read back what it decided, the way
     /// `chevronForMeasurement` does and for the same reason: a probe that wrote
     /// the answer would be answering itself.
+    /// The name's box in this view's own coordinates, the space
+    /// `actionsForMeasurement` and `chevronForMeasurement` report in, so a
+    /// check can compare them without rebuilding the layout from widths.
+    var labelFrameInView: NSRect { label.frame }
+
     func actionsForMeasurement(hovered: Bool) -> (shown: Bool, frames: [NSRect], symbols: Int) {
         setHoverForMeasurement(hovered)
         layoutSubtreeIfNeeded()
@@ -926,6 +995,9 @@ final class TitleBarView: NSView {
         // (`TitlebarActionsView.room`), so the name starts where the strip
         // would have been.
         if let button = sidebar.button(at: convert(local, to: sidebar)) { return button }
+        // The explorer's ground between the buttons and the name drags the
+        // window, as the band past the name does (`sidebarDrag`).
+        if !sidebarDrag.isHidden, sidebarDrag.frame.contains(local) { return sidebarDrag }
         // The title's own click area is the NAME and the chevron that points at
         // it, and stops at both ends. Either row's room is deliberately
         // outside it: while its buttons are not drawn it is a strip of empty

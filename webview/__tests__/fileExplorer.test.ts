@@ -508,3 +508,190 @@ describe("the file explorer gate", () => {
         expect(eager.has("components/fileExplorer/styles.ts")).toBe(false);
     });
 });
+
+/**
+ * `filesUnderTitlebar`: the docked drawer runs from the window's top through
+ * the bar's first row, and the host lays its band out against the edge the
+ * page reports. Asked against a bar of known height, because with no bar the
+ * content area's top is 0, and a drawer from the window's top would then be
+ * indistinguishable from one under the bar.
+ */
+describe("the file explorer under a host's titlebar", () => {
+    let gate: FileExplorerGate;
+    const BAR = 40;
+    const edges = () => posted()
+        .filter((m): m is Extract<Posted, { type: "fileExplorerEdge" }> => m.type === "fileExplorerEdge")
+        .map((m) => m.edge);
+
+    function declare(arrangements: string[]): void {
+        (globalThis as { __i18n?: unknown }).__i18n = {
+            translations: {},
+            isMac: true,
+            host: { capabilities: ["projectFiles"], arrangements, shortcuts: [] },
+        };
+    }
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+        Object.defineProperty(window, "innerWidth", { value: 1200, configurable: true });
+        vi.stubGlobal("requestAnimationFrame", (cb: FrameRequestCallback) => { cb(0); return 0; });
+        document.body.className = "";
+        document.body.innerHTML = "";
+        document.documentElement.style.cssText = "";
+        const bar = document.createElement("div");
+        bar.className = "editor-topbar";
+        bar.getBoundingClientRect = () => DOMRect.fromRect({ x: 0, y: 0, width: 1200, height: BAR });
+        document.body.appendChild(bar);
+    });
+
+    afterEach(() => {
+        gate.setProjectRoot(null, false);
+        vi.unstubAllGlobals();
+        delete (globalThis as { __i18n?: unknown }).__i18n;
+    });
+
+    it("declared, the docked drawer should start at the window's top with its rows where the content starts", async () => {
+        declare(["filesUnderTitlebar"]);
+        gate = makeGate();
+        await mounted(gate);
+        expect(panel()!.style.top).toBe("0px");
+        expect(panel()!.style.getPropertyValue("--side-panel-content-top")).toBe(`${BAR}px`);
+        expect(document.body.classList.contains("files-from-top")).toBe(true);
+        // Flush: no inset, so the drawer's edge is its width and nothing less.
+        expect(panel()!.style.getPropertyValue("--side-panel-inset")).toBe("0px");
+    });
+
+    it("undeclared, the drawer should stay under the bar and report no edge", async () => {
+        declare([]);
+        gate = makeGate();
+        await mounted(gate);
+        expect(panel()!.style.top).toBe(`${BAR}px`);
+        expect(document.body.classList.contains("files-from-top")).toBe(false);
+        gate.toggle();
+        gate.toggle();
+        expect(edges()).toEqual([]);
+    });
+
+    it("declared, every open and close should report the edge once, and null while nothing is docked open", async () => {
+        declare(["filesUnderTitlebar"]);
+        gate = makeGate();
+        await mounted(gate);
+        const open = gate.dockedReserve();
+        expect(open).toBeGreaterThan(0);
+        gate.toggle();
+        gate.toggle();
+        expect(edges()).toEqual([open, null, open]);
+    });
+
+    it("a host floor should hold the drawer at least that wide, from before the panel exists and after", async () => {
+        declare(["filesUnderTitlebar"]);
+        gate = makeGate();
+        // Sent before any folder opens: the host lays its window out first.
+        gate.setWidthFloor(300);
+        await mounted(gate);
+        expect(gate.dockedReserve()).toBe(300);
+        expect(edges().at(-1)).toBe(300);
+        // Raised with the panel up, which is full screen arriving or leaving:
+        // the drawer follows and the host hears the new edge.
+        gate.setWidthFloor(340);
+        expect(gate.dockedReserve()).toBe(340);
+        expect(edges().at(-1)).toBe(340);
+        expect(document.documentElement.style.getPropertyValue("--files-width")).toBe("340px");
+    });
+});
+
+describe("the file explorer's first tree", () => {
+    let gate: FileExplorerGate;
+
+    /** Whether `p` has resolved, read after letting every queued continuation run. */
+    async function isSettled(p: Promise<void>): Promise<boolean> {
+        let done = false;
+        void p.then(() => { done = true; });
+        for (let i = 0; i < 10; i++) { await Promise.resolve(); }
+        return done;
+    }
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+        declareHost();
+        Object.defineProperty(window, "innerWidth", { value: 1200, configurable: true });
+        vi.stubGlobal("requestAnimationFrame", (cb: FrameRequestCallback) => { cb(0); return 0; });
+        document.body.className = "";
+        document.body.innerHTML = "";
+        document.documentElement.style.cssText = "";
+    });
+
+    afterEach(() => {
+        gate.setProjectRoot(null, false);
+        vi.unstubAllGlobals();
+        vi.useRealTimers();
+        delete (globalThis as { __i18n?: unknown }).__i18n;
+    });
+
+    it("a rooted page should not count its tree as drawn until the root's rows have come back", async () => {
+        gate = makeGate();
+        await mounted(gate);
+        expect(await isSettled(gate.settled())).toBe(false);
+        answer(gate, "", [file("a.md")]);
+        expect(await isSettled(gate.settled())).toBe(true);
+    });
+
+    it("a rooted page whose projectRoot has not arrived should still be waiting, not settled", async () => {
+        gate = makeGate();
+        expect(await isSettled(gate.settled())).toBe(false);
+    });
+
+    it("the walk to the current file should be part of the first tree, every folder down to it answered", async () => {
+        gate = makeGate();
+        gate.setProjectRoot(ROOT, false);
+        // The host sends the current file beside the root, ahead of any answer.
+        gate.setCurrentProjectFile("docs/guide/deep.md");
+        await vi.waitFor(() => { expect(panel()).not.toBeNull(); });
+        answer(gate, "", [dir("docs")]);
+        expect(await isSettled(gate.settled())).toBe(false);
+        answer(gate, "docs", [dir("guide")]);
+        expect(await isSettled(gate.settled())).toBe(false);
+        answer(gate, "docs/guide", [file("deep.md")]);
+        expect(await isSettled(gate.settled())).toBe(true);
+        expect(row("docs/guide/deep.md")).not.toBeNull();
+    });
+
+    it("a folder the host cannot read should count as drawn: its error row is what the tree shows", async () => {
+        gate = makeGate();
+        await mounted(gate);
+        answer(gate, "", null, "Permission denied");
+        expect(await isSettled(gate.settled())).toBe(true);
+    });
+
+    it("a host that never answers should leave the tree settled once the listing gives up", async () => {
+        vi.useFakeTimers();
+        gate = makeGate();
+        gate.setProjectRoot(ROOT, false);
+        await vi.waitFor(() => { expect(panel()).not.toBeNull(); });
+        expect(await isSettled(gate.settled())).toBe(false);
+        await vi.advanceTimersByTimeAsync(LISTING_TIMEOUT_MS);
+        expect(await isSettled(gate.settled())).toBe(true);
+    });
+
+    it("a null root should settle the wait: there is no tree to draw after all", async () => {
+        gate = makeGate();
+        gate.setProjectRoot(null, false);
+        expect(await isSettled(gate.settled())).toBe(true);
+    });
+
+    it("a host without projectFiles should have nothing to wait for", async () => {
+        (globalThis as { __i18n?: unknown }).__i18n = {
+            translations: {},
+            isMac: true,
+            host: { capabilities: [], arrangements: [], shortcuts: [] },
+        };
+        gate = makeGate();
+        expect(await isSettled(gate.settled())).toBe(true);
+    });
+
+    it("an explorer the reader left hidden should not hold the first screen for rows nobody sees", async () => {
+        (globalThis as { __i18n?: { fileExplorerVisible?: boolean } }).__i18n!.fileExplorerVisible = false;
+        gate = makeGate();
+        expect(await isSettled(gate.settled())).toBe(true);
+    });
+});

@@ -45,6 +45,10 @@ public struct PaletteCommand: Equatable, Sendable {
 
 public enum WebviewMessage: Equatable {
     case ready
+    /// The page's first screen is up: `init` handled, the explorer's first
+    /// tree drawn, a frame painted (at once on a hidden page). Once per page
+    /// (`webview/firstScreen.ts`).
+    case firstScreen
     case update(content: String, baseSyncVersion: Int, seq: Int)
     /// The frontmatter panel was edited. It carries a base version and no seq
     /// on purpose: the panel rewrites only its own block, so there is nothing
@@ -54,6 +58,23 @@ public enum WebviewMessage: Equatable {
     case flushResult(id: String, content: String, baseSyncVersion: Int, seq: Int)
     case viewState(json: String)
     case openUrl(String)
+    /// A local link or a wikilink the reader asked to follow (Cmd-click, or
+    /// the link popup's Open). `path` still carries its fragment; `wiki` says
+    /// it is a wikilink's `target#heading` rather than a Markdown link's
+    /// path (`LinkTarget`).
+    case openFile(path: String, wiki: Bool)
+    /// The link popup asking where a link would go, without going: answered
+    /// with `linkTargetResolved` carrying the same `id`.
+    case resolveLinkTarget(id: String, path: String, wiki: Bool)
+    /// Link completion (the URL field, a bare `[[`): the files a link can
+    /// name, ranked against `query`; answered with `linkTargetSuggestions`.
+    case getLinkTargetSuggestions(id: String, query: String)
+    /// Path completion in a link or image field: the direct children of the
+    /// folder the typed path names; answered with `pathSuggestions`.
+    case getPathSuggestions(id: String, query: String)
+    /// The link editor's Browse: a file picked, answered with
+    /// `linkTargetPicked` as a note-relative path, or null when cancelled.
+    case pickLinkTarget(id: String)
     case openHostPreferences
     /// `/ai`: the request typed after the pill, with the id the page will
     /// match every `agentRun` report against.
@@ -150,14 +171,24 @@ public enum WebviewMessage: Equatable {
     case fileExplorerWidth(Int)
     case fileExplorerVisibility(Bool)
     case setFileExplorerShowHidden(Bool)
+    /// Where the docked-open explorer ends, in the page's CSS pixels from the
+    /// window's leading edge, or nil while nothing is docked open: what the
+    /// titlebar lays itself out against (`filesUnderTitlebar`).
+    case fileExplorerEdge(Double?)
+    /// The page's trailing controls changed which of them are drawn, so the
+    /// width the titlebar is laid out against has to be measured again.
+    case topbarControlsChanged
     /// Every folder the tree has open, root-relative, on each change; the
     /// window keeps it for the next page on this root and for a tab it spawns.
     case fileExplorerExpanded([String])
     /// The reply to `requestPaletteCommands`: every editor command the page
     /// can run on this host right now, for the app's own palette (MAR-458).
     /// Posted again on its own whenever the publishing targets change, once
-    /// asked.
-    case paletteCommands(items: [PaletteCommand])
+    /// asked. `idle` is the commands the page can run here that have nothing
+    /// to act on right now (Toggle Table of Contents on a document whose
+    /// outline is empty): `items` already leaves them out, and the app's menu
+    /// rows that run them are dimmed by it.
+    case paletteCommands(items: [PaletteCommand], idle: Set<String> = [])
     case focusState(Bool)
     case crash(message: String, source: String)
     case uploadImage(id: String, data: Data, mimeType: String, altText: String)
@@ -222,6 +253,7 @@ public enum WebviewMessage: Equatable {
         }
         switch type {
         case "ready": return .ready
+        case "firstScreen": return .firstScreen
         case "update":
             guard let c = str("content"), let b = int("baseSyncVersion"), let s = int("seq") else { return .other(type: type) }
             return .update(content: c, baseSyncVersion: b, seq: s)
@@ -233,6 +265,18 @@ public enum WebviewMessage: Equatable {
             return .flushResult(id: id, content: c, baseSyncVersion: b, seq: s)
         case "viewState": return .viewState(json: json("state") ?? "{}")
         case "openUrl": return str("url").map { .openUrl($0) } ?? .other(type: type)
+        case "openFile": return str("path").map { .openFile(path: $0, wiki: bool("wiki") ?? false) } ?? .other(type: type)
+        case "getLinkTargetSuggestions":
+            guard let id = str("id") else { return .other(type: type) }
+            return .getLinkTargetSuggestions(id: id, query: str("query") ?? "")
+        case "getPathSuggestions":
+            guard let id = str("id") else { return .other(type: type) }
+            return .getPathSuggestions(id: id, query: str("query") ?? "")
+        case "pickLinkTarget":
+            return str("id").map { .pickLinkTarget(id: $0) } ?? .other(type: type)
+        case "resolveLinkTarget":
+            guard let id = str("id"), let path = str("path") else { return .other(type: type) }
+            return .resolveLinkTarget(id: id, path: path, wiki: bool("wiki") ?? false)
         case "openHostPreferences": return .openHostPreferences
         case "askAgent", "askAgentAdvanced":
             // `skill` is carried although this host declares no `agentSkills`
@@ -313,6 +357,12 @@ public enum WebviewMessage: Equatable {
         case "fileExplorerWidth": return int("width").map { .fileExplorerWidth($0) } ?? .other(type: type)
         case "fileExplorerVisibility": return bool("visible").map { .fileExplorerVisibility($0) } ?? .other(type: type)
         case "setFileExplorerShowHidden": return bool("value").map { .setFileExplorerShowHidden($0) } ?? .other(type: type)
+        case "topbarControlsChanged": return .topbarControlsChanged
+        case "fileExplorerEdge":
+            // A null edge is a message, not a malformed one: nothing is docked
+            // open. Anything else that is not a number is refused.
+            if dict["edge"] is NSNull { return .fileExplorerEdge(nil) }
+            return (dict["edge"] as? NSNumber).map { .fileExplorerEdge($0.doubleValue) } ?? .other(type: type)
         case "fileExplorerExpanded":
             return (dict["paths"] as? [String]).map { .fileExplorerExpanded($0) } ?? .other(type: type)
         case "paletteCommands":
@@ -323,7 +373,7 @@ public enum WebviewMessage: Equatable {
                       let id = row["id"] as? String, let title = row["title"] as? String else { return nil }
                 return PaletteCommand(id: id, title: title, section: row["section"] as? String ?? "Editor")
             }
-            return .paletteCommands(items: items)
+            return .paletteCommands(items: items, idle: Set(dict["idle"] as? [String] ?? []))
         case "focusState": return bool("focused").map { .focusState($0) } ?? .other(type: type)
         case "crash": return .crash(message: str("message") ?? "", source: str("source") ?? "")
         case "uploadImage":
@@ -466,6 +516,15 @@ public enum HostMessage: Equatable {
     /// `error` is a folder that could not be read, or a path that would leave
     /// the root; the page draws the error where the rows would be.
     case directoryListing(id: String, path: String, entries: [DirectoryListing.Entry]?, error: String?)
+    /// Reply to `resolveLinkTarget`: the file the link names, root-relative
+    /// when under the window's folder, or nil for a link that names nothing.
+    case linkTargetResolved(id: String, resolved: String?)
+    /// Reply to `getLinkTargetSuggestions`.
+    case linkTargetSuggestions(id: String, items: [LinkSuggestions.Target])
+    /// Reply to `getPathSuggestions`.
+    case pathSuggestions(id: String, items: [LinkSuggestions.PathItem])
+    /// Reply to `pickLinkTarget`: note-relative, POSIX, or nil when cancelled.
+    case linkTargetPicked(id: String, path: String?)
     /// Which of the root's files this window is on, root-relative, so the
     /// page selects and reveals its row; nil for a file outside the root.
     case currentProjectFile(path: String?)
@@ -478,6 +537,9 @@ public enum HostMessage: Equatable {
     case folderIndex(FolderIndex?, self: String?)
     /// The hidden-files setting moved, from this window's row or another's.
     case fileExplorerConfig(showHidden: Bool)
+    /// The least the docked explorer may be, in CSS pixels: wide enough for
+    /// the window buttons and file actions the titlebar draws on its ground.
+    case fileExplorerFloor(width: Double)
     /// Whether this page carries the formatting row. The app's setting
     /// (`Prefs.formattingRowExpanded`, Settings > Appearance), sent to every
     /// page when it changes and on every load. A page's gear switch may ask
@@ -631,6 +693,14 @@ public enum HostMessage: Equatable {
                                       "entries": entries.map { $0.map(\.jsonObject) } ?? NSNull()]
             if let error { out["error"] = error }
             return out
+        case let .linkTargetSuggestions(id, items):
+            return ["type": "linkTargetSuggestions", "id": id, "items": items.map(\.jsonObject)]
+        case let .pathSuggestions(id, items):
+            return ["type": "pathSuggestions", "id": id, "items": items.map(\.jsonObject)]
+        case let .linkTargetPicked(id, path):
+            return ["type": "linkTargetPicked", "id": id, "path": path ?? NSNull()]
+        case let .linkTargetResolved(id, resolved):
+            return ["type": "linkTargetResolved", "id": id, "resolved": resolved ?? NSNull()]
         case let .currentProjectFile(path):
             return ["type": "currentProjectFile", "path": path ?? NSNull()]
         case let .directoryChanged(paths):
@@ -639,6 +709,8 @@ public enum HostMessage: Equatable {
             return ["type": "folderIndex", "index": index?.jsonObject ?? NSNull(), "self": selfPath ?? NSNull()]
         case let .fileExplorerConfig(showHidden):
             return ["type": "fileExplorerConfig", "showHidden": showHidden]
+        case let .fileExplorerFloor(width):
+            return ["type": "fileExplorerFloor", "width": width]
         case let .setFormattingRowExpanded(expanded):
             return ["type": "setFormattingRowExpanded", "expanded": expanded]
         case let .setLineNumbers(enabled):
@@ -900,9 +972,14 @@ public struct BootConfig: Equatable {
             //     macOS puts a sidebar toggle. The bar draws none, and the
             //     preview that hung off the bar's button goes with it: a
             //     control outside the page cannot be hovered by it.
+            //   filesUnderTitlebar        the docked explorer is the window's
+            //     sidebar, so it runs up through the titlebar the way a macOS
+            //     sidebar does: the traffic lights, the toggle and the file
+            //     buttons sit on its ground and the title starts past it
+            //     (`TitleBarView.setSidebarEdge`, fed by `fileExplorerEdge`).
             "host": [
                 "capabilities": hostCapabilities,
-                "arrangements": ["typographyInGearMenu", "formattingInSecondRow", "fixedToolbarLayout", "barMenusOnClick", "nativeFindBar", "nativeDatePicker", "fixedTocSide", "tocToggleInBar", "filesToggleInHostChrome"],
+                "arrangements": ["typographyInGearMenu", "formattingInSecondRow", "fixedToolbarLayout", "barMenusOnClick", "nativeFindBar", "nativeDatePicker", "fixedTocSide", "tocToggleInBar", "filesToggleInHostChrome", "filesUnderTitlebar"],
                 "shortcuts": hostShortcuts.map { shortcut -> [String: Any] in
                 // The optional halves are omitted rather than sent as null: an
                 // absent `command` is the claim "this key runs no editor

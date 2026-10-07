@@ -30,8 +30,49 @@ final class AppMenuTests: XCTestCase {
         return nsMenu
     }
 
+    /// The rows a reader sees, so a row's hidden `also` twin is not counted
+    /// as a second row.
     private func titles(of menu: NSMenu) -> [String] {
-        menu.items.map { $0.isSeparatorItem ? "-" : $0.title }
+        menu.items
+            .filter { $0.identifier?.rawValue.hasSuffix("#also") != true }
+            .map { $0.isSeparatorItem ? "-" : $0.title }
+    }
+
+    // MARK: second chords
+
+    /// Show Files prints Option+Command+Comma and still answers Cmd+Shift+E,
+    /// through a hidden twin that keeps its key equivalent and sends the same
+    /// action, so the chord is validated exactly as the row is.
+    func testShowFilesShouldAnswerItsSecondChordThroughAHiddenTwin() throws {
+        let view = build(.view)
+        let row = try XCTUnwrap(view.items.first { $0.title == "Show Files" && $0.identifier?.rawValue.hasSuffix("#also") != true })
+        XCTAssertEqual(row.keyEquivalent, ",")
+        XCTAssertEqual(row.keyEquivalentModifierMask, [.command, .option])
+        let twin = try XCTUnwrap(view.items.first { $0.identifier?.rawValue.hasSuffix("#also") == true })
+        XCTAssertEqual(twin.keyEquivalent, "e")
+        XCTAssertEqual(twin.keyEquivalentModifierMask, [.command, .shift])
+        XCTAssertTrue(twin.isHidden)
+        XCTAssertTrue(twin.allowsKeyEquivalentWhenHidden, "a hidden item drops its chord unless told to keep it")
+        XCTAssertEqual(twin.action, row.action)
+        XCTAssertTrue(twin.target === row.target)
+    }
+
+    /// `applyState` never reaches a twin, so a gated row could be withdrawn
+    /// while its second chord stayed live. The table may not pair the two.
+    func testNoRowWithASecondChordShouldBeGated() {
+        let paired = AppMenu.rows.filter { $0.also != nil }
+        XCTAssertFalse(paired.isEmpty, "the sweep reached the rows that carry a second chord")
+        for row in paired {
+            XCTAssertTrue(row.needs.isEmpty, "\(row.title) has a second chord and a gate")
+        }
+    }
+
+    /// The table's two sidebar chords sit side by side, one per panel.
+    func testTheSidebarsShouldTakeOptionCommandCommaAndPeriod() throws {
+        let view = build(.view)
+        let toc = try XCTUnwrap(view.items.first { $0.title == "Show Table of Contents" })
+        XCTAssertEqual(toc.keyEquivalent, ".")
+        XCTAssertEqual(toc.keyEquivalentModifierMask, [.command, .option])
     }
 
     // MARK: the bar
@@ -241,11 +282,13 @@ final class AppMenuTests: XCTestCase {
     /// a second case to answer for. This is the check that says so.
     func testNoTopLevelViewRowShouldBeWithdrawableByState() {
         let view = build(.view)
-        let all = view.items.count
+        // A row's `also` twin is hidden by construction, not by a gate.
+        let rows = { view.items.filter { $0.identifier?.rawValue.hasSuffix("#also") != true } }
+        let all = rows().count
         AppMenu.applyState(MenuState(proofreadOptions: ["proofreading": false],
                                      tocShown: false),
                            syntaxSets: [], to: view)
-        XCTAssertEqual(view.items.filter { !$0.isHidden }.count, all,
+        XCTAssertEqual(rows().filter { !$0.isHidden }.count, all,
                        "a View row is now gated, so tidyRules has to answer for an emptied last group")
     }
 
@@ -253,7 +296,7 @@ final class AppMenuTests: XCTestCase {
 
     func testTheFileMenuShouldOpenRecentThroughASubmenuOfItsOwn() {
         let file = build(.file)
-        XCTAssertEqual(titles(of: file), ["New Note", "New Tab", "Open…", "Open Recent", "Go to File…", "Save", "Save a Copy As…"])
+        XCTAssertEqual(titles(of: file), ["New Note", "New Tab", "Open…", "Open Recent", "Go to File…", "Save", "Save a Copy As…", "-", "Move to Trash…"])
         let item = file.items.first { $0.title == "Open Recent" }
         // A submenu row and nothing else. The selector the table gives this
         // row is for the titlebar's button; leaving it on the menu item would

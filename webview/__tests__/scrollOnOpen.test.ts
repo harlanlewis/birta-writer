@@ -40,6 +40,7 @@ function stubDeps(): MessageHandlerDeps {
             setLineOffset: () => {},
             initEditor: async () => {},
             retryScroll: () => {},
+            announceFirstScreen: () => {},
             getEditorView: () => null,
             refreshToc: () => {},
             setLineNumbers: () => {},

@@ -19,6 +19,32 @@ final class BridgeTests: XCTestCase {
         XCTAssertEqual(WebviewMessage.parse(#"{"type":"frontmatterUpdate","frontmatter":"","baseSyncVersion":0}"#),
                        .frontmatterUpdate(frontmatter: "", baseSyncVersion: 0))
         XCTAssertEqual(WebviewMessage.parse(#"{"type":"openUrl","url":"https://a.b"}"#), .openUrl("https://a.b"))
+        // A followed local link or wikilink: a Cmd-click and the link popup's
+        // Open both send this, and a host that drops it opens nothing.
+        XCTAssertEqual(WebviewMessage.parse(##"{"type":"openFile","path":"notes/a.md#27"}"##),
+                       .openFile(path: "notes/a.md#27", wiki: false))
+        XCTAssertEqual(WebviewMessage.parse(##"{"type":"openFile","path":"Page#Heading","wiki":true}"##),
+                       .openFile(path: "Page#Heading", wiki: true))
+        XCTAssertEqual(WebviewMessage.parse(##"{"type":"resolveLinkTarget","id":"r1","path":"Page","wiki":true}"##),
+                       .resolveLinkTarget(id: "r1", path: "Page", wiki: true))
+        let resolved = HostMessage.linkTargetResolved(id: "r1", resolved: "Daily/Page.md").jsonObject()
+        XCTAssertEqual(resolved["type"] as? String, "linkTargetResolved")
+        XCTAssertEqual(resolved["resolved"] as? String, "Daily/Page.md")
+        // A miss is an explicit null, which the popup draws as "not found".
+        XCTAssertTrue(HostMessage.linkTargetResolved(id: "r2", resolved: nil).jsonObject()["resolved"] is NSNull)
+        // Completion and Browse, which the page's fields wait on.
+        XCTAssertEqual(WebviewMessage.parse(#"{"type":"getLinkTargetSuggestions","id":"s1","query":""}"#),
+                       .getLinkTargetSuggestions(id: "s1", query: ""))
+        XCTAssertEqual(WebviewMessage.parse(#"{"type":"getPathSuggestions","id":"p1","query":"./a"}"#),
+                       .getPathSuggestions(id: "p1", query: "./a"))
+        XCTAssertEqual(WebviewMessage.parse(#"{"type":"pickLinkTarget","id":"k1"}"#), .pickLinkTarget(id: "k1"))
+        let targets = HostMessage.linkTargetSuggestions(
+            id: "s1", items: [.init(relative: "a.md", rootRelative: "/a.md")]).jsonObject()
+        XCTAssertEqual((targets["items"] as? [[String: Any]])?.first?["rootRelative"] as? String, "/a.md")
+        let paths = HostMessage.pathSuggestions(id: "p1", items: [.init(path: "./a/", isDir: true)]).jsonObject()
+        XCTAssertEqual((paths["items"] as? [[String: Any]])?.first?["isDir"] as? Bool, true)
+        // A cancelled pick is an explicit null: the field reads it as "keep what is typed".
+        XCTAssertTrue(HostMessage.linkTargetPicked(id: "k1", path: nil).jsonObject()["path"] is NSNull)
         // The host-prompt seam (MAR-395). A step that parses arrives whole.
         XCTAssertEqual(
             WebviewMessage.parse(#"{"type":"hostPrompt","id":"p1","step":{"kind":"input","title":"t","prompt":"q"}}"#),
@@ -89,6 +115,7 @@ final class BridgeTests: XCTestCase {
         XCTAssertEqual(WebviewMessage.parse(#"{"type":"setFontSize","size":110}"#), .setFontSize(110))
         XCTAssertEqual(WebviewMessage.parse(#"{"type":"setContentWidth","mode":"fixed"}"#), .setContentWidth("fixed"))
         XCTAssertEqual(WebviewMessage.parse(#"{"type":"focusState","focused":true}"#), .focusState(true))
+        XCTAssertEqual(WebviewMessage.parse(#"{"type":"firstScreen"}"#), .firstScreen)
         XCTAssertEqual(WebviewMessage.parse(#"{"type":"crash","message":"boom","source":"error"}"#), .crash(message: "boom", source: "error"))
         // "hi" as base64, in the `$bytes` wrapper the page-side shim writes.
         XCTAssertEqual(
@@ -323,6 +350,18 @@ final class BridgeTests: XCTestCase {
                        .fileExplorerVisibility(false))
         XCTAssertEqual(WebviewMessage.parse(#"{"type":"setFileExplorerShowHidden","value":true}"#),
                        .setFileExplorerShowHidden(true))
+        // The edge is a number or null, and null is a message of its own:
+        // nothing is docked open, so the titlebar stops splitting at it.
+        XCTAssertEqual(WebviewMessage.parse(#"{"type":"fileExplorerEdge","edge":236.5}"#), .fileExplorerEdge(236.5))
+        XCTAssertEqual(WebviewMessage.parse(#"{"type":"fileExplorerEdge","edge":null}"#), .fileExplorerEdge(nil))
+        XCTAssertEqual(WebviewMessage.parse(#"{"type":"fileExplorerEdge","edge":"wide"}"#),
+                       .other(type: "fileExplorerEdge"), "an edge that is not a number is refused, not read as none")
+        // The page's push when its trailing controls change set: no payload,
+        // because what to do is measure again, not believe a number.
+        XCTAssertEqual(WebviewMessage.parse(#"{"type":"topbarControlsChanged"}"#), .topbarControlsChanged)
+        let floor = HostMessage.fileExplorerFloor(width: 214).jsonObject()
+        XCTAssertEqual(floor["type"] as? String, "fileExplorerFloor")
+        XCTAssertEqual(floor["width"] as? Double, 214)
 
         let rooted = HostMessage.projectRoot(name: "notes", path: "/n", showHidden: false, expanded: ["a", "a/b"]).jsonObject()
         XCTAssertEqual(rooted["type"] as? String, "projectRoot")
@@ -473,7 +512,8 @@ final class BridgeTests: XCTestCase {
         XCTAssertEqual(host?["arrangements"] as? [String],
                        ["typographyInGearMenu", "formattingInSecondRow", "fixedToolbarLayout",
                         "barMenusOnClick", "nativeFindBar", "nativeDatePicker",
-                        "fixedTocSide", "tocToggleInBar", "filesToggleInHostChrome"])
+                        "fixedTocSide", "tocToggleInBar", "filesToggleInHostChrome",
+                        "filesUnderTitlebar"])
         XCTAssertNotNil(host?["shortcuts"] as? [[String: String]])
         XCTAssertEqual((i18n["toolbar"] as? [String: Any])?["placements"] as? [String: String], ["bold": "hidden"])
 

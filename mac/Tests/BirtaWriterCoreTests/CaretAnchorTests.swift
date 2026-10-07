@@ -41,6 +41,19 @@ final class CaretAnchorTests: XCTestCase {
         XCTAssertEqual(rect.origin.y, 250)
     }
 
+    /// The explorer's row menu: a right-click 100pt from the top of a flipped
+    /// web view pops up 100pt from the top, not 700pt.
+    func testAPointInAFlippedViewShouldPassThroughUnchanged() {
+        let point = CaretAnchor.point(x: 40, y: 100, viewHeight: viewHeight, isFlipped: true)
+        XCTAssertEqual(point.x, 40)
+        XCTAssertEqual(point.y, 100)
+    }
+
+    func testAPointInAnUnflippedViewShouldBeMirroredAboutTheHeight() {
+        let point = CaretAnchor.point(x: 40, y: 100, viewHeight: viewHeight, isFlipped: false)
+        XCTAssertEqual(point.y, 700)
+    }
+
     func testTheAnchorShouldBeACaretWideAndNotAWordWide() {
         let rect = CaretAnchor.rect(left: 42, top: 0, bottom: 20,
                                     viewHeight: viewHeight, isFlipped: true)

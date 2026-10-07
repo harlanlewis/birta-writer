@@ -80,6 +80,9 @@ enum PaletteSources {
         var syntaxSets: Set<SyntaxSet> = SyntaxScope.all
         /// The page's editor commands, from the front window.
         var pageCommands: [PaletteCommand] = []
+        /// The page's commands with nothing to act on right now, which a menu
+        /// row running one is dimmed for (`Coordinator.idleCommands`).
+        var idleCommands: Set<String> = []
         /// The front window's root and its index, when it is rooted; nil
         /// while the index is still being built.
         var root: URL?
@@ -221,6 +224,7 @@ enum PaletteSources {
         guard row.needs.allSatisfy({ context.menuState.isOn($0) }) else { return false }
         if let selector = row.action.selector, !context.allows(selector) { return false }
         guard let command = row.action.commandId else { return true }
+        if context.idleCommands.contains(command) { return false }
         return SyntaxScope.allows(command: command, in: context.syntaxSets)
     }
 

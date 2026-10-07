@@ -12,8 +12,12 @@ import Foundation
 /// TYPING INTO is not a thing to do behind them. That is a rule about the
 /// person at the keyboard rather than about the swap, so what it forbids is an
 /// install that interrupts, not an install that is automatic. The check is
-/// automatic, the download is automatic, and the swap goes in on its own only
-/// where `isUnattended` below can prove there is nobody to interrupt.
+/// automatic, the download is automatic, and the swap goes in on its own
+/// wherever `isUnattended` below finds nobody at this app to interrupt. The
+/// offer sheet is for the one case left, somebody at the app with an update
+/// waiting, and it is raised only while the app is in front: a sheet on a
+/// window of an app in the background makes the Dock icon bounce for
+/// something nobody needs to act on.
 ///
 /// `mayInstallUnattended` is therefore the one function here that returns "go
 /// ahead". It asks `isUnattended` about the person and asks four more things
@@ -51,7 +55,9 @@ public enum UpdatePolicy {
     public static let pollInterval: TimeInterval = 60
 
     /// How long the machine must have gone untouched before a downloaded
-    /// update is allowed to go in with nobody asked.
+    /// update is allowed to go in with nobody asked, while this app is still
+    /// the frontmost one. An app in the background needs no wait: the person
+    /// is in another app, and the swap brings the windows back behind it.
     ///
     /// Five minutes, and the number is doing one job: telling somebody who
     /// paused mid-sentence apart from somebody who has left. It is not a
@@ -64,16 +70,18 @@ public enum UpdatePolicy {
 
     /// What the app can see about whether anybody is there.
     ///
-    /// Three facts, and every one of them has to say no. They are separate
-    /// because they fail separately: a hidden panel with unwritten bytes is
-    /// somebody who typed and stepped away mid-thought, and an idle machine
-    /// with a window up is somebody reading. Only all three together describe
-    /// a moment where replacing the app is something nobody is present for.
+    /// Three facts. Unwritten bytes always refuse: they are a sentence in
+    /// progress. The other two are alternatives, either of which says nobody
+    /// is at THIS app: it is not the frontmost app, so the person is working
+    /// somewhere else, or the machine has gone untouched long enough that the
+    /// person has left it. A window left on screen does not refuse on its
+    /// own, because the swap brings it back where it was
+    /// (`Prefs.restoreWindowsAfterUpdate`), and a window somebody keeps open
+    /// all day is exactly the case that used to mean an offer every time.
     public struct Attendance: Equatable, Sendable {
-        /// Any window of this app on screen: a panel, Settings, About. Not
-        /// only the panel, because a person reading the About window is as
-        /// present as a person typing.
-        public var anyWindowVisible: Bool
+        /// This app is the frontmost one: somebody is using it, or was the
+        /// last time they used the machine.
+        public var appIsActive: Bool
         /// Any window holding bytes the file does not have yet.
         ///
         /// Quitting flushes, so this is not the difference between keeping
@@ -87,8 +95,8 @@ public enum UpdatePolicy {
         /// idleness would report every session as unattended.
         public var idle: TimeInterval
 
-        public init(anyWindowVisible: Bool, hasUnwrittenBytes: Bool, idle: TimeInterval) {
-            self.anyWindowVisible = anyWindowVisible
+        public init(appIsActive: Bool, hasUnwrittenBytes: Bool, idle: TimeInterval) {
+            self.appIsActive = appIsActive
             self.hasUnwrittenBytes = hasUnwrittenBytes
             self.idle = idle
         }
@@ -98,11 +106,12 @@ public enum UpdatePolicy {
     ///
     /// Written to refuse on anything it cannot read: a negative idle time,
     /// which is what a clock that moved backwards produces, is not an idle
-    /// machine. This is presence alone; `mayInstallUnattended` is what decides
-    /// whether a swap may go in, and presence is one of the things it asks.
+    /// machine, and it does not make an active app away. This is presence
+    /// alone; `mayInstallUnattended` is what decides whether a swap may go
+    /// in, and presence is one of the things it asks.
     public static func isUnattended(_ attendance: Attendance) -> Bool {
-        guard !attendance.anyWindowVisible, !attendance.hasUnwrittenBytes else { return false }
-        return attendance.idle >= unattendedIdle
+        guard !attendance.hasUnwrittenBytes else { return false }
+        return !attendance.appIsActive || attendance.idle >= unattendedIdle
     }
 
     /// Everything that has to be true before a staged swap goes in unasked.

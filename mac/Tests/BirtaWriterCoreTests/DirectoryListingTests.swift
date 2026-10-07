@@ -143,6 +143,31 @@ final class DirectoryListingTests: XCTestCase {
                        "note 2.md")
     }
 
+    /// The caller's `accepts` stats every open window's file per call, so it is
+    /// asked newest-first and only until one passes, never of the whole folder.
+    func testAcceptsShouldBeAskedOnlyUntilTheNewestOpenableIsFound() throws {
+        let flat = root.appendingPathComponent("zeta")
+        let fm = FileManager.default
+        for i in 0..<50 {
+            let file = flat.appendingPathComponent("n\(i).md")
+            try Data("x".utf8).write(to: file)
+            try fm.setAttributes([.modificationDate: Date(timeIntervalSinceNow: Double(-3600 - i))], ofItemAtPath: file.path)
+        }
+        let newest = flat.appendingPathComponent("newest.md")
+        try Data("x".utf8).write(to: newest)
+        try fm.setAttributes([.modificationDate: Date()], ofItemAtPath: newest.path)
+        var asked = 0
+        let counting: (URL) -> Bool = { [accepts] url in asked += 1; return accepts(url) }
+        XCTAssertEqual(DirectoryListing.firstToOpen(in: flat, recents: [], accepts: counting)?.lastPathComponent, "newest.md")
+        XCTAssertEqual(asked, 1, "a folder of 51 candidates asked its newest alone")
+
+        asked = 0
+        let refusingNewest: (URL) -> Bool = { url in asked += 1; return url.lastPathComponent != "newest.md" }
+        XCTAssertEqual(DirectoryListing.firstToOpen(in: flat, recents: [], accepts: refusingNewest)?.lastPathComponent, "n0.md",
+                       "a refused newest falls to the next newest, not to an arbitrary file")
+        XCTAssertEqual(asked, 2)
+    }
+
     func testAFolderWithNothingOpenableShouldAnswerNil() throws {
         let empty = root.appendingPathComponent("zeta")
         XCTAssertNil(DirectoryListing.firstToOpen(in: empty, recents: [], accepts: accepts))

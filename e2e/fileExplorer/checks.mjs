@@ -61,14 +61,22 @@ export async function run({ page, check, baseUrl }) {
         performance.getEntriesByType("resource").some((e) => /fileExplorer/i.test(e.name)));
     check("single-file window: the explorer's chunk is never fetched", !fetchedWithoutRoot);
 
-    // The host palette's list: answered because the stub asked, once, and it
-    // names the explorer's three commands beside the palette-flagged ones.
+    // The host palette's list: answered because the stub asked, and it names
+    // the explorer's three commands beside the palette-flagged ones. Posted
+    // again only when the list CHANGED: here the outline starts with nothing
+    // to show and gains it when the document's headings arrive, which brings
+    // Toggle Table of Contents in, so the latest answer is the one to read and
+    // no answer may repeat the one before it.
     const palette = await posted("paletteCommands");
-    const paletteIds = palette[0]?.items.map((i) => i.id) ?? [];
-    check("requestPaletteCommands is answered once with the surface's runnable commands",
-        palette.length === 1 && ["toggleFileExplorer", "focusFileExplorer", "toggleHiddenFiles", "toggleBold"].every((id) => paletteIds.includes(id))
+    const idsOf = (post) => post.items.map((i) => i.id);
+    const paletteIds = palette.length ? idsOf(palette[palette.length - 1]) : [];
+    const repeats = palette.slice(1).filter((post, i) =>
+        JSON.stringify(idsOf(post)) === JSON.stringify(idsOf(palette[i])) && JSON.stringify(post.idle) === JSON.stringify(palette[i].idle));
+    check("requestPaletteCommands is answered with the surface's runnable commands, and re-posted only on a change",
+        palette.length >= 1 && repeats.length === 0
+            && ["toggleFileExplorer", "focusFileExplorer", "toggleHiddenFiles", "toggleBold", "toggleToc"].every((id) => paletteIds.includes(id))
             && !paletteIds.includes("tableInsertRowAbove") && !paletteIds.includes("editRawMarkdown"),
-        `${palette.length} posts, ${paletteIds.length} items`);
+        `${palette.length} posts, ${repeats.length} repeats, ${paletteIds.length} items`);
 
     // ── The directory window ─────────────────────────────────────────────
     await page.goto(`${baseUrl}/index.html`);
@@ -82,6 +90,21 @@ export async function run({ page, check, baseUrl }) {
     check("directory window: the explorer's chunk is fetched, by the name the never-fetched check looks for", fetchedWithRoot);
     await page.waitForSelector(rowSel("readme.md"), { timeout: 10000 });
     await page.waitForTimeout(SETTLE);
+
+    // The first screen a waiting host would show: posted once, after ready,
+    // and not before the tree had its rows (webview/firstScreen.ts). The root
+    // lists six entries with its dotfile hidden.
+    const first = await page.evaluate(() => ({
+        at: window.__firstScreen ?? null,
+        types: window.__posted.map((m) => m.type),
+    }));
+    check("firstScreen is posted once, after ready",
+        first.types.filter((t) => t === "firstScreen").length === 1
+            && first.types.indexOf("ready") < first.types.indexOf("firstScreen"),
+        JSON.stringify(first.types));
+    check("when firstScreen is posted the editor, the panel and the root's rows are all drawn, none still loading",
+        Boolean(first.at?.editor && first.at.panel && first.at.rows >= 6 && first.at.loading === 0),
+        JSON.stringify(first.at));
 
     const geom = await page.evaluate(() => {
         const el = document.querySelector(".files-panel");
@@ -982,4 +1005,64 @@ export async function run({ page, check, baseUrl }) {
     check("viewport: grown with no resize event heard, the TOC docks on the root's own box",
         grown.tocDocked && grown.docked && grown.open && grown.top === grown.edge,
         JSON.stringify(grown));
+
+    // ── Under a host's titlebar (`filesUnderTitlebar`) ──────────────────
+    // The drawer runs up through the bar's first row, flush to the frame,
+    // and the host draws its window buttons on the drawer's ground there.
+    // What only a browser answers: that the ground is what is actually
+    // painted in the band over the drawer's column (the bar sits above every
+    // drawer, so a row that kept its ground would paint over it and every
+    // class would still be right), that the rows inside did not move, and
+    // that the edge the page reports is the edge it draws.
+    //
+    // The rows' position is held against the SAME page without the
+    // arrangement, rather than against a number: docking the drawer this way
+    // promises that nothing in it moves, so the control is the drawer as it
+    // was.
+    const headerTop = () => page.evaluate(() =>
+        Math.round(document.querySelector(".files-header").getBoundingClientRect().top));
+    await page.goto(`${baseUrl}/index.html`);
+    await page.waitForSelector(rowSel("readme.md"), { timeout: 10000 });
+    await page.waitForTimeout(SETTLE);
+    const baselineHeader = await headerTop();
+    await page.goto(`${baseUrl}/index.html?titlebar=1`);
+    await page.waitForSelector(rowSel("readme.md"), { timeout: 10000 });
+    await page.waitForTimeout(SETTLE);
+    const band = await page.evaluate(() => {
+        const panel = document.querySelector(".files-panel").getBoundingClientRect();
+        const row = document.querySelector(".editor-topbar > .toolbar").getBoundingClientRect();
+        const mid = row.top + row.height / 2;
+        const inside = (x, sel) => document.elementFromPoint(x, mid)?.closest(sel) != null;
+        const card = getComputedStyle(document.querySelector(".files-card"));
+        const edges = window.__posted.filter((m) => m.type === "fileExplorerEdge").map((m) => m.edge);
+        return {
+            top: Math.round(panel.top), left: Math.round(panel.left), right: Math.round(panel.right),
+            rowLeft: Math.round(row.left), rowHeight: Math.round(row.height),
+            groundInBand: inside(panel.right / 2, ".files-panel"),
+            pageRowPastEdge: inside(panel.right + 30, ".editor-topbar"),
+            radius: card.borderBottomLeftRadius,
+            lastEdge: edges.at(-1),
+        };
+    });
+    const titlebarHeader = await headerTop();
+    check("titlebar: the docked drawer starts at the window's top, flush to its leading edge",
+        band.top === 0 && band.left === 0 && band.radius === "0px", JSON.stringify(band));
+    check("titlebar: the drawer's own ground is what is painted in the band over its column",
+        band.rowHeight > 0 && band.groundInBand, JSON.stringify(band));
+    check("titlebar: the bar's first row starts where the drawer ends, and is still the page past it",
+        band.rowLeft === band.right && band.pageRowPastEdge, JSON.stringify(band));
+    check("titlebar: the rows in the drawer start exactly where they do without the arrangement",
+        titlebarHeader === baselineHeader, JSON.stringify({ baselineHeader, titlebarHeader }));
+    check("titlebar: the edge reported to the host is the edge drawn",
+        band.lastEdge === band.right, JSON.stringify(band));
+    // Shut, nothing is docked under the band: the host hears so, and the
+    // bar's row takes the whole width back.
+    await page.locator(".tb-files-btn").click();
+    await page.waitForTimeout(SETTLE);
+    const shut = await page.evaluate(() => ({
+        lastEdge: window.__posted.filter((m) => m.type === "fileExplorerEdge").map((m) => m.edge).at(-1),
+        rowLeft: Math.round(document.querySelector(".editor-topbar > .toolbar").getBoundingClientRect().left),
+    }));
+    check("titlebar: shutting the drawer reports no edge and gives the bar's row its column back",
+        shut.lastEdge === null && shut.rowLeft === 0, JSON.stringify(shut));
 }

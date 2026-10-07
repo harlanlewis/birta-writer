@@ -100,6 +100,15 @@
     padding-bottom: 0;
   }
 
+  /* With the file explorer docked up through the band (`filesUnderTitlebar`),
+     the traffic lights are drawn on the explorer's ground and the first row
+     starts where the explorer ends (style.css), so the row has no window
+     furniture to clear. The window's title is native and sits over the row's
+     leading end, past the explorer; the row puts nothing there. */
+  body.files-open.files-from-top .editor-topbar .toolbar {
+    padding-left: 0;
+  }
+
   /* The tab bar's row, when the window has tabs. macOS draws it as a row of
      the titlebar band over the page, directly under the title row, so the
      page leaves that row clear: a gap under the FIRST row, sized by the

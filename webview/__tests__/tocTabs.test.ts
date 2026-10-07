@@ -27,20 +27,36 @@ function clickTab(tab: Element): void {
 const TAB = { contents: 0, links: 1, backlinks: 2, graph: 3, notes: 4, proofreading: 5 } as const;
 
 const miniSchema = new Schema({
-    nodes: { doc: { content: "block+" }, paragraph: { group: "block", content: "inline*" }, text: { group: "inline" } },
+    nodes: {
+        doc: { content: "block+" },
+        paragraph: { group: "block", content: "inline*" },
+        heading: { group: "block", content: "inline*", attrs: { level: { default: 1 } } },
+        text: { group: "inline" },
+    },
     marks: { link: { attrs: { href: { default: "" } } } },
 });
+
+/** One heading, under the auto-open threshold: the outline has something to
+ *  show, so the panel can open, and it still starts closed. */
+const heading = () => miniSchema.node("heading", { level: 1 }, [miniSchema.text("Intro")]);
+
+/** A document with nothing for any tab: no heading, no link, no note. */
+function docWithNothing(): PmNode {
+    return miniSchema.node("doc", null, [miniSchema.node("paragraph", null, [miniSchema.text("hello world")])]);
+}
 
 /** A view stand-in with a real ProseMirror state (no proofread plugin, so the
  *  tab renders its empty state — enough to observe whether it refreshes). */
 function makeView(doc?: PmNode): EditorView {
-    const d = doc ?? miniSchema.node("doc", null, [miniSchema.node("paragraph", null, [miniSchema.text("hello world")])]);
+    const d = doc ?? miniSchema.node("doc", null, [heading(), miniSchema.node("paragraph", null, [miniSchema.text("hello world")])]);
     const view = { state: EditorState.create({ doc: d, schema: miniSchema }), dom: document.createElement("div") };
     return view as unknown as EditorView;
 }
 
 function docWithLink(): PmNode {
-    return miniSchema.node("doc", null, [miniSchema.node("paragraph", null, [
+    // A heading beside the link, so Contents is a tab too and the link's tab is
+    // a SECOND one: with no heading, Contents is not offered at all.
+    return miniSchema.node("doc", null, [heading(), miniSchema.node("paragraph", null, [
         miniSchema.text("see "),
         miniSchema.text("home", [miniSchema.mark("link", { href: "https://example.com" })]),
     ])]);
@@ -199,7 +215,7 @@ describe("tab visibility — a review tab exists only while it has entries", () 
     });
 
     it("a document with no headings should leave the outline empty rather than say so", () => {
-        const view = makeView();
+        const view = makeView(docWithNothing());
         const toc = initToc(fakeEventManager, () => view);
         document.body.appendChild(toc.panel);
         toc.toggle();
@@ -335,6 +351,21 @@ describe("Backlinks tab: the host's folder index, asked for only when the sideba
     it("a sidebar nobody opens should never ask the host for the index", () => {
         const toc = mountToc();
         expect(requests()).toBe(0);
+        toc.dispose();
+    });
+
+    it("a closed sidebar with nothing cheaper to show should ask once, and show itself for the backlinks that come back", () => {
+        // The one case a closed sidebar asks: no headings, notes, links or
+        // findings, so only the index can say whether there is anything.
+        const view = makeView(docWithNothing());
+        const toc = initToc(fakeEventManager, () => view);
+        document.body.appendChild(toc.panel);
+        toc.refresh();
+        toc.refreshContent();
+        expect(requests()).toBe(1);
+        expect(toc.isEmpty()).toBe(true);
+        receiveFolderIndex(INDEX, "notes/self.md");
+        expect(toc.isEmpty()).toBe(false);
         toc.dispose();
     });
 

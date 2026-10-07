@@ -60,6 +60,7 @@ enum Prefs {
         case lastUpdateCheck
         case updateDeclinedTag
         case updateInstalledTag
+        case updateRestoreWindows
         case lastNotesDirectory
         case lastScratchpadFile
         case tocVisibility
@@ -84,10 +85,6 @@ enum Prefs {
         case tintColor
         case sidebarTransparent
         case seededDefaultThemes
-        // Written only while the table of contents is NOT transparent, which
-        // is the departure from the default; absent is the default here as
-        // it is for every other key.
-        case tocSidebarOpaque
     }
 
     /// The keys a reset must NOT clear, each for a reason of its own.
@@ -656,7 +653,6 @@ enum Prefs {
                 accent: d.string(forKey: Key.accentColor.rawValue),
                 tint: d.string(forKey: Key.tintColor.rawValue),
                 transparentSidebar: d.bool(forKey: Key.sidebarTransparent.rawValue),
-                transparentToc: !d.bool(forKey: Key.tocSidebarOpaque.rawValue),
                 heldKind: d.string(forKey: Key.appearanceHeld.rawValue).flatMap(AppearanceMode.init(rawValue:))?.heldKind)
         }
         set {
@@ -671,8 +667,6 @@ enum Prefs {
             put(newValue.tint, .tintColor)
             if newValue.transparentSidebar { d.set(true, forKey: Key.sidebarTransparent.rawValue) }
             else { d.removeObject(forKey: Key.sidebarTransparent.rawValue) }
-            if newValue.transparentToc { d.removeObject(forKey: Key.tocSidebarOpaque.rawValue) }
-            else { d.set(true, forKey: Key.tocSidebarOpaque.rawValue) }
         }
     }
 
@@ -1087,6 +1081,25 @@ enum Prefs {
             return tag.isEmpty ? nil : tag
         }
         set { d.set(newValue ?? "", forKey: Key.updateInstalledTag.rawValue) }
+    }
+
+    /// Whether the app's windows were on screen when it quit into an
+    /// unattended swap, so the relaunch puts them back rather than leaving
+    /// them hidden the way a plain launch does.
+    ///
+    /// One-shot: written just before that quit, and removed by the first
+    /// read, so it says something about the launch after a swap and nothing
+    /// about any launch after that. Removed rather than set false, so a key
+    /// that has been answered is a key that is absent, which is what
+    /// `isFirstLaunch` reads.
+    static func setRestoreWindowsAfterUpdate(_ restore: Bool) {
+        d.set(restore, forKey: Key.updateRestoreWindows.rawValue)
+    }
+
+    static func takeRestoreWindowsAfterUpdate() -> Bool {
+        let restore = d.bool(forKey: Key.updateRestoreWindows.rawValue)
+        d.removeObject(forKey: Key.updateRestoreWindows.rawValue)
+        return restore
     }
 
     /// Whether the app checks for a newer release on its own.

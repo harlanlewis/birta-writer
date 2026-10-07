@@ -88,10 +88,22 @@ export async function run({ page, check, baseUrl, browserName }) {
 
     // What a host is told without asking. The list is the contract's, and a
     // new member is a new thing every embedder has to be told to expect.
-    const UNPROMPTED = ["focusState", "ready", "wordCount"];
+    const UNPROMPTED = ["firstScreen", "focusState", "ready", "wordCount"];
     check("frame: boot posts only the messages the contract names as unprompted",
         bootTypes.every((t) => UNPROMPTED.includes(t)) && bootTypes.includes("ready"),
         JSON.stringify(bootTypes));
+    // The first screen is announced once, after the page has said it is ready
+    // and been given the document, in a real frame of either engine.
+    const firstScreenAt = async () => {
+        await page.waitForFunction(() => window.__log.some((e) => e.dir === "out" && e.msg.type === "firstScreen"), { timeout: 5000 })
+            .catch(() => {});
+        return postedTypes();
+    };
+    const bootOrder = await firstScreenAt();
+    check("frame: firstScreen is posted once, after ready",
+        bootOrder.filter((t) => t === "firstScreen").length === 1
+            && bootOrder.indexOf("ready") < bootOrder.indexOf("firstScreen"),
+        JSON.stringify(bootOrder));
 
     // ── An edit reaches the host, and the host is asked nothing ────────
     await frame.locator(".ProseMirror").click();

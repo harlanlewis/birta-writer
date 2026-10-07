@@ -70,4 +70,23 @@ public enum ExplorerMenu {
         }
         return rows
     }
+
+    /// What the app asks before moving a file to the Trash, from this menu or
+    /// from File > Move to Trash (and so the palette). Asked even though the
+    /// Trash gives the file back, because a right-click row sits one slip away
+    /// from Copy Path and the palette runs on Return.
+    public struct TrashConfirmation: Equatable, Sendable {
+        public let message: String
+        public let detail: String
+        public let confirm: String
+        public let cancel: String
+    }
+
+    public static func trashConfirmation(name: String) -> TrashConfirmation {
+        TrashConfirmation(
+            message: "Move “\(name)” to the Trash?",
+            detail: "You can put it back from the Trash in the Finder.",
+            confirm: "Move to Trash",
+            cancel: "Cancel")
+    }
 }

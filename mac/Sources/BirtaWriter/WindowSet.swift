@@ -163,6 +163,7 @@ final class WindowSet {
             guard let coordinator else { return }
             self?.newNote(in: folder, beside: coordinator)
         }
+        coordinator.onFolderDefault = { [weak self] root in self?.folderDefault(in: root) }
         coordinator.onFolderIndexRequest = { [weak self, weak coordinator] in
             guard let coordinator else { return }
             self?.folderIndexRequested(by: coordinator)
@@ -536,6 +537,11 @@ final class WindowSet {
     /// tab of the group, because each tab's page has its own tree.
     private var roots: [String: DirectoryWatcher] = [:]
 
+    /// Per tab in front, the newest tab held back behind it while its page
+    /// builds (`open`). Identities rather than references, so a held tab
+    /// closed before it is ready is not kept alive by being waited on.
+    private var newestHeldTab: [ObjectIdentifier: ObjectIdentifier] = [:]
+
     /// The windows rooted at `root`, in the set's order.
     private func windows(rootedAt root: URL) -> [Coordinator] {
         windows.filter { $0.explorerRoot.map { FileIdentity.sameFile($0, root) } ?? false }
@@ -713,26 +719,9 @@ final class WindowSet {
             if !atLaunch { open.show() }
             return open
         }
-        // A file in the folder that is open as a loose window already is not
-        // a candidate: a window is one buffer, and a second one over the same
-        // path is the hazard `openDocument` guards against for every other
-        // route in. The folder's window opens on the next candidate, or on a
-        // new note when the open file was the only one.
-        let openElsewhere: (URL) -> Bool = { [windows] candidate in
-            windows.contains { FileIdentity.sameFile($0.boundFile, candidate) }
-        }
-        let file: URL
-        if let found = DirectoryListing.firstToOpen(in: root, recents: Prefs.recentDocuments,
-                                                    accepts: { DocumentTypes.accepts($0) && !openElsewhere($0) }) {
-            file = found
-        } else {
-            do {
-                file = try Coordinator.makeNoteFile(in: root)
-            } catch {
-                NSLog("Birta Writer: could not make a note in \(root.path): \(error)")
-                key?.flashStatus("Could not open \(root.lastPathComponent).")
-                return nil
-            }
+        guard let file = folderDefault(in: root) else {
+            key?.flashStatus("Could not open \(root.lastPathComponent).")
+            return nil
         }
         // The folder joins the recents list, as the file a window is bound to
         // does (`Coordinator.boundURL`, `close`). Here rather than at the
@@ -748,6 +737,32 @@ final class WindowSet {
         let made = makeWindow(on: file, slot: slot(for: file), explorerRoot: root)
         if !atLaunch { open(made) }
         return made
+    }
+
+    /// The file a folder's window opens on: `DirectoryListing.firstToOpen`'s
+    /// rule, else a new note made in the folder, nil when even that fails.
+    /// The same answer for opening the folder and for a window whose file was
+    /// just trashed from it.
+    ///
+    /// A file open in another window already is not a candidate: a window is
+    /// one buffer, and a second one over the same path is the hazard
+    /// `openDocument` guards against for every other route in. The window
+    /// opens on the next candidate, or on a new note when the open file was
+    /// the only one.
+    func folderDefault(in root: URL) -> URL? {
+        let openElsewhere: (URL) -> Bool = { [windows] candidate in
+            windows.contains { FileIdentity.sameFile($0.boundFile, candidate) }
+        }
+        if let found = DirectoryListing.firstToOpen(in: root, recents: Prefs.recentDocuments,
+                                                    accepts: { DocumentTypes.accepts($0) && !openElsewhere($0) }) {
+            return found
+        }
+        do {
+            return try Coordinator.makeNoteFile(in: root)
+        } catch {
+            NSLog("Birta Writer: could not make a note in \(root.path): \(error)")
+            return nil
+        }
     }
 
     /// The hidden-files setting, flipped from a menu row or a page, applied
@@ -1205,10 +1220,53 @@ final class WindowSet {
     ///   said a window (`OpenRouting.Destination.newWindow`).
     private func open(_ coordinator: Coordinator, asSeparateWindow: Bool = false) {
         coordinator.start()
-        if asSeparateWindow {
-            coordinator.withAutomaticTabbingSuspended { coordinator.show() }
-        } else {
-            coordinator.show()
+        // A tab added behind the one in front (`makeWindow`) comes forward
+        // when its page says its first screen is up, so the reader goes
+        // from the note they were in to the finished new one, and never sees
+        // the page assemble in between. It is in the bar from the start,
+        // which is the answer to the click, and it can be picked from there
+        // before it is finished.
+        if let showing = coordinator.tabShowingInstead {
+            let from = ObjectIdentifier(showing)
+            let held = ObjectIdentifier(coordinator)
+            newestHeldTab[from] = held
+            coordinator.whenFirstScreen { [weak self, weak coordinator, weak showing] in
+                guard let self, let coordinator else { return }
+                // Only the newest tab asked for from this tab comes forward:
+                // two links followed in quick succession end on the second,
+                // and the first waits in the bar.
+                guard self.newestHeldTab[from] == held else { return }
+                self.newestHeldTab[from] = nil
+                // And only while the reader is still where they asked from.
+                // A tab they picked themselves meanwhile, this one included,
+                // is where they meant to be.
+                guard let showing, coordinator.tabShowingInstead === showing else { return }
+                if NSApp.isActive {
+                    coordinator.show()
+                } else {
+                    // The reader has gone to another app: the tab changes
+                    // under them, where they left it, and nothing is brought
+                    // in front of what they went to.
+                    coordinator.selectTab()
+                }
+            }
+            return
+        }
+        // Anything else comes on screen by itself, and the same rule holds:
+        // it comes when its page is finished rather than as paper first. The
+        // page builds hidden, as a launch's prewarm does; the bound in
+        // `whenFirstScreen` is what keeps a page that never answers from
+        // keeping its window away.
+        coordinator.whenFirstScreen { [weak coordinator] in
+            // Already up: something else showed it meanwhile (a summon of
+            // every window), and showing it again would take the keyboard
+            // a second time.
+            guard let coordinator, !coordinator.isVisible else { return }
+            if asSeparateWindow {
+                coordinator.withAutomaticTabbingSuspended { coordinator.show() }
+            } else {
+                coordinator.show()
+            }
         }
     }
 
@@ -1434,8 +1492,10 @@ final class WindowSet {
         if isAnyVisible && NSApp.isActive { dismissAll() } else { summonAll() }
     }
 
-    func summonAll() {
-        windows.forEach { $0.show() }
+    /// `activating: false` puts the windows back on screen without taking
+    /// the front, for the relaunch after an unattended swap.
+    func summonAll(activating: Bool = true) {
+        windows.forEach { $0.show(activating: activating) }
     }
 
     /// Dismiss first, flush after, which is `Coordinator.hide`'s rule and the

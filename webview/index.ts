@@ -46,8 +46,10 @@ import {
 import type { EditorView } from "./pm";
 import { GapCursor, isGapCursorPosition, TextSelection } from "./pm";
 import { t } from "./i18n";
-import { notifyReady, notifyUpdate, notifySwitchToTextEditor, notifyFatalParse, notifyFocusState, onMessage } from "./messaging";
-import { hostHas } from "../shared/hostProfile";
+import { notifyReady, notifyUpdate, notifySwitchToTextEditor, notifyFatalParse, notifyFocusState, notifyTopbarControlsChanged, onMessage } from "./messaging";
+import { hostArranges, hostHas } from "../shared/hostProfile";
+import { refreshShortcutsHelpIfLoaded } from "./components/shortcutsHelp/loader";
+import { repostPaletteCommandsIfAsked } from "./paletteCommands";
 import { isReadOnly } from "./readOnly";
 import { getProofreadConfig, setProofreadConfig } from "./plugins";
 import { bankOpenHtmlPanel } from "./components/htmlView";
@@ -79,6 +81,7 @@ import { initPathComplete } from "./components/pathLink/pathComplete";
 import { initFindBar } from "./components/findBar";
 import { createLineNumbersGate } from "./utils/lineNumbersLoader";
 import { createFileExplorerGate } from "./utils/fileExplorerLoader";
+import { createFirstScreen } from "./firstScreen";
 import { initHeadingIds } from "./headingIds";
 import { initToolbar } from "./components/toolbar";
 import { setupSelectionToolbar } from "./components/selectionToolbar";
@@ -106,6 +109,7 @@ import { reportWordCount } from "./wordCountReporter";
 import { createEventManager } from "./eventManager";
 import { observeNativeThemeChanges } from "./nativeThemeBridge";
 import { syncMermaidCanvasClass } from "./components/codeBlock";
+import { labelBesidePreview } from "./ui/tooltip";
 
 // ── Module-level state ─────────────────────────────────────
 let currentEditor: Editor | null = null;
@@ -684,6 +688,23 @@ const toc = hostHas("toc")
     ? initToc(eventManager, () => getEditorView(), {
         neighborReserve: () => fileExplorer.dockedReserve(),
         onReserveChange: () => fileExplorer.checkResponsiveMode(),
+        // The outline came to have nothing to show, or something again, and
+        // has marked its commands idle or live to match. The surfaces that
+        // decided their contents once are told, as they are for a syntax
+        // target change (messageHandlers.ts): the bar re-places its button,
+        // the cheatsheet and a host palette re-read the gate. Never before
+        // the bar exists: this fires from a heading walk, an idle pass or a
+        // gesture, all of which run after this module has finished.
+        onEmptyChange: () => {
+            topbarTb?.refreshOfferedItems();
+            refreshShortcutsHelpIfLoaded();
+            repostPaletteCommandsIfAsked();
+            // A host that measured the bar's trailing controls (the Mac app,
+            // whose title and drag strip are laid out against them) has to
+            // measure again: the outline's button is the last of them, and
+            // exists on the bar only under `tocToggleInBar`.
+            if (hostArranges("tocToggleInBar")) { notifyTopbarControlsChanged(); }
+        },
     })
     : null;
 if (toc) { document.body.appendChild(toc.panel); }
@@ -737,9 +758,19 @@ measure("initToolbar", "toolbar-start", "toolbar-end");
 // rather than inside either component because this is the only place that has
 // both: the sidebar is built before the bar, and the bar knows nothing about a
 // panel it toggles through a command id. `setFlyoutTrigger` is a no-op on every
-// other surface, so no branch is needed around it.
-const barTocBtn = topbar?.querySelector<HTMLElement>(".tb-toc-btn");
-if (toc && barTocBtn) { toc.setFlyoutTrigger(barTocBtn); }
+// other surface, so no branch is needed around it. Asked of the bar's BUILT
+// items rather than of the bar: the button is placed only while the outline
+// has something to show, and the outline starts with nothing until the
+// document is in, so a query here would find no button to wire.
+const barTocBtn = topbarTb?.builtItem("toc")?.querySelector<HTMLElement>(".tb-toc-btn");
+if (toc && barTocBtn) {
+    toc.setFlyoutTrigger(barTocBtn);
+    // Its label names the key that opens the outline for good, which the
+    // preview it brings out does not say, so the label stays up beside it.
+    // The bar carries this button only under `tocToggleInBar`, which is
+    // exactly where it is the preview's trigger (toolbar/registry.ts).
+    labelBesidePreview(barTocBtn);
+}
 // The file explorer's button is the same shape: the gate holds the trigger
 // until the panel exists, so it is registered here whether or not a folder
 // ever opens. Absent where the host carries that control itself
@@ -1080,6 +1111,7 @@ initScrollPersistence(eventManager);
 initPaneWidthVar();
 
 // ── Message handlers ───────────────────────────────────────
+const firstScreen = createFirstScreen();
 const handlers = createMessageHandlers({
     state: {
         getEditor: () => currentEditor,
@@ -1113,6 +1145,7 @@ const handlers = createMessageHandlers({
         },
         initEditor,
         retryScroll,
+        announceFirstScreen: () => firstScreen.announce(fileExplorer.settled()),
         getEditorView,
         // An external edit changes the document, not the panel's own state.
         refreshToc: () => toc?.refreshContent(),
@@ -1128,6 +1161,7 @@ const handlers = createMessageHandlers({
         setCurrentProjectFile: (path) => fileExplorer.setCurrentProjectFile(path),
         directoryChanged: (paths) => fileExplorer.directoryChanged(paths),
         setFileExplorerShowHidden: (showHidden) => fileExplorer.setShowHidden(showHidden),
+        setFileExplorerFloor: (width) => fileExplorer.setWidthFloor(width),
     },
     topbarTb,
 });

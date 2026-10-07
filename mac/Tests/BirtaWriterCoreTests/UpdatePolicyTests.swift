@@ -197,51 +197,59 @@ final class UpdatePolicyTests: XCTestCase {
 
     // MARK: whether anybody is there
 
-    /// The shape every arm below is checked against: nobody at the window.
+    /// The shape every arm below is checked against: the app in the
+    /// background, the person in another app a moment ago.
     private var away: UpdatePolicy.Attendance {
-        UpdatePolicy.Attendance(anyWindowVisible: false,
+        UpdatePolicy.Attendance(appIsActive: false,
                                 hasUnwrittenBytes: false,
-                                idle: UpdatePolicy.unattendedIdle)
+                                idle: 0)
     }
 
     /// The control. Without it every arm below could be passing because the
     /// predicate refuses everything, which is a predicate that discriminates
     /// nothing and would still satisfy each of them.
-    func testAnEmptyMachineAtTheIdleFloorShouldBeUnattended() {
+    func testAnAppInTheBackgroundWithNothingUnwrittenShouldBeUnattended() {
         XCTAssertTrue(UpdatePolicy.isUnattended(away))
     }
 
-    func testAWindowOnScreenShouldStopTheSwapHoweverIdleTheMachineLooks() {
-        // A person reading is a person who did not touch the keyboard, so idle
-        // time alone says nothing about whether the app is being used.
-        var reading = away
-        reading.anyWindowVisible = true
-        reading.idle = UpdatePolicy.unattendedIdle * 100
-        XCTAssertFalse(UpdatePolicy.isUnattended(reading))
+    /// The two ways nobody is at this app are alternatives, so they are
+    /// asked as a whole table rather than as flips from one state: from a
+    /// state where both hold, flipping either one alone changes nothing, and
+    /// a sweep would pass with either arm deleted.
+    func testInFrontOrBehindAndIdleOrNotShouldDecideAsATable() {
+        let cases: [(active: Bool, idle: TimeInterval, unattended: Bool, why: String)] = [
+            (false, 0, true, "in the background, just typed elsewhere"),
+            (false, UpdatePolicy.unattendedIdle, true, "in the background, machine left"),
+            (true, 0, false, "in front and in use"),
+            (true, UpdatePolicy.unattendedIdle - 1, false, "in front, a pause"),
+            (true, UpdatePolicy.unattendedIdle, true, "in front, machine left"),
+        ]
+        for c in cases {
+            var reading = away
+            reading.appIsActive = c.active
+            reading.idle = c.idle
+            XCTAssertEqual(UpdatePolicy.isUnattended(reading), c.unattended, c.why)
+        }
     }
 
-    func testUnwrittenBytesShouldStopTheSwap() {
+    func testUnwrittenBytesShouldStopTheSwapInFrontOrBehind() {
         // Quitting flushes, so this is not about losing the words. It is a
         // sentence somebody was in the middle of, and the app disappearing and
         // coming back around it is the interruption, not the risk.
         var midSentence = away
         midSentence.hasUnwrittenBytes = true
         XCTAssertFalse(UpdatePolicy.isUnattended(midSentence))
-    }
-
-    func testAPauseShouldNotCountAsHavingLeft() {
-        var paused = away
-        paused.idle = UpdatePolicy.unattendedIdle - 1
-        XCTAssertFalse(UpdatePolicy.isUnattended(paused))
-        paused.idle = 0
-        XCTAssertFalse(UpdatePolicy.isUnattended(paused))
+        midSentence.appIsActive = true
+        midSentence.idle = UpdatePolicy.unattendedIdle * 100
+        XCTAssertFalse(UpdatePolicy.isUnattended(midSentence))
     }
 
     /// A clock that moved backwards produces a negative idle time, and the
     /// bias on this whole path is that anything unreadable refuses. A refusal
     /// costs a day; a wrong go ahead costs somebody the app they were using.
-    func testAnImpossibleIdleTimeShouldRefuseRatherThanCountAsForever() {
+    func testAnImpossibleIdleTimeShouldNotMakeAnAppInFrontAway() {
         var wrong = away
+        wrong.appIsActive = true
         wrong.idle = -1
         XCTAssertFalse(UpdatePolicy.isUnattended(wrong))
     }
@@ -279,18 +287,20 @@ final class UpdatePolicyTests: XCTestCase {
             ("the version declined", { $0.wasDeclined = true }),
             ("the offer on screen", { $0.offerOnScreen = true }),
             ("work in flight", { $0.workInFlight = true }),
-            ("a window up", { $0.attendance.anyWindowVisible = true }),
             ("unwritten bytes", { $0.attendance.hasUnwrittenBytes = true }),
-            ("somebody just typed", { $0.attendance.idle = 0 }),
+            ("in front and just typed", { $0.attendance.appIsActive = true }),
         ]
         // Counted off the TYPES rather than restated as a number, so a fact
         // added to either struct fails here until the sweep flips it. A
         // hand-written number beside a hand-written list agrees with itself
         // whatever the predicate does. `attendance` is subtracted because it
-        // is the other struct rather than a fact of its own.
+        // is the other struct rather than a fact of its own, and `idle` is
+        // the one fact no single flip from here can reach, because the app
+        // being in the background already answers for it: the table above
+        // asks it instead.
         let facts = Mirror(reflecting: clear).children.count
             + Mirror(reflecting: clear.attendance).children.count - 1
-        XCTAssertEqual(flips.count, facts, "a fact was added and the sweep does not flip it")
+        XCTAssertEqual(flips.count + 1, facts, "a fact was added and the sweep does not flip it")
         for (name, flip) in flips {
             var state = clear
             flip(&state)
