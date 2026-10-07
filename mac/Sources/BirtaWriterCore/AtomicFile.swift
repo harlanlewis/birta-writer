@@ -1,7 +1,9 @@
 import Foundation
 
 /// Atomic file replacement: write to a sibling temp file, fsync it, then
-/// rename over the target. A reader (the user opening the scratchpad in
+/// rename over the target. Where the sibling is refused (a sandboxed process
+/// granted the file but not its folder) the temp goes in the system's
+/// replacement directory on the same volume instead, and the rest holds. A reader (the user opening the scratchpad in
 /// another editor, or this app after a crash) sees either the previous bytes
 /// or the new bytes, never a prefix. Same-volume rename is atomic on APFS.
 ///
@@ -102,8 +104,25 @@ public enum AtomicFile {
         } catch {
             throw WriteError.cannotCreateDirectory(dir.path)
         }
-        let tmp = dir.appendingPathComponent(".\(target.lastPathComponent).\(UUID().uuidString).tmp")
-        let fd = open(tmp.path, O_WRONLY | O_CREAT | O_TRUNC, 0o600)
+        let tempName = ".\(target.lastPathComponent).\(UUID().uuidString).tmp"
+        var tmp = dir.appendingPathComponent(tempName)
+        var fd = open(tmp.path, O_WRONLY | O_CREAT | O_TRUNC, 0o600)
+        // A sibling the process may not create. Under the App Sandbox a file
+        // opened from the Finder or an open panel is granted by its own path
+        // and not its folder's, so the sibling is refused while a rename onto
+        // the granted path is not. The system's replacement directory for the
+        // target is on the target's volume (which keeps the rename atomic)
+        // and is the process's own to write in. Only on a refusal, so every
+        // write that can keep its temp beside the file still does.
+        var replacementDirectory: URL?
+        if fd < 0, errno == EPERM || errno == EACCES,
+           let staging = try? FileManager.default.url(for: .itemReplacementDirectory, in: .userDomainMask,
+                                                       appropriateFor: target, create: true) {
+            replacementDirectory = staging
+            tmp = staging.appendingPathComponent(tempName)
+            fd = open(tmp.path, O_WRONLY | O_CREAT | O_TRUNC, 0o600)
+        }
+        defer { if let replacementDirectory { try? FileManager.default.removeItem(at: replacementDirectory) } }
         guard fd >= 0 else { throw WriteError.cannotOpenTemp(tmp.path) }
         var ok = true
         data.withUnsafeBytes { (buf: UnsafeRawBufferPointer) in

@@ -46,9 +46,33 @@ enum NoteLocationChange {
     /// note itself and its folder is where the rest go
     /// (`Prefs.notesDirectory`). `DocumentTypes.writtenContentTypes` is what
     /// this app writes rather than the wider set it opens.
+    ///
+    /// On a channel that keeps grants (the store's sandbox) the panel picks a
+    /// FOLDER instead, and the note keeps its name inside it. A save panel
+    /// grants the one file it names, and the notes folder is where every new
+    /// note and the move offer write, so a file-sized grant would leave the
+    /// note writable and everything beside it refused.
     static func chooseLocation(in window: NSWindow,
+                               distribution: Distribution = .current,
                                redraw: @escaping () -> Void,
                                apply: @escaping (BeforeReload?) -> Void) {
+        if distribution.keepsAccessGrants {
+            let folders = NSOpenPanel()
+            folders.title = "Where your notes live"
+            folders.prompt = "Choose"
+            folders.canChooseDirectories = true
+            folders.canChooseFiles = false
+            folders.canCreateDirectories = true
+            folders.allowsMultipleSelection = false
+            folders.directoryURL = Prefs.scratchpadURL.deletingLastPathComponent()
+            let name = Prefs.scratchpadURL.lastPathComponent
+            folders.beginSheetModal(for: window) { response in
+                guard response == .OK, let folder = folders.url else { return }
+                SandboxAccess.remember(folder)
+                use(folder.appendingPathComponent(name), in: window, redraw: redraw, apply: apply)
+            }
+            return
+        }
         let panel = NSSavePanel()
         panel.title = "Where your notes live"
         panel.nameFieldStringValue = Prefs.scratchpadURL.lastPathComponent

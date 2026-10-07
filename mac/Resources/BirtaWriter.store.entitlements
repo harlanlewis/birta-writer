@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  The Mac App Store build's entitlements, applied by the store flag of `build-app.sh`
+  and by nothing else. Each one is here for a reader in the app; the app reads
+  the sandbox off its own process (`Distribution`), so this file is what makes
+  a build the store channel.
+
+  app-sandbox                    The store requires it. `Distribution.current`
+                                 reads `.appStore` from it.
+  network.client                 Rich link previews, embeds, Open VSX.
+  files.user-selected.read-write The files and folders the person hands over
+                                 through the Finder, Open, Save As and the
+                                 notes Location.
+  files.bookmarks.app-scope      Keeping those across a relaunch
+                                 (`SandboxAccess`, `AccessGrantList`).
+-->
+<plist version="1.0">
+<dict>
+    <key>com.apple.security.app-sandbox</key>
+    <true/>
+    <key>com.apple.security.network.client</key>
+    <true/>
+    <key>com.apple.security.files.user-selected.read-write</key>
+    <true/>
+    <key>com.apple.security.files.bookmarks.app-scope</key>
+    <true/>
+</dict>
+</plist>

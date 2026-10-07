@@ -405,11 +405,11 @@ final class WelcomeView: NSView {
     /// With it off the folder is a real choice, and this is where it is made.
     private func showLocation() {
         locationPath.setURL(Prefs.scratchpadURL)
-        let inICloud = Prefs.noteHome == .iCloud
+        let inICloud = Prefs.noteHome == .iCloud && distribution.readsICloudDrive
         if let locationGroup {
             SettingsWindowController.setRowHidden(
                 locationGroup,
-                row: SettingsForm.index(of: .location, inGroupOf: SettingsForm.welcome) ?? 1,
+                row: SettingsForm.index(of: .location, inGroupOf: distribution.offered(SettingsForm.welcome)) ?? 1,
                 hidden: inICloud)
         }
         iCloudCaption.say(Prefs.iCloudAvailable
@@ -478,6 +478,7 @@ final class WelcomeView: NSView {
         guard let window else { return }
         NoteLocationChange.chooseLocation(
             in: window,
+            distribution: distribution,
             redraw: { [weak self] in self?.showLocation() },
             apply: { [weak self] work in self?.onChange?(work) })
     }

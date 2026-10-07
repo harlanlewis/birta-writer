@@ -37,6 +37,9 @@ final class DistributionTests: XCTestCase {
             XCTAssertEqual(distribution.offersTerminalCommand, direct, distribution.rawValue)
             XCTAssertEqual(distribution.updatesItself, direct, distribution.rawValue)
             XCTAssertEqual(distribution.readsInstalledEditorThemes, direct, distribution.rawValue)
+            XCTAssertEqual(distribution.readsICloudDrive, direct, distribution.rawValue)
+            // The one fact the STORE has and the direct build does not.
+            XCTAssertEqual(distribution.keepsAccessGrants, !direct, distribution.rawValue)
         }
     }
 
@@ -54,11 +57,12 @@ final class DistributionTests: XCTestCase {
     }
 
     /// The rows a store build omits, enumerated from the type: every row is
-    /// asked, and exactly these five are taken away. A row added later is
+    /// asked, and exactly these six are taken away. A row added later is
     /// offered everywhere until somebody decides otherwise here.
     func testAStoreBuildShouldOmitExactlyTheRowsItsSandboxTakesAway() {
         let omitted = SettingsRow.allCases.filter { !Distribution.appStore.offers($0) }
-        XCTAssertEqual(Set(omitted), [.agentEnabled, .agentCommand, .commandLine, .commandName, .autoUpdate])
+        XCTAssertEqual(Set(omitted), [.agentEnabled, .agentCommand, .commandLine, .commandName, .autoUpdate,
+                                      .storeInICloud])
         XCTAssertTrue(SettingsRow.allCases.allSatisfy(Distribution.direct.offers))
     }
 
@@ -78,10 +82,15 @@ final class DistributionTests: XCTestCase {
                        [.resetSettings, .welcomeScreen])
     }
 
-    func testTheFirstRunScreenShouldNotAskAStoreBuildAboutUpdating() {
+    func testTheFirstRunScreenShouldNotAskAStoreBuildWhatItCannotDo() {
         let store = SettingsForm.rows(of: Distribution.appStore.offered(SettingsForm.welcome))
         XCTAssertFalse(store.contains(.autoUpdate))
-        XCTAssertEqual(store, SettingsForm.rows(of: SettingsForm.welcome).filter { $0 != .autoUpdate })
+        XCTAssertFalse(store.contains(.storeInICloud))
+        // Location stays: on the store it is the way to any folder, iCloud
+        // Drive's included.
+        XCTAssertTrue(store.contains(.location))
+        XCTAssertEqual(store, SettingsForm.rows(of: SettingsForm.welcome)
+            .filter { $0 != .autoUpdate && $0 != .storeInICloud })
         XCTAssertEqual(SettingsForm.rows(of: Distribution.direct.offered(SettingsForm.welcome)),
                        SettingsForm.rows(of: SettingsForm.welcome))
     }

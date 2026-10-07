@@ -233,6 +233,7 @@ final class TitlePopoverController: NSViewController {
         panel.begin { [weak self] response in
             MainActor.assumeIsolated {
                 guard response == .OK, let target = panel.url else { return }
+                SandboxAccess.remember(target)
                 self?.onMove?(target)
             }
         }

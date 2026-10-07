@@ -2,7 +2,18 @@
 # Build "Birta Writer.app" from the SwiftPM package and the webview bundle.
 #
 #   pnpm mac:build            # production esbuild, then this
-#   bash mac/scripts/build-app.sh [--debug] [--dev] [--out DIR] [--version V]
+#   bash mac/scripts/build-app.sh [--debug] [--dev] [--store] [--out DIR] [--version V]
+#
+# `--store` builds for the Mac App Store channel: the same app inside the App
+# Sandbox (mac/Resources/BirtaWriter.store.entitlements), with no `bwr` in the
+# bundle, since nothing on that channel can install it. The app reads the
+# sandbox off its own process (`BirtaWriterCore.Distribution`), so these
+# entitlements are the whole of what makes a build the store's. It composes
+# with `--dev`, which is how `mac/scripts/sandbox-check.sh` gets a sandboxed
+# copy that cannot touch the release's container. A store submission also
+# needs BIRTA_CODESIGN_IDENTITY set to the store's application identity,
+# BIRTA_STORE_PROFILE naming a Mac App Store provisioning profile, and
+# BIRTA_STORE_INSTALLER_IDENTITY for the .pkg (MAR-495).
 #
 # `--dev` builds the DEVELOPMENT flavour: "Birta Writer [DEV].app", bundle id
 # `com.birtalabs.birta-writer-dev`. It is meant to sit in /Applications beside the
@@ -29,11 +40,13 @@ REPO="$PWD"
 CONFIG=release
 OUT="$REPO/mac/build"
 FLAVOR=release
+CHANNEL=direct
 VERSION=""
 while [ $# -gt 0 ]; do
     case "$1" in
         --debug) CONFIG=debug ;;
         --dev) FLAVOR=dev ;;
+        --store) CHANNEL=store ;;
         --out) OUT="$2"; shift ;;
         --version) VERSION="$2"; shift ;;
         *) echo "unknown argument: $1" >&2; exit 2 ;;
@@ -87,7 +100,13 @@ cp "$BIN" "$APP/Contents/MacOS/$EXEC_NAME"
 # Mach-O nested under Resources is the arrangement notarization objects to
 # (MAR-378). The SAME name in both flavours, since the bundles are what keep
 # them apart and the two links differ by their own names.
-cp "$CLI" "$APP/Contents/MacOS/bwr"
+# Not on the store channel: the command runs outside the sandbox, and a binary
+# nobody can install is weight in the bundle and a question in review.
+# A block rather than `|| cp`, so the copy still starts its line: that is how
+# shared/__tests__/macCodesign.test.ts finds every binary that needs signing.
+if [ "$CHANNEL" != store ]; then
+    cp "$CLI" "$APP/Contents/MacOS/bwr"
+fi
 cp mac/Resources/Info.plist "$APP/Contents/Info.plist"
 # The flavour, written into the copy rather than kept as a second plist. One
 # source of truth for everything else in there, and the two keys that differ
@@ -161,7 +180,22 @@ fi
 IDENTITY="${BIRTA_CODESIGN_IDENTITY:--}"
 SIGN=(codesign --force --options runtime --sign "$IDENTITY")
 [ "$IDENTITY" = "-" ] || SIGN+=(--timestamp)
-"${SIGN[@]}" --identifier "$BUNDLE_ID.bwr" "$APP/Contents/MacOS/bwr"
-"${SIGN[@]}" "$APP"
+if [ "$CHANNEL" = store ]; then
+    # The store reads the profile from inside the bundle, so it goes in before
+    # the seal. Optional for a local build, which runs without one.
+    if [ -n "${BIRTA_STORE_PROFILE:-}" ]; then
+        cp "$BIRTA_STORE_PROFILE" "$APP/Contents/embedded.provisionprofile"
+    fi
+    "${SIGN[@]}" --entitlements mac/Resources/BirtaWriter.store.entitlements "$APP"
+    # The installer package the store takes, only with an installer identity:
+    # productbuild cannot sign ad hoc, and a local build has no use for one.
+    if [ -n "${BIRTA_STORE_INSTALLER_IDENTITY:-}" ]; then
+        productbuild --component "$APP" /Applications --sign "$BIRTA_STORE_INSTALLER_IDENTITY" \
+            "$OUT/$APP_NAME.pkg"
+    fi
+else
+    "${SIGN[@]}" --identifier "$BUNDLE_ID.bwr" "$APP/Contents/MacOS/bwr"
+    "${SIGN[@]}" "$APP"
+fi
 
-echo "built $APP ($FLAVOR, $BUNDLE_ID${VERSION:+, $VERSION})"
+echo "built $APP ($FLAVOR, $CHANNEL, $BUNDLE_ID${VERSION:+, $VERSION})"
