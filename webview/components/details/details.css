@@ -1,121 +1,33 @@
-/* `<details>` chrome (components/details): a summary row with a disclosure
-   toggle above the body. Neutral on purpose: a disclosure says nothing about
-   tone, so it takes no accent the way a callout or an admonition does. */
+/* `<details>` chrome (components/details): the callout's own chrome, which
+   the view composes, with what a details does not share. No kind, so no
+   tone: the accent is the neutral one the callout's `quote` kind uses, and
+   the summary reads in the editor's ink rather than the accent's. */
 
-.milkdown .details-block {
-    border: 1px solid var(--vscode-editorWidget-border);
-    border-radius: var(--ui-radius-m);
-    margin: 0 0 var(--content-flow-gap);
+.milkdown .callout.details-block {
+    --callout-accent: var(--vscode-descriptionForeground);
 
-    /* Gutter contract (style.css .heading-fold-gutter): the block marker
-       aligns with the SUMMARY line. Declared beside the row's padding. */
-    --gutter-top: calc(0.11 * var(--content-em));
-
-    .details-summary {
-        display: flex;
-        align-items: center;
-        gap: 0.35em;
-        padding: 0.4em 0.9em 0 0.5em;
-        user-select: none;
+    .callout-title {
+        color: var(--vscode-editor-foreground);
     }
 
+    /* The disclosure chevron: down while open, right while folded. */
     .details-toggle {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        flex: none;
-        width: 1.4em;
-        height: 1.4em;
-        padding: 0;
-        border: none;
-        border-radius: var(--ui-radius-s);
-        background: none;
         color: var(--vscode-descriptionForeground);
-        cursor: pointer;
 
         svg {
-            width: 1em;
-            height: 1em;
             transform: rotate(90deg);
             transition: transform 120ms ease;
         }
-
-        &:hover {
-            color: var(--vscode-editor-foreground);
-            background: var(--vscode-toolbar-hoverBackground);
-        }
-
-        &:focus-visible {
-            outline: 1px solid var(--vscode-focusBorder);
-        }
     }
 
-    /* Inline summary editor (escaped write-back, see openerWithSummary). */
-    .details-summary-text {
-        color: var(--vscode-editor-foreground);
-        font-weight: 600;
-        min-width: 4ch;
-        border-radius: var(--ui-radius-s);
-        outline: none;
-        cursor: text;
-
-        &:empty::before {
-            content: attr(data-placeholder);
-            color: var(--vscode-descriptionForeground);
-            font-weight: 400;
-        }
-
-        &:focus {
-            outline: 1px solid var(--vscode-focusBorder);
-            outline-offset: 2px;
-        }
+    &.collapsed .details-toggle svg {
+        transform: none;
     }
 
-    .details-body {
-        padding: 0.25em 0.9em 0.5em 2.25em;
-
-        /* The body's own padding supplies the bottom whitespace, so the last
-           child must not add its flow gap. */
-        > :last-child {
-            margin-bottom: 0;
-            padding-bottom: 0;
-        }
+    /* No summary: the browser's own "Details" label, as a placeholder. */
+    .details-summary-text:empty::before {
+        content: attr(data-placeholder);
+        color: var(--vscode-descriptionForeground);
+        font-weight: 400;
     }
-
-    .details-summary .details-fold-ellipsis {
-        display: none;
-    }
-
-    &.collapsed {
-        .details-toggle svg {
-            transform: none;
-        }
-
-        .details-summary {
-            padding-bottom: 0.4em;
-
-            .details-fold-ellipsis {
-                display: inline-flex;
-            }
-        }
-
-        /* visibility, not display:none, for the reason directive.css gives:
-           the body's gutter marker lives inside it and must stay grabbable. */
-        .details-body {
-            visibility: hidden;
-            height: 0;
-            min-height: 0;
-            padding: 0;
-            margin: 0;
-            overflow: hidden;
-
-            .heading-fold-gutter--block {
-                visibility: visible;
-            }
-        }
-    }
-}
-
-.milkdown .details-block.ProseMirror-selectednode {
-    outline: 2px solid var(--vscode-focusBorder);
 }

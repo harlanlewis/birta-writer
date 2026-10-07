@@ -23,12 +23,23 @@ export async function run({ page, check, baseUrl }) {
             list: blocks[0]?.querySelectorAll(".details-body li").length ?? 0,
         };
     });
-    check("three disclosures render as three blocks, no stray tag atoms",
-        shape.count === 3 && shape.stray === 0, JSON.stringify(shape));
+    check("four disclosures render as four blocks, no stray tag atoms",
+        shape.count === 4 && shape.stray === 0, JSON.stringify(shape));
     check("each summary is its own text",
-        JSON.stringify(shape.summaries) === JSON.stringify(["Timestamps", "Open one", "In a list"]),
+        JSON.stringify(shape.summaries) === JSON.stringify(["Timestamps", "Open one", "Indented", "In a list"]),
         JSON.stringify(shape.summaries));
     check("the body is Markdown: the list items render as list items", shape.list === 2, String(shape.list));
+
+    // The indented-body shape: Markdown inside, not a code block with its chrome.
+    const indented = await page.evaluate(() => {
+        const block = document.querySelectorAll(".ProseMirror .details-block")[2];
+        return {
+            items: block?.querySelectorAll(".details-body li").length ?? -1,
+            code: block?.querySelectorAll("pre, .code-block-wrapper, [data-type='code_block']").length ?? -1,
+        };
+    });
+    check("an indented body renders as Markdown with no code block in it",
+        indented.items === 1 && indented.code === 0, JSON.stringify(indented));
 
     const state = () => page.evaluate(() => [...document.querySelectorAll(".ProseMirror .details-block")].map((b) => ({
         collapsed: b.classList.contains("collapsed"),
@@ -45,7 +56,7 @@ export async function run({ page, check, baseUrl }) {
     check("a details with `open` loads unfolded",
         before[1]?.collapsed === false && before[1]?.bodyHeight > 0, JSON.stringify(before[1]));
     check("inside a list item there is no toggle to press",
-        before[2]?.toggleShown === false && before[2]?.collapsed === false, JSON.stringify(before[2]));
+        before[3]?.toggleShown === false && before[3]?.collapsed === false, JSON.stringify(before[3]));
 
     const updatesBefore = await page.evaluate(() => window.__posted.filter((m) => m.type === "update").length);
     await page.locator(".ProseMirror .details-block").first().locator(".details-toggle").click();
@@ -87,6 +98,7 @@ export async function run({ page, check, baseUrl }) {
         window.__posted.filter((m) => m.type === "update").at(-1)?.content ?? "");
     check("a typed summary posts, escaped, with the rest of the details intact",
         posted.includes("<details>\n<summary>Timestamps &amp; more</summary>\n\n- `00:04` Testing.")
-            && posted.includes("Listed body.\n\n  </details>"),
+            && posted.includes("Listed body.\n\n  </details>")
+            && posted.includes("<details>\n\n    <summary>Indented</summary>\n\n    - `00:04` Indented body.\n\n</details>"),
         JSON.stringify(posted));
 }

@@ -47,6 +47,9 @@
        aligns with the TITLE line, which sits closer to the border box than
        a padded body does. Declared beside the title padding it mirrors. */
     --gutter-top: calc(0.11 * var(--content-em));
+    /* ...and the column steps left by the 3px bar, so the icon lines up with
+       the bare blocks (footnote.css does the same for its 2px one). */
+    --gutter-left: calc(var(--gutter-column) - 3px);
 
     .callout-title {
         display: flex;

@@ -27,6 +27,7 @@ import { t } from "@/i18n";
 import { isReadOnly, markEditableIsland } from "@/readOnly";
 import { isBareEscape, registerEscapeLayer } from "@/ui/escapeLayers";
 import { onOutsideClick } from "@/ui/outsideClick";
+import { bindTitleIsland } from "@/ui/titleIsland";
 import {
     CALLOUT_KINDS,
     attrsFromMarker,
@@ -304,33 +305,11 @@ export function createCalloutView(
         }
     });
 
-    // ── Title editing ────────────────────────────────────────────────────────
-    const commitTitle = (): void => {
-        const typed = (titleSpan.textContent ?? "").trim();
-        if (typed === calloutLabel(node)) return; // untouched → zero churn
-        dispatchMarker(markerWithTitle((node.attrs["marker"] as string) ?? "[!NOTE]", typed));
-    };
-    titleSpan.addEventListener("keydown", (e) => {
-        if (e.key === "Enter") {
-            e.preventDefault();
-            titleSpan.blur(); // blur commits
-        } else if (isBareEscape(e)) {
-            e.preventDefault();
-            titleSpan.textContent = calloutLabel(node); // revert, then leave
-            titleSpan.blur();
-        } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "a") {
-            // Keep select-all inside the title island — the native behavior
-            // escapes into the surrounding contenteditable and selects the
-            // whole document.
-            e.preventDefault();
-            const range = document.createRange();
-            range.selectNodeContents(titleSpan);
-            const sel = window.getSelection();
-            sel?.removeAllRanges();
-            sel?.addRange(range);
-        }
+    // ── Title editing: the shared island protocol (ui/titleIsland) ───────────
+    bindTitleIsland(titleSpan, {
+        current: () => calloutLabel(node),
+        commit: (typed) => dispatchMarker(markerWithTitle((node.attrs["marker"] as string) ?? "[!NOTE]", typed)),
     });
-    titleSpan.addEventListener("blur", commitTitle);
 
     const render = (): void => {
         const kind = (node.attrs["kind"] as CalloutKind) ?? "note";

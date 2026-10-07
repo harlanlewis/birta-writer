@@ -166,16 +166,68 @@ describe("details parse and round-trip", () => {
         await editor.destroy();
     });
 
-    it("an indented summary should stay the code block CommonMark makes it", async () => {
+    it("an indented body should read as Markdown, its summary line as the summary", async () => {
         // The shape a generator writes when it indents the inside of the
-        // tags: four spaces after a blank line is code in every renderer.
-        const source = "<details>\n\n    <summary>Timestamps</summary>\n\n    - `00:04` Testing.\n\n</details>\n";
+        // tags. To CommonMark the whole body is one indented code block.
+        const source =
+            "<details>\n\n    <summary>Timestamps</summary>\n\n    - `00:04` Testing.\n    - `00:05` 123456.\n\n</details>\n";
         const { editor, view } = await makeEditor(source);
         const [{ node }] = findDetails(view) as [{ node: PMNode }];
-        expect(node.attrs["hasSummary"]).toBe(false);
+        expect(node.attrs["summary"]).toBe("Timestamps");
+        expect(node.attrs["bodyIndent"]).toBe("    ");
+        expect(node.firstChild?.type.name).toBe("bullet_list");
+        let code = 0;
+        view.state.doc.descendants((n) => { if (n.type.name === "code_block") code++; return true; });
+        expect(code, "nothing in the body should be left as code").toBe(0);
+        expect(editor.action(getMarkdown())).toBe(source);
+        await editor.destroy();
+    });
+
+    it("an edit inside an indented body should keep every line indented", async () => {
+        const source = "<details>\n\n    <summary>T</summary>\n\n    One.\n\n    Two.\n\n</details>\n";
+        const { editor, view } = await makeEditor(source);
+        const at = view.state.doc.textContent.indexOf("One.");
+        let pos = -1;
+        view.state.doc.descendants((n, p) => {
+            if (pos < 0 && n.isText && n.text === "One.") pos = p + 4;
+            return true;
+        });
+        expect(at).toBeGreaterThanOrEqual(0);
+        view.dispatch(view.state.tr.insertText(" More.", pos));
+        expect(editor.action(getMarkdown())).toBe(
+            "<details>\n\n    <summary>T</summary>\n\n    One. More.\n\n    Two.\n\n</details>\n",
+        );
+        await editor.destroy();
+    });
+
+    it("a callout inside an indented body should read its marker from the file's own bytes", async () => {
+        // Positions are moved back onto the file's lines; the callout
+        // transform slices its marker by them, so a wrong mapping would
+        // read some other line and leave a plain quote.
+        const source = "<details>\n\n    > [!TIP] Inside\n    > body\n\n</details>\n";
+        const { editor, view } = await makeEditor(source);
+        let marker: unknown = null;
+        view.state.doc.descendants((n) => { if (n.type.name === "callout") marker = n.attrs["marker"]; return true; });
+        expect(marker).toBe("[!TIP] Inside");
+        expect(editor.action(getMarkdown())).toBe(source);
+        await editor.destroy();
+    });
+
+    it("a fenced code block as the whole body should stay a code block", async () => {
+        const source = "<details>\n<summary>T</summary>\n\n```\n<summary>x</summary>\n```\n\n</details>\n";
+        const { editor, view } = await makeEditor(source);
+        const [{ node }] = findDetails(view) as [{ node: PMNode }];
         expect(node.firstChild?.type.name).toBe("code_block");
-        // The serializer spells the code block fenced; a zero-edit save keeps
-        // the indented source, which is the promise that matters here.
+        expect(node.attrs["bodyIndent"]).toBe("");
+        expect(editor.action(getMarkdown())).toBe(source);
+        await editor.destroy();
+    });
+
+    it("an indented block beside other blocks should stay CommonMark's code", async () => {
+        const source = "<details>\n<summary>T</summary>\n\nProse.\n\n    indented code\n\n</details>\n";
+        const { editor, view } = await makeEditor(source);
+        const [{ node }] = findDetails(view) as [{ node: PMNode }];
+        expect(node.lastChild?.type.name).toBe("code_block");
         const serialized = editor.action(getMarkdown());
         const protection = computeRoundTripProtection(source, serialized);
         expect(applyMinimalChanges(source, serialized, protection)).toBe(source);
