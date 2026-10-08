@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+---
+
+## [2026.1008.1] - 2026, October 8
+
 ### Changed
 
 - In the Contents panel, the highlight on the current heading and on the heading under the pointer is as wide as the heading's text rather than the whole panel. The fold arrow sits beside the highlight instead of inside it.
