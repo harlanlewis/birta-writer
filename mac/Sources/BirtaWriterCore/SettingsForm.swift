@@ -289,18 +289,17 @@ public enum SettingsForm {
     /// What the app does to ITSELF: how it replaces itself, and the gestures
     /// that undo rather than set.
     ///
-    /// Automatically update is here rather than on General because it is a
-    /// question about the program and not about the writing, and it is the one
-    /// row on either pane that some builds cannot answer at all: a development
-    /// build cannot replace itself, so the row is dead and says so
-    /// (`RowAvailability.autoUpdate`). Its own card, because the reset
-    /// gestures below are destructive and a card is the boundary that keeps a
-    /// switch from reading as one of them.
+    /// Automatically update leads. It is here rather than on General because
+    /// it is a question about the program and not about the writing, and it
+    /// is the one row on either pane that some builds cannot answer at all: a
+    /// development build cannot replace itself, so the row is dead and says
+    /// so (`RowAvailability.autoUpdate`). It is first because it is the row
+    /// on this pane somebody comes looking for, and the one the first-run
+    /// screen asked; the others are set once or never. Its own card, because
+    /// the reset gestures below are destructive and a card is the boundary
+    /// that keeps a switch from reading as one of them.
     ///
-    /// Reset before Welcome screen: reset is the row every build shows, and
-    /// the one below it exists only on a build that shows the first run.
-    ///
-    /// The terminal command leads, in a card of its own, and it is here
+    /// The terminal command is next, in a card of its own, and it is here
     /// rather than on General because of what pressing it does: installing a
     /// command writes a file somewhere else on the machine, which is a
     /// different kind of answer from the rows that store a preference. Its
@@ -308,12 +307,15 @@ public enum SettingsForm {
     /// order, for the reason `.location` and `.newNoteName` are:
     /// `SettingsWindowController.setRowHidden` reaches into a card by index.
     ///
+    /// Reset before Welcome screen: reset is the row every build shows, and
+    /// the one below it exists only on a build that shows the first run.
+    ///
     /// Take the flavour rather than reading it, so both arms are checkable
     /// without a defaults domain or a second bundle.
     public static func advanced(showsWelcomeScreen: Bool) -> SettingsPane {
         SettingsPane(groups: [
-            SettingsGroup(rows: [.commandLine, .commandName]),
             SettingsGroup(rows: [.autoUpdate]),
+            SettingsGroup(rows: [.commandLine, .commandName]),
             SettingsGroup(rows: showsWelcomeScreen ? [.resetSettings, .welcomeScreen]
                                                    : [.resetSettings]),
         ])

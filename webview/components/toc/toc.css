@@ -183,13 +183,18 @@
     position: relative;
 }
 /* Composes .ui-btn; local: hidden until the tab row overflows, then the
-   active-tab pill look. */
+   active-tab pill look. The pill holds through hover, the way the active tab's
+   does: the primitive's hover wash outranks this class and would otherwise lay
+   a pale ground under the pill's light ink. */
+.toc-tabs-select,
+.toc-tabs-select:hover {
+    background: var(--vscode-list-activeSelectionBackground);
+    color: var(--vscode-list-activeSelectionForeground);
+}
 .toc-tabs-select {
     display: none;
     gap: 5px;
     padding: 3px 8px;
-    background: var(--vscode-list-activeSelectionBackground);
-    color: var(--vscode-list-activeSelectionForeground);
     font-weight: 600;
 }
 .toc-tabs--select .toc-tabs-select {
@@ -238,16 +243,26 @@
     box-shadow: var(--ui-card-shadow);
 }
 /* Composes .ui-menu-row; local: compact rhythm + rounded rows (this menu
-   is a padded card, so rows are inset chips rather than edge-to-edge). */
+   is a padded card, so rows are inset chips rather than edge-to-edge).
+
+   One highlight, and it is focus: the pointer moves focus (openTabsMenu), so
+   the row Enter fires is the row that looks highlighted. The current tab is
+   marked by weight alone, because the pill above already names it, and a
+   second fill on it would compete with the highlight as soon as the two rows
+   differ. The global focus ring stands down here for the same reason: the
+   wash is the focus indicator, and a ring on top of it is a second one. */
 .toc-tabs-menu__item {
     padding: 4px 8px;
     border-radius: var(--ui-radius-s);
     color: var(--vscode-foreground);
 }
+.toc-tabs-menu .toc-tabs-menu__item:is(:hover, :focus) {
+    background: var(--ui-menu-hover-bg);
+    color: var(--ui-menu-hover-ink);
+    outline: none;
+}
 .toc-tabs-menu__item--active {
     font-weight: 600;
-    background: var(--vscode-list-activeSelectionBackground);
-    color: var(--vscode-list-activeSelectionForeground);
 }
 
 /* The sort toggle mirrors the tabs' minimal idiom one size down — no border
@@ -522,9 +537,17 @@
 /* Type grade from .ui-label (ui/typography.css) — size, weight and ink in
    one place. The per-level rules below still win on source order, since
    typography.css is imported ahead of every component sheet. */
+/* A row is as wide as its text, so hover and the active highlight wrap the
+   heading rather than banding the panel. Its indent is a MARGIN (set per row
+   in index.ts) for the same reason: padding would carry the highlight out to
+   the list's edge, and the caret hangs in that margin rather than inside the
+   row. Fit-content still clamps to the room left, so a long heading
+   ellipsizes as it did. */
 .toc-item {
+    position: relative;
     display: flex;
     align-items: center;
+    width: fit-content;
     padding: 4px 8px;
     line-height: 1.5;
     cursor: pointer;
@@ -539,14 +562,19 @@
     white-space: nowrap;
 }
 /* Disclosure caret in the left gutter — the same triangle the review groups use.
-   Reserved on every row (a fixed gutter); the glyph shows only for a foldable
-   heading on hover, and stays while that heading is collapsed. */
+   Present on every row; the glyph shows only for a foldable heading on hover,
+   and stays while that heading is collapsed. It hangs outside the row's box,
+   in the indent margin, so the highlight is the text's alone; a positioned
+   child still hovers its row. */
 .toc-caret {
-    flex: 0 0 auto;
-    align-self: stretch;
-    position: relative;
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: -12px;
     width: 13px;
-    margin-left: -3px;
+    /* Outside the row's ground, so not the row's ink: an active row's light
+       selection ink would draw it on the panel, where it vanishes. */
+    color: var(--vscode-foreground);
 }
 .toc-caret::before {
     content: "";

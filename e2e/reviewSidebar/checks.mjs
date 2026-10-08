@@ -308,6 +308,50 @@ export async function run({ page, check, baseUrl }) {
             (await page.evaluate(() => document.querySelector(".toc-tabs-menu").hidden))
             && (await focusedIn(".toc-tabs-select")),
             await focusedText());
+
+        // The pill holds through hover. `.ui-btn:hover` outranks the select's
+        // own class, so it used to lay the pale hover wash under the pill's
+        // light ink, a label that all but vanished under the pointer.
+        const selGround = () => page.evaluate(() => getComputedStyle(document.querySelector(".toc-tabs-select")).backgroundColor);
+        await page.mouse.move(5, 5);
+        const restingGround = await selGround();
+        await selBtn.hover();
+        await page.waitForTimeout(80);
+        const hoveredGround = await selGround();
+        check("hovering the tab select keeps its pill ground (no pale wash under its light ink)",
+            hoveredGround === restingGround, JSON.stringify({ restingGround, hoveredGround }));
+
+        // One highlight in the open menu, and it is the focused row: the
+        // current tab is marked by weight, never by a second fill, and the
+        // global focus ring does not stack on the wash.
+        const menuState = () => page.evaluate(() => {
+            const rows = [...document.querySelectorAll(".toc-tabs-menu__item")];
+            const filled = (el) => !/rgba\(0, 0, 0, 0\)|transparent/.test(getComputedStyle(el).backgroundColor);
+            return {
+                rows: rows.length,
+                filled: rows.filter(filled).map((el) => el.textContent),
+                focused: document.activeElement?.textContent ?? null,
+                ringed: rows.filter((el) => getComputedStyle(el).outlineStyle !== "none").map((el) => el.textContent),
+            };
+        });
+        await selBtn.click();
+        await page.waitForTimeout(150);
+        const opened = await menuState();
+        check("the open tab menu has more than one row (guard the guard)", opened.rows > 1, JSON.stringify(opened));
+        check("the open tab menu fills exactly the focused row, with no focus ring on top",
+            opened.filled.length === 1 && opened.filled[0] === opened.focused && opened.ringed.length === 0,
+            JSON.stringify(opened));
+        const other = page.locator(".toc-tabs-menu__item:not(.toc-tabs-menu__item--active)").first();
+        const otherText = await other.textContent();
+        await other.hover({ position: { x: 8, y: 4 } });
+        await other.hover({ position: { x: 16, y: 6 } });
+        await page.waitForTimeout(80);
+        const hovered = await menuState();
+        check("moving the pointer onto another row moves the one highlight there",
+            hovered.focused === otherText && hovered.filled.length === 1 && hovered.filled[0] === otherText,
+            JSON.stringify(hovered));
+        await page.keyboard.press("Escape");
+        await page.waitForTimeout(120);
         await switchTab(page, "Notes"); // restore for the checks below
     } else {
         check("in select mode the tab select carries the strip's tab stop", true, "strip not in select mode here");
