@@ -282,7 +282,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding, 
         // would begin monitoring inside the very check it was being consulted
         // by, and answer from no path at all.
         NetworkPath.start()
-        updater.onStatus = { [weak self] message in self?.front?.flashStatus(message) }
+        updater.onStatus = { [weak self] message in
+            guard let self else { return }
+            // While an install somebody confirmed is in flight, its phases are
+            // the card's title rather than lines that fade on their own: the
+            // card is what they are watching.
+            if self.windows.isShowingUpdateProgress {
+                self.windows.showUpdateProgress(message, detail: self.installProgressDetail)
+            } else {
+                self.front?.flashStatus(message)
+            }
+        }
         // Off the main-queue drain before anything modal. `onUpdateAvailable`
         // fires from inside `Updater`'s continuation, and an `NSAlert` spun
         // from there runs a nested run loop that libdispatch will not
@@ -1276,9 +1286,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding, 
         return front.promptWindow
     }
 
+    /// The card's second line for the install in flight, fixed when it went up.
+    private var installProgressDetail = ""
+
     /// Download, verify and arm the swap, then quit so it can run.
+    ///
+    /// The windows are dimmed and say what is happening from the moment the
+    /// answer arrives until the app goes, because the sheet that asked has
+    /// already closed and the download is still to come (`UpdateProgressCover`).
     private func installUpdate() {
         guard let release = updater.available else { return }
+        installProgressDetail = UpdatePolicy.installProgressDetail(
+            appName: AppFlavor.current.displayName,
+            hasUnwrittenBytes: windows.windows.contains(where: \.hasUnwrittenBytes))
+        // Summoned if nothing is on screen: Install Now can be answered from
+        // Settings with every panel hidden, and a card nobody can see is the
+        // silence this exists to end.
+        if !(front?.isOnScreen ?? false) { windows.summonAll() }
+        windows.showUpdateProgress(
+            updater.staged?.tag == release.tag
+                ? UpdatePolicy.installingNotice(tag: release.tag)
+                : UpdatePolicy.downloadingNotice(tag: release.tag),
+            detail: installProgressDetail)
         updater.install(release) { ok in
             // Quitting is what performs the swap: the staged script waits for
             // this process to go. Through the ordinary
@@ -1297,6 +1326,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding, 
             // NOT `prepareToTerminate` directly either: `applicationShouldTerminate`
             // is its only caller, and calling it here would run the flush twice.
             guard ok else {
+                self.windows.hideUpdateProgress()
                 self.reportInstallFailure()
                 return
             }

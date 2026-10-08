@@ -2321,6 +2321,10 @@ final class Coordinator {
         // would write them.
         if isWelcoming {
             panel.makeFirstResponder(welcome)
+        } else if isShowingUpdateProgress {
+            // The same wall for the same reason: a summon during the download
+            // must not hand the keyboard back to the page under the cover.
+            panel.makeFirstResponder(updateCover)
         } else {
             panel.makeFirstResponder(host.webView)
             if state == .warm { host.focusEditor() }
@@ -4247,6 +4251,41 @@ final class Coordinator {
         statusOverlay.flash(message)
     }
 
+    /// Laid over the whole window while an update somebody confirmed is on
+    /// its way in. `UpdateProgressCover` says why it holds the page.
+    private let updateCover = UpdateProgressCover()
+
+    /// Whether the update cover is on the window right now.
+    var isShowingUpdateProgress: Bool { updateCover.superview != nil }
+
+    /// Dim the document, take it out of reach, and say what the update is
+    /// doing. Called again for each phase, which only rewrites the card.
+    ///
+    /// Added on top of everything in the content view at the moment it goes
+    /// up, rather than kept in the z-order from the start: the missing-file
+    /// screen and the titlebar strip are both above the page, and the cover
+    /// has to be above them too.
+    func showUpdateProgress(_ title: String, detail: String) {
+        if updateCover.superview == nil {
+            updateCover.frame = contentView.bounds
+            updateCover.autoresizingMask = [.width, .height]
+            contentView.addSubview(updateCover, positioned: .above, relativeTo: nil)
+            // The caret leaves the page with the pointer: a key typed into a
+            // page that is about to be written and quit is a key the person
+            // may believe was kept.
+            panel.makeFirstResponder(updateCover)
+        }
+        updateCover.show(title, detail: detail)
+    }
+
+    /// Give the page back, after an update that did not go in.
+    func hideUpdateProgress() {
+        guard updateCover.superview != nil else { return }
+        updateCover.stop()
+        updateCover.removeFromSuperview()
+        panel.makeFirstResponder(host.webView)
+    }
+
     /// The window an offer about this app should be attached to.
     var promptWindow: NSWindow { panel }
 
@@ -5475,7 +5514,7 @@ final class Coordinator {
     }
 
     private func focusEditorIfVisible() {
-        guard panel.isVisible else { return }
+        guard panel.isVisible, !isShowingUpdateProgress else { return }
         panel.makeFirstResponder(host.webView)
         if state == .warm { host.focusEditor() }
     }
@@ -5623,6 +5662,7 @@ final class Coordinator {
         panel.backgroundColor = bg
         host.webView.underPageBackgroundColor = bg
         statusOverlay.paper = bg
+        updateCover.paper = bg
         if !initial {
             host.setTheme(class: cls, css: appearance.stylesheet())
             // The page's palette has just flipped, and half this band's chrome
