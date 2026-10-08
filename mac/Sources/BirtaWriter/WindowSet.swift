@@ -164,6 +164,10 @@ final class WindowSet {
             self?.newNote(in: folder, beside: coordinator)
         }
         coordinator.onFolderDefault = { [weak self] root in self?.folderDefault(in: root) }
+        coordinator.onTrashFolder = { [weak self, weak coordinator] folder in
+            guard let coordinator else { return }
+            self?.trashFolder(folder, from: coordinator)
+        }
         coordinator.onOpenDocumentPanel = { [weak self] in self?.openDocumentPanel() }
         coordinator.onFolderIndexRequest = { [weak self, weak coordinator] in
             guard let coordinator else { return }
@@ -765,6 +769,55 @@ final class WindowSet {
         } catch {
             NSLog("Birta Writer: could not make a note in \(root.path): \(error)")
             return nil
+        }
+    }
+
+    /// Move a folder of `origin`'s explorer to the Trash, and move on every
+    /// tab of `origin`'s group that was on a file inside it, as trashing the
+    /// file a tab is on does (`Coordinator.moveToTrash`): each tab opens the
+    /// folder window's own choice of file (`folderDefault`).
+    ///
+    /// Every affected tab is settled before the one trash, so a write
+    /// autosave owes lands in the folder before it goes rather than
+    /// recreating it afterwards. A tab whose buffer is still ahead of its
+    /// file stays where it is, and its missing-file card offers Restore.
+    ///
+    /// Only this group moves on, because it is the window the reader acted
+    /// in. A tab of another window on a file inside the folder hears about
+    /// it the way it hears about a Finder trash, through its watcher: the card
+    /// saying the file is in the Trash, with Restore.
+    func trashFolder(_ folder: URL, from origin: Coordinator) {
+        guard let root = origin.explorerRoot else {
+            origin.trash(folder)
+            return
+        }
+        let affected = windows(rootedAt: root).filter { DirectoryListing.isInside($0.boundFile, root: folder) }
+        guard !affected.isEmpty else {
+            origin.trash(folder)
+            return
+        }
+        var mayLeave: [ObjectIdentifier: Bool] = [:]
+        let settled = DispatchGroup()
+        for tab in affected {
+            settled.enter()
+            tab.settleBeforeTrash { leave in
+                mayLeave[ObjectIdentifier(tab)] = leave
+                settled.leave()
+            }
+        }
+        settled.notify(queue: .main) { [weak self, weak origin] in
+            guard let self, let origin, origin.trash(folder) else { return }
+            // Trash and rebind in one turn, as the single-file path does, so
+            // no watcher's report of the trash reaches a tab that moved on.
+            // One at a time through `folderDefault`, which skips a file open
+            // in any window, so two tabs never land on the same file.
+            for tab in affected where mayLeave[ObjectIdentifier(tab)] == true {
+                guard let next = self.folderDefault(in: root) else { continue }
+                tab.openInPlace(next, slot: nil)
+            }
+            // `openInPlace` shows each tab it rebinds; the reader's own tab
+            // is the one left in front.
+            if affected.count > 1 || !affected.contains(where: { $0 === origin }) { origin.show() }
         }
     }
 

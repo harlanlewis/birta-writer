@@ -10,7 +10,7 @@ import Foundation
 /// a file.
 ///
 /// The set is the standard one for a file sidebar and no more: where the
-/// file opens, where it is, and where it goes. Rename is deliberately absent,
+/// entry opens, where it is, and where it goes. Rename is deliberately absent,
 /// because the app renames a file from its title (the popover the window's
 /// name opens), and one rename with two doors is two answers about what
 /// happens to a file that is open in another tab.
@@ -28,6 +28,10 @@ public enum ExplorerMenu {
         case openInNewTab
         /// A note made in this folder, opened as a tab.
         case newNoteInside
+        /// The folder as a window of its own, rooted there: the Finder's
+        /// Open in New Window. A tab is what a document opens as; a folder
+        /// has no page to show in one, so the window is its whole answer.
+        case openInNewWindow
         case revealInFinder
         case copyPath
         case moveToTrash
@@ -55,19 +59,19 @@ public enum ExplorerMenu {
             rows.append(.separator)
         case .folder:
             rows.append(Item("New Note in “\(name)”", .newNoteInside))
+            rows.append(Item("Open in New Window", .openInNewWindow))
             rows.append(.separator)
         case .other:
             break
         }
         rows.append(Item("Reveal in Finder", .revealInFinder))
         rows.append(Item("Copy Path", .copyPath))
-        if kind != .folder {
-            // A folder is trashed from the Finder, where what it holds is in
-            // view; a sidebar row shows a name and would trash the tree under
-            // it in one click.
-            rows.append(.separator)
-            rows.append(Item("Move to Trash", .moveToTrash))
-        }
+        // A folder too. A sidebar row shows only a name, so what a folder's
+        // row would take with it is not in view; the confirmation says how
+        // much it holds (`trashConfirmation(name:contents:)`) before anything
+        // moves, and the Trash gives the whole tree back.
+        rows.append(.separator)
+        rows.append(Item("Move to Trash", .moveToTrash))
         return rows
     }
 
@@ -82,9 +86,27 @@ public enum ExplorerMenu {
         public let cancel: String
     }
 
-    public static func trashConfirmation(name: String) -> TrashConfirmation {
-        TrashConfirmation(
-            message: "Move “\(name)” to the Trash?",
+    /// What is being trashed, as far as the question needs to know.
+    public enum TrashContents: Equatable, Sendable {
+        case file
+        /// A folder and how many entries are under it, at any depth
+        /// (`DirectoryListing.itemCount`). `capped` says the count stopped at
+        /// its ceiling, so `items` is a floor rather than the total.
+        case folder(items: Int, capped: Bool)
+    }
+
+    public static func trashConfirmation(name: String, contents: TrashContents = .file) -> TrashConfirmation {
+        let message: String
+        switch contents {
+        case .file, .folder(items: 0, capped: false):
+            message = "Move “\(name)” to the Trash?"
+        case .folder(let items, let capped):
+            let count = items.formatted()
+            let what = capped ? "more than \(count) items" : items == 1 ? "the 1 item" : "the \(count) items"
+            message = "Move “\(name)” and \(what) in it to the Trash?"
+        }
+        return TrashConfirmation(
+            message: message,
             detail: "You can put it back from the Trash in the Finder.",
             confirm: "Move to Trash",
             cancel: "Cancel")

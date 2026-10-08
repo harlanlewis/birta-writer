@@ -71,4 +71,30 @@ final class NoteWatcherTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: next.path))
         watcher.stop()
     }
+
+    /// A folder trashed from the explorer reaches a tab of ANOTHER window on
+    /// a file inside it only through that tab's watcher
+    /// (`WindowSet.trashFolder`). The folder moving has to read as the file
+    /// going to the Trash, with where it went, or that tab's card cannot
+    /// offer Restore.
+    func testAFileWhoseFolderIsTrashedShouldBeReportedInTheTrash() throws {
+        let watcher = NoteWatcher()
+        let inner = folder.appendingPathComponent("Daily", isDirectory: true)
+        try FileManager.default.createDirectory(at: inner, withIntermediateDirectories: true)
+        let file = inner.appendingPathComponent("today.md")
+        try Data("x".utf8).write(to: file)
+        var landedAt: URL?
+        let reported = expectation(description: "the folder's trash was reported")
+        watcher.onDeleted = { trashed in
+            landedAt = trashed
+            reported.fulfill()
+        }
+        watcher.watch(file)
+        try trash(inner)
+        wait(for: [reported], timeout: 5)
+        let landed = try XCTUnwrap(landedAt, "reported with no destination, so nothing to restore from")
+        XCTAssertEqual(landed.lastPathComponent, "today.md")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: landed.path), "the destination holds the file")
+        watcher.stop()
+    }
 }
