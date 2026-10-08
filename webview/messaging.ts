@@ -424,6 +424,14 @@ export function notifyOpenProjectFile(path: string, newTab: boolean, line?: numb
     vscode.postMessage({ type: "openProjectFile", path, newTab, ...(line === undefined ? {} : { line }) });
 }
 
+/**
+ * The path bar's `…` was pressed: the folded segments, root first, and the
+ * viewport point to put the host's menu at.
+ */
+export function notifyPathBarMenu(segments: { name: string; path: string }[], x: number, y: number): void {
+    vscode.postMessage({ type: "pathBarMenu", segments, x, y });
+}
+
 /** A path bar segment was clicked; the host shows it in its file manager. */
 export function notifyRevealPath(path: string): void {
     vscode.postMessage({ type: "revealPath", path });

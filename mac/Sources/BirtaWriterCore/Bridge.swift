@@ -168,6 +168,11 @@ public enum WebviewMessage: Equatable {
     /// handed it in `pathBar`. The host shows that folder (or selects that
     /// file) in the Finder, and refuses a path its own bar did not draw.
     case revealPath(String)
+    /// The path bar's `…` was pressed: the segments it folded away, root
+    /// first, each with the name the bar gave it, and the point in the page to
+    /// put the menu at. The host draws its own menu of them, as the title's
+    /// path popup is drawn, and a pick goes the way `revealPath` does.
+    case pathBarMenu(segments: [PathBarMenuEntry], x: Double, y: Double)
     /// The three things the explorer remembers, as the outline panel's are
     /// remembered: its width and whether it is out, per app, and whether
     /// dotfiles are listed, which is the host's setting because the host's
@@ -354,6 +359,14 @@ public enum WebviewMessage: Equatable {
             return str("path").map { .openProjectFile(path: $0, newTab: bool("newTab") ?? false, line: int("line")) } ?? .other(type: type)
         case "requestFolderIndex": return .requestFolderIndex
         case "revealPath": return str("path").map { .revealPath($0) } ?? .other(type: type)
+        case "pathBarMenu":
+            guard let raw = dict["segments"] as? [[String: Any]],
+                  let x = dict["x"] as? NSNumber, let y = dict["y"] as? NSNumber else { return .other(type: type) }
+            let entries = raw.compactMap { entry -> PathBarMenuEntry? in
+                guard let name = entry["name"] as? String, let path = entry["path"] as? String else { return nil }
+                return PathBarMenuEntry(name: name, path: path)
+            }
+            return .pathBarMenu(segments: entries, x: x.doubleValue, y: y.doubleValue)
         case "projectFileMenu":
             guard let path = str("path"), let kind = str("kind"),
                   let x = dict["x"] as? NSNumber, let y = dict["y"] as? NSNumber else { return .other(type: type) }

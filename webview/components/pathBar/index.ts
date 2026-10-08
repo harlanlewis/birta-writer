@@ -22,11 +22,18 @@
  * Its leading edge is the formatting row's (toolbar/dock.css), keyed on the
  * same body classes, so the bar and the row start on one line however the
  * side panels are docked.
+ *
+ * A narrow window folds segments rather than squeezing them: the middle
+ * folders go into one `…` button, nearest the root first (`collapse.ts`), and
+ * the `…` asks the host for its own menu of them (`pathBarMenu`), drawn as the
+ * title's path popup is. Every visible segment keeps its whole name except the
+ * file's, which truncates once nothing else is left to fold.
  */
 import type { PathBarSegment } from "../../../shared/messages";
 import { t } from "../../i18n";
-import { notifyRevealPath } from "../../messaging";
-import { IconChevronRight, IconFileText, IconFolder } from "../../ui/icons";
+import { notifyPathBarMenu, notifyRevealPath } from "../../messaging";
+import { IconChevronRight, IconEllipsis, IconFileText, IconFolder } from "../../ui/icons";
+import { foldedSegments } from "./collapse";
 import { IconCloud, IconHardDrive, IconHome } from "./icons";
 import { ensurePathBarStyles } from "./styles";
 
@@ -50,19 +57,43 @@ function actionLabel(segment: PathBarSegment): string {
         : `${t("Open in Finder")}: ${segment.name}`;
 }
 
+function chevron(): HTMLElement {
+    const el = document.createElement("span");
+    el.className = "path-bar__chevron";
+    el.setAttribute("aria-hidden", "true");
+    el.innerHTML = IconChevronRight;
+    return el;
+}
+
+interface Built {
+    nav: HTMLElement;
+    list: HTMLElement;
+    /** One per segment, root first. */
+    items: HTMLElement[];
+    more: HTMLElement;
+    moreButton: HTMLButtonElement;
+    segments: readonly PathBarSegment[];
+    /** Natural widths, taken once per path; a resize re-plans from these. */
+    widths: number[] | null;
+    moreWidth: number;
+    folded: number[];
+}
+
 export function createPathBar(): PathBarController {
     ensurePathBarStyles();
-    let nav: HTMLElement | null = null;
+    let built: Built | null = null;
+    let frame = 0;
 
-    const build = (segments: readonly PathBarSegment[]): HTMLElement => {
-        const el = document.createElement("nav");
-        el.className = "path-bar";
-        el.setAttribute("aria-label", t("File path"));
+    const build = (segments: readonly PathBarSegment[]): Built => {
+        const nav = document.createElement("nav");
+        nav.className = "path-bar";
+        nav.setAttribute("aria-label", t("File path"));
         const list = document.createElement("ol");
         list.className = "path-bar__list";
-        segments.forEach((segment, i) => {
+        const items = segments.map((segment, i) => {
             const item = document.createElement("li");
             item.className = "path-bar__item";
+            if (i === segments.length - 1) { item.classList.add("path-bar__item--file"); }
             const btn = document.createElement("button");
             btn.type = "button";
             btn.className = "ui-btn path-bar__segment";
@@ -80,26 +111,65 @@ export function createPathBar(): PathBarController {
             btn.append(icon, label);
             btn.addEventListener("click", () => notifyRevealPath(segment.path));
             item.appendChild(btn);
-            if (i < segments.length - 1) {
-                const chevron = document.createElement("span");
-                chevron.className = "path-bar__chevron";
-                chevron.setAttribute("aria-hidden", "true");
-                chevron.innerHTML = IconChevronRight;
-                item.appendChild(chevron);
-            }
-            list.appendChild(item);
+            if (i < segments.length - 1) { item.appendChild(chevron()); }
+            return item;
         });
-        el.appendChild(list);
-        return el;
+        // The `…`, after the root, so a fold of the middle reads root › … ›
+        // and a fold that takes the root as well leads with it.
+        const more = document.createElement("li");
+        more.className = "path-bar__item path-bar__item--more";
+        more.hidden = true;
+        const moreButton = document.createElement("button");
+        moreButton.type = "button";
+        moreButton.className = "ui-btn path-bar__segment path-bar__more";
+        moreButton.title = t("Show folders");
+        moreButton.setAttribute("aria-label", t("Show folders"));
+        moreButton.setAttribute("aria-haspopup", "menu");
+        moreButton.innerHTML = `<span class="path-bar__icon" aria-hidden="true">${IconEllipsis}</span>`;
+        more.append(moreButton, chevron());
+        list.append(...items.slice(0, 1), more, ...items.slice(1));
+        nav.appendChild(list);
+        const state: Built = { nav, list, items, more, moreButton, segments, widths: null, moreWidth: 0, folded: [] };
+        moreButton.addEventListener("click", () => {
+            const r = moreButton.getBoundingClientRect();
+            notifyPathBarMenu(state.folded.map((i) => ({ name: segments[i].name, path: segments[i].path })),
+                r.left, r.top);
+        });
+        return state;
     };
+
+    /** Take the natural widths, with nothing folded and nothing shrinking. */
+    const measure = (b: Built): void => {
+        b.nav.classList.add("path-bar--measuring");
+        b.items.forEach((item) => { item.hidden = false; });
+        b.more.hidden = false;
+        b.widths = b.items.map((item) => item.getBoundingClientRect().width);
+        b.moreWidth = b.more.getBoundingClientRect().width;
+        b.nav.classList.remove("path-bar--measuring");
+    };
+
+    const fold = (b: Built): void => {
+        if (!b.widths) { measure(b); }
+        const available = b.list.clientWidth;
+        b.folded = foldedSegments(b.widths ?? [], b.moreWidth, available);
+        b.items.forEach((item, i) => { item.hidden = b.folded.includes(i); });
+        b.more.hidden = b.folded.length === 0;
+    };
+
+    const observer = new ResizeObserver(() => {
+        cancelAnimationFrame(frame);
+        frame = requestAnimationFrame(() => { if (built) { fold(built); } });
+    });
 
     return {
         set(segments) {
-            nav?.remove();
-            nav = null;
+            if (built) { observer.unobserve(built.nav); built.nav.remove(); }
+            built = null;
             if (!segments?.length) { return; }
-            nav = build(segments);
-            document.body.appendChild(nav);
+            built = build(segments);
+            document.body.appendChild(built.nav);
+            fold(built);
+            observer.observe(built.nav);
         },
     };
 }

@@ -651,4 +651,12 @@ final class BridgeTests: XCTestCase {
                        .revealPath("/Users/ada/Notes"))
         XCTAssertEqual(WebviewMessage.parse(#"{"type":"revealPath"}"#), .other(type: "revealPath"))
     }
+
+    func testTheEllipsisShouldArriveAsItsFoldedSegmentsAndAPoint() {
+        let parsed = WebviewMessage.parse(
+            #"{"type":"pathBarMenu","segments":[{"name":"Notes","path":"/n"},{"name":"x"}],"x":4,"y":500}"#)
+        XCTAssertEqual(parsed, .pathBarMenu(segments: [PathBarMenuEntry(name: "Notes", path: "/n")], x: 4, y: 500),
+                       "an entry without a path is dropped, not guessed at")
+        XCTAssertEqual(WebviewMessage.parse(#"{"type":"pathBarMenu","segments":[]}"#), .other(type: "pathBarMenu"))
+    }
 }

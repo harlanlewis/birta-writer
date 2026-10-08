@@ -30,7 +30,7 @@ export async function run({ page, check, baseUrl }) {
 
     const drawn = await page.evaluate(() => {
         const bar = document.querySelector(".path-bar");
-        const buttons = [...bar.querySelectorAll(".path-bar__segment")];
+        const buttons = [...bar.querySelectorAll(".path-bar__item:not([hidden]) .path-bar__segment")];
         const firstIcon = buttons[0].querySelector(".path-bar__icon").getBoundingClientRect();
         // Where the formatting row's first control starts its content: its
         // box plus border and padding, which holds whatever the paragraph
@@ -43,7 +43,7 @@ export async function run({ page, check, baseUrl }) {
         const r = bar.getBoundingClientRect();
         return {
             labels: buttons.map((b) => b.textContent),
-            chevrons: bar.querySelectorAll(".path-bar__chevron").length,
+            chevrons: bar.querySelectorAll(".path-bar__item:not([hidden]) .path-bar__chevron").length,
             current: buttons.map((b) => b.getAttribute("aria-current")),
             navLabel: bar.getAttribute("aria-label"),
             accessible: buttons.every((b) => b.tagName === "BUTTON" && b.getAttribute("aria-label")),
@@ -80,6 +80,69 @@ export async function run({ page, check, baseUrl }) {
     const reveals = await page.evaluate(() => window.__posted.filter((m) => m.type === "revealPath").map((m) => m.path));
     check("a folder and the file each hand their own path back as revealPath",
         JSON.stringify(reveals) === JSON.stringify([SEGMENTS[1].path, SEGMENTS[2].path]), JSON.stringify(reveals));
+
+    // ── Narrowing: fold, never overlap ────────────────────────────────
+    const DEEP = [
+        { name: "iCloud Drive", path: "/c", kind: "cloud" },
+        { name: "Obsidian", path: "/c/o", kind: "folder" },
+        { name: "Harlan", path: "/c/o/h", kind: "folder" },
+        { name: "Voice Notes", path: "/c/o/h/v", kind: "folder" },
+        { name: "2026-10-06 2000 - Testing.md", path: "/c/o/h/v/t.md", kind: "file" },
+    ];
+    await send({ type: "setFormattingRowExpanded", expanded: false });
+    await send({ type: "pathBar", segments: DEEP });
+    await page.waitForTimeout(150);
+    const original = page.viewportSize();
+    const readings = [];
+    for (const width of [1000, 560, 460, 380, 300, 240, 180]) {
+        await page.setViewportSize({ width, height: original.height });
+        await page.waitForTimeout(120);
+        readings.push(await page.evaluate((w) => {
+            const items = [...document.querySelectorAll(".path-bar__item")].filter((el) => !el.hidden);
+            const boxes = items.map((el) => el.getBoundingClientRect());
+            const overlaps = boxes.some((b, i) => i > 0 && b.left < boxes[i - 1].right - 0.5);
+            const labels = [...document.querySelectorAll(".path-bar__item:not([hidden]) .path-bar__label")];
+            const list = document.querySelector(".path-bar__list").getBoundingClientRect();
+            return {
+                w,
+                shown: items.map((el) => el.classList.contains("path-bar__item--more")
+                    ? "…" : el.querySelector(".path-bar__label").textContent),
+                overlaps,
+                overflows: boxes.some((b) => b.right > list.right + 0.5),
+                // Only the file's label may be cut short.
+                truncatedNonFile: labels.slice(0, -1).some((l) => l.scrollWidth > l.clientWidth + 1),
+            };
+        }, width));
+    }
+    check("narrowing never draws one segment over another, or past the bar's end",
+        readings.every((r) => !r.overlaps && !r.overflows), JSON.stringify(readings));
+    check("only the file's name is ever truncated; every other visible name is whole",
+        readings.every((r) => !r.truncatedNonFile), JSON.stringify(readings));
+    const order = readings.map((r) => r.shown.join(" › "));
+    check("the wide bar shows every segment, and the narrowest keeps the file behind the ellipsis",
+        readings[0].shown.length === 5 && !readings[0].shown.includes("…")
+            && JSON.stringify(readings.at(-1).shown) === JSON.stringify(["…", "2026-10-06 2000 - Testing.md"]),
+        JSON.stringify(order));
+    check("folding is progressive: each narrower step shows a subset of the step before, middle first",
+        readings.every((r, i) => i === 0 || r.shown.filter((x) => x !== "…").every((x) => readings[i - 1].shown.includes(x)))
+            && order.some((o) => o.startsWith("iCloud Drive › … ›")),
+        JSON.stringify(order));
+
+    // The ellipsis hands the host exactly what it folded, root first.
+    const midWidth = readings.find((r) => r.shown[0] === "iCloud Drive" && r.shown.includes("…")).w;
+    await page.setViewportSize({ width: midWidth, height: original.height });
+    await page.waitForTimeout(120);
+    await page.locator(".path-bar__more").click();
+    const menu = await page.evaluate(() => window.__posted.filter((m) => m.type === "pathBarMenu").at(-1));
+    const hiddenNames = await page.$$eval(".path-bar__item[hidden] .path-bar__label", (ls) => ls.map((l) => l.textContent));
+    check("the ellipsis posts pathBarMenu with the folded segments, by name and path, root first",
+        menu && JSON.stringify(menu.segments.map((x) => x.name)) === JSON.stringify(hiddenNames)
+            && menu.segments.every((x) => DEEP.some((d) => d.path === x.path && d.name === x.name))
+            && Number.isFinite(menu.x) && Number.isFinite(menu.y),
+        JSON.stringify({ menu, hiddenNames }));
+    check("the ellipsis says it opens a menu",
+        await page.$eval(".path-bar__more", (b) => b.getAttribute("aria-haspopup") === "menu" && !!b.getAttribute("aria-label")));
+    await page.setViewportSize(original);
 
     await send({ type: "pathBar", segments: [SEGMENTS[0], { ...SEGMENTS[2], name: "Renamed.md" }] });
     await page.waitForTimeout(100);
