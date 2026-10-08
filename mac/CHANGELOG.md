@@ -12,6 +12,10 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ## [Unreleased]
 
+---
+
+## [2026.1008.0] - 2026, October 8
+
 ### Added
 
 - Birta Writer for Mac can show where a note is at the foot of its window: View > Show Path Bar (Option+Command+P, the Finder's chord), or Show Path Bar in the command palette. It lists the folders down to the note, starting from iCloud Drive, your home folder or the disk. Click a folder to open it in the Finder, or the note's own name to select it there. In a narrow window the middle folders fold into a … button that lists them in a menu drawn like the one Command-clicking the window title opens. The setting applies to every window and is off until you turn it on.
