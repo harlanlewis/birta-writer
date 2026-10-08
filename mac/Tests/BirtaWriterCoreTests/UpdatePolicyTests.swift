@@ -14,6 +14,20 @@ final class UpdatePolicyTests: XCTestCase {
     /// bundle checks the words rather than the bundle it happens to be in.
     private let app = "Birta Writer"
 
+    /// The card under a confirmed install promises a save only when the sheet
+    /// just answered offered one, and both arms say why the page went quiet.
+    func testTheInstallCardShouldNameTheSaveOnlyWhenThereIsSomethingToSave() {
+        let unsaved = UpdatePolicy.installProgressDetail(appName: app, hasUnwrittenBytes: true)
+        let clean = UpdatePolicy.installProgressDetail(appName: app, hasUnwrittenBytes: false)
+        XCTAssertTrue(unsaved.contains("saves your note"), unsaved)
+        XCTAssertFalse(clean.contains("save"), clean)
+        for text in [unsaved, clean] {
+            XCTAssertTrue(text.hasPrefix("Editing is paused."), text)
+            XCTAssertTrue(text.contains("restarts by itself"), text)
+            XCTAssertTrue(text.contains(app), text)
+        }
+    }
+
     func testAnAppThatHasNeverCheckedShouldCheck() {
         XCTAssertTrue(UpdatePolicy.shouldCheck(now: now, lastCheck: nil))
     }

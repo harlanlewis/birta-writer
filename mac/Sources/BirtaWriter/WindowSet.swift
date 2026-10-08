@@ -1551,6 +1551,21 @@ final class WindowSet {
         windows.forEach { $0.quitIsUnattended = true }
     }
 
+    /// Every window dims and says what the update is doing, because the
+    /// restart that ends this takes all of them, not only the one the offer
+    /// was answered on.
+    func showUpdateProgress(_ title: String, detail: String) {
+        windows.forEach { $0.showUpdateProgress(title, detail: detail) }
+    }
+
+    /// Whether an update cover is up, which is what decides where the
+    /// updater's status lines go.
+    var isShowingUpdateProgress: Bool { windows.contains { $0.isShowingUpdateProgress } }
+
+    func hideUpdateProgress() {
+        windows.forEach { $0.hideUpdateProgress() }
+    }
+
     /// Every window re-reads the Spaces membership the Dock setting implies.
     /// `BirtaWriterCore.WindowPolicy` is the rule and
     /// `AppDelegate.applyActivationPolicy` is the one caller.

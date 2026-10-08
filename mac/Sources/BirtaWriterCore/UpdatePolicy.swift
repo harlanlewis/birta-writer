@@ -482,6 +482,21 @@ public enum UpdatePolicy {
         "Installing \(plain(tag))…"
     }
 
+    /// The line under those two on the card a window shows between somebody
+    /// confirming an update and the app quitting to put it in.
+    ///
+    /// It answers the two questions the dimmed page raises: why typing does
+    /// nothing, and what happens next. The save is named only when there is
+    /// something to save, because the sheet that was just answered named it
+    /// on the same condition, and the person is checking that it was heard.
+    /// The save is a promise about the quit, never a claim that it has
+    /// happened: the note is written on the way out, after the download.
+    public static func installProgressDetail(appName: String, hasUnwrittenBytes: Bool) -> String {
+        hasUnwrittenBytes
+            ? "Editing is paused. \(appName) saves your note, then restarts by itself."
+            : "Editing is paused. \(appName) restarts by itself when the update is ready."
+    }
+
     /// A version as a person reads it: the tag's leading `v` is the
     /// repository's convention, and a bundle version never carries one.
     ///
