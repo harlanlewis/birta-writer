@@ -172,4 +172,34 @@ final class DirectoryListingTests: XCTestCase {
         let empty = root.appendingPathComponent("zeta")
         XCTAssertNil(DirectoryListing.firstToOpen(in: empty, recents: [], accepts: accepts))
     }
+
+    // MARK: itemCount
+
+    func testItemCountShouldCountEveryEntryAtAnyDepthHiddenIncluded() {
+        // zeta, alpha, .git, five files at the top and alpha/inner.md.
+        let counted = DirectoryListing.itemCount(in: root)
+        XCTAssertEqual(counted.items, 9)
+        XCTAssertFalse(counted.capped)
+    }
+
+    func testItemCountShouldLeaveOutTheFindersOwnFileAndCountAPackageOnce() throws {
+        let fm = FileManager.default
+        try Data().write(to: root.appendingPathComponent(".DS_Store"))
+        try Data().write(to: root.appendingPathComponent("alpha/.DS_Store"))
+        let package = root.appendingPathComponent("Tool.app/Contents", isDirectory: true)
+        try fm.createDirectory(at: package, withIntermediateDirectories: true)
+        try Data().write(to: package.appendingPathComponent("Info.plist"))
+        XCTAssertEqual(DirectoryListing.itemCount(in: root).items, 10)
+    }
+
+    func testItemCountShouldStopAtItsCapAndSaySo() {
+        let counted = DirectoryListing.itemCount(in: root, cap: 4)
+        XCTAssertEqual(counted.items, 4)
+        XCTAssertTrue(counted.capped)
+        XCTAssertFalse(DirectoryListing.itemCount(in: root, cap: 9).capped, "exactly the cap is the whole count")
+    }
+
+    func testAnEmptyFolderShouldCountNothing() {
+        XCTAssertEqual(DirectoryListing.itemCount(in: root.appendingPathComponent("zeta")).items, 0)
+    }
 }

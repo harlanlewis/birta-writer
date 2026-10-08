@@ -406,6 +406,8 @@ final class Coordinator {
             onOpenProjectFile?(pick.url, true, nil)
         case .newNoteInside:
             onNewNoteInFolder?(pick.url)
+        case .openInNewWindow:
+            onOpenDirectoryRequest?(pick.url)
         case .revealInFinder:
             NSWorkspace.shared.activateFileViewerSelecting([pick.url])
         case .copyPath:
@@ -446,17 +448,50 @@ final class Coordinator {
     /// window is chosen when it is the vacant one in front.
     var onOpenDocumentPanel: (() -> Void)?
 
-    /// Ask, as a sheet on this window, then move `url` to the Trash.
+    /// A folder of this window's explorer is to go to the Trash, confirmed:
+    /// `WindowSet.trashFolder`, because the tabs it moves on are every tab of
+    /// this window's group that is on a file inside it, not this one alone.
+    var onTrashFolder: ((URL) -> Void)?
+
+    /// Ask, as a sheet on this window, then move `url` to the Trash. A folder
+    /// is asked about with how much it holds, counted now rather than when
+    /// the menu was built, and goes through `onTrashFolder`.
     private func confirmMoveToTrash(_ url: URL) {
-        let words = ExplorerMenu.trashConfirmation(name: url.lastPathComponent)
+        let isFolder = (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true
+        let contents: ExplorerMenu.TrashContents
+        if isFolder {
+            let (items, capped) = DirectoryListing.itemCount(in: url)
+            contents = .folder(items: items, capped: capped)
+        } else {
+            contents = .file
+        }
+        let words = ExplorerMenu.trashConfirmation(name: url.lastPathComponent, contents: contents)
         let alert = NSAlert()
         alert.messageText = words.message
         alert.informativeText = words.detail
         alert.addButton(withTitle: words.confirm)
         alert.addButton(withTitle: words.cancel)
         alert.beginSheetModal(for: panel) { [weak self] response in
-            guard response == .alertFirstButtonReturn else { return }
-            self?.moveToTrash(url)
+            guard response == .alertFirstButtonReturn, let self else { return }
+            if isFolder, let onTrashFolder = self.onTrashFolder {
+                onTrashFolder(url)
+            } else {
+                self.moveToTrash(url)
+            }
+        }
+    }
+
+    /// Settle this tab's buffer before a trash takes its file, on the rule
+    /// `moveToTrash` uses: written when autosave is on, never behind the
+    /// reader's back when it is off. `done` says whether the tab may leave
+    /// the file afterwards, which is whether the disk now holds every byte
+    /// on screen; a tab that may not keeps the missing-file card, whose
+    /// Restore is where those bytes survive.
+    func settleBeforeTrash(_ done: @escaping (_ mayLeave: Bool) -> Void) {
+        flushThen(persisting: false) { [weak self] in
+            guard let self else { return }
+            self.write(.panelHidden)
+            done(!self.hasUnwrittenBytes)
         }
     }
 
@@ -482,14 +517,12 @@ final class Coordinator {
             trashAndEmpty(url)
             return
         }
-        flushThen(persisting: false) { [weak self] in
+        settleBeforeTrash { [weak self] mayLeave in
             guard let self else { return }
-            self.write(.panelHidden)
-            let unsaved = self.hasUnwrittenBytes
             // Trash and rebind in one turn. The watcher's report of the trash
             // never reaches the new binding, because rebinding unregisters
             // the old file's presenter (`NoteWatcherTests` holds that).
-            guard self.trash(url), !unsaved, let next = self.onFolderDefault?(root) else { return }
+            guard self.trash(url), mayLeave, let next = self.onFolderDefault?(root) else { return }
             self.openInPlace(next, slot: nil)
         }
     }
@@ -509,11 +542,8 @@ final class Coordinator {
     /// the blank buffer is what makes it vacant, so the next file opened from
     /// it lands here (`isVacant`).
     private func trashAndEmpty(_ url: URL) {
-        flushThen(persisting: false) { [weak self] in
-            guard let self else { return }
-            self.write(.panelHidden)
-            let unsaved = self.hasUnwrittenBytes
-            guard self.trash(url), !unsaved else { return }
+        settleBeforeTrash { [weak self] mayLeave in
+            guard let self, self.trash(url), mayLeave else { return }
             self.holdsNoFile = true
             self.trashedAt = nil
             // Before the buffer is cleared: with the note marked missing,
@@ -534,7 +564,7 @@ final class Coordinator {
 
     /// One trash, its failure said in the status line. Whether it happened.
     @discardableResult
-    private func trash(_ url: URL) -> Bool {
+    func trash(_ url: URL) -> Bool {
         do {
             try FileManager.default.trashItem(at: url, resultingItemURL: nil)
             return true

@@ -156,4 +156,27 @@ public enum DirectoryListing {
         let newestFirst = dated.sorted { $0.date != $1.date ? $0.date > $1.date : $0.order < $1.order }
         return newestFirst.first(where: { accepts($0.url) })?.url
     }
+
+    /// How many entries are under `folder`, at any depth, for the question
+    /// asked before it goes to the Trash (`ExplorerMenu.trashConfirmation`).
+    ///
+    /// Hidden entries count, because the Trash takes them too: a folder that
+    /// holds a repository is thousands of items whatever its sidebar row
+    /// shows, and that is the case the number is there to warn about. The
+    /// Finder's own `.DS_Store` is left out, being nobody's content. A
+    /// package is one item, as the Finder shows it. The walk stops at `cap`
+    /// so a huge tree costs a bounded walk; `capped` says it stopped.
+    public static func itemCount(in folder: URL, cap: Int = 10_000,
+                                 fileManager: FileManager = .default) -> (items: Int, capped: Bool) {
+        guard let walk = fileManager.enumerator(at: folder, includingPropertiesForKeys: nil,
+                                                options: [.skipsPackageDescendants]) else {
+            return (0, false)
+        }
+        var items = 0
+        for case let url as URL in walk where url.lastPathComponent != ".DS_Store" {
+            if items == cap { return (cap, true) }
+            items += 1
+        }
+        return (items, false)
+    }
 }
