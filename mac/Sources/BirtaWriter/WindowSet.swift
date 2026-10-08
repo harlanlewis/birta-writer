@@ -393,7 +393,7 @@ final class WindowSet {
 
     /// Whether a note has nothing in it, for the blank-note rule: a launch
     /// fronts an empty note that is already open rather than making another.
-    /// Whitespace counts as nothing, as `Coordinator.isVacant` counts it.
+    /// Whitespace counts as nothing.
     private static func isBlankNote(atPath path: String) -> Bool {
         guard let text = try? String(contentsOfFile: path, encoding: .utf8) else { return false }
         return text.isBlank
@@ -508,7 +508,9 @@ final class WindowSet {
             windows: routingWindows(),
             here: hereIndex,
             inNewTab: inNewTab,
-            hereHoldsUnsavedText: here.hasUnwrittenBytes && !Prefs.autosave,
+            // A window on a missing file is replaced, never tabbed beside:
+            // it keeps its text in a recovered file as it goes (`isVacant`).
+            hereHoldsUnsavedText: here.hasUnwrittenBytes && !Prefs.autosave && !here.isVacant,
             sameFile: Self.sameFile)
         let tabHere: (URL) -> Void = { [weak self, weak here] file in
             guard let self, let here else { return }
@@ -900,7 +902,8 @@ final class WindowSet {
     func themesMenu() -> ThemesMenu {
         ThemesMenu(source: { [weak self] in self?.themeStore.list() ?? [] },
                    current: { [weak self] in self?.appearance.themeId },
-                   mode: { Prefs.appearance.mode })
+                   mode: { Prefs.appearance.mode },
+                   kind: { [weak self] in self?.appearance.kind ?? .light })
     }
 
     /// Open a file: the Finder's Open With, a drop on the Dock icon, `open -a`,
@@ -935,8 +938,9 @@ final class WindowSet {
     /// Finder lands in the app rather than in any particular window, so the one
     /// in front is the one about to come forward anyway.
     ///
-    /// `isVacant` is the whole of the test, and its second half is why a window
-    /// with unsaved text is left alone; the coordinator states the reason.
+    /// `isVacant` is the whole of the test. A window with text on screen is
+    /// taken over too: it keeps that text in a recovered file as it goes, and
+    /// the coordinator states when that copy is made.
     func openDocument(at url: URL) {
         let target = url.standardizedFileURL
         if DocumentTypes.isDirectory(target) {
@@ -988,8 +992,15 @@ final class WindowSet {
             let host = windows[index]
             open(makeWindow(on: target, slot: nil, inGroupOf: host, explorerRoot: host.explorerRoot))
         case .vacantFront:
-            Prefs.documentURL = target
             guard let here = key else { return }
+            // A file under this tab's own folder is a file of the folder, and
+            // a rooted tab holds no slot (`replaceFile` says why), so it is
+            // opened in place and no setting is written.
+            if let root = here.explorerRoot, DirectoryListing.isInside(target, root: root) {
+                here.openInPlace(target, slot: nil)
+                return
+            }
+            Prefs.documentURL = target
             // The same release every spawn does, and needed for the same
             // reason: only one window may hold a slot, or two would both write
             // a rename back to one setting.

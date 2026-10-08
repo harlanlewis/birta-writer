@@ -840,6 +840,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding, 
         context.themes = windows.themeStore.list()
         context.currentTheme = windows.appearance.themeId
         context.appearanceMode = Prefs.appearance.mode
+        context.appearanceKind = windows.appearance.kind
         let refresh: () -> Void = { [weak self] in self?.palette.refresh() }
         if let root {
             context.root = root

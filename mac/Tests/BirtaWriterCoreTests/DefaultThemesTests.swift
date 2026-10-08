@@ -2,7 +2,7 @@ import XCTest
 @testable import BirtaWriterCore
 
 /// The themes the app ships with: that the declared list and the committed
-/// folder are the same four, that a shipped theme's id is somewhere no import
+/// folder are the same five, that a shipped theme's id is somewhere no import
 /// can reach, and what seeding and restoring do to the library.
 final class DefaultThemesTests: XCTestCase {
     private var root: URL!
@@ -86,7 +86,7 @@ final class DefaultThemesTests: XCTestCase {
             XCTAssertEqual(theme.kind, bundled.kind, "\(bundled.fileName) carries a different type")
             XCTAssertFalse(theme.colors.isEmpty, "\(bundled.fileName) parsed to no colours")
         }
-        XCTAssertEqual(DefaultThemes.all.count, 4)
+        XCTAssertEqual(DefaultThemes.all.count, 5)
     }
 
     // MARK: the two id namespaces
@@ -117,7 +117,7 @@ final class DefaultThemesTests: XCTestCase {
 
     func testSeedingAnEmptyLibraryShouldInstallEveryShippedThemeAndRecordThem() {
         let result = store.seedDefaults(from: resources, seeded: [])
-        XCTAssertEqual(result.added.count, 4)
+        XCTAssertEqual(result.added.count, 5)
         XCTAssertEqual(result.seeded, Set(DefaultThemes.all.map(\.id)))
         XCTAssertEqual(Set(store.list().map(\.id)), Set(DefaultThemes.all.map(\.id)))
         XCTAssertEqual(store.list().map(\.name).sorted(),
@@ -233,8 +233,12 @@ final class DefaultThemesTests: XCTestCase {
             XCTAssertEqual(resolved.bodyClass, bundled.kind.bodyClass)
             XCTAssertTrue(resolved.stylesheet().contains(VSCodeTheme.cssVariable(for: "editor.background")),
                           "\(bundled.name) draws no paper of its own")
-            XCTAssertNotEqual(resolved.paper, ThemePreview.system(bundled.kind).paper,
-                              "\(bundled.name) resolved to the palette's own paper, so nothing of it is drawn")
+            // The whole card rather than the paper alone: a theme may share
+            // one colour with the palette (Porcelain's paper is white, as
+            // macOS Light's is) and still be a look of its own; one whose
+            // every colour is the palette's draws nothing of itself.
+            XCTAssertNotEqual(resolved.theme.map(ThemePreview.init), ThemePreview.system(bundled.kind),
+                              "\(bundled.name) resolved to the palette's own colours, so nothing of it is drawn")
         }
     }
 
@@ -257,7 +261,7 @@ final class DefaultThemesTests: XCTestCase {
         try store.remove(id: gone.id)
 
         let before = store.list()
-        XCTAssertEqual(before.count, 4, "three shipped themes and the custom one")
+        XCTAssertEqual(before.count, 5, "four shipped themes and the custom one")
         let missing = store.missingDefaults()
         XCTAssertEqual(missing.map(\.id), [gone.id])
 
@@ -266,7 +270,7 @@ final class DefaultThemesTests: XCTestCase {
         XCTAssertEqual(result.added.map(\.id), [gone.id])
 
         let after = store.list()
-        XCTAssertEqual(after.count, 5)
+        XCTAssertEqual(after.count, 6)
         XCTAssertEqual(Set(after.map(\.id)).subtracting(before.map(\.id)), [gone.id],
                        "restoring added exactly the one that was missing")
         XCTAssertEqual(store.theme(id: "mine")?.colors["editor.background"], "#010203",
@@ -327,7 +331,7 @@ final class DefaultThemesTests: XCTestCase {
         XCTAssertNotEqual(added.first?.id, shipped.id, "an import landed on the shipped theme's file")
 
         let list = store.list()
-        XCTAssertEqual(list.count, 5, "the import replaced the shipped theme instead of joining it")
+        XCTAssertEqual(list.count, 6, "the import replaced the shipped theme instead of joining it")
         XCTAssertEqual(store.theme(id: shipped.id)?.kind, shipped.kind, "the shipped file still reads as itself")
         XCTAssertEqual(store.theme(id: added[0].id)?.colors["editor.background"], "#0b0b0b")
 
@@ -340,7 +344,7 @@ final class DefaultThemesTests: XCTestCase {
 
         // Removing one leaves the other, by id, in both directions.
         try store.remove(id: added[0].id)
-        XCTAssertEqual(store.list().count, 4)
+        XCTAssertEqual(store.list().count, 5)
         XCTAssertNotNil(store.theme(id: shipped.id))
         XCTAssertNil(store.theme(id: added[0].id))
         XCTAssertEqual(store.list().first { $0.id == shipped.id }?.name, shipped.name,

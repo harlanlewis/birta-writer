@@ -77,7 +77,7 @@ final class ThemeSurfacesTests: XCTestCase {
         // A target with no windows to ask gets the appearance row and the
         // way to add a theme, and nothing in between.
         XCTAssertEqual(titles(of: item!.submenu!),
-                       ["Auto", "Light", "Dark", "-", ThemesMenu.systemTitle, "-", ThemesMenu.addTitle])
+                       ["Auto", "Light", "Dark", "-", DefaultThemes.systemTitle(for: .light), "-", ThemesMenu.addTitle])
         // The row sits with Font: how the page looks, not what it shows.
         let names = titles(of: view)
         XCTAssertEqual(names.firstIndex(of: "Theme"), names.firstIndex(of: "Font").map { $0 + 1 })
@@ -85,7 +85,7 @@ final class ThemeSurfacesTests: XCTestCase {
 
     func testTheThemesMenuShouldListTheStoreWithTheOneInForceTickedAndIdsAsPayload() {
         let menu = ThemesMenu(source: { Self.themes }, current: { "slate" }, mode: { .dark })
-        XCTAssertEqual(titles(of: menu), ["Auto", "Light", "Dark", "-", ThemesMenu.systemTitle, "-", "Paper", "Slate",
+        XCTAssertEqual(titles(of: menu), ["Auto", "Light", "Dark", "-", DefaultThemes.systemTitle(for: .light), "-", "Paper", "Slate",
                                           "-", ThemesMenu.addTitle])
         let rows = menu.items.filter { !$0.isSeparatorItem }
         XCTAssertEqual(rows.map(\.state), [.off, .off, .on, .off, .off, .on, .off], "the held mode and the slot in force")
@@ -110,7 +110,7 @@ final class ThemeSurfacesTests: XCTestCase {
         XCTAssertEqual(titles(of: menu).count, 7)
         themes = Self.themes
         menu.menuNeedsUpdate(menu)
-        XCTAssertEqual(titles(of: menu), ["Auto", "Light", "Dark", "-", ThemesMenu.systemTitle, "-", "Paper", "Slate",
+        XCTAssertEqual(titles(of: menu), ["Auto", "Light", "Dark", "-", DefaultThemes.systemTitle(for: .light), "-", "Paper", "Slate",
                                           "-", ThemesMenu.addTitle])
     }
 
@@ -122,7 +122,7 @@ final class ThemeSurfacesTests: XCTestCase {
         // Its rows are not table rows: a repaint that walked into it would
         // find no row for any item and could only leave them as they were,
         // but `tidyRules` would hide the rule under a row it never saw.
-        XCTAssertEqual(titles(of: themes), ["Auto", "Light", "Dark", "-", ThemesMenu.systemTitle, "-", ThemesMenu.addTitle])
+        XCTAssertEqual(titles(of: themes), ["Auto", "Light", "Dark", "-", DefaultThemes.systemTitle(for: .light), "-", ThemesMenu.addTitle])
         XCTAssertTrue(themes.items.allSatisfy { !$0.isHidden })
     }
 
@@ -136,7 +136,7 @@ final class ThemeSurfacesTests: XCTestCase {
         let group = try XCTUnwrap(catalog.items.first { $0.title == "Theme" && $0.section == "View" })
         XCTAssertEqual(group.kind, .group)
         XCTAssertEqual(group.children.map(\.title),
-                       ["Auto", "Light", "Dark", ThemesMenu.systemTitle, "Paper", "Slate", ThemesMenu.addTitle])
+                       ["Auto", "Light", "Dark", DefaultThemes.systemTitle(for: .light), "Paper", "Slate", ThemesMenu.addTitle])
         XCTAssertEqual(group.children.map(\.detail),
                        [PaletteSources.currentThemeDetail, nil, nil, nil, nil, PaletteSources.currentThemeDetail, nil],
                        "the mode in force and the theme in force each say so")

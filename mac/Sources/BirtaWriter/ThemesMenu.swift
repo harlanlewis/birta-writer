@@ -15,7 +15,7 @@ protocol ThemesMenuProviding: AnyObject {
 ///       Light
 ///       Dark
 ///     ─────────
-///     ✓ System Theme
+///     ✓ Birta Porcelain
 ///       Harlan Paper
 ///       Harlan Slate
 ///     ─────────
@@ -38,20 +38,23 @@ protocol ThemesMenuProviding: AnyObject {
 /// was never given one.
 @MainActor
 final class ThemesMenu: NSMenu, NSMenuDelegate {
-    /// What the system row is called, on every surface that lists it.
-    static let systemTitle = "System Theme"
     static let addTitle = "Add Theme…"
 
     private let source: () -> [ThemeSummary]
     private let current: () -> String?
     private let mode: () -> AppearanceMode
+    /// The kind in force, which names the app's own palette's row: Birta
+    /// Porcelain in light, macOS Dark in dark (`DefaultThemes.systemTitle`).
+    private let kind: () -> VSCodeTheme.Kind
 
     init(source: @escaping () -> [ThemeSummary] = { [] },
          current: @escaping () -> String? = { nil },
-         mode: @escaping () -> AppearanceMode = { .auto }) {
+         mode: @escaping () -> AppearanceMode = { .auto },
+         kind: @escaping () -> VSCodeTheme.Kind = { .light }) {
         self.source = source
         self.current = current
         self.mode = mode
+        self.kind = kind
         super.init(title: "Theme")
         identifier = AppMenu.themesMenuIdentifier
         delegate = self
@@ -78,7 +81,7 @@ final class ThemesMenu: NSMenu, NSMenuDelegate {
         }
         addItem(.separator())
         let picked = current()
-        addItem(themeRow(title: Self.systemTitle, id: "", on: picked == nil))
+        addItem(themeRow(title: DefaultThemes.systemTitle(for: kind()), id: "", on: picked == nil))
         let themes = source()
         if !themes.isEmpty { addItem(.separator()) }
         for theme in themes {

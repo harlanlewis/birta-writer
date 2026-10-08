@@ -563,7 +563,10 @@ final class Coordinator {
         flushThen(persisting: false) { [weak self] in
             guard let self else { return }
             self.write(.panelHidden)
-            if self.hasUnwrittenBytes, !Prefs.autosave {
+            // A missing file is replaced whatever its buffer holds:
+            // `openInPlace` keeps the text first, and a tab beside it would
+            // leave the dead window standing.
+            if self.hasUnwrittenBytes, !Prefs.autosave, !self.isVacant {
                 orTab(url)
                 return
             }
@@ -1263,28 +1266,23 @@ final class Coordinator {
     /// two windows never both believe they own `.document`.
     var bindingSlot: ActiveBinding.Slot?
 
-    /// This window is standing on a file that is not there, with nothing in the
-    /// buffer to lose, so another file may take it over.
+    /// This window is standing on a file that is not there (or on the empty
+    /// state Move to Trash leaves), so the next file opened from it, by any
+    /// route, takes it over rather than leaving a dead window behind.
     ///
-    /// BOTH halves, and the second is the safety one: a missing note whose
-    /// buffer still holds text is holding the only copy of that text, and it
-    /// is the buffer AS THE PANEL LAST HEARD IT, which is the same value the
-    /// card is drawn from (`showMissingFileScreen`), so the two always agree
-    /// about whether anything is at stake. The page reports its first edit
-    /// within an IPC hop (`webview/syncScheduler.ts`), which is what keeps
-    /// that value from trailing the writing it describes.
-    /// rebinding away from it is what `rescueMissingNote` exists to catch at
-    /// quit. A window in that state keeps its file and Open makes a new window,
-    /// which is also the honest answer to the question the screen is asking:
-    /// Save It Back has not been answered yet.
-    var isVacant: Bool { noteMissing && latest.isBlank }
+    /// Not gated on the buffer being blank, because leaving never costs the
+    /// text: `openInPlace` keeps whatever exists nowhere else in a recovered
+    /// file beside the old one before it rebinds (`keepTextNothingElseHolds`).
+    /// A buffer the Trash holds every byte of needs no such copy.
+    var isVacant: Bool { noteMissing }
 
-    /// Take `url` over in this window, in place of the file that has gone.
+    /// Take `url` over in this window, in place of the file it is on.
     ///
-    /// Nothing is flushed and nothing is written first, and both are safe here
-    /// rather than skipped: `isVacant` is the caller's gate, so the buffer is
-    /// blank and `writeLatest` is refusing every write anyway while the note is
-    /// missing.
+    /// Nothing is flushed to the old file here; callers leaving a live file
+    /// settle it first (`replaceFile`). Leaving a MISSING file writes the one
+    /// thing that would otherwise be lost, the buffer, to a recovered file
+    /// beside it (`keepTextNothingElseHolds`), since `writeLatest` refuses the
+    /// old path itself.
     ///
     /// `boundURL`'s own `didSet` does most of it, which is why this is short:
     /// it re-titles, records both files in the recents list, and re-watches,
@@ -1296,6 +1294,9 @@ final class Coordinator {
     ///   through `reveal(line:)` because this window's page is warm right up
     ///   to `loadPage`, and a line sent to it would go to the page leaving.
     func openInPlace(_ url: URL, slot: ActiveBinding.Slot?, revealing line: Int? = nil) {
+        // Before the binding moves: the recovered copy goes beside the file
+        // being left, and this is the last moment that is what `boundURL` is.
+        let kept = keepTextNothingElseHolds()
         bindingSlot = slot
         boundURL = url
         reloadFromDisk = true
@@ -1303,6 +1304,20 @@ final class Coordinator {
         loadPage()
         refreshTitle()
         show()
+        if let kept { statusOverlay.flash("Kept what you wrote in \(kept.lastPathComponent).") }
+    }
+
+    /// Write the buffer to a recovered file beside the missing one, when it
+    /// is the only copy of what it holds, and say where.
+    ///
+    /// Nothing to keep in the empty state (the buffer is blank) or when the
+    /// Trash holds a copy of every byte (a trashed file and nothing typed
+    /// since): Restore, or the Finder's Put Back, still brings that back.
+    private func keepTextNothingElseHolds() -> URL? {
+        guard noteMissing, MissingFileOffer.leavingNeedsRecoveredCopy(
+            isEmptyState: holdsNoFile, bufferIsBlank: latest.isBlank,
+            trashedCopyThere: trashedFileIsStillThere, typedSinceWritten: hasUnwrittenBytes) else { return nil }
+        return rescueMissingNote()
     }
 
     /// A window on `url`, which is the only thing that distinguishes one of
@@ -3267,8 +3282,9 @@ final class Coordinator {
     /// the deleted path. Recreating a file the user threw away is what this
     /// whole path exists to stop, and doing it at quit, unattended, would be
     /// the worst moment to start.
-    private func rescueMissingNote() {
-        guard noteMissing, !latest.isBlank else { return }
+    @discardableResult
+    private func rescueMissingNote() -> URL? {
+        guard noteMissing, !latest.isBlank else { return nil }
         let directory = boundURL.deletingLastPathComponent()
         let stem = boundURL.deletingPathExtension().lastPathComponent
         let ext = boundURL.pathExtension.isEmpty ? DocumentTypes.written : boundURL.pathExtension
@@ -3277,8 +3293,10 @@ final class Coordinator {
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
             try AtomicFile.writeString(latest, to: target)
             NSLog("Birta Writer: the deleted note's unwritten text is in \(target.path)")
+            return target
         } catch {
             NSLog("Birta Writer: could not rescue the deleted note: \(error)")
+            return nil
         }
     }
 

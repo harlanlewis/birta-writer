@@ -63,4 +63,27 @@ final class MissingFileOfferTests: XCTestCase {
             XCTAssertFalse(offer.heading.contains(".md"))
         }
     }
+
+    /// Every combination, enumerated rather than sampled: the one cell that
+    /// must keep a copy is any text the Trash does not hold.
+    func testLeavingShouldKeepACopyExactlyWhenNothingElseHoldsTheText() {
+        var cells = 0
+        for empty in [false, true] {
+            for blank in [false, true] {
+                for trash in [false, true] {
+                    for typed in [false, true] {
+                        let keeps = MissingFileOffer.leavingNeedsRecoveredCopy(
+                            isEmptyState: empty, bufferIsBlank: blank, trashedCopyThere: trash, typedSinceWritten: typed)
+                        let expected = !empty && !blank && (!trash || typed)
+                        XCTAssertEqual(keeps, expected, "empty=\(empty) blank=\(blank) trash=\(trash) typed=\(typed)")
+                        cells += 1
+                    }
+                }
+            }
+        }
+        XCTAssertEqual(cells, 16)
+        XCTAssertTrue(MissingFileOffer.leavingNeedsRecoveredCopy(
+            isEmptyState: false, bufferIsBlank: false, trashedCopyThere: false, typedSinceWritten: false),
+            "a file gone for good with text on screen: the screen is the only copy")
+    }
 }

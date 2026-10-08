@@ -311,7 +311,7 @@ final class ThemeStrip: NSView {
     /// card has no button, since there is nothing to remove.
     final class ThemeCard: NSControl {
         static func systemTitle(_ kind: VSCodeTheme.Kind) -> String {
-            kind == .dark ? "macOS Dark" : "macOS Light"
+            DefaultThemes.systemTitle(for: kind)
         }
         static let pictureSize = NSSize(width: 84, height: 54)
         /// The remove button's diameter, and its inset from the picture's
