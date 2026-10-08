@@ -397,6 +397,13 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
             item.setAttribute("role", "menuitem");
             item.tabIndex = -1; // the menu's roving group hands out the tabbable slot
             item.classList.toggle("toc-tabs-menu__item--active", tab === activeTab);
+            // Focus follows the pointer, so hover and the arrows move one
+            // highlight. `mousemove` rather than `mouseover`: it needs real
+            // motion, so a still pointer never takes the highlight back from
+            // the keyboard.
+            item.addEventListener("mousemove", () => {
+                if (document.activeElement !== item) { item.focus(); }
+            });
             bindActivate(item, () => {
                 closeTabsMenu();
                 setActiveTab(tab);
@@ -1094,7 +1101,12 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
             item.setAttribute("role", "treeitem");
             item.dataset["headingPos"] = String(entry.pos);
             item.dataset["level"] = String(level);
-            item.style.paddingLeft = `${(level - 1) * 12 + 8}px`;
+            // The indent is margin, not padding, so the highlight fits the
+            // text (toc.css), and the caret hangs in it. The 14 is the row's
+            // side margin plus the caret's gutter; with the row's 8 of
+            // padding it puts each rank's text where it always was, which is
+            // where the drop line's `indentedLine` draws.
+            item.style.marginLeft = `${(level - 1) * 12 + 14}px`;
             // A row is a "parent" (foldable) when the next heading nests under it.
             const hasChildren = i + 1 < headings.length && headings[i + 1]!.level > level;
             item.classList.toggle("toc-item--parent", hasChildren);

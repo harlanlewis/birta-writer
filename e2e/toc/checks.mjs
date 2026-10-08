@@ -365,4 +365,47 @@ export async function run({ page, check, baseUrl }) {
         opensAtPlace.visible && opensAtPlace.scrollTop > 0, JSON.stringify(opensAtPlace));
     await page.mouse.move(800, 100); // retract the flyout
     await page.setViewportSize({ width: 1000, height: 720 });
+
+    // ── A row's highlight is as wide as its text, not the panel ──────────
+    // The indent is margin and the caret hangs in it, so the row box (which
+    // carries hover and the active fill) starts at the text's padding and
+    // ends at the text. The text itself stays where every rank always put it,
+    // (level - 1) * 12 + 22 from the list's edge, which is also where the
+    // drop line's indent is drawn.
+    await page.waitForTimeout(300);
+    // A selection ink unlike the foreground, so the caret check below can
+    // tell which of the two the caret wears (this page's defaults agree).
+    await page.evaluate(() => document.documentElement.style.setProperty("--vscode-list-activeSelectionForeground", "rgb(255, 0, 0)"));
+    const rows = await page.evaluate(() => {
+        const list = document.querySelector(".toc-list").getBoundingClientRect();
+        return [...document.querySelectorAll(".toc-item:not([hidden])")].map((el) => {
+            const r = el.getBoundingClientRect();
+            const t = el.querySelector(".toc-item__text").getBoundingClientRect();
+            const caret = el.querySelector(".toc-caret");
+            return {
+                text: el.textContent,
+                level: Number(el.dataset.level),
+                rowWidth: Math.round(r.width),
+                listWidth: Math.round(list.width),
+                textLeft: Math.round(t.left - list.left),
+                padRight: Math.round(r.right - t.right),
+                caretOutside: caret.getBoundingClientRect().left < r.left,
+                active: el.classList.contains("toc-item--active"),
+                caretInk: getComputedStyle(caret).color,
+                rowInk: getComputedStyle(el).color,
+            };
+        });
+    });
+    check("the outline has rows to measure (guard the guard)", rows.length > 2, JSON.stringify(rows.length));
+    check("every row ends at its text (the highlight fits the heading)",
+        rows.every((r) => r.padRight <= 9 && r.rowWidth < r.listWidth - 20), JSON.stringify(rows.map((r) => [r.text, r.rowWidth, r.padRight])));
+    check("every row's text sits at its rank's indent, as before",
+        rows.every((r) => r.textLeft === (r.level - 1) * 12 + 22), JSON.stringify(rows.map((r) => [r.text, r.level, r.textLeft])));
+    check("the fold caret hangs outside the row's highlight",
+        rows.every((r) => r.caretOutside), JSON.stringify(rows.map((r) => [r.text, r.caretOutside])));
+    const activeRow = rows.find((r) => r.active);
+    check("the active row's caret keeps the panel's ink, not the selection's (it sits off the fill)",
+        !!activeRow && activeRow.rowInk === "rgb(255, 0, 0)" && activeRow.caretInk !== activeRow.rowInk,
+        JSON.stringify(activeRow));
+    await page.evaluate(() => document.documentElement.style.removeProperty("--vscode-list-activeSelectionForeground"));
 }

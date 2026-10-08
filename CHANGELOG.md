@@ -4,6 +4,14 @@
 
 ## [Unreleased]
 
+### Changed
+
+- In the Contents panel, the highlight on the current heading and on the heading under the pointer is as wide as the heading's text rather than the whole panel. The fold arrow sits beside the highlight instead of inside it.
+
+### Fixed
+
+- When the sidebar's tabs collapse into a menu button, hovering the button no longer turns its label pale and hard to read, and the open menu shows one highlight that follows the pointer and the arrow keys instead of a filled current tab with a focus ring on top.
+
 ---
 
 ## [2026.1008.0] - 2026, October 8
