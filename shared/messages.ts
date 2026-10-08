@@ -481,6 +481,11 @@ export type ToExtensionMessage =
     // file manager, or selects the file in its folder, and refuses a path its
     // own bar did not draw.
     | { type: "revealPath"; path: string }
+    // The path bar's `…` was pressed: the segments it folded away for want
+    // of room, root first, by the names the bar drew, and the viewport point
+    // of the button. The host draws its own menu of them (the Mac app: as its
+    // title's path popup is drawn), and a pick goes the way `revealPath` does.
+    | { type: "pathBarMenu"; segments: { name: string; path: string }[]; x: number; y: number }
     // A row was right-clicked at a viewport point. The host draws its own
     // menu there (a native one, with the actions only it can perform: a new
     // tab, the file manager, the pasteboard, the trash); the page draws none.

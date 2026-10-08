@@ -440,6 +440,12 @@ final class Coordinator {
     /// even a new note.
     var onFolderDefault: ((URL) -> URL?)?
 
+    /// The app's Open panel (`WindowSet.openDocumentPanel`), for the empty
+    /// state's and the missing-file card's Browse button. The set's, because
+    /// where the chosen file lands turns on every window (`OpenRouting`); this
+    /// window is chosen when it is the vacant one in front.
+    var onOpenDocumentPanel: (() -> Void)?
+
     /// Ask, as a sheet on this window, then move `url` to the Trash.
     private func confirmMoveToTrash(_ url: URL) {
         let words = ExplorerMenu.trashConfirmation(name: url.lastPathComponent)
@@ -464,11 +470,16 @@ final class Coordinator {
     /// (`replaceFile`): written when autosave is on. A buffer still ahead of
     /// the file after that (autosave off, or a write that failed) keeps the
     /// card instead, because the card's Save It Back is the only place those
-    /// bytes still exist. A file trashed that this tab is not on, and a window
-    /// on a loose file, take the card's path unchanged.
+    /// bytes still exist. A window on a loose file has no folder to choose
+    /// from, so it is left empty instead (`trashAndEmpty`); a file trashed that
+    /// this tab is not on is simply trashed.
     private func moveToTrash(_ url: URL) {
-        guard let root = explorerRoot, FileIdentity.sameFile(url, boundURL) else {
+        guard FileIdentity.sameFile(url, boundURL) else {
             trash(url)
+            return
+        }
+        guard let root = explorerRoot else {
+            trashAndEmpty(url)
             return
         }
         flushThen(persisting: false) { [weak self] in
@@ -482,6 +493,44 @@ final class Coordinator {
             self.openInPlace(next, slot: nil)
         }
     }
+
+    /// Move this loose-file window's own file to the Trash and leave the window
+    /// empty (`MissingFileOffer.State.noFile`): no document, "No File Open",
+    /// and Browse and Open Recent to go somewhere else.
+    ///
+    /// Settled first, as the folder path is, and for the same reason: a buffer
+    /// still ahead of the file after the write (autosave off, or a write that
+    /// failed) holds bytes the trashed file does not, so the window keeps them
+    /// and the card offers Restore instead. Only a buffer the Trash holds every
+    /// byte of is emptied.
+    ///
+    /// The window keeps its binding to the trashed path, with the note marked
+    /// missing, which is the one state where `writeLatest` refuses every write;
+    /// the blank buffer is what makes it vacant, so the next file opened from
+    /// it lands here (`isVacant`).
+    private func trashAndEmpty(_ url: URL) {
+        flushThen(persisting: false) { [weak self] in
+            guard let self else { return }
+            self.write(.panelHidden)
+            let unsaved = self.hasUnwrittenBytes
+            guard self.trash(url), !unsaved else { return }
+            self.holdsNoFile = true
+            self.trashedAt = nil
+            // Before the buffer is cleared: with the note marked missing,
+            // nothing the blank buffer does can reach the trashed file's path.
+            self.noteMissing = true
+            self.latest = ""
+            self.isEdited = false
+            if self.state == .warm { self.pushDocument("", syncVersion: self.guardState.bumpVersion()) }
+            self.refreshTitle()
+            self.sendPathBar()
+        }
+    }
+
+    /// Set while this window shows the empty state Move to Trash leaves: it
+    /// names no file and offers to open one. Cleared by any rebinding, which
+    /// is what opening a file here does (`boundURL`'s `didSet`).
+    private var holdsNoFile = false
 
     /// One trash, its failure said in the status line. Whether it happened.
     @discardableResult
@@ -596,7 +645,7 @@ final class Coordinator {
     /// load (`force`) and whenever the bound file changes.
     private func sendPathBar(force: Bool = false) {
         guard state == .warm else { return }
-        let shown = Prefs.pathBar && !isWelcoming
+        let shown = Prefs.pathBar && !isWelcoming && !holdsNoFile
         let key = shown ? boundURL.standardizedFileURL.path : ""
         guard force || key != sentPathBar else { return }
         sentPathBar = key
@@ -605,6 +654,33 @@ final class Coordinator {
                                displayName: { FileManager.default.displayName(atPath: $0) })
             : nil
         host.send(.pathBar(segments))
+    }
+
+    /// The menu behind the path bar's `…`: the folded folders, each with the
+    /// icon the Finder draws for it, as the title's path popup lists them. A
+    /// pick opens that folder in the Finder, the way a visible segment does.
+    private func showPathBarMenu(_ entries: [PathBarMenuEntry], x: Double, y: Double) {
+        let rows = PathBar.menuRows(entries, for: boundURL, home: FileManager.default.homeDirectoryForCurrentUser)
+        guard !rows.isEmpty else { return }
+        let menu = NSMenu()
+        for entry in rows {
+            let item = NSMenuItem(title: entry.name, action: #selector(pathBarMenuPicked(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = entry.path
+            let icon = NSWorkspace.shared.icon(forFile: entry.path)
+            icon.size = NSSize(width: 16, height: 16)
+            item.image = icon
+            menu.addItem(item)
+        }
+        // Flipped or not is read off the view, as the explorer's menu reads it.
+        let view = host.webView
+        let point = CaretAnchor.point(x: x, y: y, viewHeight: view.bounds.height, isFlipped: view.isFlipped)
+        menu.popUp(positioning: nil, at: point, in: view)
+    }
+
+    @objc private func pathBarMenuPicked(_ sender: NSMenuItem) {
+        guard let path = sender.representedObject as? String else { return }
+        revealPathSegment(path)
     }
 
     /// A segment of the path bar was clicked: a folder opens in the Finder,
@@ -1041,6 +1117,9 @@ final class Coordinator {
     private var boundURL: URL {
         didSet {
             guard boundURL != oldValue else { return }
+            // Before the title is painted below: a window leaving the empty
+            // state names its new file, not the app.
+            holdsNoFile = false
             host.schemeHandler.roots =
                 host.schemeHandler.roots.rebound(toDocument: explorerRoot ?? boundURL.deletingLastPathComponent())
             refreshTitle()
@@ -1351,7 +1430,8 @@ final class Coordinator {
         // edge and the page knows nothing about it.
         contentView.addSubview(missingFileScreen)
         missingFileScreen.onSaveItBack = { [weak self] in self?.saveMissingNoteBack() }
-        missingFileScreen.onPutItBack = { [weak self] in self?.putMissingNoteBack() }
+        missingFileScreen.onRestore = { [weak self] in self?.putMissingNoteBack() }
+        missingFileScreen.onBrowse = { [weak self] in self?.onOpenDocumentPanel?() }
         missingFileScreen.onOpenRecent = { [weak self] anchor in
             guard let self else { return }
             // The APP's menu, not one built here. Which files the other windows
@@ -1362,13 +1442,6 @@ final class Coordinator {
                 positioning: nil,
                 at: RecentsMenu.popUpOrigin(in: anchor.bounds, isFlipped: anchor.isFlipped),
                 in: anchor)
-        }
-        missingFileScreen.onDiscardAndStartNew = { [weak self] in
-            // Clearing the flag first is what lets the new note be created and
-            // written at all; the bytes of the old one are what the button
-            // says it is discarding.
-            self?.noteMissing = false
-            self?.startNewNoteHere()
         }
         host.webView.translatesAutoresizingMaskIntoConstraints = false
         statusOverlay.translatesAutoresizingMaskIntoConstraints = false
@@ -2593,6 +2666,8 @@ final class Coordinator {
             openProjectFile(relative: path, newTab: newTab, line: line)
         case let .revealPath(path):
             revealPathSegment(path)
+        case let .pathBarMenu(segments, x, y):
+            showPathBarMenu(segments, x: x, y: y)
         case .requestFolderIndex:
             folderIndexSubscribed = true
             onFolderIndexRequest?()
@@ -4378,8 +4453,7 @@ final class Coordinator {
         // back from the Finder while this card is on screen. A button offered
         // on the strength of a remembered path would fail when pressed, which
         // is the one thing a recovery control must not do.
-        missingFileScreen.show(noteMissing, hasUnsavedText: !latest.isBlank,
-                               isInTrash: trashedFileIsStillThere)
+        missingFileScreen.show(missingFileOffer)
         layoutMissingFileScreen()
         applyNoteMissingToPage()
         // The cluster just changed WIDTH, which the drag strip is sized from.
@@ -4387,6 +4461,20 @@ final class Coordinator {
         // there and lies over the gear, so the click that reaches preferences
         // drags the window instead.
         refreshTitlebarControlsWidth()
+    }
+
+    /// What the screen offers right now, or nil while the note is there.
+    ///
+    /// What is at risk differs by state. With a trashed copy to restore, it is
+    /// only what was typed since the file was last written, because the Trash
+    /// holds the rest; with the file gone and nothing to restore, every byte on
+    /// screen is the only copy.
+    private var missingFileOffer: MissingFileOffer? {
+        guard noteMissing else { return nil }
+        if holdsNoFile { return MissingFileOffer(.noFile) }
+        let inTrash = trashedFileIsStillThere
+        return MissingFileOffer(.gone(inTrash: inTrash,
+                                      textAtRisk: inTrash ? hasUnwrittenBytes : !latest.isBlank))
     }
 
     /// Everything the PAGE has to be told about the bound file being gone.
@@ -4526,8 +4614,8 @@ final class Coordinator {
     /// The buffer is untouched. It may be ahead of the file that has just come
     /// back, which is the state the title bar already has a word for, and
     /// silently writing over the recovered file with it would undo the restore
-    /// in the same gesture that performed it. Save It Back is still there for
-    /// somebody who wants that, and now says what it does.
+    /// in the same gesture that performed it. Saving keeps the buffer instead,
+    /// once the file is back where a save can reach it.
     private func putMissingNoteBack() {
         guard let trashedAt else { return }
         do {
@@ -5233,6 +5321,16 @@ final class Coordinator {
         // `isEdited` change would put a file name back over a screen that has
         // no file.
         guard !isWelcoming else { return }
+        if holdsNoFile {
+            // No file to name, so the title names the app, as the welcome
+            // screen's does, with nothing to open from it.
+            titleBar.titleView.showAppName(AppFlavor.current.displayName)
+            panel.title = AppFlavor.current.displayName
+            panel.tab.toolTip = nil
+            panel.isDocumentEdited = false
+            layoutTitlebarDrag()
+            return
+        }
         let edited = WindowTitle.showsEdited(hasUnwrittenBytes: isEdited,
                                              autosaveEnabled: Prefs.autosave)
         titleBar.titleView.show(url: boundURL, edited: edited)

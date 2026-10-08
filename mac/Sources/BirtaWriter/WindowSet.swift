@@ -164,6 +164,7 @@ final class WindowSet {
             self?.newNote(in: folder, beside: coordinator)
         }
         coordinator.onFolderDefault = { [weak self] root in self?.folderDefault(in: root) }
+        coordinator.onOpenDocumentPanel = { [weak self] in self?.openDocumentPanel() }
         coordinator.onFolderIndexRequest = { [weak self, weak coordinator] in
             guard let coordinator else { return }
             self?.folderIndexRequested(by: coordinator)

@@ -40,7 +40,26 @@ public struct PathSegment: Equatable, Sendable {
     }
 }
 
+/// One row of the menu the path bar's `…` opens: a folded segment, by the
+/// name the bar drew and the path a pick reveals.
+public struct PathBarMenuEntry: Equatable, Sendable {
+    public let name: String
+    public let path: String
+
+    public init(name: String, path: String) {
+        self.name = name
+        self.path = path
+    }
+}
+
 public enum PathBar {
+    /// The `…` menu's rows, deepest first, as the title's path popup lists a
+    /// path: the folder nearest the file at the top. Rows naming a path this
+    /// bar did not draw are dropped, as `revealPath` drops them.
+    public static func menuRows(_ entries: [PathBarMenuEntry], for file: URL, home: URL) -> [PathBarMenuEntry] {
+        entries.filter { reveals($0.path, for: file, home: home) }.reversed()
+    }
+
     /// The folder iCloud Drive keeps the reader's own files in.
     static let cloudDocs = "com~apple~CloudDocs"
     static let mobileDocuments = "Library/Mobile Documents"

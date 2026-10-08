@@ -1,8 +1,11 @@
 import AppKit
 import XCTest
 @testable import BirtaWriter
+import BirtaWriterCore
 
-/// What the panel says and offers when the file it was editing is gone.
+/// What the panel draws when the file it was editing is gone, or was thrown
+/// away. Which words and which buttons is `MissingFileOffer`'s, tested in
+/// `MissingFileOfferTests`; this holds that the VIEW draws an offer faithfully.
 ///
 /// The state has two shapes and only one of them is dangerous, so the whole of
 /// this file is about telling them apart. With text in the buffer, that buffer
@@ -28,11 +31,17 @@ final class MissingFileScreenTests: XCTestCase {
                        inTrash: Bool = false,
                        width: CGFloat = 640,
                        height: CGFloat = 400) -> MissingFileScreen {
+        shown(.gone(inTrash: inTrash, textAtRisk: unsaved), width: width, height: height)
+    }
+
+    private func shown(_ state: MissingFileOffer.State,
+                       width: CGFloat = 640,
+                       height: CGFloat = 400) -> MissingFileScreen {
         let screen = MissingFileScreen()
         let container = NSView(frame: NSRect(x: 0, y: 0, width: width, height: height))
         container.addSubview(screen)
         screen.frame = container.bounds
-        screen.show(true, hasUnsavedText: unsaved, isInTrash: inTrash)
+        screen.show(MissingFileOffer(state))
         screen.layoutSubtreeIfNeeded()
         return screen
     }
@@ -51,95 +60,64 @@ final class MissingFileScreenTests: XCTestCase {
         XCTAssertFalse(state.heading.contains(".md"), state.heading)
     }
 
-    func testWithTextInTheBufferItShouldOfferToSaveItAndSayWhatIsAtStake() {
-        // The dangerous shape. The buffer is the only copy, so saving it is
-        // the first thing offered, and the button that throws it away is named
-        // for what it costs rather than for what it makes.
-        let state = shown(unsaved: true).stateForMeasurement
-        XCTAssertEqual(state.buttons, ["Save It Back", "Discard and Start New", "Open Recent…"])
-        XCTAssertTrue(state.body.contains("not saved anywhere else"), state.body)
-    }
-
-    func testWithNothingToLoseItShouldOfferNeitherSavingNorDiscarding() {
-        // An offer to save an empty buffer writes an empty file, and a warning
-        // about discarding nothing is a warning people learn to click through.
-        let state = shown(unsaved: false).stateForMeasurement
-        XCTAssertEqual(state.buttons, ["New Note", "Open Recent…"])
-        XCTAssertFalse(state.body.contains("not saved anywhere else"), state.body)
-    }
-
-    func testTheTwoShapesShouldDifferInWhatTheyOfferRatherThanOnlyInWording() {
-        // The arm that stops both cases being one screen with two sentences.
-        // A version that always drew three buttons would pass every wording
-        // check above.
-        XCTAssertNotEqual(shown(unsaved: true).stateForMeasurement.buttons,
-                          shown(unsaved: false).stateForMeasurement.buttons)
+    /// Every state, drawn: the view shows exactly the offer's words and
+    /// buttons, in the offer's order. Derived from the offer rather than
+    /// restated, so a fourth action or a reworded heading is held here without
+    /// an edit, and the state list asserts its own size so a sweep that drew
+    /// nothing cannot pass.
+    func testTheScreenShouldDrawEachOfferAsItIsWritten() {
+        let states: [MissingFileOffer.State] = [
+            .noFile,
+            .gone(inTrash: true, textAtRisk: false), .gone(inTrash: true, textAtRisk: true),
+            .gone(inTrash: false, textAtRisk: false), .gone(inTrash: false, textAtRisk: true),
+        ]
+        var drawn = 0
+        for state in states {
+            let offer = MissingFileOffer(state)
+            let screen = shown(state).stateForMeasurement
+            XCTAssertEqual(screen.heading, offer.heading, "\(state)")
+            XCTAssertEqual(screen.body, offer.body, "\(state)")
+            XCTAssertEqual(screen.buttons, offer.actions.map(\.rawValue), "\(state)")
+            drawn += 1
+        }
+        XCTAssertEqual(drawn, 5)
     }
 
     func testEachButtonShouldReportTheGestureItNames() {
         // Four buttons wired to four closures is exactly the shape where two
-        // end up on one handler and nothing looks wrong. Driven in the state
-        // that offers every one of them, so no arm is left unpressed.
-        let screen = shown(unsaved: true, inTrash: true)
+        // end up on one handler and nothing looks wrong. No one state offers
+        // all four, so every state is pressed through and the union compared.
         var calls: [String] = []
-        screen.onPutItBack = { calls.append("putback") }
-        screen.onSaveItBack = { calls.append("save") }
-        screen.onDiscardAndStartNew = { calls.append("discard") }
-        screen.onOpenRecent = { _ in calls.append("recent") }
+        for state in [MissingFileOffer.State.gone(inTrash: true, textAtRisk: true),
+                      .gone(inTrash: false, textAtRisk: true)] {
+            let screen = shown(state)
+            screen.onRestore = { calls.append("restore") }
+            screen.onSaveItBack = { calls.append("save") }
+            screen.onBrowse = { calls.append("browse") }
+            screen.onOpenRecent = { _ in calls.append("recent") }
+            for title in screen.stateForMeasurement.buttons {
+                let button = screen.buttonForMeasurement(titled: title)
+                XCTAssertNotNil(button, title)
+                button?.performClick(nil)
+            }
+        }
+        XCTAssertEqual(calls, ["restore", "browse", "recent", "save", "browse", "recent"])
+    }
+
+    /// The empty state has no document behind it, so its words sit on the
+    /// window's ground: no card, and nothing for a card's lanes to protect.
+    /// The card states keep theirs, which is the other half of the pair.
+    func testTheEmptyStateShouldDrawNoCardAndTheOthersShould() {
+        XCTAssertEqual(shown(.noFile).stateForMeasurement.heading, "No File Open")
+        XCTAssertFalse(MissingFileOffer(.noFile).isCard)
+        XCTAssertTrue(MissingFileOffer(.gone(inTrash: true, textAtRisk: false)).isCard)
+        // Laid out centred, the empty state's words and buttons are on screen.
+        let screen = shown(.noFile)
         for title in screen.stateForMeasurement.buttons {
             let button = screen.buttonForMeasurement(titled: title)
-            XCTAssertNotNil(button, title)
-            button?.performClick(nil)
+            let box = button.map { $0.convert($0.bounds, to: screen) } ?? .zero
+            XCTAssertTrue(screen.bounds.contains(box) && box.width > 0, "\(title) at \(box)")
         }
-        XCTAssertEqual(calls, ["putback", "save", "discard", "recent"])
-    }
-
-    // MARK: the file is in the Trash, which is a different thing to say
-
-    /// The card used to guess ("deleted or moved") at a state the app can
-    /// often name. A move is followed live (`NoteWatcher`), so a window reaches
-    /// this screen because the file went, and when the app watched it go it
-    /// knows the Trash is where.
-    func testAFileInTheTrashShouldBeNamedRatherThanGuessedAt() {
-        let state = shown(unsaved: false, inTrash: true).stateForMeasurement
-        XCTAssertEqual(state.heading, "This file is in the Trash")
-        XCTAssertFalse(state.body.contains("deleted or moved"), state.body)
-    }
-
-    /// The case that used to offer no way back to the file at all: it is in
-    /// the Trash, nothing is unsaved, and the card's only options were to
-    /// abandon it. Put It Back is a real restore, and it is the whole answer
-    /// here.
-    func testWithNothingUnsavedAndTheFileInTheTrashItShouldOfferToFetchIt() {
-        let state = shown(unsaved: false, inTrash: true).stateForMeasurement
-        XCTAssertEqual(state.buttons, ["Put It Back", "New Note", "Open Recent…"])
-    }
-
-    /// Both offers, because they are different promises and they compose: put
-    /// the file back, then save over it, and neither copy is lost.
-    func testWithUnsavedTextAndTheFileInTheTrashItShouldOfferBoth() {
-        let state = shown(unsaved: true, inTrash: true).stateForMeasurement
-        XCTAssertEqual(state.buttons,
-                       ["Put It Back", "Save It Back", "Discard and Start New", "Open Recent…"])
-        XCTAssertTrue(state.body.contains("not saved anywhere else"), state.body)
-    }
-
-    /// With nowhere to put it back FROM, the button is absent rather than
-    /// disabled: a control that cannot act is a question the reader has to
-    /// answer about their own file system.
-    func testWithNoKnownTrashPathThereShouldBeNoPutItBackButton() {
-        for unsaved in [true, false] {
-            let state = shown(unsaved: unsaved, inTrash: false).stateForMeasurement
-            XCTAssertFalse(state.buttons.contains("Put It Back"), "unsaved=\(unsaved)")
-            XCTAssertEqual(state.heading, "This file can't be found")
-        }
-    }
-
-    /// The trashed-and-nothing-unsaved card says one thing once. A body
-    /// repeating the heading is a sentence nobody reads twice, and the card is
-    /// sized from what it says, so an empty one would leave a gap.
-    func testTheTrashedCardWithNothingAtStakeShouldNotRepeatItsHeading() {
-        XCTAssertEqual(shown(unsaved: false, inTrash: true).stateForMeasurement.body, "")
     }
 
     func testAHiddenScreenShouldTakeNoClicksAtAll() {
@@ -149,9 +127,9 @@ final class MissingFileScreenTests: XCTestCase {
         let container = NSView(frame: NSRect(x: 0, y: 0, width: 640, height: 400))
         container.addSubview(screen)
         screen.frame = container.bounds
-        screen.show(false)
+        screen.show(nil)
         XCTAssertNil(screen.hitTest(NSPoint(x: 320, y: 200)))
-        screen.show(true, hasUnsavedText: true)
+        screen.show(MissingFileOffer(.gone(inTrash: false, textAtRisk: true)))
         screen.layoutSubtreeIfNeeded()
         XCTAssertNotNil(screen.hitTest(NSPoint(x: 320, y: 200)))
     }

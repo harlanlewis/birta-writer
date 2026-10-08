@@ -52,4 +52,14 @@ final class PathBarTests: XCTestCase {
         XCTAssertFalse(PathBar.reveals("/Users/ada/Secrets", for: file, home: home))
         XCTAssertFalse(PathBar.reveals("/Users", for: file, home: home), "above the root the bar starts at")
     }
+
+    func testTheEllipsisMenuShouldListDeepestFirstAndDropPathsTheBarDidNotDraw() {
+        let file = URL(fileURLWithPath: "/Users/ada/Notes/Drafts/Today.md")
+        let rows = PathBar.menuRows([
+            PathBarMenuEntry(name: "Notes", path: "/Users/ada/Notes"),
+            PathBarMenuEntry(name: "Drafts", path: "/Users/ada/Notes/Drafts"),
+            PathBarMenuEntry(name: "Elsewhere", path: "/etc"),
+        ], for: file, home: home)
+        XCTAssertEqual(rows.map(\.name), ["Drafts", "Notes"])
+    }
 }

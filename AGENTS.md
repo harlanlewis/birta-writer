@@ -197,7 +197,8 @@ mac/Sources/BirtaWriter/TitleBar.swift           Draws it as a leading titlebar 
 mac/Sources/BirtaWriter/TitlebarDrag.swift       Makes the band draggable where the page is not using it; why the CSS answer does not exist in WebKit
 mac/Sources/BirtaWriterCore/TitlebarBand.swift   Where that strip starts and stops, how wide the title may be drawn so a strip is still left, and what a double click on a titlebar is the user's setting to decide
 mac/Sources/BirtaWriter/TitlePopover.swift       The Name/Tags/Where popover the title opens, and why it is built rather than inherited from NSDocument
-mac/Sources/BirtaWriter/MissingFileScreen.swift  What the panel says when the bound file has gone, why Put It Back and Save It Back are different promises, and the two lanes its card keeps clear so the titlebar can still name its own controls
+mac/Sources/BirtaWriterCore/MissingFileOffer.swift  What a window with no file it can write says and offers: the empty state Move to Trash leaves, a file in the Trash (Restore), a file gone for good (Save It Back), and why Restore and Save It Back are never offered together
+mac/Sources/BirtaWriter/MissingFileScreen.swift  Draws that offer: a card over the document, or the empty state on the window's own ground, and the two lanes the card keeps clear so the titlebar can still name its own controls
 mac/Sources/BirtaWriter/StatusOverlay.swift      The transient status line: legible with no frame, so the ink is measured and the scrim is the page's own paper colour
 mac/Sources/BirtaWriterCore/ActiveBinding.swift  WHICH of the app's three file settings is in force, so a rename writes back to the one it was read from
 mac/Sources/BirtaWriterCore/Frontmatter.swift    The metadata block split off the body, host side: a port of shared/contentTransform.ts and shared/lineMap.ts, and why the block the panel holds is mirrored rather than re-read from the buffer

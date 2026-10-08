@@ -14,11 +14,13 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ### Added
 
-- Birta Writer for Mac can show where a note is at the foot of its window: View > Show Path Bar (Option+Command+P, the Finder's chord), or Show Path Bar in the command palette. It lists the folders down to the note, starting from iCloud Drive, your home folder or the disk. Click a folder to open it in the Finder, or the note's own name to select it there. The setting applies to every window and is off until you turn it on.
+- Birta Writer for Mac can show where a note is at the foot of its window: View > Show Path Bar (Option+Command+P, the Finder's chord), or Show Path Bar in the command palette. It lists the folders down to the note, starting from iCloud Drive, your home folder or the disk. Click a folder to open it in the Finder, or the note's own name to select it there. In a narrow window the middle folders fold into a … button that lists them in a menu drawn like the one Command-clicking the window title opens. The setting applies to every window and is off until you turn it on.
 - Birta Writer for Mac's File menu has Reveal in Finder (Option+Command+R) and Copy Path (Option+Command+C) for the note in the window, with the chords VS Code gives the same pair.
 
 ### Changed
 
+- Moving the open note to the Trash in a Birta Writer for Mac window that shows a single file now leaves the window empty, saying No File Open, with Browse… and Open Recent… to open something else. It used to leave the note on screen under a card about a file that had gone missing. In a window on a folder, the window still moves to another file in that folder. If the note had changes that were not saved, the window keeps them and offers Restore.
+- When a note's file is deleted or moved to the Trash outside Birta Writer for Mac, the card that says so offers Restore (for a file in the Trash), Browse… and Open Recent…. Save It Back is offered when the file is gone and the window holds the only copy of what you wrote. Discard and Start New is gone; File > New Note still starts a note.
 - The command palette in Birta Writer for Mac finds Move to Trash when you type "delete", and now lists the File menu rows it could not find before: Copy Everything, Share and Reveal Last Save in Finder.
 
 ---

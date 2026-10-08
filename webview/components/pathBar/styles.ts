@@ -63,23 +63,36 @@ body.toc-open.toc-right .path-bar {
 .path-bar__list {
     display: flex;
     align-items: center;
+    flex: 1 1 auto;
     min-width: 0;
+    overflow: hidden;
     margin: 0;
     padding: 0;
     list-style: none;
 }
 
-/* One line, always. A long path gives up the middle folders' names first and
-   the file's last, which is the one a reader came to read. */
+/* One line, always, and no segment ever shrinks into its neighbour: a
+   segment that does not fit folds into the ellipsis (collapse.ts), and the
+   file's own name is the only label that truncates, once nothing else is
+   left to fold. */
 .path-bar__item {
     display: flex;
     align-items: center;
-    min-width: 0;
-    flex: 0 1 auto;
+    flex: none;
+}
 
-    &:last-child {
-        flex-shrink: 0.2;
+.path-bar__item--file {
+    flex: 0 1 auto;
+    min-width: 0;
+
+    & .path-bar__segment {
+        flex-shrink: 1;
     }
+}
+
+/* While the natural widths are taken, nothing truncates. */
+.path-bar--measuring .path-bar__item--file {
+    flex: none;
 }
 
 .path-bar__segment {
