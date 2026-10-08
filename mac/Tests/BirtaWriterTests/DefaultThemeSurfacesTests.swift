@@ -133,7 +133,8 @@ final class DefaultThemeSurfacesTests: XCTestCase {
         XCTAssertNil(Prefs.appearance.darkTheme, "the slot naming the removed theme is cleared")
         XCTAssertEqual(Prefs.appearance.lightTheme, "mine", "the other slot is untouched")
         let before = store.list().map(\.id)
-        XCTAssertEqual(before.count, 4)
+        // Every shipped theme but the removed one, and the custom one.
+        XCTAssertEqual(before.count, DefaultThemes.all.count)
         XCTAssertFalse(before.contains(gone.id), "removed from disk, not only from the strip")
 
         let settingsBefore = Prefs.appearance
@@ -141,7 +142,7 @@ final class DefaultThemeSurfacesTests: XCTestCase {
 
         let after = store.list().map(\.id)
         XCTAssertEqual(Set(after).subtracting(before), [gone.id], "exactly the one that was missing came back")
-        XCTAssertEqual(after.count, 5)
+        XCTAssertEqual(after.count, DefaultThemes.all.count + 1)
         XCTAssertEqual(store.theme(id: "mine")?.colors["editor.background"], "#010203",
                        "the theme somebody added themselves is byte for byte what it was")
         XCTAssertEqual(store.theme(id: kept.id)?.colors["editor.background"], "#123456",

@@ -96,6 +96,8 @@ enum PaletteSources {
         var themes: [ThemeSummary] = []
         var currentTheme: String?
         var appearanceMode: AppearanceMode = .auto
+        /// The kind in force, which names the app's own palette's row.
+        var appearanceKind: VSCodeTheme.Kind = .light
     }
 
     /// Menu rows the palette does not list: the two that open the palette.
@@ -199,7 +201,7 @@ enum PaletteSources {
                 catalog.register(.appearanceMode(mode), for: item.id)
                 return item
             }
-            let system = PaletteItem(id: "theme:", title: ThemesMenu.systemTitle,
+            let system = PaletteItem(id: "theme:", title: DefaultThemes.systemTitle(for: context.appearanceKind),
                                      detail: context.currentTheme == nil ? currentThemeDetail : nil,
                                      section: section, kind: .command)
             catalog.register(.theme(nil), for: system.id)

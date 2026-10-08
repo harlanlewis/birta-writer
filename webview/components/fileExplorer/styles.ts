@@ -72,15 +72,17 @@ export const FILE_EXPLORER_CSS = `
    box, with the host's window buttons drawn on its ground in the band above
    the rows. The rows start where the content area does (the shell writes that
    offset as --side-panel-content-top), so docking the drawer this way moves
-   nothing in it. The hairline is the column's edge: on a transparent file
-   list the ground is the page's own and nothing else would say where the
-   drawer stops. Docked only; the flyout floats below the bar as it always
+   nothing in it. The hairline is the column's edge, and it is drawn only on a
+   transparent file list (the host declares --files-panel-edge with that
+   ground), where the ground is the page's own and nothing else would say
+   where the drawer stops; on its own shade the drawer needs no line, as the
+   Finder's sidebar draws none. Docked only; the flyout floats below the bar as it always
    has, and keeps the card it is drawn as. */
 .files-panel--from-top:not(.files-panel--flyout) .files-card {
     border-radius: 0;
     margin-right: 0;
     padding-top: var(--side-panel-content-top, 0px);
-    box-shadow: inset -1px 0 0 var(--vscode-panel-border);
+    box-shadow: inset -1px 0 0 var(--files-panel-edge, transparent);
 }
 
 .files-header {

@@ -15,12 +15,14 @@ import Foundation
 ///    path hold two writers and the later write wins silently, so this arm is
 ///    a data-loss guard before it is tidiness.
 /// 2. A file inside an open directory window's root becomes a tab in that
-///    window, so the folder's files stay together under the folder's
+///    window (unless the window in front is a vacant tab of that very folder,
+///    which takes it over, as in 3), so the folder's files stay together under the folder's
 ///    explorer. The window in front wins when several are rooted over it,
 ///    else the most recently fronted.
-/// 3. The window in front is standing on a file that has gone with nothing
-///    typed, so it takes the file over rather than leaving a dead window
-///    behind a new one.
+/// 3. The window in front is standing on a file that has gone (or on the
+///    empty state Move to Trash leaves), so it takes the file over rather
+///    than leaving a dead window behind a new one. Any text only it held is
+///    kept in a recovered file first, which is the coordinator's job.
 /// 4. Otherwise the "Open files in" setting decides: a tab beside the window
 ///    in front, or a window of its own.
 public enum OpenRouting {
@@ -71,6 +73,12 @@ public enum OpenRouting {
                                    isInside: (String, String) -> Bool) -> Destination {
         if let open = windows.firstIndex(where: { sameFile($0.file, file) }) {
             return .existing(open)
+        }
+        // A vacant tab of the folder the file is in takes it over, before
+        // the folder's arm would add a tab beside it and leave the dead one
+        // standing: the file stays under its folder's explorer either way.
+        if let front = windows.last, front.isVacant, let root = front.root, isInside(file, root) {
+            return .vacantFront
         }
         if let rooted = windows.lastIndex(where: { root in
             root.root.map { isInside(file, $0) } ?? false

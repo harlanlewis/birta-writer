@@ -59,6 +59,19 @@ final class OpenRoutingTests: XCTestCase {
         XCTAssertEqual(route("/notes/c.md", windows), .tabIn(0))
     }
 
+    /// A dead tab of the folder the file is in is replaced, not stood beside:
+    /// the folder's own tab bar would otherwise hold the orphan and the file.
+    func testAVacantFrontTabOfTheFilesOwnFolderShouldTakeItOver() {
+        let windows = [OpenRouting.Window(file: "/notes/a.md", root: "/notes", group: "g"),
+                       OpenRouting.Window(file: "/notes/gone.md", root: "/notes", isVacant: true, group: "g")]
+        XCTAssertEqual(route("/notes/c.md", windows), .vacantFront)
+        XCTAssertEqual(route("/notes/a.md", windows), .existing(0), "already open still wins: one buffer per file")
+        XCTAssertEqual(route("/elsewhere/c.md", windows), .vacantFront)
+        let live = [OpenRouting.Window(file: "/notes/a.md", root: "/notes", group: "g"),
+                    OpenRouting.Window(file: "/notes/b.md", root: "/notes", group: "g")]
+        XCTAssertEqual(route("/notes/c.md", live), .tabIn(1), "a live front tab is not replaced")
+    }
+
     func testWithNoWindowsTheAnswerIsANewWindow() {
         XCTAssertEqual(route("/x.md", []), .newWindow)
     }

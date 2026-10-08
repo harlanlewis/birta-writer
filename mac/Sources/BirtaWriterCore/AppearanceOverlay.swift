@@ -43,11 +43,11 @@ public enum AppearanceOverlay {
     public static func systemPalette(_ kind: VSCodeTheme.Kind) -> [String: String] {
         switch kind {
         case .light:
-            return ["editor.background": "#ffffff", "editor.foreground": "#1d1d1f",
-                    "editorWidget.background": "#f6f6f7", "focusBorder": "#007aff"]
+            return ["editor.background": "#ffffff", "editor.foreground": "#272727",
+                    "editorWidget.background": "#f6f6f6", "focusBorder": "#007aff"]
         case .dark:
-            return ["editor.background": "#1e1e1e", "editor.foreground": "#e6e6e6",
-                    "editorWidget.background": "#2a2a2c", "focusBorder": "#0a84ff"]
+            return ["editor.background": "#1e1e1e", "editor.foreground": "#dddddd",
+                    "editorWidget.background": "#282828", "focusBorder": "#007aff"]
         }
     }
 
@@ -59,6 +59,13 @@ public enum AppearanceOverlay {
     /// default beside it, and `AppearanceOverlayTests` holds this spelling to
     /// that file, the way it holds the palette seeds.
     public static let filesGround = "--files-panel-ground"
+
+    /// The custom property for the line down the file list's trailing edge.
+    /// Declared only with the transparent ground: on its own shade the list
+    /// needs no line to say where it stops, as the Finder's sidebar draws
+    /// none, and on the page's own ground nothing else would say it. Same
+    /// reader and same guard as `filesGround`.
+    public static let filesEdge = "--files-panel-edge"
 
     /// How much of the tint goes into a surface, per kind.
     public static func tintAmount(_ kind: VSCodeTheme.Kind) -> Double { kind == .dark ? 0.16 : 0.09 }
@@ -115,7 +122,10 @@ public enum AppearanceOverlay {
         // hidden toolbar's tab is one). The page names the ground where it
         // paints it and supplies the default there, so a host that declares
         // nothing is the page as written.
-        if transparentSidebar { out.append((filesGround, "var(\(VSCodeTheme.cssVariable(for: "editor.background")))")) }
+        if transparentSidebar {
+            out.append((filesGround, "var(\(VSCodeTheme.cssVariable(for: "editor.background")))"))
+            out.append((filesEdge, "var(\(VSCodeTheme.cssVariable(for: "panel.border")))"))
+        }
         return out.map { (name: $0.0, value: $0.1) }
     }
 

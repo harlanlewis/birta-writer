@@ -56,7 +56,7 @@ public enum DefaultThemes {
     /// the folder under `mac/Resources` they are committed in.
     public static let folderName = "DefaultThemes"
 
-    /// The four, in the order the library is seeded and the pane lists them
+    /// The five, in the order the library is seeded and the pane lists them
     /// before it sorts by name.
     ///
     /// Terminal Green and Terminal Amber drop the parentheses their source
@@ -65,6 +65,10 @@ public enum DefaultThemes {
     /// the drawn name and the stored one agree letter for letter without
     /// them.
     public static let all: [Bundled] = [
+        // White paper, cool greys and a cobalt accent: the shipped light
+        // theme with no warmth in it, beside Terracotta's paper.
+        Bundled(name: "Birta Porcelain", kind: .light,
+                fileName: "birta-porcelain-color-theme.json"),
         Bundled(name: "Birta Terracotta Light", kind: .light,
                 fileName: "birta-terracotta-light-color-theme.json"),
         Bundled(name: "Birta Terracotta Dark", kind: .dark,
@@ -74,6 +78,15 @@ public enum DefaultThemes {
         Bundled(name: "Birta Terminal Amber", kind: .dark,
                 fileName: "birta-terminal-amber-color-theme.json"),
     ]
+
+    /// What the app's own palette is called, per kind: the theme the page
+    /// wears with no colour theme picked (`hostPalette.css`), which is the
+    /// macOS palette of that kind. One answer for every surface that lists
+    /// it: View > Theme and the palette name the kind in force, and the
+    /// Appearance pane's cards name each.
+    public static func systemTitle(for kind: VSCodeTheme.Kind) -> String {
+        kind == .dark ? "macOS Dark" : "macOS Light"
+    }
 
     /// Whether `id` names a shipped theme.
     public static func isDefault(id: String) -> Bool { id.hasPrefix(idPrefix) }

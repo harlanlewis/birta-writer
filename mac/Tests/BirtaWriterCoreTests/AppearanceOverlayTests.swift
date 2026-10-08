@@ -37,7 +37,7 @@ final class AppearanceOverlayTests: XCTestCase {
     func testTheTintShouldMixIntoTheSurfacesAndTheAccentShouldMixIntoTheTintedPaper() {
         let d = decls(kind: .light, accent: "#0000ff", tint: "#ff0000")
         XCTAssertEqual(d["--vscode-editor-background"], "#ffe8e8", "white paper, a breath of red")
-        XCTAssertEqual(d["--vscode-editorWidget-background"], "#f7e0e1")
+        XCTAssertEqual(d["--vscode-editorWidget-background"], "#f7e0e0")
         XCTAssertEqual(d["--vscode-input-background"], "#ffe8e8")
         XCTAssertEqual(d["--vscode-checkbox-background"], "#ffe8e8")
         // The selection is the accent into the TINTED paper, not the white.
@@ -129,6 +129,22 @@ final class AppearanceOverlayTests: XCTestCase {
             XCTAssertTrue(text.contains(paints),
                           "\(file) names the property but paints nothing with it: expected \(paints)")
         }
+    }
+
+    /// The file list's edge line exists only with the transparent ground, as
+    /// the Finder's shaded sidebar draws none; the page reads it with no line
+    /// as its default, so a host declaring nothing draws nothing.
+    func testTheFileListsEdgeShouldBeDeclaredOnlyWithTheTransparentGround() throws {
+        XCTAssertEqual(decls(sidebar: true)[AppearanceOverlay.filesEdge], "var(--vscode-panel-border)")
+        XCTAssertNil(decls()[AppearanceOverlay.filesEdge], "a shaded file list has no edge line")
+        let root = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        let text = try String(contentsOf: root.appendingPathComponent("webview/components/fileExplorer/styles.ts"),
+                              encoding: .utf8)
+        XCTAssertTrue(text.contains("box-shadow: inset -1px 0 0 var(\(AppearanceOverlay.filesEdge), transparent)"),
+                      "styles.ts must spend the edge property, with no line as its default")
+        XCTAssertFalse(text.contains("inset -1px 0 0 var(--vscode-panel-border)"),
+                       "the old unconditional line is back")
     }
 
     func testTheSwatchesShouldBeReadableColours() {

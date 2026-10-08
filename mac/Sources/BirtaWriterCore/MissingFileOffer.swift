@@ -28,8 +28,9 @@ import Foundation
 /// because it restores nothing; it hands the reader their own buffer.
 ///
 /// Nothing here throws the buffer away. Browse and Open Recent open another
-/// file, and a window still holding text that exists nowhere else opens it in
-/// another window rather than over that text (`Coordinator.isVacant`).
+/// file into this window, replacing it rather than leaving a dead window
+/// behind, and text that exists nowhere else is written to a recovered file
+/// beside the missing one first (`leavingNeedsRecoveredCopy`).
 public struct MissingFileOffer: Equatable, Sendable {
     public enum State: Equatable, Sendable {
         /// The reader moved the file to the Trash and nothing was unwritten.
@@ -56,6 +57,20 @@ public struct MissingFileOffer: Equatable, Sendable {
     /// own ground with nothing behind them. The card says the document behind
     /// it is still there; the empty state has none.
     public let isCard: Bool
+
+    /// Whether a window LEAVING this state for another file has to write its
+    /// buffer to a recovered copy first, because nothing else holds it.
+    ///
+    /// Leaving is always allowed (a dead window is never kept around to guard
+    /// its text); this says when leaving costs a copy. Not in the empty state,
+    /// whose buffer is blank, nor when a trashed copy holds every byte and
+    /// nothing was typed since; otherwise any text on screen is kept.
+    public static func leavingNeedsRecoveredCopy(isEmptyState: Bool, bufferIsBlank: Bool,
+                                                 trashedCopyThere: Bool, typedSinceWritten: Bool) -> Bool {
+        if isEmptyState || bufferIsBlank { return false }
+        if trashedCopyThere && !typedSinceWritten { return false }
+        return true
+    }
 
     public static let atRiskSentence = "What you were writing is still on screen, and is not saved anywhere else."
     public static let restoreKeepsSentence = "Your changes are still on screen, and Restore keeps them."
