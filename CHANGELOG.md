@@ -6,6 +6,12 @@
 
 ---
 
+## [2026.1009.0] - 2026, October 9
+
+_No user-visible changes; internal work only._
+
+---
+
 ## [2026.1008.1] - 2026, October 8
 
 ### Changed

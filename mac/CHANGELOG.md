@@ -12,6 +12,10 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ## [Unreleased]
 
+---
+
+## [2026.1009.0] - 2026, October 9
+
 ### Fixed
 
 - After you confirm an update in Birta Writer for Mac, its windows now show that it is under way instead of looking unchanged until the app quits. The note is dimmed and paused for editing, and a card in the lower right corner says whether the update is downloading or installing, with a spinner, and that the app will restart by itself, saving your note first if it has unsaved changes. If the update cannot be installed, the card goes away, editing resumes, and the app says why.
