@@ -153,6 +153,12 @@ describe("the distribution seam", () => {
         expect(build).toContain("Add :com.apple.application-identifier string $BIRTA_STORE_TEAM_ID.$BUNDLE_ID");
         expect(build).toContain("Add :com.apple.developer.team-identifier string $BIRTA_STORE_TEAM_ID");
         expect(build).toContain('"${BIRTA_STORE_TEAM_ID:?');
+        // A quarantined file anywhere in the bundle fails processing after the
+        // upload, and a downloaded profile is quarantined; the clear has to
+        // come before the seal.
+        const clear = build.indexOf('xattr -cr "$APP"');
+        expect(clear, "the store build never clears extended attributes").toBeGreaterThan(0);
+        expect(clear).toBeLessThan(build.indexOf('--entitlements "$ENTITLEMENTS" "$APP"'));
     });
 
     it("a launch should renew the store's grants before anything reads a stored path", () => {

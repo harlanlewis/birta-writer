@@ -206,6 +206,17 @@ if [ "$CHANNEL" = store ]; then
     if [ -n "${BIRTA_STORE_PROFILE:-}" ]; then
         cp "$BIRTA_STORE_PROFILE" "$APP/Contents/embedded.provisionprofile"
     fi
+    # Nothing in the bundle may carry an extended attribute into the store.
+    # A profile downloaded through a browser arrives quarantined and `cp`
+    # keeps the mark, and App Store Connect refuses a package holding any
+    # file with com.apple.quarantine (error 91109). Cleared before signing,
+    # since the seal is written to files and not to attributes, and a
+    # leftover is checked for rather than trusted to the clear.
+    xattr -cr "$APP"
+    if xattr -lr "$APP" | grep -q 'com.apple.quarantine'; then
+        echo "a file in $APP is still quarantined after clearing" >&2
+        exit 1
+    fi
     "${SIGN[@]}" --entitlements "$ENTITLEMENTS" "$APP"
     # The installer package the store takes, only with an installer identity:
     # productbuild cannot sign ad hoc, and a local build has no use for one.
