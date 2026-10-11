@@ -57,6 +57,30 @@ A sandboxed copy also forgets, at quit, every file and folder it was handed: the
 
 `bash mac/scripts/sandbox-check.sh` builds the sandboxed copy and runs those against it: a save, and a folder and a file still readable after a relaunch.
 
+### Submitting a store build
+
+Once per account, on developer.apple.com (Certificates, Identifiers & Profiles) and App Store Connect:
+
+1. An explicit App ID for `com.birtalabs.birta-writer`, with no capabilities. The Description field is the ID's internal name, letters, digits and spaces only.
+2. Two certificates, made most easily in Xcode (Settings, Accounts, Manage Certificates): Apple Distribution, which signs the app, and Mac Installer Distribution, which signs the package. `security find-identity -v` prints the names to pass below; the installer one is usually listed as `3rd Party Mac Developer Installer`.
+3. A provisioning profile of type Mac App Store Connect for that App ID and the Apple Distribution certificate.
+4. The app record in App Store Connect (Apps, New App, macOS), on the same bundle ID. The API cannot create it.
+
+Then each build:
+
+```bash
+export BIRTA_CODESIGN_IDENTITY="Apple Distribution: <name> (<team>)"
+export BIRTA_STORE_INSTALLER_IDENTITY="3rd Party Mac Developer Installer: <name> (<team>)"
+export BIRTA_STORE_PROFILE=/path/to/profile.provisionprofile
+export BIRTA_STORE_TEAM_ID=<team>
+node esbuild.mjs --production
+bash mac/scripts/build-app.sh --store --version <calver>
+```
+
+The script refuses a store-signed build without the team, the profile or a version, which are the three things App Store Connect would refuse it for later. It writes `mac/build/Birta Writer.pkg`; Apple's Transporter app uploads it. The build appears under TestFlight once processed, and internal testers need no review.
+
+A TestFlight or store install carries the release's bundle id, so on a Mac that has the release it is expected to replace `/Applications/Birta Writer.app` (not yet observed here). Test it on another Mac or another user account, not on the one whose copy somebody writes in.
+
 ## Updating itself
 
 Three steps, and only the last one is ever in front of anybody. CHECK asks the project's own release host what the newest release is, at launch and every couple of hours after it (`UpdatePolicy.recheckInterval`). STAGE fetches that release, verifies the checksum published beside it, unpacks it and leaves it in the temporary directory with nothing replaced. ARM hands the swap to a script that runs once this process is gone, since an app cannot reliably replace the bundle it is executing out of.

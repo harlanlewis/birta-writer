@@ -145,7 +145,14 @@ describe("the distribution seam", () => {
         }
         const build = readFileSync(join(REPO, "mac", "scripts", "build-app.sh"), "utf8");
         expect(build).toMatch(/if \[ "\$CHANNEL" != store \]; then\n\s*cp "\$CLI" "\$APP\/Contents\/MacOS\/bwr"\n\s*fi/);
-        expect(build).toContain("--entitlements mac/Resources/BirtaWriter.store.entitlements");
+        expect(build).toContain("ENTITLEMENTS=mac/Resources/BirtaWriter.store.entitlements");
+        expect(build).toContain('--entitlements "$ENTITLEMENTS" "$APP"');
+        // TestFlight on macOS refuses a signature that does not name its team,
+        // and the team cannot be committed, so a store-signed build adds both
+        // identifiers to a copy and refuses to go on without the team.
+        expect(build).toContain("Add :com.apple.application-identifier string $BIRTA_STORE_TEAM_ID.$BUNDLE_ID");
+        expect(build).toContain("Add :com.apple.developer.team-identifier string $BIRTA_STORE_TEAM_ID");
+        expect(build).toContain('"${BIRTA_STORE_TEAM_ID:?');
     });
 
     it("a launch should renew the store's grants before anything reads a stored path", () => {

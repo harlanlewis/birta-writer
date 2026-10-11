@@ -11,9 +11,11 @@
 # entitlements are the whole of what makes a build the store's. It composes
 # with `--dev`, which is how `mac/scripts/sandbox-check.sh` gets a sandboxed
 # copy that cannot touch the release's container. A store submission also
-# needs BIRTA_CODESIGN_IDENTITY set to the store's application identity,
-# BIRTA_STORE_PROFILE naming a Mac App Store provisioning profile, and
-# BIRTA_STORE_INSTALLER_IDENTITY for the .pkg (MAR-495).
+# needs BIRTA_CODESIGN_IDENTITY set to the store's application identity
+# (Apple Distribution), BIRTA_STORE_TEAM_ID, BIRTA_STORE_PROFILE naming a Mac
+# App Store provisioning profile, BIRTA_STORE_INSTALLER_IDENTITY for the .pkg,
+# and --version, since every upload has to carry a higher one (MAR-495).
+# mac/README.md has the account setup and the upload.
 #
 # `--dev` builds the DEVELOPMENT flavour: "Birta Writer [DEV].app", bundle id
 # `com.birtalabs.birta-writer-dev`. It is meant to sit in /Applications beside the
@@ -181,12 +183,30 @@ IDENTITY="${BIRTA_CODESIGN_IDENTITY:--}"
 SIGN=(codesign --force --options runtime --sign "$IDENTITY")
 [ "$IDENTITY" = "-" ] || SIGN+=(--timestamp)
 if [ "$CHANNEL" = store ]; then
+    ENTITLEMENTS=mac/Resources/BirtaWriter.store.entitlements
+    if [ "$IDENTITY" != "-" ]; then
+        # A build signed for the store is one meant for an upload, and App
+        # Store Connect refuses three things this script can catch first: a
+        # signature with no team (TestFlight on macOS needs the two
+        # identifiers below), a bundle with no profile, and a version it has
+        # already seen.
+        : "${BIRTA_STORE_TEAM_ID:?a store-signed build needs BIRTA_STORE_TEAM_ID}"
+        : "${BIRTA_STORE_PROFILE:?a store-signed build needs BIRTA_STORE_PROFILE}"
+        [ -n "$VERSION" ] || { echo "a store-signed build needs --version" >&2; exit 2; }
+        # The two identifiers name the team, so they cannot live in the
+        # committed file; they are added to a copy of it. They are what tie
+        # the signature to the provisioning profile.
+        ENTITLEMENTS="$(mktemp -t birta-store-entitlements).plist"
+        cp mac/Resources/BirtaWriter.store.entitlements "$ENTITLEMENTS"
+        /usr/libexec/PlistBuddy -c "Add :com.apple.application-identifier string $BIRTA_STORE_TEAM_ID.$BUNDLE_ID" "$ENTITLEMENTS"
+        /usr/libexec/PlistBuddy -c "Add :com.apple.developer.team-identifier string $BIRTA_STORE_TEAM_ID" "$ENTITLEMENTS"
+    fi
     # The store reads the profile from inside the bundle, so it goes in before
     # the seal. Optional for a local build, which runs without one.
     if [ -n "${BIRTA_STORE_PROFILE:-}" ]; then
         cp "$BIRTA_STORE_PROFILE" "$APP/Contents/embedded.provisionprofile"
     fi
-    "${SIGN[@]}" --entitlements mac/Resources/BirtaWriter.store.entitlements "$APP"
+    "${SIGN[@]}" --entitlements "$ENTITLEMENTS" "$APP"
     # The installer package the store takes, only with an installer identity:
     # productbuild cannot sign ad hoc, and a local build has no use for one.
     if [ -n "${BIRTA_STORE_INSTALLER_IDENTITY:-}" ]; then
