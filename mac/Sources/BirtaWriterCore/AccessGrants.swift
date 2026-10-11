@@ -80,11 +80,27 @@ public struct AccessGrantList: Equatable, Sendable, Codable {
     /// the system reports stale still resolves this time and may not next
     /// time, so it is renewed where it stands rather than moved to the front:
     /// renewing is not the person granting it again.
+    ///
+    /// A move can land on a path the list already reaches, when the moved
+    /// item was handed over again under its new name before this renewal.
+    /// The list then keeps one grant per path, as `recording` does: the stale
+    /// one goes if a grant already reaches the new path, and otherwise the
+    /// renewed one absorbs the grants it now covers.
     public func renewing(_ path: String, as newPath: String? = nil, bookmark: Data) -> AccessGrantList {
         let target = Self.key(path)
         let renamed = Self.key(newPath ?? path)
-        return AccessGrantList(grants: grants.map {
-            $0.path == target ? Grant(path: renamed, bookmark: bookmark) : $0
+        guard renamed != target else {
+            return AccessGrantList(grants: grants.map {
+                $0.path == target ? Grant(path: target, bookmark: bookmark) : $0
+            })
+        }
+        let others = grants.filter { $0.path != target }
+        if others.contains(where: { Self.contains($0.path, renamed) }) {
+            return AccessGrantList(grants: others)
+        }
+        return AccessGrantList(grants: grants.compactMap {
+            if $0.path == target { return Grant(path: renamed, bookmark: bookmark) }
+            return Self.contains(renamed, $0.path) ? nil : $0
         })
     }
 

@@ -31,8 +31,9 @@ enum SandboxAccess {
         /// before the first window, and a bookmark to a drive that is not
         /// plugged in or a share that is not reachable would otherwise stall
         /// the launch or put a dialog in front of it. Such a grant fails to
-        /// resolve this launch and is dropped, which leaves its file where the
-        /// sandbox leaves any other, unreadable and never written.
+        /// resolve this launch and is kept for the next one; meanwhile its
+        /// file is where the sandbox leaves any other, unreadable and never
+        /// written.
         var resolve: (Data) -> (url: URL, stale: Bool)? = { data in
             var stale = false
             guard let url = try? URL(resolvingBookmarkData: data,

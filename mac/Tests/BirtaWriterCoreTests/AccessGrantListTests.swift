@@ -55,6 +55,16 @@ final class AccessGrantListTests: XCTestCase {
         XCTAssertFalse(list.covers("/a/x.md"))
     }
 
+    func testRenewingOntoAPathAlreadyGrantedShouldKeepOneGrant() {
+        let handedAgain = AccessGrantList().recording(grant("/a")).recording(grant("/b"))
+            .renewing("/a", as: "/b", bookmark: Data([9]))
+        XCTAssertEqual(handedAgain.grants.map(\.path), ["/b"])
+        let absorbing = AccessGrantList().recording(grant("/c/x.md")).recording(grant("/a"))
+            .renewing("/a", as: "/c", bookmark: Data([9]))
+        XCTAssertEqual(absorbing.grants.map(\.path), ["/c"])
+        XCTAssertEqual(absorbing.grants.first?.bookmark, Data([9]))
+    }
+
     func testRemovingShouldDropOnlyThatPath() {
         let list = AccessGrantList().recording(grant("/a.md")).recording(grant("/b.md")).removing("/a.md")
         XCTAssertEqual(list.grants.map(\.path), ["/b.md"])
