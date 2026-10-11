@@ -46,8 +46,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding, 
     /// THE activation-policy rule, with two callers: `Entry.main` at launch
     /// and the Settings switch when it moves. A Dock icon means Cmd+Tab, an
     /// app menu of its own, and a Dock click that has to lead somewhere.
-    /// `.accessory` is the default and what `LSUIElement` declares, so a launch
-    /// never flashes an icon it is about to take away.
+    /// `.accessory` is what `LSUIElement` declares, so a launch never flashes
+    /// an icon it is about to take away; the setting raises it when it is on.
     /// The Dock setting, as an activation policy.
     ///
     /// WHAT to do is `BirtaWriterCore.DockPresence`'s, where it is decidable and
