@@ -856,26 +856,43 @@ enum Prefs {
     /// Whether the app has a Dock icon, and so appears in Cmd+Tab and gets an
     /// application menu bar of its own.
     ///
-    /// OFF, which is what the first-run screen therefore shows, because that
-    /// screen draws live settings and nothing writes this one before it. A
-    /// menu-bar accessory is what the app is; the Dock icon is for somebody who
-    /// wants it in Cmd+Tab, and it is one switch away on the first screen they
-    /// see.
+    /// ON for a new install, which is what the first-run screen therefore
+    /// shows, because that screen draws live settings and nothing writes this
+    /// one before it. An app somebody just installed should be findable where
+    /// apps are: in the Dock and in Cmd+Tab. The menu-bar item stays on
+    /// beside it, and turning the icon off is one switch on the first screen.
     ///
-    /// `LSUIElement` in Info.plist matches this, so a launch never flashes an
-    /// icon before the value is read; `Entry.main` applies it, and
-    /// `AppDelegate` re-applies it when the switch moves.
+    /// An install from before this default never stored the key, because OFF
+    /// was the default and nothing wrote it, so reading a missing key as ON
+    /// would put an icon in the Dock of everybody who never touched the
+    /// switch. `keepExistingDockChoice` writes their OFF down once, before the
+    /// value is read, which keeps this accessor's default the one answer for
+    /// every install that has not chosen.
+    ///
+    /// `LSUIElement` in Info.plist stays the accessory, so a launch with the
+    /// icon off never flashes one before the value is read; `Entry.main`
+    /// applies it, and `AppDelegate` re-applies it when the switch moves.
     static var showInDock: Bool {
-        get { d.bool(forKey: Key.showInDock.rawValue) }
+        get { d.object(forKey: Key.showInDock.rawValue) == nil ? true : d.bool(forKey: Key.showInDock.rawValue) }
         set { d.set(newValue, forKey: Key.showInDock.rawValue) }
+    }
+
+    /// Keep an existing install's Dock icon where it was before the default
+    /// changed: off, written down, wherever the key was never stored. A first
+    /// launch writes nothing and takes the new default. Before
+    /// `applyActivationPolicy` reads the value, and harmless to repeat, since
+    /// once the key is stored it does nothing.
+    static func keepExistingDockChoice(in store: UserDefaults? = nil) {
+        let store = store ?? d
+        guard !isFirstLaunch(in: store), store.object(forKey: Key.showInDock.rawValue) == nil else { return }
+        store.set(false, forKey: Key.showInDock.rawValue)
     }
 
     /// Whether the app has an icon in the menu bar.
     ///
-    /// ON, and the opposite default to the Dock icon beside it, because a
-    /// menu-bar accessory is what this app IS: the item is where the panel is
-    /// toggled from, and for anybody running without a Dock icon it is also
-    /// the only route to About and Settings.
+    /// ON, as the Dock icon beside it is for a new install, because the item
+    /// is where the panel is toggled from, and for anybody running without a
+    /// Dock icon it is also the only route to About and Settings.
     ///
     /// Neither switch is free of the other. `AppPresence` holds the rule and
     /// both rows read it: either surface alone is enough to reach the app, and
@@ -1040,7 +1057,7 @@ enum Prefs {
         report("autosave", !autosave, "off")
         report("network", !networkEnabled, "off")
         report("automatic updates", !autoUpdate, "off")
-        report("show in Dock", showInDock, "on")
+        report("show in Dock", !showInDock, "off")
         report("show in menu bar", !showInMenuBar, "off")
         report("agent", !agentEnabled, "off")
         report("agent command", agentEnabled && agentCommand != AgentPreset.fallback.template)

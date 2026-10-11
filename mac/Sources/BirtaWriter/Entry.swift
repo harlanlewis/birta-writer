@@ -11,6 +11,9 @@ import BirtaWriterCore
 enum Entry {
     static func main() {
         let app = NSApplication.shared
+        // Before the policy reads the Dock setting, so an install from before
+        // its default changed keeps the icon it had (`Prefs.showInDock`).
+        Prefs.keepExistingDockChoice()
         AppDelegate.applyActivationPolicy()
         let delegate = AppDelegate()
         app.delegate = delegate

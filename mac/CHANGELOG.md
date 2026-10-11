@@ -12,6 +12,10 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ## [Unreleased]
 
+### Changed
+
+- A new install of Birta Writer for Mac shows its icon in the Dock and in Cmd+Tab. An existing install keeps the setting it had, and Settings, General, Show in Dock turns the icon off.
+
 ---
 
 ## [2026.1009.0] - 2026, October 9

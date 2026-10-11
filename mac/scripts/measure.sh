@@ -88,6 +88,11 @@ export BIRTA_MAC_DEFAULTS_SUITE="com.birtalabs.birta-writer.measure.$$"
 # drifted from the app's seeds nothing; the `expanded` assertion below is what
 # turns that into a red rather than a quietly wrong measurement.
 defaults write "$BIRTA_MAC_DEFAULTS_SUITE" formattingRowExpanded -bool YES
+# No Dock icon, which was the default every arm below was written against
+# (activation from a shell, hiding, which Space a window joins). A new install
+# now shows the icon; the onboarding runs further down are where that default
+# is launched, against domains of their own.
+defaults write "$BIRTA_MAC_DEFAULTS_SUITE" showInDock -bool NO
 LOG="$(mktemp -t mac-measure)"
 KEEP=0
 if [ "${1:-}" = "--keep" ]; then KEEP=1; fi
@@ -2115,7 +2120,10 @@ if echo "$USED_KEYS" | grep -q "networkEnabled = 1"; then
     echo "onboarding           FAILED: an install that already had settings had the network switched on for it" >&2
     echo "$USED_KEYS" >&2; exit 1
 fi
-if echo "$USED_KEYS" | grep -q "showInDock"; then
+# The key itself is expected: an install from before the Dock default changed
+# has its OFF written down at launch (`Prefs.keepExistingDockChoice`). What it
+# may never be given is ON.
+if echo "$USED_KEYS" | grep -q "showInDock = 1"; then
     echo "onboarding           FAILED: an install that already had settings was given a Dock icon" >&2
     echo "$USED_KEYS" >&2; exit 1
 fi
