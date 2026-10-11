@@ -19,9 +19,9 @@ import BirtaWriterCore
 /// whole rather than to its text, and they are the ones this app's menu bar is
 /// worst at offering: it appears only once the app is frontmost, which a
 /// summoned panel does not always make it. There is a Dock icon to drop a file
-/// on only if `Prefs.showInDock` has been turned on, which it is not by
-/// default. So the panel that is already on screen carries them, beside the
-/// name of the file they act on.
+/// on only while `Prefs.showInDock` is on, and it can be switched off. So the
+/// panel that is already on screen carries them, beside the name of the file
+/// they act on.
 ///
 /// ## Why these symbols
 ///

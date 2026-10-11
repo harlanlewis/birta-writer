@@ -51,7 +51,19 @@ final class SandboxAccessTests: XCTestCase {
         XCTAssertEqual(Prefs.accessGrants.grants.map(\.path), ["/elsewhere/b.md", "/notes"])
     }
 
-    func testALaunchShouldRenewEveryGrantAndDropOneThatNoLongerResolves() {
+    /// A stored grant this launch could not renew is no promise: the file
+    /// handed over now gets its own bookmark, or the next launch reaches it
+    /// through nothing.
+    func testAStoredGrantNotLiveThisLaunchShouldNotStandInForANewOne() {
+        Prefs.accessGrants = AccessGrantList().recording(.init(path: "/notes", bookmark: Data("/notes".utf8)))
+        SandboxAccess.remember(URL(fileURLWithPath: "/notes/a.md"), distribution: .appStore)
+        XCTAssertEqual(made, ["/notes/a.md"])
+        XCTAssertEqual(Prefs.accessGrants.grants.map(\.path), ["/notes/a.md", "/notes"])
+    }
+
+    /// Resolution never mounts, so an unplugged drive fails exactly as a
+    /// deleted folder does; dropping it would lose the grant for good.
+    func testALaunchShouldRenewEveryGrantAndKeepOneThatDoesNotResolve() {
         Prefs.accessGrants = AccessGrantList()
             .recording(.init(path: "/gone.md", bookmark: Data("gone".utf8)))
             .recording(.init(path: "/notes", bookmark: Data("/notes".utf8)))
@@ -62,7 +74,7 @@ final class SandboxAccessTests: XCTestCase {
         SandboxAccess.restoreAtLaunch(distribution: .appStore)
         XCTAssertEqual(started, ["/notes"])
         XCTAssertEqual(SandboxAccess.live.map(\.path), ["/notes"])
-        XCTAssertEqual(Prefs.accessGrants.grants.map(\.path), ["/notes"], "a dead grant would be retried every launch")
+        XCTAssertEqual(Prefs.accessGrants.grants.map(\.path), ["/notes", "/gone.md"], "an unresolved grant was dropped")
     }
 
     func testAStaleBookmarkShouldBeTakenAgainWhereItStands() {
@@ -77,6 +89,16 @@ final class SandboxAccessTests: XCTestCase {
         XCTAssertEqual(made, ["/a.md"])
         XCTAssertEqual(Prefs.accessGrants.grants.map(\.path), ["/b.md", "/a.md"])
         XCTAssertEqual(Prefs.accessGrants.grants.last?.bookmark, Data("/a.md".utf8))
+    }
+
+    /// A stale bookmark to a renamed folder resolves to the new name, and the
+    /// grant reaches that name, so the list has to say so or `remember`
+    /// covers nothing under it.
+    func testAStaleBookmarkToAMovedItemShouldBeStoredUnderItsNewPath() {
+        Prefs.accessGrants = AccessGrantList().recording(.init(path: "/old", bookmark: Data("old".utf8)))
+        SandboxAccess.bookmarks.resolve = { _ in (URL(fileURLWithPath: "/new"), true) }
+        SandboxAccess.restoreAtLaunch(distribution: .appStore)
+        XCTAssertEqual(Prefs.accessGrants.grants.map(\.path), ["/new"])
     }
 
     /// A launch that came from Open With records a grant before the first

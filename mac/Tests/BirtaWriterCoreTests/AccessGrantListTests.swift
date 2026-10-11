@@ -47,6 +47,14 @@ final class AccessGrantListTests: XCTestCase {
         XCTAssertEqual(list.grants.last?.bookmark, Data([9]))
     }
 
+    func testRenewingUnderANewPathShouldMoveTheGrantWhereItStands() {
+        let list = AccessGrantList().recording(grant("/a")).recording(grant("/b.md"))
+            .renewing("/a", as: "/c", bookmark: Data([9]))
+        XCTAssertEqual(list.grants.map(\.path), ["/b.md", "/c"])
+        XCTAssertTrue(list.covers("/c/x.md"))
+        XCTAssertFalse(list.covers("/a/x.md"))
+    }
+
     func testRemovingShouldDropOnlyThatPath() {
         let list = AccessGrantList().recording(grant("/a.md")).recording(grant("/b.md")).removing("/a.md")
         XCTAssertEqual(list.grants.map(\.path), ["/b.md"])

@@ -28,6 +28,27 @@ final class DockDefaultTests: XCTestCase {
         XCTAssertNil(stored, "a first launch had its Dock choice written for it")
     }
 
+    /// The launch after a first one is not a first launch, so the absent key
+    /// it would otherwise find reads as an install from before the change.
+    /// Each launch is played in the order `Entry` and `App` run it.
+    func testANewInstallShouldStillShowItsIconOnItsSecondLaunch() {
+        for _ in 0..<2 {
+            Prefs.keepExistingDockChoice(in: store)
+            let first = Prefs.isFirstLaunch(in: store)
+            Prefs.recordNewInstallDock(firstLaunch: first, in: store)
+            store.set(true, forKey: Prefs.Key.hasSeenWelcome.rawValue)
+        }
+        XCTAssertEqual(stored as? Bool, true, "a new install lost its Dock icon on the second launch")
+    }
+
+    func testRecordingShouldWriteNothingOutsideAFirstLaunchOrOverAChoice() {
+        Prefs.recordNewInstallDock(firstLaunch: false, in: store)
+        XCTAssertNil(stored)
+        store.set(false, forKey: Prefs.Key.showInDock.rawValue)
+        Prefs.recordNewInstallDock(firstLaunch: true, in: store)
+        XCTAssertEqual(stored as? Bool, false)
+    }
+
     func testAnExistingInstallThatNeverChoseShouldKeepItsIconOff() {
         store.set(false, forKey: Prefs.Key.hasSeenWelcome.rawValue)
         Prefs.keepExistingDockChoice(in: store)
