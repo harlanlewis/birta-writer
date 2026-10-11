@@ -89,6 +89,9 @@ public struct AccessGrantList: Equatable, Sendable, Codable {
     public func renewing(_ path: String, as newPath: String? = nil, bookmark: Data) -> AccessGrantList {
         let target = Self.key(path)
         let renamed = Self.key(newPath ?? path)
+        // A grant an earlier renewal already absorbed has nothing to renew,
+        // and renaming it from here would add nothing and drop what covers it.
+        guard grants.contains(where: { $0.path == target }) else { return self }
         guard renamed != target else {
             return AccessGrantList(grants: grants.map {
                 $0.path == target ? Grant(path: target, bookmark: bookmark) : $0

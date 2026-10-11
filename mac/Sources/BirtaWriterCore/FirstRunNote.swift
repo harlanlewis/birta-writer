@@ -174,8 +174,8 @@ public enum FirstRunNote {
     /// and this paragraph is where they are told.
     ///
     /// The Dock is an offer rather than a fact, so it sits in the closing list
-    /// with the other things to go and do. `Prefs.showInDock` ships off and
-    /// nothing asks: the menu bar is the identity, and a question about it
+    /// with the other things to go and do. `Prefs.showInDock` is on for a new
+    /// install and nothing asks: the menu bar is the identity, and a question about it
     /// implies a fork that is not really there.
     public static let markdown = """
     # You're in
