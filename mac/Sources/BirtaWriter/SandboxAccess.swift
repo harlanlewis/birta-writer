@@ -31,8 +31,9 @@ enum SandboxAccess {
         /// before the first window, and a bookmark to a drive that is not
         /// plugged in or a share that is not reachable would otherwise stall
         /// the launch or put a dialog in front of it. Such a grant fails to
-        /// resolve this launch and is dropped, which leaves its file where the
-        /// sandbox leaves any other, unreadable and never written.
+        /// resolve this launch and is kept for the next one; meanwhile its
+        /// file is where the sandbox leaves any other, unreadable and never
+        /// written.
         var resolve: (Data) -> (url: URL, stale: Bool)? = { data in
             var stale = false
             guard let url = try? URL(resolvingBookmarkData: data,
@@ -52,36 +53,51 @@ enum SandboxAccess {
     private(set) static var live: [URL] = []
 
     /// Record a bookmark for each URL the person just handed over, unless a
-    /// grant already reaches it. Call while the grant is live: right after the
-    /// panel or the open event, never later.
+    /// grant live in this process already reaches it. Call while the grant is
+    /// live: right after the panel or the open event, never later.
+    ///
+    /// Live, not merely stored: a stored grant may not resolve this launch (a
+    /// drive unplugged, a folder recreated), and an Open With can arrive
+    /// before the launch has renewed anything, so a stored one covering the
+    /// path is no promise the next launch can reach it.
     static func remember(_ urls: [URL], distribution: Distribution = .current) {
         guard distribution.keepsAccessGrants else { return }
         var list = Prefs.accessGrants
-        for url in urls where !list.covers(url.path) {
+        for url in urls where !liveGrants.covers(url.path) {
             guard let data = bookmarks.make(url) else { continue }
             list = list.recording(.init(path: url.path, bookmark: data))
+            live.append(url)
         }
         if list != Prefs.accessGrants { Prefs.accessGrants = list }
+    }
+
+    /// What this process can reach right now, in the list's own terms.
+    private static var liveGrants: AccessGrantList {
+        AccessGrantList(grants: live.map { .init(path: $0.path, bookmark: Data()) })
     }
 
     static func remember(_ url: URL, distribution: Distribution = .current) {
         remember([url], distribution: distribution)
     }
 
-    /// Renew every stored grant. A bookmark that no longer resolves is
-    /// dropped, and one the system calls stale is taken again from the URL it
-    /// resolved to, so the list heals rather than failing on every launch.
+    /// Renew every stored grant. One the system calls stale is taken again
+    /// from the URL it resolved to, and stored under that URL's path, since a
+    /// renamed folder's grant reaches the new name and not the old one.
+    ///
+    /// A bookmark that does not resolve is KEPT. Resolution never mounts, so
+    /// a drive that is not plugged in fails exactly as a deleted folder does,
+    /// and dropping it would lose the grant the next time the drive is back.
+    /// The list's capacity is what bounds the ones that never come back.
     static func restoreAtLaunch(distribution: Distribution = .current) {
         guard distribution.keepsAccessGrants else { return }
         var list = Prefs.accessGrants
         for grant in list.grants {
             guard let (url, stale) = bookmarks.resolve(grant.bookmark), bookmarks.startAccessing(url) else {
-                list = list.removing(grant.path)
                 continue
             }
             live.append(url)
             if stale, let fresh = bookmarks.make(url) {
-                list = list.renewing(grant.path, bookmark: fresh)
+                list = list.renewing(grant.path, as: url.path, bookmark: fresh)
             }
         }
         if list != Prefs.accessGrants { Prefs.accessGrants = list }

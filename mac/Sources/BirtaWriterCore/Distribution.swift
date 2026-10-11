@@ -2,7 +2,7 @@ import Foundation
 
 /// Which channel delivered this build of Birta Writer, so the copy the Mac
 /// App Store installs and the copy downloaded from the project can be one
-/// program with the four differences the store's sandbox forces.
+/// program with the five differences the store's sandbox forces.
 ///
 /// The App Store build runs inside the App Sandbox, and the sandbox is what
 /// takes each of these away rather than a decision made here:
@@ -18,13 +18,16 @@ import Foundation
 ///   - reading the themes an installed VS Code holds, because `~/.vscode` and
 ///     the editor's own bundle are outside the container. Choosing a theme
 ///     file through the open panel and browsing Open VSX both survive: the
-///     first is user-selected access and the second is the network.
+///     first is user-selected access and the second is the network,
+///   - the iCloud Drive switch, because iCloud Drive's folder is outside the
+///     container. Choosing that folder as the notes Location still reaches
+///     it, through the same user-selected access.
 ///
 /// Read from the sandbox at runtime rather than set by a compile flag, for
 /// the reason `AppFlavor` reads the bundle id: the sandbox is what forbids
-/// each of the four, so deriving the answers from it means the distribution
+/// each of the five, so deriving the answers from it means the distribution
 /// and its consequences cannot disagree. A flag can, and a flag that said
-/// "direct" on a sandboxed build would offer four things that then fail.
+/// "direct" on a sandboxed build would offer five things that then fail.
 /// macOS puts the container id in the environment of every sandboxed
 /// process, which is also how `NSHomeDirectory()` learns where home moved to.
 ///
@@ -53,7 +56,7 @@ public enum Distribution: String, CaseIterable, Sendable {
     /// The variable macOS sets in a sandboxed process's environment. Held as
     /// a constant so `shared/__tests__/distribution.test.ts` can check the
     /// spelling: a typo here is a store build that never learns it is one,
-    /// and offers four things the sandbox then refuses.
+    /// and offers five things the sandbox then refuses.
     public static let sandboxContainerVariable = "APP_SANDBOX_CONTAINER_ID"
 
     /// Whether `environment` is a sandboxed process's. Presence is the test

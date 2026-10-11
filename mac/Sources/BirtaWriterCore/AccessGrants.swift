@@ -69,21 +69,41 @@ public struct AccessGrantList: Equatable, Sendable, Codable {
         return AccessGrantList(grants: [fresh] + rest)
     }
 
-    /// The list without the grant for `path`, for a bookmark that no longer
-    /// resolves: kept, it would be tried and fail on every launch.
+    /// The list without the grant for `path`.
     public func removing(_ path: String) -> AccessGrantList {
         let target = Self.key(path)
         return AccessGrantList(grants: grants.filter { $0.path != target })
     }
 
     /// The list with the bookmark for `path` swapped for a fresh one, in
-    /// place. A bookmark the system reports stale still resolves this time
-    /// and may not next time, so it is renewed where it stands rather than
-    /// moved to the front: renewing is not the person granting it again.
-    public func renewing(_ path: String, bookmark: Data) -> AccessGrantList {
+    /// place, and under `newPath` when the item it names has moved. A bookmark
+    /// the system reports stale still resolves this time and may not next
+    /// time, so it is renewed where it stands rather than moved to the front:
+    /// renewing is not the person granting it again.
+    ///
+    /// A move can land on a path the list already reaches, when the moved
+    /// item was handed over again under its new name before this renewal.
+    /// The list then keeps one grant per path, as `recording` does: the stale
+    /// one goes if a grant already reaches the new path, and otherwise the
+    /// renewed one absorbs the grants it now covers.
+    public func renewing(_ path: String, as newPath: String? = nil, bookmark: Data) -> AccessGrantList {
         let target = Self.key(path)
-        return AccessGrantList(grants: grants.map {
-            $0.path == target ? Grant(path: target, bookmark: bookmark) : $0
+        let renamed = Self.key(newPath ?? path)
+        // A grant an earlier renewal already absorbed has nothing to renew,
+        // and renaming it from here would add nothing and drop what covers it.
+        guard grants.contains(where: { $0.path == target }) else { return self }
+        guard renamed != target else {
+            return AccessGrantList(grants: grants.map {
+                $0.path == target ? Grant(path: target, bookmark: bookmark) : $0
+            })
+        }
+        let others = grants.filter { $0.path != target }
+        if others.contains(where: { Self.contains($0.path, renamed) }) {
+            return AccessGrantList(grants: others)
+        }
+        return AccessGrantList(grants: grants.compactMap {
+            if $0.path == target { return Grant(path: renamed, bookmark: bookmark) }
+            return Self.contains(renamed, $0.path) ? nil : $0
         })
     }
 

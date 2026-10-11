@@ -186,9 +186,9 @@ describe("the distribution seam", () => {
     });
 
     it("the first-run screen should take the channel too, since it draws the same update row", () => {
-        // The miss this guard caught on its first run: Settings was wired and
-        // the welcome screen, which draws the same row from the same rule,
-        // still read the flavour alone. Both are held the same way now.
+        // The welcome screen draws the update row from the same rule Settings
+        // does, so it has to take the channel the same way, or it reads the
+        // flavour alone and offers a store copy an update it cannot take.
         const welcome = readFileSync(join(APP_TARGET, "WelcomeView.swift"), "utf8");
         expect(welcome).toContain("let distribution: Distribution");
         expect(welcome).toMatch(/init\(flavour: AppFlavor,\s*\n\s*distribution: Distribution,/);

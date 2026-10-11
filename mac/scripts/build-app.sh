@@ -189,14 +189,19 @@ if [ "$CHANNEL" = store ]; then
         # Store Connect refuses three things this script can catch first: a
         # signature with no team (TestFlight on macOS needs the two
         # identifiers below), a bundle with no profile, and a version it has
-        # already seen.
+        # already seen. The installer identity too: without it there is no
+        # .pkg, and an upload with nothing to send fails far from its cause.
         : "${BIRTA_STORE_TEAM_ID:?a store-signed build needs BIRTA_STORE_TEAM_ID}"
         : "${BIRTA_STORE_PROFILE:?a store-signed build needs BIRTA_STORE_PROFILE}"
+        : "${BIRTA_STORE_INSTALLER_IDENTITY:?a store-signed build needs BIRTA_STORE_INSTALLER_IDENTITY}"
         [ -n "$VERSION" ] || { echo "a store-signed build needs --version" >&2; exit 2; }
         # The two identifiers name the team, so they cannot live in the
         # committed file; they are added to a copy of it. They are what tie
         # the signature to the provisioning profile.
-        ENTITLEMENTS="$(mktemp -t birta-store-entitlements).plist"
+        # In a directory of its own, removed once the bundle is signed: the
+        # copy names the team, and nothing else needs it.
+        ENTITLEMENTS_DIR="$(mktemp -d -t birta-store-entitlements)"
+        ENTITLEMENTS="$ENTITLEMENTS_DIR/store.entitlements"
         cp mac/Resources/BirtaWriter.store.entitlements "$ENTITLEMENTS"
         /usr/libexec/PlistBuddy -c "Add :com.apple.application-identifier string $BIRTA_STORE_TEAM_ID.$BUNDLE_ID" "$ENTITLEMENTS"
         /usr/libexec/PlistBuddy -c "Add :com.apple.developer.team-identifier string $BIRTA_STORE_TEAM_ID" "$ENTITLEMENTS"
@@ -218,6 +223,7 @@ if [ "$CHANNEL" = store ]; then
         exit 1
     fi
     "${SIGN[@]}" --entitlements "$ENTITLEMENTS" "$APP"
+    [ -z "${ENTITLEMENTS_DIR:-}" ] || rm -rf "$ENTITLEMENTS_DIR"
     # The installer package the store takes, only with an installer identity:
     # productbuild cannot sign ad hoc, and a local build has no use for one.
     if [ -n "${BIRTA_STORE_INSTALLER_IDENTITY:-}" ]; then

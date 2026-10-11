@@ -221,6 +221,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding, 
         // tour is never written. `FirstRunWiringTests` holds the order.
         let firstLaunch = Prefs.isFirstLaunch
         launchWasFirst = firstLaunch
+        // After the reading, for the reason the seeding below gives.
+        Prefs.recordNewInstallDock(firstLaunch: firstLaunch)
         // AFTER that reading, and the ordering is the point rather than an
         // arrangement: seeding stores a key, and `Prefs.isFirstLaunch` is the
         // absence of EVERY stored key, so a seed above this line would make

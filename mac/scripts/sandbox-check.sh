@@ -112,8 +112,10 @@ pid_of_exe() {
 # route, which grants it), or straight from the binary without one (a plain
 # relaunch, which grants nothing).
 launch() {
-    local tag=$1 target=${2:-}
-    [ -z "$target" ] || defaults delete "${SUITE_PLIST%.plist}" openSet >/dev/null 2>&1 || true
+    local tag=$1 target=${2:-} keep=${3:-}
+    if [ -n "$target" ] && [ -z "$keep" ]; then
+        defaults delete "${SUITE_PLIST%.plist}" openSet >/dev/null 2>&1 || true
+    fi
     LOG="$WORK/$tag.stderr"
     : > "$LOG"
     if [ -n "$target" ]; then
@@ -153,16 +155,26 @@ fi
 [ -z "$(ls -A "$OUTSIDE" | grep '\.tmp$' || true)" ] || fail save "a temp file was left beside the note"
 
 # ── relaunch ────────────────────────────────────────────────────────────
-launch grant "$OUTSIDE/folder"
+# The folder is handed over with the save step's window still remembered, so
+# the relaunch has two windows to put back: the file and the folder. Both
+# being reread is what the step claims, so both have to be restored.
+launch grant "$OUTSIDE/folder" keep
 end_app
 GRANTED="$OUTSIDE/folder( |/)|$OUTSIDE/Handed\.md( |$)"
+sleep 2
 before="$(denials_of "$GRANTED")"
 launch relaunch
 end_app
+# `log stream` writes asynchronously; a denial from the app's last moments
+# can land after it exits.
+sleep 2
 after="$(denials_of "$GRANTED")"
 if [ "$after" -gt "$before" ]; then
     fail relaunch "$((after - before)) sandbox denials on the handed-over paths after a relaunch"
     grep 'deny' "$WORK/sandbox.log" | grep -E -- "$GRANTED" | tail -5 >&2
+elif ! grep -q '^birta-trace windows restored=2 ' "$WORK/relaunch.stderr"; then
+    fail relaunch "the relaunch did not put back both the file's window and the folder's"
+    grep '^birta-trace windows' "$WORK/relaunch.stderr" >&2
 elif ! grep -q '^birta-trace listing path=\. entries=' "$WORK/relaunch.stderr"; then
     fail relaunch "the folder window put back no listing"
 else

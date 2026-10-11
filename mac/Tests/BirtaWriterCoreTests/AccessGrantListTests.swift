@@ -47,6 +47,28 @@ final class AccessGrantListTests: XCTestCase {
         XCTAssertEqual(list.grants.last?.bookmark, Data([9]))
     }
 
+    func testRenewingUnderANewPathShouldMoveTheGrantWhereItStands() {
+        let list = AccessGrantList().recording(grant("/a")).recording(grant("/b.md"))
+            .renewing("/a", as: "/c", bookmark: Data([9]))
+        XCTAssertEqual(list.grants.map(\.path), ["/b.md", "/c"])
+        XCTAssertTrue(list.covers("/c/x.md"))
+        XCTAssertFalse(list.covers("/a/x.md"))
+    }
+
+    func testRenewingOntoAPathAlreadyGrantedShouldKeepOneGrant() {
+        let handedAgain = AccessGrantList().recording(grant("/a")).recording(grant("/b"))
+            .renewing("/a", as: "/b", bookmark: Data([9]))
+        XCTAssertEqual(handedAgain.grants.map(\.path), ["/b"])
+        let absorbing = AccessGrantList().recording(grant("/c/x.md")).recording(grant("/a"))
+            .renewing("/a", as: "/c", bookmark: Data([9]))
+        XCTAssertEqual(absorbing.grants.map(\.path), ["/c"])
+        XCTAssertEqual(absorbing.grants.first?.bookmark, Data([9]))
+        // A grant no longer held, renewed onto a folder over one that is:
+        // without the guard the held grant is absorbed and nothing replaces it.
+        let held = AccessGrantList().recording(grant("/c/y.md"))
+        XCTAssertEqual(held.renewing("/old", as: "/c", bookmark: Data([7])), held, "a grant no longer held was renewed")
+    }
+
     func testRemovingShouldDropOnlyThatPath() {
         let list = AccessGrantList().recording(grant("/a.md")).recording(grant("/b.md")).removing("/a.md")
         XCTAssertEqual(list.grants.map(\.path), ["/b.md"])

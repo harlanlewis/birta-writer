@@ -117,8 +117,13 @@ enum Prefs {
     /// make the NEXT launch write four theme files back into a folder the
     /// reset had said it would not touch, and put back the defaults somebody
     /// removed on purpose. Restoring them is its own control, in Appearance.
+    ///
+    /// `accessGrants`: not a setting but the store build's record of what the
+    /// sandbox was handed. A reset keeps the windows on screen and records
+    /// them again, and keeps `lastNotesDirectory`; without their grants the
+    /// next launch could read none of those paths.
     private static let survivesReset: Set<Key> = [
-        .hasSeenWelcome, .lastNotesDirectory, .lastScratchpadFile, .seededDefaultThemes,
+        .hasSeenWelcome, .lastNotesDirectory, .lastScratchpadFile, .seededDefaultThemes, .accessGrants,
     ]
 
     /// Put every setting back to its default, and touch no file on disk.
@@ -148,6 +153,10 @@ enum Prefs {
             d.removeObject(forKey: key.rawValue)
         }
         hasSeenWelcome = true
+        // The Dock default written down, as a first launch does: left absent,
+        // the next launch would take it for an install from before the
+        // default changed and switch the icon off (`keepExistingDockChoice`).
+        showInDock = true
         UserDefaults.standard.removeObject(forKey: panelFrameAutosaveDefaultsKey)
         // Deliberately discarded: the caller re-reads `LoginItem.state` to
         // redraw its row, and a reset that stopped because macOS declined to
@@ -877,11 +886,27 @@ enum Prefs {
         set { d.set(newValue, forKey: Key.showInDock.rawValue) }
     }
 
+    /// Write a new install's Dock default down, so the next launch reads a
+    /// stored ON rather than an absent key `keepExistingDockChoice` would
+    /// take for an install from before the change. Called once the launch has
+    /// read whether it is the first, never before: storing a key earlier makes
+    /// every launch an existing install (`isFirstLaunch`).
+    static func recordNewInstallDock(firstLaunch: Bool, in store: UserDefaults? = nil) {
+        let store = store ?? d
+        guard firstLaunch, store.object(forKey: Key.showInDock.rawValue) == nil else { return }
+        store.set(true, forKey: Key.showInDock.rawValue)
+    }
+
     /// Keep an existing install's Dock icon where it was before the default
     /// changed: off, written down, wherever the key was never stored. A first
-    /// launch writes nothing and takes the new default. Before
+    /// launch writes nothing here and takes the new default. Before
     /// `applyActivationPolicy` reads the value, and harmless to repeat, since
     /// once the key is stored it does nothing.
+    ///
+    /// The pair to `recordNewInstallDock`, which is what makes "never stored"
+    /// mean "from before the change": a first launch stores other keys, so
+    /// its second launch is not a first launch, and without ON written down
+    /// in between this would switch a new install's icon off.
     static func keepExistingDockChoice(in store: UserDefaults? = nil) {
         let store = store ?? d
         guard !isFirstLaunch(in: store), store.object(forKey: Key.showInDock.rawValue) == nil else { return }
