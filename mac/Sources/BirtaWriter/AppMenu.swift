@@ -827,7 +827,7 @@ enum AppMenu {
     /// No help book, so no "<App> Help" row: an item named Help that opens a
     /// product page is a row that lies about where it goes. What the menu holds
     /// is the cheatsheet, which is the thing somebody opening Help in a text
-    /// editor is usually after, and the three destinations the About window
+    /// editor is usually after, and the destinations the About window
     /// already names, from the same declaration so they cannot drift.
     ///
     /// The system's own search field arrives with `NSApp.helpMenu`, and it
