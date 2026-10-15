@@ -160,7 +160,7 @@ final class AboutWindowController: NSWindowController {
 
     /// The links, as buttons stacked under each other. Their one width is
     /// set by the caller, with the button above them, because they are a
-    /// group and a ragged stack of three would read as three unrelated
+    /// group and a ragged stack of them would read as unrelated
     /// controls.
     private static func linkColumn() -> NSStackView {
         let buttons = AboutLink.allCases.map { link -> LinkButton in

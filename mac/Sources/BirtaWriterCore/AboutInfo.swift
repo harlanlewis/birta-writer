@@ -2,7 +2,7 @@ import Foundation
 
 /// What the About window says, decided with no window and no bundle around it.
 ///
-/// The window is an icon, three lines and a row of links, so the part worth
+/// The window is an icon, three lines and a column of links, so the part worth
 /// holding here is WHICH strings those lines carry. Two of the three have a
 /// rule: a version has to distinguish a release from a build somebody made off
 /// the tree, and a copyright can be absent, since it lives in Info.plist and a
@@ -40,6 +40,16 @@ public struct AboutInfo: Sendable, Equatable {
 
     /// Birta Labs, whose product this is.
     public static let website = "https://www.birtalabs.com"
+
+    /// The privacy policy, which the Mac App Store requires the app itself to
+    /// link to (App Review Guideline 5.1.1(i)), not only its store listing.
+    ///
+    /// Spelled at the address the site serves it from, the bare domain: the
+    /// `www` host redirects there, and a policy link should land in one hop.
+    /// The page lives in the private repository that holds the site, so a move
+    /// there needs this string to follow; the site answers its old paths with
+    /// a permanent redirect, which keeps a shipped copy's link working.
+    public static let privacyPolicy = "https://birtalabs.com/writer/privacy/"
 
     public init(name: String, shortVersion: String?, copyright: String?) {
         self.name = name
@@ -84,6 +94,7 @@ public enum AboutLink: String, CaseIterable, Sendable {
     case website = "Website"
     case source = "Source Code"
     case issues = "Report an Issue"
+    case privacy = "Privacy Policy"
 
     /// The title the row draws. The raw value, so a case cannot be added
     /// without naming itself.
@@ -94,6 +105,7 @@ public enum AboutLink: String, CaseIterable, Sendable {
         case .website: return AboutInfo.website
         case .source: return "https://github.com/\(AboutInfo.repository)"
         case .issues: return "https://github.com/\(AboutInfo.repository)/issues"
+        case .privacy: return AboutInfo.privacyPolicy
         }
     }
 

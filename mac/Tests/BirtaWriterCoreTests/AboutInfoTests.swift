@@ -63,6 +63,15 @@ final class AboutInfoTests: XCTestCase {
         XCTAssertEqual(AboutLink.website.url.host, "www.birtalabs.com")
     }
 
+    /// The store build is refused without a privacy policy reachable from
+    /// inside the app, and the About window and the Help menu both draw
+    /// `allCases`, so being a case is what puts it in front of somebody.
+    func testThePrivacyPolicyShouldBeOneOfTheLinks() {
+        XCTAssertTrue(AboutLink.allCases.contains(.privacy))
+        XCTAssertEqual(AboutLink.privacy.url.host, "birtalabs.com")
+        XCTAssertEqual(AboutLink.privacy.url.path, "/writer/privacy")
+    }
+
     /// `current` takes its name from the flavour and its other two lines from
     /// `Bundle.main`, under those two keys and no others.
     ///
