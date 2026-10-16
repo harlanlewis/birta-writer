@@ -12,6 +12,10 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ## [Unreleased]
 
+---
+
+## [2026.1016.0] - 2026, October 16
+
 ### Added
 
 - The About window and the Help menu link to the Birta Writer privacy policy.
