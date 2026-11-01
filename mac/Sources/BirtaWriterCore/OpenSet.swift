@@ -59,10 +59,11 @@ import Foundation
 /// with none is dropped too: a note deleted in the Finder while the app was
 /// quit must not come back as a window standing on a missing file. The one
 /// exception is a folder window whose folder is still there: it comes back
-/// with no tabs, and the caller opens it on the folder's own choice of file.
-/// A folder window's only tab is often a new note never typed into, which
-/// has no file to restore (`UnwrittenNote`), and the window is the folder,
-/// not that note.
+/// with no tabs when it recorded a tab that was a note never written
+/// (`UnwrittenNote`), and the caller opens it on the folder's own choice of
+/// file: that tab had no file to come back on, and the window is the folder,
+/// not that note. A folder window whose notes were all deleted while the app
+/// was quit is dropped like any other.
 public struct OpenSet: Codable, Equatable, Sendable {
     /// One window, or one group of tabs sharing a frame.
     public struct Group: Codable, Equatable, Sendable {
@@ -78,12 +79,18 @@ public struct OpenSet: Codable, Equatable, Sendable {
         /// window that never reported one. The app layer converts; this type
         /// carries it so a launch can put each window back where it was.
         public var frame: String?
+        /// Whether a tab of this folder window was a note never written
+        /// (`UnwrittenNote`), so it has no file to come back on. Optional so
+        /// a recording made before this field decodes, as nil.
+        public var hadUnwrittenTab: Bool?
 
-        public init(root: String? = nil, tabs: [String], selected: Int = 0, frame: String? = nil) {
+        public init(root: String? = nil, tabs: [String], selected: Int = 0, frame: String? = nil,
+                    hadUnwrittenTab: Bool? = nil) {
             self.root = root
             self.tabs = tabs
             self.selected = selected
             self.frame = frame
+            self.hadUnwrittenTab = hadUnwrittenTab
         }
 
         /// The tab that was showing, clamped into the list: a recording made
@@ -126,13 +133,14 @@ public struct OpenSet: Codable, Equatable, Sendable {
 
     /// The set with every tab that `exists` refuses dropped, each group's
     /// selection clamped, and every group left empty removed, except a folder
-    /// group whose root `exists` still accepts, which is kept with no tabs.
+    /// group that recorded an unwritten tab and whose root `exists` still
+    /// accepts, which is kept with no tabs.
     public func pruned(exists: (String) -> Bool) -> OpenSet {
         OpenSet(groups: groups.compactMap { group in
             var kept = group
             kept.tabs = group.tabs.filter(exists)
             guard !kept.tabs.isEmpty else {
-                guard let root = group.root, exists(root) else { return nil }
+                guard let root = group.root, group.hadUnwrittenTab == true, exists(root) else { return nil }
                 kept.selected = 0
                 return kept
             }

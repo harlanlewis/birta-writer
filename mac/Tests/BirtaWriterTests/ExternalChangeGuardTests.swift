@@ -270,7 +270,9 @@ final class ExternalChangeGuardTests: XCTestCase {
         let code = body.components(separatedBy: "\n")
             .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
             .joined(separator: "\n")
-        let save = try XCTUnwrap(code.range(of: "write(.explicitSave)"),
+        // The save the person is understood to have asked for, since a run
+        // hands the note's path to a reader (`writeSaveSomebodyAskedFor`).
+        let save = try XCTUnwrap(code.range(of: "self.writeSaveSomebodyAskedFor()"),
                                  "the run no longer writes the note first, so the agent opens stale bytes")
         let refused = try XCTUnwrap(code.range(of: "guard !self.driftUnresolved else {"),
                                     "the run no longer asks whether its pre-run save was refused")

@@ -225,23 +225,34 @@ final class OpenSetTests: XCTestCase {
 
     // MARK: a folder window with nothing left to restore
 
-    /// A folder window whose only tab was a note never written comes back
-    /// as the folder, with no tabs, for the caller to open on the folder's
-    /// own choice of file. A loose window with nothing left, and a folder
-    /// window whose folder has gone, are still dropped.
-    func testAFolderGroupWhoseTabsAreGoneShouldBeKeptWhileItsFolderIsThere() {
-        let unwritten = "/vault/Untitled.md"
+    /// A folder window whose tab was a note never written comes back as the
+    /// folder, with no tabs, for the caller to open on the folder's own
+    /// choice of file. Only that: a folder window whose notes were deleted
+    /// while the app was quit is dropped, as any window on a deleted note is,
+    /// and so is a loose window or a folder that has gone.
+    func testOnlyAFolderGroupThatHadAnUnwrittenTabShouldComeBackWithNoTabs() {
         let stored = OpenSet(groups: [
-            OpenSet.Group(root: "/vault", tabs: [unwritten], frame: "{{1, 2}, {3, 4}}"),
-            OpenSet.Group(root: "/gone", tabs: ["/gone/x.md"]),
+            OpenSet.Group(root: "/vault", tabs: ["/vault/Untitled.md"], frame: "{{1, 2}, {3, 4}}", hadUnwrittenTab: true),
+            OpenSet.Group(root: "/deleted", tabs: ["/deleted/x.md"]),
+            OpenSet.Group(root: "/gone", tabs: ["/gone/Untitled.md"], hadUnwrittenTab: true),
             OpenSet.Group(tabs: [b]),
         ])
-        let pruned = stored.pruned(exists: { $0 == "/vault" })
+        let exists: (String) -> Bool = { $0 == "/vault" || $0 == "/deleted" }
+        let pruned = stored.pruned(exists: exists)
         XCTAssertEqual(pruned.groups.map(\.root), ["/vault"])
         XCTAssertEqual(pruned.groups[0].tabs, [])
         XCTAssertEqual(pruned.groups[0].frame, "{{1, 2}, {3, 4}}", "it comes back where it was")
         XCTAssertNil(pruned.groups[0].selectedTab)
-        XCTAssertEqual(plan(stored, exists: { $0 == "/vault" }).groups.map(\.root), ["/vault"],
+        XCTAssertEqual(plan(stored, exists: exists).groups.map(\.root), ["/vault"],
                        "the launch plan restores it rather than falling back to a single window")
+    }
+
+    /// A recording made before the field existed still decodes, and reads as
+    /// no unwritten tab.
+    func testARecordingWithoutTheUnwrittenFlagShouldStillDecode() throws {
+        let old = Data(#"{"groups":[{"root":"/vault","tabs":["/vault/a.md"],"selected":0}]}"#.utf8)
+        let set = try XCTUnwrap(OpenSet.decoded(old))
+        XCTAssertEqual(set.groups.first?.hadUnwrittenTab, nil)
+        XCTAssertEqual(set.groups.first?.tabs, ["/vault/a.md"])
     }
 }
