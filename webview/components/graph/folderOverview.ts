@@ -34,7 +34,7 @@ import { openFullscreenSurface } from "@/ui/fullscreenSurface";
 import { wireRoving } from "../sidePanel/keyboardNav";
 import { folderHub } from "./folderGraph";
 import { buildLocalGraph, layoutRings } from "./localGraph";
-import { createRingStage, fillLegend, RING_SIZE } from "./ringStage";
+import { createRingStage, fill, fillLegend, RING_SIZE } from "./ringStage";
 import { ensureLocalGraphStyles } from "./styles";
 
 /** Most recent files the list shows. */
@@ -111,9 +111,9 @@ export function createFolderOverview(host: FolderOverviewHost): FolderOverview {
         stage.element.hidden = false;
         const laid = layoutRings(graph, RING_SIZE);
         stage.draw(laid);
-        const notes = [t("Centred on {0}, the most connected note here").replace("{0}", laid.nodes[0]!.label)];
+        const notes = [fill(t("Centred on {0}, the most connected note here"), laid.nodes[0]!.label)];
         if (laid.omitted > 0) {
-            notes.push(t("{0} more not shown").replace("{0}", String(laid.omitted)));
+            notes.push(fill(t("{0} more not shown"), String(laid.omitted)));
         }
         if (state.index!.truncated) {
             notes.push(t("This folder has more notes than its index reads"));
@@ -180,26 +180,37 @@ export interface FolderOverviewSurfaceHost {
     onDismiss: () => void;
 }
 
+export interface FolderOverviewHandle {
+    /** Close it, as Escape does. */
+    close: () => void;
+    /** Bring keyboard focus back into it, to the first recent file or dot. */
+    focus: () => void;
+    /** Whether it is still up: false from the first moment of its close. */
+    isOpen: () => boolean;
+}
+
 /**
  * Open the overview over the page, on the fullscreen surface the whole-folder
  * graph uses. Escape, Close or a click on the ground puts the page back as it
  * was; a dot or a row closes it and opens that note. It asks the host for the
  * index (once per page, as every view of it does) and for the recent files
- * (every opening), and redraws as either arrives. Returns the close function.
+ * (every opening), and redraws as either arrives.
  */
-export function openFolderOverview(host: FolderOverviewSurfaceHost): () => void {
+export function openFolderOverview(host: FolderOverviewSurfaceHost): FolderOverviewHandle {
     let openingNote = false;
+    let open = true;
     // This opening's answer, null until it comes: a host that keeps no list
     // never answers, and the section is then never drawn.
     let recents: readonly string[] | null = null;
     const titleFor = (state: FolderIndexState | null): string => state?.index
-        ? t("Folder: {0}").replace("{0}", state.index.rootName)
+        ? fill(t("Folder: {0}"), state.index.rootName)
         : t("Folder");
     const surface = openFullscreenSurface({
         ground: "canvas",
         title: titleFor(readFolderIndex()),
         className: "fo-surface",
         onClose: () => {
+            open = false;
             window.removeEventListener(FOLDER_INDEX_CHANGED, redraw);
             window.removeEventListener(FOLDER_RECENTS_CHANGED, onRecents);
             if (!openingNote) { host.onDismiss(); }
@@ -251,5 +262,9 @@ export function openFolderOverview(host: FolderOverviewSurfaceHost): () => void 
     window.addEventListener(FOLDER_RECENTS_CHANGED, onRecents);
     notifyRequestFolderRecents();
     redraw();
-    return () => surface.close();
+    return {
+        close: () => surface.close(),
+        focus: () => view.focusFirst(),
+        isOpen: () => open,
+    };
 }

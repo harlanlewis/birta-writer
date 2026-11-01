@@ -132,13 +132,19 @@ export function selfHasReferences(): boolean {
  * root, so the path goes as the index names it, with nothing to resolve, and
  * the line rides beside it as the message's own optional field rather than
  * as a fragment, because its file names may hold `#`.
+ *
+ * A null `self` is a document the index does not hold (past its cap, or a
+ * file the walk does not read), which a view of the whole folder can still be
+ * opened from. There is nothing to be relative to, so the path goes
+ * root-relative, with a leading `/`, which `openFile` resolves against the
+ * workspace folder: the same folder the VS Code host indexes.
  */
-export function openIndexedNote(self: string, path: string, line?: number): void {
+export function openIndexedNote(self: string | null, path: string, line?: number): void {
     if (hostHas("projectFiles")) {
         notifyOpenProjectFile(path, false, line);
         return;
     }
-    const plain = relativeNotePath(self, path);
+    const plain = self === null ? `/${path}` : relativeNotePath(self, path);
     const rel = plain.includes("#") ? plain.replace(/%/g, "%25").replace(/#/g, "%23") : plain;
     notifyOpenFile(line === undefined ? rel : `${rel}#${line}`);
 }
