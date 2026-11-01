@@ -29,6 +29,16 @@ export const RING_SIZE = 100;
 /** Half the length of a midpoint arrowhead, in layout units. */
 const ARROW = 1.3;
 
+/**
+ * `template` with every `{0}` replaced by `value`, as written. Never
+ * `String.replace` with a string: it reads `$&`, `$'` and the rest in the
+ * replacement as patterns, and a note's name or a folder's is the reader's
+ * own text, which may hold them.
+ */
+export function fill(template: string, value: string): string {
+    return template.split("{0}").join(value);
+}
+
 export interface RingStageHost {
     /** Open a note by its root-relative path. */
     openNote: (path: string) => void;
@@ -116,7 +126,7 @@ export function createRingStage(host: RingStageHost): RingStage {
             btn.append(label);
         }
         const described = node.dangling
-            ? t("{0} (not a note in this folder)").replace("{0}", node.label)
+            ? fill(t("{0} (not a note in this folder)"), node.label)
             : node.type !== null ? `${node.label} (${node.type})` : node.label;
         btn.title = node.dangling || current ? described : node.id;
         btn.setAttribute("aria-label", described);

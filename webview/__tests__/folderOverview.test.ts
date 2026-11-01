@@ -214,7 +214,7 @@ describe("openFolderOverview", () => {
     });
 
     it("opening should ask for the recent files and the index, and draw both as they arrive", () => {
-        const close = openFolderOverview({ openNote: () => {}, onDismiss: () => {} });
+        const { close } = openFolderOverview({ openNote: () => {}, onDismiss: () => {} });
         const types = posted().map((m) => m.type);
         expect(types).toContain("requestFolderRecents");
         expect(types).toContain("requestFolderIndex");
@@ -229,8 +229,8 @@ describe("openFolderOverview", () => {
     });
 
     it("every opening should ask again, because the list moves with every file opened", () => {
-        openFolderOverview({ openNote: () => {}, onDismiss: () => {} })();
-        openFolderOverview({ openNote: () => {}, onDismiss: () => {} })();
+        openFolderOverview({ openNote: () => {}, onDismiss: () => {} }).close();
+        openFolderOverview({ openNote: () => {}, onDismiss: () => {} }).close();
         expect(posted().filter((m) => m.type === "requestFolderRecents")).toHaveLength(2);
     });
 
@@ -257,7 +257,7 @@ describe("openFolderOverview", () => {
     });
 
     it("focus should follow the recent files when they arrive after the index", () => {
-        const close = openFolderOverview({ openNote: () => {}, onDismiss: () => {} });
+        const { close } = openFolderOverview({ openNote: () => {}, onDismiss: () => {} });
         receiveFolderIndex(VAULT, null);
         expect((document.activeElement as HTMLElement).classList.contains("lg-node")).toBe(true);
         receiveFolderRecents(["lone.md", "a.md"]);
@@ -266,7 +266,7 @@ describe("openFolderOverview", () => {
     });
 
     it("once the reader has moved, a redraw should keep focus on the same row rather than move it", () => {
-        const close = openFolderOverview({ openNote: () => {}, onDismiss: () => {} });
+        const { close } = openFolderOverview({ openNote: () => {}, onDismiss: () => {} });
         receiveFolderIndex(VAULT, null);
         receiveFolderRecents(["lone.md", "a.md"]);
         const second = document.querySelector<HTMLElement>('.fo-row[data-path="a.md"]')!;
@@ -279,7 +279,7 @@ describe("openFolderOverview", () => {
     });
 
     it("an answer arriving after close should not redraw a closed surface", () => {
-        const close = openFolderOverview({ openNote: () => {}, onDismiss: () => {} });
+        const { close } = openFolderOverview({ openNote: () => {}, onDismiss: () => {} });
         const surface = document.querySelector<HTMLElement>(".fo-surface")!;
         close();
         receiveFolderRecents(["a.md"]);

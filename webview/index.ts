@@ -82,8 +82,8 @@ import { initFindBar } from "./components/findBar";
 import { createLineNumbersGate } from "./utils/lineNumbersLoader";
 import { createFileExplorerGate } from "./utils/fileExplorerLoader";
 import { createPathBarGate } from "./utils/pathBarLoader";
-import { loadLocalGraph } from "./utils/localGraphLoader";
-import { openIndexedNote, readFolderIndex, syncFolderOverviewAvailability } from "./links/folderIndex";
+import { syncFolderOverviewAvailability } from "./links/folderIndex";
+import { showFolderOverview } from "./links/folderOverviewCommand";
 import { createFirstScreen } from "./firstScreen";
 import { initHeadingIds } from "./headingIds";
 import { initToolbar } from "./components/toolbar";
@@ -870,14 +870,9 @@ setEditorCommandHost({
     // The deliberate keyboard gesture INTO the review sidebar (MAR-294);
     // Escape inside any of its regions is the gesture back.
     focusReviewSidebar: () => toc?.focusPanel(),
-    // The folder overview (MAR-488), in the graph's lazy chunk. A note is
-    // opened the way every view of the index opens one.
-    showFolderOverview: () => {
-        loadLocalGraph().then((mod) => mod.openFolderOverview({
-            openNote: (path) => openIndexedNote(readFolderIndex()?.self ?? "", path),
-            onDismiss: () => getEditorView()?.focus(),
-        })).catch(() => { /* not cached: the next run of the command retries */ });
-    },
+    // The folder overview (MAR-488), in the graph's lazy chunk: one at a
+    // time, and a failure while opening it reaches the crash reporter.
+    showFolderOverview: () => { void showFolderOverview({ focusEditor: () => getEditorView()?.focus() }); },
     // The file explorer's three, through its gate: no-ops until a folder is
     // open, and buffered while its chunk is on its way.
     toggleFileExplorer: () => fileExplorer.toggle(),
