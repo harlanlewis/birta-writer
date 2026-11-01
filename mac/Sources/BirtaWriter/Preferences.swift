@@ -61,6 +61,7 @@ enum Prefs {
         case updateDeclinedTag
         case updateInstalledTag
         case updateRestoreWindows
+        case quitClosedWindows
         case lastNotesDirectory
         case lastScratchpadFile
         case tocVisibility
@@ -1173,6 +1174,41 @@ enum Prefs {
         let restore = d.bool(forKey: Key.updateRestoreWindows.rawValue)
         d.removeObject(forKey: Key.updateRestoreWindows.rawValue)
         return restore
+    }
+
+    /// Whether the last quit closed the windows: one the person made, with
+    /// macOS's Close windows when quitting on. `OpenSet.launchPlan`'s rule 0
+    /// is the reason the kinds of quit differ.
+    ///
+    /// The mark records the CLOSE rather than the keep, and that direction is
+    /// load-bearing: a quit that never reached the terminate path (a crash, a
+    /// force quit, a power loss) writes nothing, and nothing has to read as
+    /// "keep", because nobody closed anything. So does a quit by a build that
+    /// predates this key, which is what carries the windows across the update
+    /// that installs it.
+    ///
+    /// One-shot, and removed by the read for the reason
+    /// `takeRestoreWindowsAfterUpdate` gives. Never written on a first launch,
+    /// whose quit would otherwise turn the next launch into an existing
+    /// install before the first-run screen had been answered.
+    static func setQuitClosedWindows() {
+        guard !isFirstLaunch else { return }
+        d.set(true, forKey: Key.quitClosedWindows.rawValue)
+    }
+
+    static func takeQuitClosedWindows() -> Bool {
+        let closed = d.bool(forKey: Key.quitClosedWindows.rawValue)
+        d.removeObject(forKey: Key.quitClosedWindows.rawValue)
+        return closed
+    }
+
+    /// macOS's "Close windows when quitting an application" (System Settings,
+    /// Desktop & Dock), read the other way round: true when the box is OFF and
+    /// a quit keeps the windows. The setting lives in the global domain, which
+    /// every store here searches, so a throwaway domain can answer it for a
+    /// checking run without touching the person's own.
+    static var systemQuitKeepsWindows: Bool {
+        d.bool(forKey: "NSQuitAlwaysKeepsWindows")
     }
 
     /// Whether the app checks for a newer release on its own.

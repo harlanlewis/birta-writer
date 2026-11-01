@@ -3218,8 +3218,8 @@ final class Coordinator {
     /// Settle the buffer the way closing this window would, without closing
     /// it, for a file a shell is blocked on in `bwr --wait`.
     ///
-    /// The last window hides on Cmd+W rather than closing (`WindowSet.close`),
-    /// and a hide writes only with autosave on. That is right for a note
+    /// The quick note, as the last window, hides on Cmd+W rather than closing
+    /// (`WindowSet.close`), and a hide writes only with autosave on. That is right for a note
     /// somebody will summon again and wrong for a document a shell is about
     /// to read: told "closed" after a hide that wrote nothing, git would
     /// commit the message file as it was before the edit. So the gesture

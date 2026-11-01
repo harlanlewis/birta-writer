@@ -23,9 +23,17 @@ import Foundation
 ///
 /// ## What a launch decides, and in what order
 ///
-/// `launchPlan` answers three questions, in this order because each outranks
+/// `launchPlan` answers four questions, in this order because each outranks
 /// the next.
 ///
+/// 0. Whether anything comes back at all. A quit somebody made follows
+///    macOS's own "Close windows when quitting an application" (System
+///    Settings, Desktop & Dock), which is on unless they turned it off; with
+///    it on, the recording is not read and the launch starts from the quick
+///    note. Any other end (an update's restart, an installer's SIGTERM, the
+///    session ending, a crash) restores, because the person did not close
+///    anything. The caller decides which kind of quit it was; this type only
+///    reads the answer.
 /// 1. A file this launch was ASKED to open (Open With in the Finder, a Dock
 ///    drop, `open -a`) is in front, whatever else comes back. If it was already
 ///    among the open windows its group is fronted and its tab selected; if not
@@ -42,7 +50,10 @@ import Foundation
 ///    opens on the most recently used file that still exists, then on whatever
 ///    the settings name. The recents list is ordered by use (a file joins it
 ///    when it leaves the screen), which is the closest thing to "what you were
-///    working in" a launch with no recording can reach.
+///    working in" a launch with no recording can reach. A launch that
+///    restores nothing on purpose (rule 0) opens the quick note instead: the
+///    file last worked in is one somebody closed by quitting, and putting it
+///    back is the thing rule 0 refuses.
 ///
 /// Tabs whose file is gone are dropped before any of that, and a group left
 /// with none is dropped too: a note deleted in the Finder while the app was
@@ -140,6 +151,23 @@ public struct OpenSet: Codable, Equatable, Sendable {
 
     // MARK: launch
 
+    /// Whether the quit under way closes the windows, which is rule 0's
+    /// question asked at the other end: the quit records the answer and the
+    /// next launch reads it.
+    ///
+    /// Only a quit the person made, with macOS's Close windows when quitting
+    /// on, closes them. A quit nobody made (an update's restart, an
+    /// installer's SIGTERM) and the session ending (log out, restart, shut
+    /// down, where macOS's own Reopen windows when logging back in decides)
+    /// both keep them.
+    ///
+    /// - Parameter systemKeepsWindows: `NSQuitAlwaysKeepsWindows`, true when
+    ///   the Close windows when quitting box is off.
+    public static func quitClosesWindows(unattended: Bool, sessionEnding: Bool,
+                                         systemKeepsWindows: Bool) -> Bool {
+        !unattended && !sessionEnding && !systemKeepsWindows
+    }
+
     /// What a launch builds.
     public struct LaunchPlan: Equatable, Sendable {
         /// The groups to restore, back to front. Every tab in every group
@@ -167,6 +195,9 @@ public struct OpenSet: Codable, Equatable, Sendable {
     ///   - recents: the recents list, most recently used first.
     ///   - fallback: what the settings name, for a launch with nothing else to
     ///     go on. Always opened when nothing else is; never nil.
+    ///   - restoresWindows: rule 0's answer, false when the windows were
+    ///     closed by the quit.
+    ///   - quickNote: the note a launch that restores nothing opens on.
     ///   - openToBlankNote: the "New windows open with" setting, on its "New
     ///     file" answer.
     ///   - launchedWith: the file this launch was asked to open, if any.
@@ -177,10 +208,12 @@ public struct OpenSet: Codable, Equatable, Sendable {
                                   isBlank: (String) -> Bool,
                                   recents: [String],
                                   fallback: String,
+                                  restoresWindows: Bool,
+                                  quickNote: String,
                                   openToBlankNote: Bool,
                                   launchedWith: String?,
                                   sameFile: (String, String) -> Bool = { $0 == $1 }) -> LaunchPlan {
-        var set = stored.pruned(exists: exists)
+        var set = restoresWindows ? stored.pruned(exists: exists) : OpenSet()
 
         if let asked = launchedWith {
             if let fronted = set.fronting(asked, sameFile: sameFile) {
@@ -192,6 +225,12 @@ public struct OpenSet: Codable, Equatable, Sendable {
         }
 
         if openToBlankNote {
+            // The quick note is the set a launch that restores nothing would
+            // have held, so a blank one is fronted rather than joined by
+            // another, for the same reason as below.
+            if !restoresWindows, isBlank(quickNote) {
+                return LaunchPlan(groups: [Group(tabs: [quickNote])], opensBlankNote: false)
+            }
             if let blank = set.paths.last(where: isBlank), let fronted = set.fronting(blank, sameFile: sameFile) {
                 return LaunchPlan(groups: fronted.groups, opensBlankNote: false)
             }
@@ -199,7 +238,7 @@ public struct OpenSet: Codable, Equatable, Sendable {
         }
 
         if set.isEmpty {
-            let single = recents.first(where: exists) ?? fallback
+            let single = restoresWindows ? recents.first(where: exists) ?? fallback : quickNote
             return LaunchPlan(groups: [Group(tabs: [single])], opensBlankNote: false)
         }
         return LaunchPlan(groups: set.groups, opensBlankNote: false)

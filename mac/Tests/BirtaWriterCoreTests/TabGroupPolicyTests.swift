@@ -23,15 +23,33 @@ final class TabGroupPolicyTests: XCTestCase {
 
     // MARK: closing
 
-    func testCloseTakesTheTabUnlessItIsTheLastWindow() {
-        XCTAssertEqual(TabGroupPolicy.whatCloseDoes(windows: 3), .closeTab)
-        XCTAssertEqual(TabGroupPolicy.whatCloseDoes(windows: 1), .hideAll)
+    func testCloseTakesTheTabWhileOtherWindowsRemainWhateverItHolds() {
+        for quick in [true, false] {
+            XCTAssertEqual(TabGroupPolicy.whatCloseDoes(windows: 3, lastIsQuickNote: quick), .closeTab)
+        }
+    }
+
+    func testClosingTheLastWindowShouldCloseItUnlessItIsTheQuickNote() {
+        XCTAssertEqual(TabGroupPolicy.whatCloseDoes(windows: 1, lastIsQuickNote: false), .closeToQuickNote,
+                       "a document closed last must not come back on the next summon")
+        XCTAssertEqual(TabGroupPolicy.whatCloseDoes(windows: 1, lastIsQuickNote: true), .hideAll,
+                       "the quick note hides and stays mounted for the summon")
     }
 
     func testCloseWindowTakesEveryTabUnlessThatIsEveryWindow() {
-        XCTAssertEqual(TabGroupPolicy.whatCloseWindowDoes(tabsInWindow: 2, windows: 5), .closeWindow)
-        XCTAssertEqual(TabGroupPolicy.whatCloseWindowDoes(tabsInWindow: 3, windows: 3), .hideAll)
-        XCTAssertEqual(TabGroupPolicy.whatCloseWindowDoes(tabsInWindow: 1, windows: 1), .hideAll)
+        for quick in [true, false] {
+            XCTAssertEqual(TabGroupPolicy.whatCloseWindowDoes(tabsInWindow: 2, windows: 5, lastIsQuickNote: quick),
+                           .closeWindow)
+        }
+        XCTAssertEqual(TabGroupPolicy.whatCloseWindowDoes(tabsInWindow: 3, windows: 3, lastIsQuickNote: false),
+                       .closeToQuickNote)
+        XCTAssertEqual(TabGroupPolicy.whatCloseWindowDoes(tabsInWindow: 1, windows: 1, lastIsQuickNote: false),
+                       .closeToQuickNote)
+        XCTAssertEqual(TabGroupPolicy.whatCloseWindowDoes(tabsInWindow: 1, windows: 1, lastIsQuickNote: true),
+                       .hideAll)
+        XCTAssertEqual(TabGroupPolicy.whatCloseWindowDoes(tabsInWindow: 3, windows: 3, lastIsQuickNote: true),
+                       .closeToQuickNote,
+                       "a quick note sharing its window with other tabs is not a window the app keeps")
     }
 
     // MARK: the band
