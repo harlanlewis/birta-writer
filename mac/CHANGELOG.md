@@ -12,6 +12,10 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ## [Unreleased]
 
+---
+
+## [2026.1101.0] - 2026, November 1
+
 ### Changed
 
 - Closing a window in Birta Writer for Mac closes it for good, the last one included. The hotkey, the menu-bar icon and the Dock icon bring back your quick note (the scratchpad, or the note New Note last made) rather than the document you closed, and only the quick note, alone in its own window, hides on Cmd+W so the next summon is still instant.
