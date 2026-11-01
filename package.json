@@ -1419,7 +1419,7 @@
                 },
                 {
                     "command": "birta.editor.showFolderOverview",
-                    "when": "activeCustomEditorId == 'birta.editor'"
+                    "when": "activeCustomEditorId == 'birta.editor' && config.birta.folderGraph"
                 },
                 {
                     "command": "birta.editor.toggleFileExplorer",

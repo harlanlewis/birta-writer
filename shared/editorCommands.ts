@@ -87,6 +87,14 @@ export interface EditorCommandMeta {
      * answers with.
      */
     readonly syntax?: SyntaxFeature;
+    /**
+     * The `birta.*` boolean setting the command does nothing without. The page
+     * already answers for itself (the command is idle while the setting is
+     * off), but VS Code draws a palette row before the page is asked, so the
+     * manifest's palette `when` carries `config.birta.<setting>` as well, and
+     * `editorCommandsContributions.test.ts` derives that clause from here.
+     */
+    readonly setting?: "folderGraph";
 }
 
 /**
@@ -378,7 +386,7 @@ export const EDITOR_COMMANDS = [
     // over the page. On demand only; nothing opens it by itself. Gated on the
     // index it draws, so a window with no folder never offers it, and idle
     // while `birta.folderGraph` is off (links/folderIndex.ts).
-    { id: "showFolderOverview", title: "Folder Overview", palette: true, sections: [], hostCapability: "folderIndex" },
+    { id: "showFolderOverview", title: "Folder Overview", palette: true, sections: [], hostCapability: "folderIndex", setting: "folderGraph" },
     // The file explorer (MAR-460): the panel a directory window shows its
     // folder in. Gated on `projectFiles`, which only an application declares
     // (VS Code has an explorer of its own beside every editor), so these are
