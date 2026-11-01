@@ -34,17 +34,24 @@ const FIXTURES_DIR = join(__dirname, "..", "fixtures");
 /**
  * Every `*<extension>` under __tests__/fixtures/ is a corpus member,
  * including grouped fixtures in subdirectories (e.g. fixtures/logseq/).
- * README.md files are documentation, not fixtures, so they are skipped.
+ * README.md files are documentation, not fixtures, so they are skipped,
+ * except inside an export capture (fixtures/exports/<exporter>/<date>/),
+ * where a README.md is a page the exporter wrote and is never renamed.
  * Returned names are fixtures-relative (e.g. "logseq/page.md") so
  * subdirectory fixtures are distinguishable in the test output.
  */
+export function isCorpusFile(relName: string, extension: string): boolean {
+    if (!relName.endsWith(extension)) return false;
+    return relName.split("/").pop() !== "README.md" || /^exports\/[^/]+\/[^/]+\/./.test(relName);
+}
+
 function collectFixtures(dir: string, extension: string, rel = ""): CorpusFixture[] {
     const out: CorpusFixture[] = [];
     for (const entry of readdirSync(dir, { withFileTypes: true }) as Dirent[]) {
         const relName = rel ? `${rel}/${entry.name}` : entry.name;
         if (entry.isDirectory()) {
             out.push(...collectFixtures(join(dir, entry.name), extension, relName));
-        } else if (entry.name.endsWith(extension) && entry.name !== "README.md") {
+        } else if (isCorpusFile(relName, extension)) {
             out.push({ name: relName, content: readFileSync(join(dir, entry.name), "utf8") });
         }
     }

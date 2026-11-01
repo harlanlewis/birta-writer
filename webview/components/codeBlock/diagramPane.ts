@@ -206,13 +206,17 @@ export function createDiagramPane(opts: {
     // this. Delete this line and `node e2e/run.mjs touchChromeAudit` fails,
     // naming this preview, its svg container, and the puml and gv twins.
     //
-    // The pan pad's own declaration is NOT load-bearing: it is a descendant of
-    // this element and inherits it, and removing it leaves the audit green.
-    // Kept anyway, because a control that states its own contract survives
-    // being moved out of this subtree, which is exactly what happened when the
-    // pad was shared with the fullscreen surface. Do not read that redundancy
-    // as evidence that this line is redundant too. The zoom overlay's
-    // declaration was not tested either way (MAR-340).
+    // The pan pad's and the zoom overlay's own declarations are NOT
+    // load-bearing: both are descendants of this element and inherit it, and
+    // removing either leaves the audit green. Remove the overlay's together
+    // with this one and the audit names `button.mermaid-zoom-btn` as well,
+    // which inside this pane only the overlay's buttons carry (the pad's are
+    // `mermaid-pan-btn`). So the audit reaches the overlay, and its green
+    // with the overlay's line alone removed is a verdict, not a gap.
+    // Both are kept anyway, because a control that states its own contract
+    // survives being moved out of this subtree, which is exactly what happened
+    // when the pad was shared with the fullscreen surface. Do not read that
+    // redundancy as evidence that this line is redundant too (MAR-340).
     preview.contentEditable = "false";
 
     // SVG container (the transform is applied here)

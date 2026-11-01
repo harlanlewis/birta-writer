@@ -46,6 +46,7 @@ That runs, verbosely, the three suites that together state the claims:
   before the webview ever sees content (`shared/contentTransform.ts`), so
   a webview-side fixture with frontmatter would test a state production never
   produces. Frontmatter fidelity is covered by the extension-side tests.
+- **One-shot exporters do not belong here.** This directory is living-vault dialects written from each tool's documentation. A Notion, Craft or other export is a capture of what the exporter emitted on one day, and goes under `../exports/` at a path naming the exporter and that day (`../exports/README.md`, held by `exportProvenance.test.ts`).
 - **Roam and Bear have no fixtures** on purpose: they don't store plain
   Markdown files, so there is nothing on disk for a file-based editor to
   open — exactly what their table rows say.
