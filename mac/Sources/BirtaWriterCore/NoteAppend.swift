@@ -23,7 +23,9 @@ import Foundation
 /// - **One blank line before the heading.** A target ending in no line break
 ///   gets two, one ending in one gets one, and one already ending in a blank
 ///   line gets none, since adding to it would widen a gap the reader left. A
-///   line of spaces counts as blank, which is how Markdown reads it.
+///   line of spaces counts as blank, which is how Markdown reads it. A target
+///   with no text at all (empty, a byte-order mark, white space) has nothing
+///   to be separated from: the heading follows its bytes on a line of its own.
 /// - **The target's line endings.** A CRLF file stays CRLF; the note's own
 ///   breaks, whatever they were, are rewritten to match. A target with no
 ///   line break at all says nothing, and gets LF.
@@ -73,9 +75,12 @@ public enum NoteAppend {
         guard let body = body(of: note) else { return nil }
         let breaks = trailingLineBreaks(of: target)
         let lead: String
-        if target.isEmpty {
-            // Nothing to be separated from: the heading opens the file.
-            lead = ""
+        if !hasText(target) {
+            // Nothing to be separated from: the heading opens the file, after
+            // whatever the target does hold (a byte-order mark, blank lines),
+            // which stays. It only has to start a line of its own.
+            let lastScalar = target.unicodeScalars.last { $0 != "\u{FEFF}" }
+            lead = lastScalar == nil || lastScalar == "\n" ? "" : "\n"
         } else {
             lead = String(repeating: "\n", count: max(0, 2 - breaks))
         }
@@ -161,6 +166,11 @@ public enum NoteAppend {
             }
         }
         return count
+    }
+
+    /// Whether `text` holds anything but white space and a byte-order mark.
+    static func hasText(_ text: String) -> Bool {
+        text.unicodeScalars.contains { !($0.properties.isWhitespace || $0 == "\u{FEFF}") }
     }
 
     private static func normalizedToLF(_ text: String) -> String {
