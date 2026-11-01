@@ -221,6 +221,7 @@
   "command.editor.toggleReadOnly.title": "Toggle Read-only",
   "command.editor.swapTocSide.title": "Swap Table of Contents Side",
   "command.editor.focusReviewSidebar.title": "Focus Review Sidebar",
+  "command.editor.showFolderOverview.title": "Folder Overview",
   "command.editor.toggleFileExplorer.title": "Toggle File Explorer",
   "command.editor.focusFileExplorer.title": "Focus File Explorer",
   "command.editor.toggleHiddenFiles.title": "Toggle Hidden Files",

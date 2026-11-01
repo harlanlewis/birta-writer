@@ -42,7 +42,7 @@ import { notifySwitchToTextEditor, getWebviewState, setWebviewState, setBaseSync
 import type { EditorSelectionContext } from "../shared/agentContext";
 import { renderFrontmatterPanel, refreshFrontmatterEmptyState } from "./components/frontmatter";
 import { dispatchFmSuggestions } from "./components/frontmatter/suggestMenu";
-import { receiveFolderIndex, setFolderGraphEnabled } from "./links/folderIndex";
+import { receiveFolderIndex, receiveFolderRecents, setFolderGraphEnabled } from "./links/folderIndex";
 import { runEditorCommand } from "./editorCommands";
 import { refreshShortcutsHelpIfLoaded } from "./components/shortcutsHelp/loader";
 import { hostHas, setHostCapabilities } from "../shared/hostProfile";
@@ -555,7 +555,12 @@ export function createMessageHandlers(
             regateEmbedsIfPossible();
         },
         setFolderGraph(msg) {
-            setFolderGraphEnabled(msg.enabled);
+            // The folder overview's command has something to act on only while
+            // the setting is on, so a host palette that asked hears it move.
+            if (setFolderGraphEnabled(msg.enabled)) {
+                topbarTb?.refreshOfferedItems();
+                repostPaletteCommandsIfAsked();
+            }
         },
         setTableWrap(msg) {
             applyTableWrap(msg.wrap);
@@ -657,6 +662,9 @@ export function createMessageHandlers(
         },
         folderIndex(msg) {
             receiveFolderIndex(msg.index, msg.self);
+        },
+        folderRecents(msg) {
+            receiveFolderRecents(msg.paths);
         },
         proofreadConfig(msg) {
             const view = getEditorView();

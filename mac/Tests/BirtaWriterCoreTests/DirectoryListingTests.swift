@@ -25,6 +25,39 @@ final class DirectoryListingTests: XCTestCase {
         try super.tearDownWithError()
     }
 
+    // MARK: recent files (the folder overview, MAR-488)
+
+    func testRecentPathsShouldKeepOnlyFilesUnderTheRootInTheirOrder() {
+        let outside = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("elsewhere.md")
+        let recents: [URL] = [
+            root.appendingPathComponent("alpha/inner.md"),
+            outside,
+            root.appendingPathComponent("note 2.md"),
+            root.appendingPathComponent("alpha"),
+            root,
+            root.appendingPathComponent("photo.png"),
+            root.appendingPathComponent("gone.md"),
+            root.appendingPathComponent("alpha/../note 2.md"),
+            root.appendingPathComponent("Readme.MD"),
+        ]
+        XCTAssertEqual(DirectoryListing.recentPaths(in: root, recents: recents, accepts: accepts),
+                       ["alpha/inner.md", "note 2.md", "Readme.MD"],
+                       "outside, a folder, the root, refused, gone and a repeat are all left out; the order is kept")
+    }
+
+    func testRecentPathsShouldLeaveOutAFolderAndTheRootEvenWhenTheirNamesWouldPass() throws {
+        // A folder whose name has a note's extension, and an `accepts` that
+        // passes everything: only the kind of entry can leave these out.
+        let folder = root.appendingPathComponent("drafts.md", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let recents: [URL] = [folder, root, root.appendingPathComponent("note 2.md")]
+        XCTAssertEqual(DirectoryListing.recentPaths(in: root, recents: recents, accepts: { _ in true }), ["note 2.md"])
+    }
+
+    func testRecentPathsWithNothingUnderTheRootShouldBeEmpty() {
+        XCTAssertEqual(DirectoryListing.recentPaths(in: root, recents: [], accepts: accepts), [])
+    }
+
     // MARK: entries
 
     func testEntriesShouldListFoldersFirstThenFilesInFinderOrder() throws {

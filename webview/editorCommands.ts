@@ -141,6 +141,8 @@ export interface EditorCommandHost {
      *  the inbound half of the sidebar's keyboard model (MAR-294; Escape is
      *  the outbound half, wired per region in toc/keyboardNav). */
     focusReviewSidebar(): void;
+    /** Open the folder overview over the page (MAR-488). */
+    showFolderOverview(): void;
     // The file explorer (MAR-460), on a host declaring `projectFiles`. Wired
     // by webview/index.ts to the lazily-loaded panel (utils/fileExplorerLoader).
     toggleFileExplorer(): void;
@@ -1000,6 +1002,7 @@ export const editorCommands: Record<EditorCommandId, EditorCommandFn> = {
     // toggles that already exist, through the surfaces `index.ts` wires.
     swapTocSide: () => host.swapTocSide?.(),
     focusReviewSidebar: () => host.focusReviewSidebar?.(),
+    showFolderOverview: () => host.showFolderOverview?.(),
     toggleFileExplorer: () => host.toggleFileExplorer?.(),
     focusFileExplorer: () => host.focusFileExplorer?.(),
     toggleHiddenFiles: () => host.toggleHiddenFiles?.(),

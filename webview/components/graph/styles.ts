@@ -209,6 +209,15 @@ export const LOCAL_GRAPH_CSS = `
 
 /* ── The folder overview (folderOverview.ts) ── */
 
+/* On the fullscreen surface: one column from the top, under the title's band,
+   scrolled only when the window is too short for even the capped list. */
+.fo-surface .fs-content {
+    align-items: flex-start;
+    overflow-y: auto;
+    box-sizing: border-box;
+    padding: var(--fs-band) var(--ui-space-4) var(--ui-space-4);
+}
+
 /* The square is as wide as the column allows and never taller than a little
    over half the viewport, so the recent files under it stay above the fold
    in a short window. */

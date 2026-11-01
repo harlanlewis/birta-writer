@@ -373,6 +373,12 @@ export const EDITOR_COMMANDS = [
     // opens the panel when hidden. No default chord — the editor's own chords
     // are spoken for, and a user picks one in the Keyboard Shortcuts UI.
     { id: "focusReviewSidebar", title: "Focus Review Sidebar", palette: true, sections: [], hostCapability: "toc" },
+    // The folder overview (MAR-488): the folder's most connected note with
+    // two rings of notes around it, and the folder's recent files under it,
+    // over the page. On demand only; nothing opens it by itself. Gated on the
+    // index it draws, so a window with no folder never offers it, and idle
+    // while `birta.folderGraph` is off (links/folderIndex.ts).
+    { id: "showFolderOverview", title: "Folder Overview", palette: true, sections: [], hostCapability: "folderIndex" },
     // The file explorer (MAR-460): the panel a directory window shows its
     // folder in. Gated on `projectFiles`, which only an application declares
     // (VS Code has an explorer of its own beside every editor), so these are

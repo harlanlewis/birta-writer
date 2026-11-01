@@ -3,11 +3,20 @@
  * two rings, the recent files under them, and what each opens. Built in
  * jsdom, so no layout: every label stays and positions are percentages.
  */
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import type { FolderEdge, FolderIndex, FolderNode } from "../../shared/folderIndex";
+import { commandAvailable, idleCommandIds, setCommandsIdle } from "../../shared/commandAvailability";
 import { folderHub } from "../components/graph/folderGraph";
-import { createFolderOverview, OVERVIEW_RECENTS } from "../components/graph/folderOverview";
+import { createFolderOverview, openFolderOverview, OVERVIEW_RECENTS } from "../components/graph/folderOverview";
 import { createLocalGraphView } from "../components/graph";
+import {
+    FOLDER_OVERVIEW_COMMAND,
+    receiveFolderIndex,
+    receiveFolderRecents,
+    resetFolderIndexForTests,
+    setFolderGraphEnabled,
+    syncFolderOverviewAvailability,
+} from "../links/folderIndex";
 
 const node = (path: string, type: string | null = null): FolderNode =>
     ({ path, name: path.replace(/^.*\//, "").replace(/\.md$/, ""), type, tags: [], status: null, trust: null, staleAfter: null });
@@ -169,5 +178,145 @@ describe("the Graph tab on the shared ring stage", () => {
         expect(centre.classList.contains("lg-node--opens")).toBe(false);
         centre.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
         expect(openNote).not.toHaveBeenCalled();
+    });
+});
+
+describe("createFolderOverview with a host that keeps no recent files", () => {
+    it("null recents should draw no recent files section at all, heading included", () => {
+        const view = createFolderOverview({ openNote: () => {}, onEscape: () => {} });
+        document.body.replaceChildren(view.element);
+        view.render({ index: VAULT, self: null }, ["a.md"]);
+        view.render({ index: VAULT, self: null }, null);
+        expect(view.element.querySelector<HTMLElement>(".fo-heading")!.hidden).toBe(true);
+        expect(view.element.querySelector<HTMLElement>(".fo-recents")!.hidden).toBe(true);
+        expect(view.element.querySelector<HTMLElement>(".fo-empty")!.hidden).toBe(true);
+        expect(view.element.querySelectorAll(".fo-row")).toHaveLength(0);
+        expect(view.element.querySelectorAll(".lg-node").length).toBeGreaterThan(1);
+    });
+});
+
+type I18n = { __i18n?: Record<string, unknown> };
+const posted = (): Array<{ type: string }> =>
+    ((globalThis as unknown as { acquireVsCodeApi: () => { postMessage: { mock: { calls: Array<[{ type: string }]> } } } })
+        .acquireVsCodeApi().postMessage.mock.calls).map((c) => c[0]);
+
+describe("openFolderOverview", () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        document.body.replaceChildren();
+        resetFolderIndexForTests();
+        (window as I18n).__i18n = { translations: {}, isMac: true, folderGraph: true };
+    });
+    afterEach(() => {
+        document.querySelectorAll(".fs-surface").forEach((el) => el.remove());
+        delete (window as I18n).__i18n;
+        resetFolderIndexForTests();
+    });
+
+    it("opening should ask for the recent files and the index, and draw both as they arrive", () => {
+        const close = openFolderOverview({ openNote: () => {}, onDismiss: () => {} });
+        const types = posted().map((m) => m.type);
+        expect(types).toContain("requestFolderRecents");
+        expect(types).toContain("requestFolderIndex");
+        const surface = document.querySelector<HTMLElement>(".fo-surface")!;
+        expect(surface.querySelector(".fo-caption")!.textContent).toBe("Reading the folder…");
+        receiveFolderIndex(VAULT, "lone.md");
+        receiveFolderRecents(["sub/far.md", "a.md"]);
+        expect(surface.querySelector(".lg-node--self")!.getAttribute("data-id")).toBe("hub.md");
+        expect(rows(surface)).toEqual(["sub/far.md", "a.md"]);
+        expect(surface.querySelector(".fs-title")!.textContent).toBe("Folder: v");
+        close();
+    });
+
+    it("every opening should ask again, because the list moves with every file opened", () => {
+        openFolderOverview({ openNote: () => {}, onDismiss: () => {} })();
+        openFolderOverview({ openNote: () => {}, onDismiss: () => {} })();
+        expect(posted().filter((m) => m.type === "requestFolderRecents")).toHaveLength(2);
+    });
+
+    it("Escape should close it and hand focus back, opening nothing", () => {
+        const openNote = vi.fn();
+        const onDismiss = vi.fn();
+        openFolderOverview({ openNote, onDismiss });
+        document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+        expect(onDismiss).toHaveBeenCalledTimes(1);
+        expect(openNote).not.toHaveBeenCalled();
+        expect(document.querySelector(".fo-surface")!.classList.contains("lb-closing")
+            || !document.querySelector(".fo-surface")).toBe(true);
+    });
+
+    it("a row should close it and open that note, and not also hand focus back", () => {
+        const openNote = vi.fn();
+        const onDismiss = vi.fn();
+        openFolderOverview({ openNote, onDismiss });
+        receiveFolderIndex(VAULT, null);
+        receiveFolderRecents(["lone.md"]);
+        document.querySelector<HTMLElement>(".fo-row")!.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+        expect(openNote).toHaveBeenCalledWith("lone.md");
+        expect(onDismiss).not.toHaveBeenCalled();
+    });
+
+    it("focus should follow the recent files when they arrive after the index", () => {
+        const close = openFolderOverview({ openNote: () => {}, onDismiss: () => {} });
+        receiveFolderIndex(VAULT, null);
+        expect((document.activeElement as HTMLElement).classList.contains("lg-node")).toBe(true);
+        receiveFolderRecents(["lone.md", "a.md"]);
+        expect((document.activeElement as HTMLElement).dataset["path"]).toBe("lone.md");
+        close();
+    });
+
+    it("once the reader has moved, a redraw should keep focus on the same row rather than move it", () => {
+        const close = openFolderOverview({ openNote: () => {}, onDismiss: () => {} });
+        receiveFolderIndex(VAULT, null);
+        receiveFolderRecents(["lone.md", "a.md"]);
+        const second = document.querySelector<HTMLElement>('.fo-row[data-path="a.md"]')!;
+        second.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }));
+        second.focus();
+        receiveFolderIndex({ ...VAULT }, null);
+        expect((document.activeElement as HTMLElement).dataset["path"]).toBe("a.md");
+        expect(document.activeElement).not.toBe(second);
+        close();
+    });
+
+    it("an answer arriving after close should not redraw a closed surface", () => {
+        const close = openFolderOverview({ openNote: () => {}, onDismiss: () => {} });
+        const surface = document.querySelector<HTMLElement>(".fo-surface")!;
+        close();
+        receiveFolderRecents(["a.md"]);
+        expect(rows(surface)).toEqual([]);
+    });
+});
+
+describe("the folder overview command's availability", () => {
+    afterEach(() => {
+        setCommandsIdle([FOLDER_OVERVIEW_COMMAND], false);
+        delete (window as I18n).__i18n;
+        resetFolderIndexForTests();
+    });
+
+    it("with the setting on and a host that has an index it should be offered", () => {
+        (window as I18n).__i18n = { translations: {}, isMac: false, folderGraph: true };
+        syncFolderOverviewAvailability();
+        expect(commandAvailable(FOLDER_OVERVIEW_COMMAND)).toBe(true);
+        expect(idleCommandIds()).not.toContain(FOLDER_OVERVIEW_COMMAND);
+    });
+
+    it("with the setting off it should be idle, and turning it on should say it changed", () => {
+        (window as I18n).__i18n = { translations: {}, isMac: false, folderGraph: false };
+        syncFolderOverviewAvailability();
+        expect(commandAvailable(FOLDER_OVERVIEW_COMMAND)).toBe(false);
+        expect(setFolderGraphEnabled(true)).toBe(true);
+        expect(commandAvailable(FOLDER_OVERVIEW_COMMAND)).toBe(true);
+        expect(setFolderGraphEnabled(true)).toBe(false);
+    });
+
+    it("a window whose host declares no folder index should be withdrawn AND listed idle, so a host menu dims it", () => {
+        (window as I18n).__i18n = {
+            translations: {}, isMac: true, folderGraph: true,
+            host: { capabilities: ["toc", "projectFiles"], arrangements: [], shortcuts: [] },
+        };
+        syncFolderOverviewAvailability();
+        expect(commandAvailable(FOLDER_OVERVIEW_COMMAND)).toBe(false);
+        expect(idleCommandIds()).toContain(FOLDER_OVERVIEW_COMMAND);
     });
 });

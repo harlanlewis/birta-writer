@@ -187,6 +187,7 @@ export const COMMAND_EFFECTS: Record<EditorCommandId, CommandEffect> = {
     toggleToc: "reads",
     swapTocSide: "reads",
     focusReviewSidebar: "reads",
+    showFolderOverview: "reads",
     toggleFileExplorer: "reads",
     focusFileExplorer: "reads",
     toggleHiddenFiles: "reads",

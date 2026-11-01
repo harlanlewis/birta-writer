@@ -448,6 +448,11 @@ export function notifyRequestFolderIndex(): void {
     vscode.postMessage({ type: "requestFolderIndex" });
 }
 
+/** Ask which files in this folder were opened most recently (the folder overview). */
+export function notifyRequestFolderRecents(): void {
+    vscode.postMessage({ type: "requestFolderRecents" });
+}
+
 /** A row was right-clicked; the host puts its own menu at the point. */
 export function notifyProjectFileMenu(path: string, kind: "dir" | "file", x: number, y: number): void {
     vscode.postMessage({ type: "projectFileMenu", path, kind, x, y });

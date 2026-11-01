@@ -157,6 +157,24 @@ public enum DirectoryListing {
         return newestFirst.first(where: { accepts($0.url) })?.url
     }
 
+    /// The recent files under `root`, as the folder overview lists them
+    /// (MAR-488): root-relative, in the order `recents` holds them (most
+    /// recent first), each once. A folder in the recents list is not a file
+    /// to open (the root itself among them), and neither is a file that has
+    /// gone or that `accepts` refuses, so all three are left out.
+    public static func recentPaths(in root: URL,
+                                   recents: [URL],
+                                   accepts: (URL) -> Bool,
+                                   fileManager: FileManager = .default) -> [String] {
+        var seen: Set<String> = []
+        return recents.compactMap { url in
+            guard let rel = relativePath(of: url, in: root), accepts(url) else { return nil }
+            var isDir: ObjCBool = false
+            guard fileManager.fileExists(atPath: url.path, isDirectory: &isDir), !isDir.boolValue else { return nil }
+            return seen.insert(rel).inserted ? rel : nil
+        }
+    }
+
     /// How many entries are under `folder`, at any depth, for the question
     /// asked before it goes to the Trash (`ExplorerMenu.trashConfirmation`).
     ///

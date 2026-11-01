@@ -406,6 +406,15 @@ final class BridgeTests: XCTestCase {
         XCTAssertTrue(none["self"] is NSNull)
     }
 
+    func testTheFolderRecentsPairShouldParseAndEncode() {
+        XCTAssertEqual(WebviewMessage.parse(#"{"type":"requestFolderRecents"}"#), .requestFolderRecents)
+        let sent = HostMessage.folderRecents(paths: ["b.md", "sub/a.md"]).jsonObject()
+        XCTAssertEqual(sent["type"] as? String, "folderRecents")
+        XCTAssertEqual(sent["paths"] as? [String], ["b.md", "sub/a.md"], "most recent first, as given")
+        XCTAssertEqual(HostMessage.folderRecents(paths: []).jsonObject()["paths"] as? [String], [],
+                       "an empty list is an answer, never an absent field")
+    }
+
     func testTheExplorersMemoriesShouldReachThePageOnTheOutlinePanelsChannels() {
         XCTAssertEqual(BootConfig(fileExplorerWidth: 280).tocRootStyle, ":root { --files-width: 280px; }")
         XCTAssertEqual(BootConfig(tocWidth: 320, fileExplorerWidth: 280).tocRootStyle,
