@@ -17,6 +17,10 @@ Versions are shared. Both files are stamped with the same release version, and a
 - Birta Writer for Mac can append a note to another Markdown file. File > Append to Note… (also in the Command Palette) adds the note's text to the end of the file you pick, under a heading with the date and time (`## 2026-11-01 10:42`), so an inbox or a daily note builds up as a log. What the file already held is left exactly as it was, Windows line endings included; the note's frontmatter stays with the note, and the note itself is unchanged. If the file is open in a tab, the text goes into that tab and is saved the way your autosave setting saves any edit.
 - In a folder window, View > Folder Overview lists the files you have opened recently from that folder under the overview's graph. In a window on a single file the row is dimmed.
 
+### Changed
+
+- A file opened from outside every open folder (from the Finder, Open With, a Dock drop or Open Recent) now opens in a window of its own by default, instead of a tab beside the window in front. Files inside a folder that is open in Birta Writer for Mac still open as a tab of that folder's window. To get tabs back, set Settings > General > Open files in to New tab; a choice you already made is kept.
+
 ---
 
 ## [2026.1101.0] - 2026, November 1

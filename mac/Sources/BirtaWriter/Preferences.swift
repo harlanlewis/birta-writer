@@ -1093,7 +1093,7 @@ enum Prefs {
         report("command name", commandName != defaultCommandName)
         report("note home", noteHome != .iCloud, noteHome.rawValue)
         report("open to a blank note", openToBlankNote, "on")
-        report("open files in", openFilesIn != .tab, openFilesIn.rawValue)
+        report("open files in", openFilesIn != .default, openFilesIn.rawValue)
         report("new note name", newNoteNameTemplate != NoteNameTemplate.default)
         report("font", fontPreset != defaultFontPreset, fontPreset)
         report("font size", fontSize != defaultFontSize, String(fontSize))
@@ -1255,11 +1255,10 @@ enum Prefs {
     }
 
     /// Where a file opened from outside lands when no open folder window
-    /// holds it (`OpenRouting.destination`). A tab by default: a file
-    /// arriving beside the one in front is what a browser does, and a
-    /// second window is the choice to make on purpose.
+    /// holds it (`OpenRouting.destination`). `FileOpenTarget.default` says
+    /// which, and why.
     static var openFilesIn: FileOpenTarget {
-        get { d.string(forKey: Key.openFilesIn.rawValue).flatMap(FileOpenTarget.init(rawValue:)) ?? .tab }
+        get { d.string(forKey: Key.openFilesIn.rawValue).flatMap(FileOpenTarget.init(rawValue:)) ?? .default }
         set { d.set(newValue.rawValue, forKey: Key.openFilesIn.rawValue) }
     }
 

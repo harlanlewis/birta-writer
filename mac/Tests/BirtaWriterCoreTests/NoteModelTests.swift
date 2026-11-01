@@ -138,4 +138,11 @@ final class NoteModelTests: XCTestCase {
             AgentPreset.matching(command: "codex exec --sandbox workspace-write --skip-git-repo-check {prompt}"),
             .codex)
     }
+
+    /// A file from outside every open folder opens in a window of its own
+    /// unless the reader chose tabs; the folder's own files are tabs of its
+    /// window either way (OpenRoutingTests).
+    func testAFileFromOutsideEveryFolderShouldOpenInAWindowByDefault() {
+        XCTAssertEqual(FileOpenTarget.default, .window)
+    }
 }
