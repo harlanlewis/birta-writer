@@ -142,6 +142,7 @@ export const COMMAND_BLOCK_REACH: Record<EditorCommandId, BlockReach> = {
     editFrontmatter: NONE,
     swapTocSide: NONE,
     focusReviewSidebar: NONE,
+    showFolderOverview: NONE,
     toggleFileExplorer: NONE,
     focusFileExplorer: NONE,
     toggleHiddenFiles: NONE,

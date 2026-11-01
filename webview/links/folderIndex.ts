@@ -18,12 +18,22 @@
  * in the Mac app's folder windows). With the setting off nothing is asked, so
  * the host walks no folder and reads no note, whatever it declared.
  */
+import { setCommandsIdle } from "../../shared/commandAvailability";
 import { hostHas } from "../../shared/hostProfile";
 import { backlinksOf, relativeNotePath, type FolderEdge, type FolderIndex } from "../../shared/folderIndex";
 import { notifyOpenFile, notifyOpenProjectFile, notifyRequestFolderIndex } from "../messaging";
 
 /** Dispatched on `window` whenever a new index arrives. */
 export const FOLDER_INDEX_CHANGED = "birta:folder-index-changed";
+/**
+ * Dispatched on `window` whenever the host answers `requestFolderRecents`,
+ * the paths as its `detail`. Nothing keeps them: the one reader is an open
+ * overview, which asks on opening and so is always open when they arrive.
+ */
+export const FOLDER_RECENTS_CHANGED = "birta:folder-recents-changed";
+
+/** The command that opens the folder overview (components/graph/folderOverview.ts). */
+export const FOLDER_OVERVIEW_COMMAND = "showFolderOverview";
 
 export interface FolderIndexState {
     index: FolderIndex | null;
@@ -33,6 +43,27 @@ export interface FolderIndexState {
 
 let requested = false;
 let current: FolderIndexState | null = null;
+
+/**
+ * Mark the folder overview's command as having nothing to act on whenever
+ * this page will never be sent an index: the setting is off, or the host has
+ * no folder for this document. Returns whether that changed, so the caller
+ * re-offers its command lists only when it must.
+ *
+ * The capability alone already withdraws the command (`hostHasCommand`), and
+ * the second half is still asked, because a host menu that runs page commands
+ * dims a row by the idle list and never sees the profile: the Mac app's View
+ * menu row on a window with no folder (whose profile leaves `folderIndex` out)
+ * would otherwise stay live and run nothing.
+ */
+export function syncFolderOverviewAvailability(): boolean {
+    return setCommandsIdle([FOLDER_OVERVIEW_COMMAND], !(folderGraphEnabled() && hostHas("folderIndex")));
+}
+
+/** The host's answer: the `folderRecents` message handler calls this. */
+export function receiveFolderRecents(paths: string[]): void {
+    window.dispatchEvent(new CustomEvent(FOLDER_RECENTS_CHANGED, { detail: paths }));
+}
 
 /** Is the folder graph switched on for this page (birta.folderGraph)? */
 export function folderGraphEnabled(): boolean {
@@ -44,13 +75,14 @@ export function folderGraphEnabled(): boolean {
  * index, so the tabs go on the next visibility pass and nothing asks again;
  * on lets the next read ask, as a fresh page would.
  */
-export function setFolderGraphEnabled(enabled: boolean): void {
+export function setFolderGraphEnabled(enabled: boolean): boolean {
     // Every real page boots with a blob; the default is for a test page.
     const blob = (window.__i18n ??= { translations: {}, isMac: false });
     blob.folderGraph = enabled;
     requested = false;
     if (!enabled) { current = null; }
     window.dispatchEvent(new CustomEvent(FOLDER_INDEX_CHANGED));
+    return syncFolderOverviewAvailability();
 }
 
 /**
@@ -100,13 +132,19 @@ export function selfHasReferences(): boolean {
  * root, so the path goes as the index names it, with nothing to resolve, and
  * the line rides beside it as the message's own optional field rather than
  * as a fragment, because its file names may hold `#`.
+ *
+ * A null `self` is a document the index does not hold (past its cap, or a
+ * file the walk does not read), which a view of the whole folder can still be
+ * opened from. There is nothing to be relative to, so the path goes
+ * root-relative, with a leading `/`, which `openFile` resolves against the
+ * workspace folder: the same folder the VS Code host indexes.
  */
-export function openIndexedNote(self: string, path: string, line?: number): void {
+export function openIndexedNote(self: string | null, path: string, line?: number): void {
     if (hostHas("projectFiles")) {
         notifyOpenProjectFile(path, false, line);
         return;
     }
-    const plain = relativeNotePath(self, path);
+    const plain = self === null ? `/${path}` : relativeNotePath(self, path);
     const rel = plain.includes("#") ? plain.replace(/%/g, "%25").replace(/#/g, "%23") : plain;
     notifyOpenFile(line === undefined ? rel : `${rel}#${line}`);
 }

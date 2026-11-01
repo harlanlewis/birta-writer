@@ -66,10 +66,26 @@ final class OpenRoutingTests: XCTestCase {
                        OpenRouting.Window(file: "/notes/gone.md", root: "/notes", isVacant: true, group: "g")]
         XCTAssertEqual(route("/notes/c.md", windows), .vacantFront)
         XCTAssertEqual(route("/notes/a.md", windows), .existing(0), "already open still wins: one buffer per file")
-        XCTAssertEqual(route("/elsewhere/c.md", windows), .vacantFront)
         let live = [OpenRouting.Window(file: "/notes/a.md", root: "/notes", group: "g"),
                     OpenRouting.Window(file: "/notes/b.md", root: "/notes", group: "g")]
         XCTAssertEqual(route("/notes/c.md", live), .tabIn(1), "a live front tab is not replaced")
+    }
+
+    /// A file from outside a vacant folder tab's root is not a file of that
+    /// folder, so it never takes the folder's tab over: the Open files in
+    /// setting places it, as it places any outside file. This covers both a
+    /// folder tab whose file has gone and an untouched Cmd+T tab
+    /// (`UnwrittenNote.isVacant`).
+    func testAVacantRootedFrontShouldNotTakeOverAFileOutsideItsRoot() {
+        let windows = [OpenRouting.Window(file: "/notes/a.md", root: "/notes", group: "g"),
+                       OpenRouting.Window(file: "/notes/Untitled.md", root: "/notes", isVacant: true, group: "g")]
+        XCTAssertEqual(route("/elsewhere/c.md", windows, inTab: false), .newWindow)
+        XCTAssertEqual(route("/elsewhere/c.md", windows, inTab: true), .tabBeside(1))
+        // The loose arm is unchanged: a vacant window with no root still
+        // takes an outside file over, under either setting.
+        let loose = [OpenRouting.Window(file: "/gone.md", isVacant: true)]
+        XCTAssertEqual(route("/elsewhere/c.md", loose, inTab: false), .vacantFront)
+        XCTAssertEqual(route("/elsewhere/c.md", loose, inTab: true), .vacantFront)
     }
 
     func testWithNoWindowsTheAnswerIsANewWindow() {
@@ -80,6 +96,16 @@ final class OpenRoutingTests: XCTestCase {
         let windows = [OpenRouting.Window(file: "/notes/a.md", root: "/notes")]
         XCTAssertEqual(route("/notes-archive/c.md", windows), .newWindow,
                        "the caller's isInside decides the boundary; this one is strict about it")
+    }
+
+    /// A tab whose takeover is waiting on its flush reports itself not
+    /// vacant, so a second file opened into its folder meanwhile becomes a
+    /// tab of that folder's window instead of taking the same tab twice.
+    func testASecondOpenWhileTheFrontTabIsBeingTakenOverShouldBecomeATab() {
+        let vacant = [OpenRouting.Window(file: "/notes/Untitled.md", root: "/notes", isVacant: true, group: "g")]
+        XCTAssertEqual(route("/notes/a.md", vacant), .vacantFront, "the first open takes the tab")
+        let spoken = [OpenRouting.Window(file: "/notes/Untitled.md", root: "/notes", isVacant: false, group: "g")]
+        XCTAssertEqual(route("/notes/b.md", spoken), .tabIn(0), "the second goes beside it, in the same window")
     }
 }
 

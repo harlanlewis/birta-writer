@@ -215,6 +215,7 @@ final class AppMenuTests: XCTestCase {
             "-", "Zoom In", "Zoom Out", "Actual Size",
             "-", "Font", "Theme", "Folding",
             "-", "Show Table of Contents", "Show Files", "Show Hidden Files", "Show Line Numbers", "Show Path Bar",
+            "Folder Overview",
             "-", "Proofreading",
             // The bracket macOS's own Enter Full Screen lands under; see
             // `AppMenu.Menu.takesSystemRows`.
@@ -297,6 +298,7 @@ final class AppMenuTests: XCTestCase {
     func testTheFileMenuShouldOpenRecentThroughASubmenuOfItsOwn() {
         let file = build(.file)
         XCTAssertEqual(titles(of: file), ["New Note", "New Tab", "Open…", "Open Recent", "Go to File…", "Save", "Save a Copy As…",
+                                        "Append to Note…",
                                         "-", "Reveal in Finder", "Copy Path", "Move to Trash…",
                                         "-", "Back to My Notes",
                                         "-", "Copy Everything", "Share…", "Reveal Last Save in Finder"])

@@ -144,4 +144,24 @@ final class FlushWriteTests: XCTestCase {
 
         XCTAssertGreaterThan(plain, 0, "every flush was classified as deciding; the predicate discriminates nothing")
     }
+
+    /// The other half of the same rule. A `persisting: false` caller decides
+    /// from `isEdited` whether leaving is safe (hiding with autosave off, the
+    /// explorer replacing a tab), and the flush is what brings keystrokes no
+    /// sync has reported yet. If the admitted flush moves the buffer without
+    /// marking it edited, that caller reads "nothing unsaved" and the last
+    /// keystrokes go with the file it leaves.
+    func testAnAdmittedFlushThatMovesTheBufferShouldMarkItEdited() {
+        let lines = source()
+        guard let start = lines.firstIndex(where: { $0.contains("case let .flushResult(") }) else {
+            return XCTFail("no flushResult arm in Coordinator.swift; this guard must follow it")
+        }
+        guard let admit = lines[start...].firstIndex(where: { $0.contains("case .admit:") }),
+              let next = lines[(admit + 1)...].firstIndex(where: { $0.contains("case .repush") }) else {
+            return XCTFail("the flushResult arm no longer has the admit/repush shape this guard reads")
+        }
+        let arm = lines[admit..<next].joined(separator: "\n")
+        XCTAssertTrue(arm.contains("isEdited = true"),
+                      "an admitted flush must mark the buffer edited when it moved it")
+    }
 }

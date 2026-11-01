@@ -40,6 +40,11 @@ public enum FileOpenTarget: String, CaseIterable, Sendable {
     case tab
     case window
 
+    /// A window of its own unless the reader asks for tabs: a file from
+    /// outside every open folder is a separate piece of work, and a folder's
+    /// files already gather as tabs of its window (owner decision, 2026-11-01).
+    public static let `default`: FileOpenTarget = .window
+
     /// What the menu calls it: the two things the file could open in.
     public var title: String {
         switch self {

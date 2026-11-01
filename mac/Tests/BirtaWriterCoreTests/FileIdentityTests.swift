@@ -56,4 +56,32 @@ final class FileIdentityTests: XCTestCase {
         XCTAssertTrue(FileIdentity.sameFile(a, b), "no file to identify: resolved paths decide")
         XCTAssertFalse(FileIdentity.sameFile(a, dir.appendingPathComponent("other.md")))
     }
+
+    // MARK: one question asked of many paths
+
+    /// A path no file is at (every name a new note is offered) is answered
+    /// from the resolved paths alone: no identity check per file, which is
+    /// what made naming a note cost windows times candidates lookups.
+    func testAnAbsentPathShouldBeAnsweredWithoutAnIdentityCheck() {
+        var identityChecks = 0
+        let held = (0..<5).map { dir.appendingPathComponent("held \($0).md") }
+        let matcher = FileIdentity.matcher(for: held, exists: { _ in false },
+                                           sameFile: { _, _ in identityChecks += 1; return false })
+        XCTAssertTrue(matcher(held[3]))
+        XCTAssertTrue(matcher(dir.appendingPathComponent("./held 1.md")), "spelling is resolved, not compared raw")
+        XCTAssertFalse(matcher(dir.appendingPathComponent("free.md")))
+        XCTAssertEqual(identityChecks, 0)
+    }
+
+    /// A file that IS on disk can be one of the files under another
+    /// spelling, so only there is the file system asked.
+    func testAPathOnDiskShouldStillBeAskedByIdentity() {
+        var identityChecks = 0
+        let held = [dir.appendingPathComponent("a.md"), dir.appendingPathComponent("b.md")]
+        let other = dir.appendingPathComponent("A-alias.md")
+        let matcher = FileIdentity.matcher(for: held, exists: { $0 == other },
+                                           sameFile: { lhs, rhs in identityChecks += 1; return lhs == held[0] && rhs == other })
+        XCTAssertTrue(matcher(other))
+        XCTAssertGreaterThan(identityChecks, 0)
+    }
 }

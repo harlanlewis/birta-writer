@@ -79,6 +79,20 @@ public enum RecentFiles {
         return Array(([target] + rest).prefix(capacity))
     }
 
+    /// `recording`, for a file somebody has just been in: one that is not on
+    /// disk is not recorded at all.
+    ///
+    /// A path with no file behind it is never drawn (`rows`), so recording it
+    /// only spends a place in a capped list on nothing. The case that made
+    /// this the rule rather than a caller's choice is a new tab of a folder
+    /// window, bound to a name nobody has written to (`UnwrittenNote`): it is
+    /// left and closed like any tab, and every way a window is left records
+    /// the file it was on. Asked here, the one place a remembered file goes
+    /// in, so a way of leaving a window added later is covered too.
+    public static func remembering(_ url: URL, into existing: [URL], exists: (URL) -> Bool) -> [URL] {
+        exists(url) ? recording(url, into: existing) : existing
+    }
+
     /// The rows a menu draws, in order: everything still on disk, titled so no
     /// two rows in the result read the same.
     ///

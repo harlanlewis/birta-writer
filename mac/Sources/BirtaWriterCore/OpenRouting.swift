@@ -19,10 +19,14 @@ import Foundation
 ///    which takes it over, as in 3), so the folder's files stay together under the folder's
 ///    explorer. The window in front wins when several are rooted over it,
 ///    else the most recently fronted.
-/// 3. The window in front is standing on a file that has gone (or on the
-///    empty state Move to Trash leaves), so it takes the file over rather
-///    than leaving a dead window behind a new one. Any text only it held is
-///    kept in a recovered file first, which is the coordinator's job.
+/// 3. The window in front is a LOOSE window (no root) standing on a file
+///    that has gone (or on the empty state Move to Trash leaves), so it
+///    takes the file over rather than leaving a dead window behind a new
+///    one. Any text only it held is kept in a recovered file first, which is
+///    the coordinator's job. A vacant ROOTED window is not asked here: a
+///    file inside its root was answered in 2, and one outside it is not a
+///    file of that folder, so it never lands in the folder's window (owner
+///    decision, 2026-11-01) and goes on to 4 like any outside file.
 /// 4. Otherwise the "Open files in" setting decides: a tab beside the window
 ///    in front, or a window of its own.
 public enum OpenRouting {
@@ -85,7 +89,7 @@ public enum OpenRouting {
         }) {
             return .tabIn(rooted)
         }
-        if windows.last?.isVacant == true {
+        if let front = windows.last, front.isVacant, front.root == nil {
             return .vacantFront
         }
         if looseFilesOpenInTab, !windows.isEmpty {

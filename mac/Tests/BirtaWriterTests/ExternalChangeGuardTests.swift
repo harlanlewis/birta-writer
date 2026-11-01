@@ -89,6 +89,10 @@ final class ExternalChangeGuardTests: XCTestCase {
         "makeNoteFile",           // a new note, at a path nothing is bound to yet
         "relocateActiveFile",     // a rename with no file to move yet, at the new path
         "saveAs",                 // Save As writes a copy and leaves the binding alone
+        // Append to Note, to a file no window holds a copy of: one that does
+        // goes through that window's buffer (`NoteAppend.destination`), and
+        // this window's own file is refused as a target.
+        "appendToFile",
     ]
     private static let writesTheBoundFile: Set<String> = [
         "seedFirstRunNote",       // the tour, over the empty scratchpad on a first run
@@ -266,7 +270,9 @@ final class ExternalChangeGuardTests: XCTestCase {
         let code = body.components(separatedBy: "\n")
             .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
             .joined(separator: "\n")
-        let save = try XCTUnwrap(code.range(of: "write(.explicitSave)"),
+        // The save the person is understood to have asked for, since a run
+        // hands the note's path to a reader (`writeSaveSomebodyAskedFor`).
+        let save = try XCTUnwrap(code.range(of: "self.writeSaveSomebodyAskedFor()"),
                                  "the run no longer writes the note first, so the agent opens stale bytes")
         let refused = try XCTUnwrap(code.range(of: "guard !self.driftUnresolved else {"),
                                     "the run no longer asks whether its pre-run save was refused")

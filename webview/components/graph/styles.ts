@@ -197,6 +197,60 @@ export const LOCAL_GRAPH_CSS = `
     height: 8px;
 }
 
+/* A centre that is a note to go to (the folder overview's hub) rather than
+   the note on screen: it opens, so it reads as a link like every other dot. */
+.lg-node--self.lg-node--opens {
+    cursor: pointer;
+}
+
+.lg-node--self.lg-node--opens:hover .lg-label {
+    text-decoration: underline;
+}
+
+/* ── The folder overview (folderOverview.ts) ── */
+
+/* On the fullscreen surface: one column from the top, under the title's band,
+   scrolled only when the window is too short for even the capped list. */
+.fo-surface .fs-content {
+    align-items: flex-start;
+    overflow-y: auto;
+    box-sizing: border-box;
+    padding: var(--fs-band) var(--ui-space-4) var(--ui-space-4);
+}
+
+/* The square is as wide as the column allows and never taller than a little
+   over half the viewport, so the recent files under it stay above the fold
+   in a short window. */
+.fo {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    width: min(100%, 560px);
+    margin-inline: auto;
+    color: var(--vscode-foreground);
+    font-size: var(--ui-fs-s);
+}
+
+.fo .lg-stage {
+    width: min(100%, 55vh);
+    align-self: center;
+}
+
+.fo-heading {
+    margin-block-start: var(--ui-space-3);
+    padding-inline: var(--ui-space-2);
+}
+
+.fo-recents {
+    display: flex;
+    flex-direction: column;
+}
+
+.fo-empty {
+    color: var(--vscode-descriptionForeground);
+    padding: var(--ui-space-1) var(--ui-space-2);
+}
+
 /* ── The whole-folder view (folderView.ts), on the fullscreen surface ── */
 
 /* The lists on the left, under the title's band, and the drawing on the

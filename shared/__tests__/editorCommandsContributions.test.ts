@@ -40,8 +40,12 @@ const PALETTE_WHEN = "activeCustomEditorId == 'birta.editor'";
  * `shared/__tests__/syntaxContributions.test.ts` is the other half, and asks the
  * same question from the manifest's side.
  */
-function syntaxSuffix(meta: { readonly syntax?: string }): string {
-    return meta.syntax ? ` && ${syntaxContextKey(meta.syntax as SyntaxFeature)}` : "";
+function whenSuffix(meta: { readonly syntax?: string; readonly setting?: string }): string {
+    const syntax = meta.syntax ? ` && ${syntaxContextKey(meta.syntax as SyntaxFeature)}` : "";
+    // A command that is idle while its setting is off is withdrawn from the
+    // palette by the setting itself, which VS Code reads in a `when` directly.
+    const setting = meta.setting ? ` && config.birta.${meta.setting}` : "";
+    return syntax + setting;
 }
 
 interface Contribution { command: string; title?: string; when?: string; group?: string }
@@ -82,7 +86,7 @@ describe("editor command contributions", () => {
             const entry = commandPalette.find((c) => c.command === name);
             expect(entry, `missing commandPalette entry for ${name}`).toBeDefined();
             expect(entry!.when).toBe(
-                meta.palette ? PALETTE_WHEN + syntaxSuffix(meta) : "false",
+                meta.palette ? PALETTE_WHEN + whenSuffix(meta) : "false",
             );
         }
     });
@@ -437,7 +441,7 @@ describe("editor command keybinding contributions", () => {
             const id = kb.command.slice(EDITOR_COMMAND_PREFIX.length);
             const meta = EDITOR_COMMANDS.find((m) => m.id === id);
             const base = FOCUS_GATED.has(kb.command) ? FOCUS_WHEN : PALETTE_WHEN;
-            const expected = base + (meta ? syntaxSuffix(meta) : "");
+            const expected = base + (meta ? whenSuffix(meta) : "");
             expect(kb.when, `keybinding for ${kb.command} must be scoped`).toBe(expected);
         }
     });
