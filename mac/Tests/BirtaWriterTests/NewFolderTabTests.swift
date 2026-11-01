@@ -130,6 +130,35 @@ final class NewFolderTabTests: XCTestCase {
         XCTAssertTrue(decide.contains("UnwrittenNote.mayWrite(awaitingText: awaitsFirstText, buffer: latest)"))
     }
 
+    /// Every note the app names for itself skips a name an open tab holds,
+    /// or it can land on an unwritten tab's path. Read as every call site
+    /// rather than a list of them, so a new caller joins the check; the
+    /// missing-note screen's Discard is the one that needs the hook, since a
+    /// window cannot see the other windows itself.
+    func testEveryNewNoteShouldSkipANameAnOpenTabHolds() throws {
+        // The one exemption: the launch's blank note is named before any
+        // window exists, so there is no tab whose name it could take.
+        let launch = try body(of: "private static func startBlankNote()", in: source("BirtaWriter/WindowSet.swift"))
+        let exempt = "let note = try Coordinator.makeNoteFile()"
+        XCTAssertTrue(launch.contains(exempt), "the exemption no longer names startBlankNote's call")
+        var calls = 0
+        for file in ["BirtaWriter/WindowSet.swift", "BirtaWriter/Coordinator.swift"] {
+            for line in try source(file).components(separatedBy: "\n") {
+                let code = line.trimmingCharacters(in: .whitespaces)
+                guard code.contains("makeNoteFile("), !code.hasPrefix("//"), !code.contains("static func makeNoteFile"),
+                      !code.contains("try makeNoteFile(in: Prefs.notesDirectory"), code != exempt else { continue }
+                calls += 1
+                XCTAssertTrue(code.contains("alsoTaken:"), "\(file): a new note that can take a held name: \(code)")
+            }
+        }
+        XCTAssertGreaterThanOrEqual(calls, 6, "the call sites were not found; this guard is watching nothing")
+        let discard = try body(of: "func startNewNoteHere()", in: source("BirtaWriter/Coordinator.swift"))
+        XCTAssertTrue(discard.contains("alsoTaken: self.isNameHeldByAWindow"))
+        XCTAssertTrue(try source("BirtaWriter/WindowSet.swift")
+            .contains("coordinator.isNameHeldByAWindow = { [weak self] url in self?.boundByAWindow(url) ?? false }"),
+                      "the hook is only as good as its wiring")
+    }
+
     /// The page is told by the command View > Folder Overview already sends,
     /// once, on the first page to come up warm.
     func testTheFirstWarmPageShouldBeSentTheOverviewCommandOnce() throws {

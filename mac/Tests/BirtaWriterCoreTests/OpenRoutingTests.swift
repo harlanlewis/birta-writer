@@ -66,10 +66,26 @@ final class OpenRoutingTests: XCTestCase {
                        OpenRouting.Window(file: "/notes/gone.md", root: "/notes", isVacant: true, group: "g")]
         XCTAssertEqual(route("/notes/c.md", windows), .vacantFront)
         XCTAssertEqual(route("/notes/a.md", windows), .existing(0), "already open still wins: one buffer per file")
-        XCTAssertEqual(route("/elsewhere/c.md", windows), .vacantFront)
         let live = [OpenRouting.Window(file: "/notes/a.md", root: "/notes", group: "g"),
                     OpenRouting.Window(file: "/notes/b.md", root: "/notes", group: "g")]
         XCTAssertEqual(route("/notes/c.md", live), .tabIn(1), "a live front tab is not replaced")
+    }
+
+    /// A file from outside a vacant folder tab's root is not a file of that
+    /// folder, so it never takes the folder's tab over: the Open files in
+    /// setting places it, as it places any outside file. This covers both a
+    /// folder tab whose file has gone and an untouched Cmd+T tab
+    /// (`UnwrittenNote.isVacant`).
+    func testAVacantRootedFrontShouldNotTakeOverAFileOutsideItsRoot() {
+        let windows = [OpenRouting.Window(file: "/notes/a.md", root: "/notes", group: "g"),
+                       OpenRouting.Window(file: "/notes/Untitled.md", root: "/notes", isVacant: true, group: "g")]
+        XCTAssertEqual(route("/elsewhere/c.md", windows, inTab: false), .newWindow)
+        XCTAssertEqual(route("/elsewhere/c.md", windows, inTab: true), .tabBeside(1))
+        // The loose arm is unchanged: a vacant window with no root still
+        // takes an outside file over, under either setting.
+        let loose = [OpenRouting.Window(file: "/gone.md", isVacant: true)]
+        XCTAssertEqual(route("/elsewhere/c.md", loose, inTab: false), .vacantFront)
+        XCTAssertEqual(route("/elsewhere/c.md", loose, inTab: true), .vacantFront)
     }
 
     func testWithNoWindowsTheAnswerIsANewWindow() {

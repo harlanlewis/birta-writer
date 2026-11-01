@@ -164,6 +164,7 @@ final class WindowSet {
             self?.newNote(in: folder, beside: coordinator)
         }
         coordinator.onFolderDefault = { [weak self] root in self?.folderDefault(in: root) }
+        coordinator.isNameHeldByAWindow = { [weak self] url in self?.boundByAWindow(url) ?? false }
         coordinator.onTrashFolder = { [weak self, weak coordinator] folder in
             guard let coordinator else { return }
             self?.trashFolder(folder, from: coordinator)

@@ -442,6 +442,13 @@ final class Coordinator {
     /// even a new note.
     var onFolderDefault: ((URL) -> URL?)?
 
+    /// Whether an open window is bound to a path, file or no file
+    /// (`WindowSet.boundByAWindow`), for the one note this window names
+    /// itself: the missing-note screen's Discard. A new tab of a folder window
+    /// holds a name before anything is written there, and a note made over
+    /// it would be a second buffer on that path.
+    var isNameHeldByAWindow: ((URL) -> Bool)?
+
     /// The app's Open panel (`WindowSet.openDocumentPanel`), for the empty
     /// state's and the missing-file card's Browse button. The set's, because
     /// where the chosen file lands turns on every window (`OpenRouting`); this
@@ -4124,7 +4131,7 @@ final class Coordinator {
             guard let self else { return }
             self.write(.explicitSave)
             do {
-                let target = try Coordinator.makeNoteFile()
+                let target = try Coordinator.makeNoteFile(alsoTaken: self.isNameHeldByAWindow ?? { _ in false })
                 if self.bindingSlot == .document { Prefs.documentURL = nil }
                 Prefs.currentNoteURL = target
                 self.bindingSlot = .currentNote
