@@ -308,9 +308,9 @@ https://docs.google.com/spreadsheets/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2u
 
 #### Google Drive
 
-A Drive **file** link loads Google's `/preview` endpoint on click - the supported no-auth embed for files shared "anyone with the link". This is the **first of two deliberate failure states** in this file: the id is synthetic, because a Drive file shared by link is unlisted by design and there is no public one to borrow, so clicking load brings up Google's own "the file you have requested does not exist" page inside the frame. That is the point of keeping it - a provider-side error stays inside the frame, and the card's own controls stay reachable around it:
+A Drive **file** link loads Google's `/preview` endpoint on click - the supported no-auth embed for files shared "anyone with the link", which needs no publish step. The file below is a Birta-owned Google Doc shared that way, so clicking load renders it inside the frame. Any file Drive holds takes this form, a Google Doc included, because the id in a `drive.google.com/file/d/` link is the same id the file has everywhere else:
 
-https://drive.google.com/file/d/1AbCdEfGhIjKlMnOpQrStUvWxYz01234/view
+https://drive.google.com/file/d/12KNr_o1NvQHYSu-NTrMJXYwLzTU7BbRbtXNOG1YWY2Y/view
 
 #### Miro
 
@@ -352,11 +352,11 @@ https://github.com/microsoft/vscode/tree/main/src
 
 https://gist.github.com/harlanlewis/0123456789abcdef0123456789abcdef
 
-**The second deliberate failure state** is the one worth recognizing on sight, because it is the one you will actually hit: an asset that is real, and walled. The link below is a genuine publish-to-web Sheets URL whose owner has since taken the publication down, so the frame loads Google's "you must sign in to access this content" panel. Signing in *there* is not possible - the sandbox blocks in-frame login - which is why the card keeps a persistent notice offering to open the file in your browser, where your session already exists:
+**The deliberate failure state** is the one worth recognizing on sight, because it is the one you will actually hit: an asset that is real, and walled. The link below is a genuine publish-to-web Sheets URL whose owner has since taken the publication down, so the frame loads Google's "you must sign in to access this content" panel. Signing in *there* is not possible - the sandbox blocks in-frame login - which is why the card keeps a persistent notice offering to open the file in your browser, where your session already exists:
 
 https://docs.google.com/spreadsheets/d/e/2PACX-1vSTWLlj1luPBQBGNpzs_npdN7oM-0OFwmfdduufbXSOjxQDD3bkPdeo23xE0r6rHFwX1SWmYM0j9xJW/pubhtml
 
-Those two are the whole of the broken-card demonstration here. The rest of the failure surface - a well-formed YouTube id with no video behind it, a Vimeo video whose oEmbed refuses a title, provider 404s from Loom, a Figma key that is not publicly accessible, synthetic playground ids - lives in `webview/__tests__/fixtures/url-embeds.md`, alongside the shapes that must round-trip byte-identically.
+That one is the whole of the broken-card demonstration here. The rest of the failure surface - a well-formed YouTube id with no video behind it, a Vimeo video whose oEmbed refuses a title, provider 404s from Loom, a Figma key that is not publicly accessible, synthetic playground ids - lives in `webview/__tests__/fixtures/url-embeds.md`, alongside the shapes that must round-trip byte-identically.
 
 A note on what that buys, since a fixture is easy to over-trust: the corpus suite renders every one of those documents and round-trips its bytes, so a failure shape that crashed the editor or rewrote the file would be caught. Neither it nor any other suite asserts what the *card* does with a 404 or a sign-in wall, because a real assertion needs the provider's real answer. `e2e/embedsOnline` covers card chrome against stubbed responses; the live behavior is checked by opening this file.
 
