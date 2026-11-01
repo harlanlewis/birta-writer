@@ -137,21 +137,15 @@ public enum UpdatePolicy {
         /// form the window checks cannot see: the sheet is attached to a
         /// window this would answer by quitting underneath it.
         public var offerOnScreen: Bool
-        /// The app is in the middle of something it was asked to do, such as
-        /// an `/ai` run still going. Presence and WORK are different
-        /// questions: a hidden panel on an untouched machine with an agent
-        /// still thinking is not nobody being there.
-        public var workInFlight: Bool
         /// Whether anybody is at the app.
         public var attendance: Attendance
 
         public init(isStaged: Bool, autoUpdate: Bool, wasDeclined: Bool,
-                    offerOnScreen: Bool, workInFlight: Bool, attendance: Attendance) {
+                    offerOnScreen: Bool, attendance: Attendance) {
             self.isStaged = isStaged
             self.autoUpdate = autoUpdate
             self.wasDeclined = wasDeclined
             self.offerOnScreen = offerOnScreen
-            self.workInFlight = workInFlight
             self.attendance = attendance
         }
     }
@@ -164,7 +158,7 @@ public enum UpdatePolicy {
     /// stays staged, and the next poll asks again.
     public static func mayInstallUnattended(_ state: UnattendedInstall) -> Bool {
         guard state.isStaged, state.autoUpdate else { return false }
-        guard !state.wasDeclined, !state.offerOnScreen, !state.workInFlight else { return false }
+        guard !state.wasDeclined, !state.offerOnScreen else { return false }
         return isUnattended(state.attendance)
     }
 

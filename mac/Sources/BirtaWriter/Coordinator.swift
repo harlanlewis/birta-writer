@@ -10,7 +10,7 @@ import os
 /// user can find (Settings names it), written atomically. WHEN it is written
 /// is `BirtaWriterCore.AutosavePolicy`'s answer: an edit is held for a beat and
 /// only written at all with autosave on, and every other reason to write
-/// (Cmd+S, hiding, quitting, New Note, handing the file to an agent) writes
+/// (Cmd+S, hiding, quitting, New Note) writes
 /// immediately whatever the setting says. Each of those first asks the page to
 /// flush (`flushSave`), bounded by `flushTimeout` like the extension's
 /// will-save participant, then writes.
@@ -750,21 +750,6 @@ final class Coordinator {
         }
     }
 
-    /// What this host provides moved under the page: hand the page this
-    /// window's own list rather than loading it again.
-    ///
-    /// The list is per window, which is why it is taken from this window's
-    /// boot config rather than from a shared one: `projectFiles` is withdrawn
-    /// for a window on a loose file, and a message carrying some other
-    /// window's answer would offer this page an explorer it has no folder for.
-    /// A page not yet warm needs no telling, because the config it is about to
-    /// boot with is read at that moment.
-    func applyHostCapabilities() {
-        guard state == .warm else { return }
-        host.send(.hostCapabilitiesChanged(
-            Prefs.bootConfig(viewState: nil, explorerRoot: explorerRoot).hostCapabilities))
-    }
-
     /// Run `body` with the system's automatic tabbing off for this window,
     /// so a show inside it opens a window whatever "Prefer tabs" says. Only
     /// the show is affected: the window is back to `.automatic` afterwards,
@@ -818,9 +803,6 @@ final class Coordinator {
     private let host: WebHost
     private let writer: CoalescingWriter
     private let attachments = AttachmentStore()
-    /// Numbers `/ai-advanced` attachments so two files of one name in a single
-    /// request do not overwrite each other. Main thread only.
-    private var agentAttachmentSeq = 0
     /// Outbound page fetches for link cards and paste-unfurl. Built once: the
     /// transport holds an ephemeral URLSession with no cookie store and no
     /// cache, so nothing a fetch touches persists between requests.
@@ -979,7 +961,6 @@ final class Coordinator {
     /// flushes are: a page that never answers must not leave a closure holding
     /// the coordinator for the life of the app.
     private var pendingContexts: [String: (AgentReference.Selection?) -> Void] = [:]
-    private let agent = AgentRunner()
     /// Spelling and grammar for the page, from the system's own checker. Held
     /// for the app's lifetime so its spell-document tag, and with it anything
     /// ignored in this session, survives a page reload.
@@ -1037,9 +1018,6 @@ final class Coordinator {
     /// from (`ResourceRoots.document`), because a note in a rooted window
     /// refers to images anywhere under the root rather than only beside it.
     let explorerRoot: URL?
-    /// Per run, the file holding the agent's own version while the page's
-    /// merge decides whether the document ended up with all of it.
-    private var agentRescues: [String: URL] = [:]
     private var autosaveTimer: Timer?
     private var autosaveDeadline: Date?
     /// The typing pause that ends a burst, and the ceiling a burst cannot pass.
@@ -2404,9 +2382,8 @@ final class Coordinator {
         }
         if state == .cold { loadPage() }
         // A note that was there and unreadable when we last looked leaves the
-        // panel unwritable, and nothing else would ever look again: the only
-        // other reader runs after an agent run, and the download this is
-        // waiting on finishes on iCloud's schedule rather than on ours. Being
+        // panel unwritable, and nothing else would ever look again: the
+        // download this is waiting on finishes on iCloud's schedule rather than on ours. Being
         // summoned is the natural moment to ask again, and it is bounded by
         // the user doing it.
         if noteUnreadable { retryUnreadableNote() }
@@ -2696,14 +2673,6 @@ final class Coordinator {
             pickLinkTarget(id: id)
         case .openHostPreferences:
             openPreferences?()
-        case let .askAgent(prompt, requestId, model, effort, skill):
-            runAgent(prompt: prompt, requestId: requestId, model: model, effort: effort, skill: skill)
-        case let .agentMergeResult(requestId, outcome):
-            settleAgentRescue(requestId: requestId, outcome: outcome)
-        case let .agentCancel(requestId):
-            agent.stop(requestId: requestId) { [weak self] status in
-                self?.reportAgent(requestId: requestId, status)
-            }
         case let .clipboardWrite(format, data):
             writeToPasteboard(data, asHTML: format == "html")
         case .copyAgentReference:
@@ -2854,8 +2823,6 @@ final class Coordinator {
             NSLog("Birta Writer: webview crash (\(source)): \(message)")
         case let .uploadImage(id, data, mimeType, _):
             saveAttachment(id: id, data: data, mimeType: mimeType)
-        case let .agentAttachment(id, name, bytes):
-            saveAgentAttachment(id: id, name: name, bytes: bytes)
         case let .showDatePicker(id, left, top, bottom):
             showDatePicker(id: id, left: left, top: top, bottom: bottom)
         case let .hostPrompt(id, step):
@@ -2945,44 +2912,6 @@ final class Coordinator {
         } catch {
             NSLog("Birta Writer: attachment save failed: \(error)")
             host.send(.imageUploadError(id: id, error: "The image could not be saved beside this document."))
-        }
-    }
-
-    /// Write one `/ai-advanced` attachment somewhere the agent can read it and
-    /// tell the page where it went.
-    ///
-    /// Always answers, including on failure, and that is the point rather than
-    /// defensiveness: the composer disables Send while an attachment is
-    /// unresolved, so a request with no reply leaves the panel unable to send
-    /// anything at all, the typed prompt included. A null path is a real
-    /// answer, and it is what marks the chip failed and frees the button.
-    ///
-    /// The counter is read and bumped HERE, on the main thread where every
-    /// message is handled, and the write is what goes to a background queue.
-    /// Two files of the same name in one request would otherwise race for the
-    /// same number and one would overwrite the other.
-    private func saveAgentAttachment(id: String, name: String, bytes: Data) {
-        agentAttachmentSeq += 1
-        let sequence = agentAttachmentSeq
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            var path: String?
-            do {
-                try AgentAttachment.check(byteCount: bytes.count)
-                let directory = AgentAttachment.directory(
-                    temporaryDirectory: URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true),
-                    processID: ProcessInfo.processInfo.processIdentifier)
-                try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-                let target = AgentAttachment.destination(in: directory, sequence: sequence, name: name)
-                try bytes.write(to: target, options: .atomic)
-                path = target.path
-            } catch {
-                NSLog("Birta Writer: agent attachment save failed: \(error)")
-                path = nil
-            }
-            let resolved = path
-            DispatchQueue.main.async {
-                self?.host.send(.agentAttachmentSaved(id: id, path: resolved))
-            }
         }
     }
 
@@ -3136,9 +3065,9 @@ final class Coordinator {
             // of those bytes, and taking this read would replace it with
             // nothing: the panel would go blank behind the bar that says
             // nothing has been written, and Save It Back would then write an
-            // empty file. `writeLatest` was guarded for this and the read side
-            // was not, which left every settings change, every reload and
-            // every finished agent run as a way to lose the note.
+            // empty file. `writeLatest` is guarded for this, and the read side
+            // has to be too, or every settings change and every reload is a
+            // way to lose the note.
             if noteMissing { return hasLoaded }
             latest = ""
             // Nothing is there, so there is nothing to be in step with: the
@@ -3267,10 +3196,10 @@ final class Coordinator {
     ///
     /// `done(false)` means the user cancelled: the app stays up, and nothing
     /// may have been torn down on the way to asking. That ordering is the
-    /// whole shape of this method. The hotkey and the running agents used to
-    /// be dropped first, which is invisible while every quit succeeds and is a
-    /// summon key that stops working for the rest of the session the first
-    /// time somebody presses Cancel.
+    /// whole shape of this method: anything dropped before the answer is
+    /// invisible while every quit succeeds, and is a summon key that stops
+    /// working for the rest of the session the first time somebody presses
+    /// Cancel.
     func prepareToClose(_ done: @escaping (Bool) -> Void) {
         // `decideFinalWrite` may ask, and with autosave off it does. A flush
         // that wrote as it landed would put the bytes on disk before the sheet
@@ -3293,9 +3222,6 @@ final class Coordinator {
                     done(false)
                     return
                 }
-                // A child process outliving the app is litter nobody can
-                // attribute.
-                self.agent.stopAll()
                 // Not for a buffer somebody has just said to throw away: this
                 // writes it beside the deleted file, which is the opposite of
                 // the answer they gave.
@@ -3320,8 +3246,8 @@ final class Coordinator {
     /// the window then hides as it always did. `.cancel` means the sheet was
     /// refused and the window stays up.
     ///
-    /// Not `prepareToClose`, which this is a slice of: that one also stops
-    /// the agents, rescues a missing note and marks the window closing, all
+    /// Not `prepareToClose`, which this is a slice of: that one also rescues
+    /// a missing note and marks the window closing, both
     /// of which are for a window that is going. This one is staying, so the
     /// quit decision it records is taken back too, or the next real quit
     /// would skip its own last-chance write.
@@ -3535,23 +3461,15 @@ final class Coordinator {
             measure.trace("diskdrift reread at=\(boundURL.lastPathComponent)")
             rebase(on: settled)
             adoptFromDisk(settled.content)
-            statusOverlay.flash(reloadedNotice)
+            statusOverlay.flash("Reloaded: another app changed this file.")
             return false
         case .conflict(let disk, let stamp):
             measure.trace("diskdrift conflict at=\(boundURL.lastPathComponent)")
             driftUnresolved = true
-            // The write is refused whatever moved the file. What an `/ai` run
-            // in flight changes is only whether the question is put NOW: the
-            // run writes the bound file at this window's request, and in the
-            // middle of it nothing here can tell its write from a third
-            // program's, so asking would ask about the file the user just
-            // asked an agent to rewrite, and a Keep would write over the
-            // agent's work. The landing is the answer for both writers:
-            // `finishAgentRun` re-reads the file and folds whatever it holds
-            // around what was typed, keeping a copy of anything left out. A
-            // run that ends without landing leaves `driftUnresolved` standing,
-            // and the next write or summon asks as it would have (MAR-478).
-            if asking, !agent.hasRunsInFlight { askAboutDrift(disk: disk, stamp: stamp) }
+            // The write is refused whatever moved the file, and the question
+            // is put now when this caller may ask. One that may not leaves
+            // `driftUnresolved` standing, and the next write or summon asks.
+            if asking { askAboutDrift(disk: disk, stamp: stamp) }
             return false
         case .unavailable:
             return true
@@ -3850,187 +3768,6 @@ final class Coordinator {
             self.statusOverlay.flash("Copied the whole note.")
             self.focusEditorIfVisible()
         }
-    }
-
-    // MARK: /ai
-
-    /// Run one `/ai` request against the file on disk.
-    ///
-    /// The buffer is flushed and WRITTEN first, always: the agent edits the
-    /// file, so the bytes it opens have to be the bytes on screen, and the
-    /// `path.md#L1` reference has to name something real. This is the one
-    /// place a write happens regardless of the autosave setting for a reason
-    /// that is not about safety: an agent reading a stale file would rewrite
-    /// the wrong text.
-    private func runAgent(prompt: String?, requestId: String?, model: String?, effort: String?, skill: String? = nil) {
-        let id = requestId ?? UUID().uuidString
-        let request = (prompt ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !request.isEmpty else {
-            reportAgent(requestId: id, .init(status: "failed", harness: nil, text: nil,
-                                             message: "Nothing was asked."))
-            return
-        }
-        var template = Prefs.agentCommand.trimmingCharacters(in: .whitespaces)
-        guard !template.isEmpty else {
-            reportAgent(requestId: id, .init(status: "failed", harness: nil, text: nil,
-                                             message: "No agent command is set in Settings."))
-            return
-        }
-        // The composer's per-request choices. Added before a trailing
-        // `{prompt}` rather than appended, because a template that ends in the
-        // placeholder hands the prompt positionally and a flag after it is not
-        // the prompt's flag any more (`AgentRequest.adding`).
-        if let model, !model.isEmpty {
-            template = AgentRequest.adding(flag: "--model", value: model, to: template)
-        }
-        if let effort, !effort.isEmpty {
-            template = AgentRequest.adding(flag: "--effort", value: effort, to: template)
-        }
-        let command = template
-
-        flushThen { [weak self] in
-            guard let self else { return }
-            self.writeSaveSomebodyAskedFor()
-            // The save above can be refused: the file changed outside the app
-            // since it was last read, and the panel holds edits of its own
-            // (`reconcileWithDisk`'s conflict). The question that refusal put
-            // is the one to answer first. A run that started anyway would open
-            // a file the panel does not hold, with `handoff` taken from the
-            // panel, and a landing with nothing typed meanwhile would read the
-            // agent's version over the edits (MAR-490). A refusal that could
-            // put no question (the panel off screen) is the same refusal; the
-            // next summon asks.
-            guard !self.driftUnresolved else {
-                self.measure.trace("agent refused reason=drift at=\(self.boundURL.lastPathComponent)")
-                self.reportAgent(requestId: id, .init(status: "failed", harness: nil, text: nil,
-                                                      message: DiskDrift.runRefused(document: self.boundURL.lastPathComponent)))
-                return
-            }
-            // The bytes the agent opens, and the file they belong to. A
-            // finished run compares against both: the bytes to tell its own
-            // edit from one typed into the panel while it ran, the file
-            // because Settings can rebind the panel to another one meanwhile.
-            let handoff = self.latest
-            let handoffURL = self.boundURL
-            let directory = self.boundURL.deletingLastPathComponent()
-            let reference = "\(self.boundURL.lastPathComponent)#L1"
-            let line = AgentRequest.compose(prompt: request, reference: reference,
-                                            skill: AgentRequest.skillPrefix(route: command, skill: skill))
-            self.agent.run(requestId: id, line: line, template: command,
-                           workingDirectory: directory,
-                           progress: { [weak self] progressLine in
-                               self?.reportAgentProgress(requestId: id, line: progressLine)
-                           }) { [weak self] status in
-                guard let self else { return }
-                if status.status == "done" {
-                    self.finishAgentRun(requestId: id, status, handoff: handoff, handoffURL: handoffURL)
-                } else {
-                    self.reportAgent(requestId: id, status)
-                }
-            }
-        }
-    }
-
-    /// Land a finished run's edit, by `BirtaWriterCore.AgentLandingPolicy`.
-    ///
-    /// The reload comes BEFORE the report, so the page still has the run live
-    /// when the change arrives and takes it into the undo history
-    /// (`recordsExternalInHistory`); `settleAgentRun` runs on the report and
-    /// would end that.
-    private func finishAgentRun(requestId: String, _ status: AgentRunStatus, handoff: String,
-                                handoffURL: URL) {
-        // The panel moved to another file while the run worked, so the file it
-        // edited is not the one on screen. Neither answer below is available:
-        // reading it in would replace the note the user switched to, and
-        // handing its bytes to the page would merge one document into another.
-        guard boundURL == handoffURL else {
-            reportAgent(requestId: requestId, status)
-            return
-        }
-        guard !noteMissing, case .contents(let onDisk) = readActiveNote() else {
-            // A note that is missing, unreadable, or has never been written:
-            // `reloadFromDiskIntoBuffer` holds the judgement for all three,
-            // and there is nothing to hand the page either way.
-            reloadFromDiskIntoBuffer()
-            reportAgent(requestId: requestId, status)
-            return
-        }
-        let landing = AgentLandingPolicy.landing(handoff: handoff, onDisk: onDisk, buffer: latest)
-        // The run's own edit is not a change made behind the app's back: this
-        // window asked for it, and the landing below is the reconciliation.
-        // Without this the next write would find a file the app never read,
-        // and ask about bytes the page is already merging (MAR-469).
-        rebase(on: DiskBaseline(stamp: lastReadStamp, content: onDisk))
-        if landing.reloadsBuffer { reloadFromDiskIntoBuffer() }
-        if let diskText = landing.pageText {
-            // Written BEFORE the page is told, not after it answers. The page
-            // merges, dispatches a transaction, and that restarts the autosave
-            // debounce, so the buffer is on its way over the agent's file
-            // within half a second. Waiting for `agentMergeResult` to decide
-            // whether to keep a copy would be racing that write with an IPC
-            // round trip. So the copy is made unconditionally here and removed
-            // again when the page reports that nothing was left out.
-            rescueAgentVersion(requestId: requestId, text: diskText)
-            reportAgent(requestId: requestId, status.merging(diskText))
-        } else {
-            reportAgent(requestId: requestId, status)
-        }
-    }
-
-    /// Keep the agent's own version beside the note while the page decides.
-    ///
-    /// Same answer, and the same spelling, as the rescue for a note deleted
-    /// underneath us: a numbered file beside the original, so nothing is ever
-    /// overwritten. A failure here is not worth interrupting the run for; what
-    /// it costs is the copy, and the run still lands.
-    private func rescueAgentVersion(requestId: String, text: String) {
-        let directory = boundURL.deletingLastPathComponent()
-        let stem = boundURL.deletingPathExtension().lastPathComponent
-        let ext = boundURL.pathExtension.isEmpty ? DocumentTypes.written : boundURL.pathExtension
-        let target = Coordinator.unusedURL(in: directory, stem: "\(stem) (agent)", extension: ext)
-        do {
-            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-            try AtomicFile.writeString(text, to: target)
-            agentRescues[requestId] = target
-        } catch {
-            NSLog("Birta Writer: could not keep the agent's version: \(error)")
-        }
-    }
-
-    /// The page has said what its merge did, so the copy is either unnecessary
-    /// or is the only place the agent's work still exists.
-    private func settleAgentRescue(requestId: String, outcome: String) {
-        guard let target = agentRescues.removeValue(forKey: requestId) else { return }
-        if AgentRescuePolicy.keepsAgentVersion(outcome: outcome) {
-            statusOverlay.flash("Some of the agent's changes overlapped yours. Its version is in \(target.lastPathComponent).")
-            return
-        }
-        // Everything it wrote is in the document, so the copy is noise.
-        try? FileManager.default.removeItem(at: target)
-    }
-
-    /// What the run is doing, for the corner notice, while it is doing it.
-    ///
-    /// Advisory and transient, like the notice itself: nothing is stored here
-    /// and a page that is not up is simply not told.
-    private func reportAgentProgress(requestId: String, line: String) {
-        guard state == .warm else { return }
-        host.send(.agentProgress(requestId: requestId, line: line))
-    }
-
-    private func reportAgent(requestId: String, _ status: AgentRunStatus) {
-        guard state == .warm else { return }
-        host.send(.agentRun(requestId: requestId, status: status.status,
-                            harness: status.harness, text: status.text, message: status.message))
-    }
-
-    /// What a re-read says. During a run the file that moved is most likely
-    /// the agent's own write landing on a clean panel, and naming another app
-    /// for the edit the reader just asked for is the wrong sentence. Kept out
-    /// of `reconcileWithDisk`, whose one consultation of the run is the
-    /// asking (`ExternalChangeGuardTests` holds that count).
-    private var reloadedNotice: String {
-        agent.hasRunsInFlight ? "Reloaded: the agent changed this file." : "Reloaded: another app changed this file."
     }
 
     /// Take what is on disk as the buffer's new truth.
@@ -4418,14 +4155,6 @@ final class Coordinator {
     var hasUnwrittenBytes: Bool {
         isEdited || UnwrittenNote.holdsTextOnlyInBuffer(awaitingText: awaitsFirstText, buffer: latest)
     }
-
-    /// Whether an `/ai` run is still going in this window.
-    ///
-    /// Presence and WORK are different questions, and the unattended-update
-    /// path has to ask both: a hidden panel on an untouched machine with an
-    /// agent still thinking is not nobody being there, it is the app in the
-    /// middle of something it was asked to do.
-    var hasAgentRunInFlight: Bool { agent.hasRunsInFlight }
 
     /// Something to do the next time the panel is summoned.
     ///
@@ -5010,9 +4739,9 @@ final class Coordinator {
 
     /// A save the person asked for: the one write that may make a
     /// never-written note's file with nothing in it, because they asked for
-    /// the file (`UnwrittenNote`). Cmd+S, and the two gestures that hand the
-    /// file's path to something that will read it (Copy Reference, an `/ai`
-    /// run), since a path to no file is not what either asked for. Every
+    /// the file (`UnwrittenNote`). Cmd+S, and Copy Reference, which hands the
+    /// file's path to something that will read it, since a path to no file is
+    /// not what it asked for. Every
     /// other `.explicitSave` is the app flushing for its own reasons (the
     /// welcome screen, leaving a document, Discard) and leaves a blank
     /// unwritten note unwritten.

@@ -4,10 +4,11 @@
  *
  * The profile is otherwise settled before the page exists, and every other
  * test in this feature declares one and then asks a surface what it would
- * draw. One capability is not settled: `agent` is a switch in the Mac app's
- * Settings (`LIVE_HOST_CAPABILITIES`), and moving it used to RELOAD the page,
- * which tore the editor down under whoever was looking at it to move two menu
- * rows.
+ * draw. One capability is not settled: `agent` may be moved under a live page
+ * by a host whose user can switch its agent on and off
+ * (`LIVE_HOST_CAPABILITIES`, docs/HOSTING.md), and the alternative is a
+ * reload, which tears the editor down under whoever is looking at it to move
+ * two menu rows. No shipped host moves it today; the contract is the page's.
  *
  * Driven through `createMessageHandlers` rather than by calling the surfaces,
  * for the reason `syntaxLiveUpdate.test.ts` gives: the surfaces have their own
@@ -60,8 +61,11 @@ function stubToolbar(): ToolbarController & { refreshOfferedItems: ReturnType<ty
 
 const container = document.createElement("div");
 
-/** The Mac app's profile, which is the surface that moves a capability. */
-const MAC = HOST_PROFILES.mac;
+/**
+ * A host that runs an agent its user can switch off: the Mac app's profile
+ * with `agent` added, since neither shipped host moves it.
+ */
+const MAC = [...HOST_PROFILES.mac, "agent" as const];
 const WITHOUT_AGENT = MAC.filter((c) => c !== "agent");
 
 let before: unknown;
@@ -115,7 +119,7 @@ describe("a live host-capability change", () => {
     it("should leave the arrangements and the shortcuts alone", () => {
         // The message carries capabilities and nothing else, and the other two
         // thirds of the profile are what the page was built against: a write
-        // that dropped them would take the Mac app's whole layout away on a
+        // that dropped them would take the host's whole layout away on a
         // change to one switch.
         const handlers = createMessageHandlers(stubDeps(null));
         window.__i18n!.host = {

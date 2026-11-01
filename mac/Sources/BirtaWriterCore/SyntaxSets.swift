@@ -3,7 +3,7 @@ import Foundation
 /// WHICH Markdown the editor offers to write, on the app's side of the bridge.
 ///
 /// A port of `shared/syntaxSets.ts`, in the same family as `ProofreadFilter`,
-/// `AgentRequest` and `StyleCategories`: Swift cannot import TypeScript, so the
+/// `AgentReference` and `StyleCategories`: Swift cannot import TypeScript, so the
 /// vocabulary lives twice and `shared/__tests__/syntaxSetsPort.test.ts` reads
 /// both files and fails when they disagree on a set, a feature, a membership,
 /// a command, a documentation link or a retired name.

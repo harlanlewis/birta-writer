@@ -4,7 +4,7 @@ import Foundation
 /// checker should stay quiet about.
 ///
 /// A literal port of `shared/proofreadFilter.ts`, in the same family as
-/// `AgentRequest` and `AgentReference`: the extension host filters Harper's
+/// `AgentReference` and `StyleCategories`: the extension host filters Harper's
 /// lints with those rules before the page draws them, and this shell filters
 /// the system checker's with the same ones, so the same paragraph is marked up
 /// the same way on both surfaces. `ProofreadFilterTests` mirrors the TypeScript

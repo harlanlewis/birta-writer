@@ -12,7 +12,7 @@ import Foundation
 /// them has actually got apps into trouble:
 ///
 ///   - the bundle id, because it names the defaults domain, so without it the
-///     two share a hotkey setting, a note location and an agent command,
+///     two share a hotkey setting, a note location and every other setting,
 ///   - the note itself, because two apps autosaving one file is two writers
 ///     racing over somebody's writing,
 ///   - the hotkey, because a global one is first come first served: the second

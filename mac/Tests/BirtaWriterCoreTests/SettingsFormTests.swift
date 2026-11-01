@@ -58,7 +58,6 @@ final class SettingsFormTests: XCTestCase {
                        SettingsForm.rows(of: SettingsForm.general)
                            + SettingsForm.rows(of: SettingsForm.markdown)
                            + SettingsForm.rows(of: SettingsForm.appearance)
-                           + SettingsForm.rows(of: SettingsForm.aiAgent)
                            + SettingsForm.rows(of: SettingsForm.advanced(showsWelcomeScreen: true)))
         XCTAssertEqual(SettingsForm.allRows.count, SettingsRow.allCases.count)
     }
@@ -132,7 +131,6 @@ final class SettingsFormTests: XCTestCase {
         XCTAssertEqual(SettingsForm.index(of: SettingsRow.location, inPane: SettingsForm.general), 1)
         XCTAssertEqual(SettingsForm.index(of: WelcomeRow.location, inGroupOf: SettingsForm.welcome), 1)
         XCTAssertEqual(SettingsForm.index(of: SettingsRow.newNoteName, inPane: SettingsForm.general), 1)
-        XCTAssertEqual(SettingsForm.index(of: SettingsRow.agentCommand, inPane: SettingsForm.aiAgent), 1)
         // A row in ANOTHER card of the same pane is not found, which is what
         // makes the three above claims about one card rather than about a
         // position on the pane.
@@ -153,11 +151,11 @@ final class SettingsFormTests: XCTestCase {
     ///
     /// Asserted as adjacency rather than as an index, so it survives the cards
     /// being reordered: File name exists only when a summon makes a new note,
-    /// and the Terminal command only when `/ai` is switched on.
+    /// and the command's name only while the terminal command is installed.
     func testADependentRowShouldSitDirectlyUnderTheRowItDependsOn() {
         let pairs: [(SettingsPane, SettingsRow, SettingsRow)] = [
             (SettingsForm.general, .opens, .newNoteName),
-            (SettingsForm.aiAgent, .agentEnabled, .agentCommand),
+            (SettingsForm.advanced(showsWelcomeScreen: true), .commandLine, .commandName),
         ]
         for (pane, above, below) in pairs {
             let card = pane.groups.first { $0.rows.contains(below) }
@@ -177,15 +175,15 @@ final class SettingsFormTests: XCTestCase {
     }
 
     /// An intro belongs to a PANE, whose tab title is the heading it sits
-    /// under, and it is for a pane holding something somebody has to opt into.
+    /// under, and it is for a pane whose switches cannot be read from their
+    /// labels.
     ///
     /// The floor is what stops this passing on a form with no prose at all,
-    /// and it names the pane: the agent is the one that needs explaining,
-    /// because everything on it is off until it is turned on and what it turns
-    /// on runs a program and may cost money.
-    func testTheAgentPaneShouldExplainItselfAndTheOthersShouldNot() {
-        XCTAssertFalse(SettingsForm.aiAgent.intro.isEmpty)
-        for paragraph in SettingsForm.aiAgent.intro {
+    /// and it names the pane: Markdown is the one that needs explaining,
+    /// because that there are flavors at all is not something a row can say.
+    func testTheMarkdownPaneShouldExplainItselfAndTheOthersShouldNot() {
+        XCTAssertFalse(SettingsForm.markdown.intro.isEmpty)
+        for paragraph in SettingsForm.markdown.intro {
             XCTAssertFalse(paragraph.trimmingCharacters(in: .whitespaces).isEmpty)
         }
         XCTAssertTrue(SettingsForm.general.intro.isEmpty)

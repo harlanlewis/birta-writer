@@ -28,8 +28,6 @@ public enum SettingsRow: String, CaseIterable, Sendable {
     case opens = "New windows open with"
     case newNoteName = "File name"
     case opensFilesIn = "Open files in"
-    case agentEnabled = "Enable /ai commands"
-    case agentCommand = "Terminal command"
     // The floor, drawn as a row so the list reads as complete: a switch that
     // is on and cannot be moved says "every flavor below contains this" in
     // the place a reader would otherwise look for the missing row. Not a
@@ -220,29 +218,12 @@ public enum SettingsForm {
         SettingsGroup(rows: [.startAtLogin]),
     ])
 
-    /// The agent `/ai` hands a prompt to.
-    ///
-    /// The only pane with an intro, and it earns one: everything on it is off
-    /// until somebody turns it on, and what they would be turning on runs a
-    /// program on their Mac and may cost them money. The tab is the heading
-    /// the paragraphs sit under, which is why no card here carries one.
-    public static let aiAgent = SettingsPane(
-        intro: [
-            "Optionally enable Birta Writer to use your existing AI agent CLI tool to read and edit "
-                + "your note files. Requires the tool to be installed and runnable from Terminal.",
-            "The /ai command uses your existing authentication and needs no additional "
-                + "configuration.",
-            "Your AI provider (OpenAI, Anthropic, etc) may charge standard API or subscription "
-                + "utilization when used.",
-        ],
-        groups: [SettingsGroup(rows: [.agentEnabled, .agentCommand])])
-
     /// WHICH Markdown the editor offers to write.
     ///
     /// Its own pane rather than a card on General, because General is what the
     /// app IS (how you reach it, where it puts your bytes) and this is about
-    /// the writing. It earns an intro under the same rule the AI Agent pane
-    /// does: what these switches do is not guessable from their labels. The
+    /// the writing. It earns an intro because what these switches do is not
+    /// guessable from their labels. The
     /// intro is two sentences because that is all the rows cannot say for
     /// themselves, that there are flavors and that a switch governs what is
     /// offered. What each flavor is, and where it is defined, belongs to its
@@ -385,7 +366,7 @@ public enum SettingsForm {
     /// is coverage: a row some build hides is still a row that has to be
     /// placed somewhere, and a `panes` that hid it would report it unplaced.
     public static var panes: [SettingsPane] {
-        [general, markdown, appearance, aiAgent, advanced(showsWelcomeScreen: true)]
+        [general, markdown, appearance, advanced(showsWelcomeScreen: true)]
     }
 
     /// The rows of a Settings pane, top to bottom, with the cards flattened

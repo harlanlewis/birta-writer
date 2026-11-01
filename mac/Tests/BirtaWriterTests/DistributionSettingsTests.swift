@@ -27,19 +27,19 @@ final class DistributionSettingsTests: XCTestCase {
                                  onShowWelcome: {}, onCheckForUpdates: {})
     }
 
-    private static let omitted: [SettingsRow] = [.agentEnabled, .agentCommand, .commandLine, .commandName, .autoUpdate,
-                                                 .storeInICloud]
+    private static let omitted: [SettingsRow] = [.commandLine, .commandName, .autoUpdate, .storeInICloud]
 
-    func testAStoreBuildShouldDrawNoAIAgentTab() {
-        let direct = makeController(.direct)
-        defer { direct.window?.close() }
-        let store = makeController(.appStore)
-        defer { store.window?.close() }
-
-        XCTAssertEqual(direct.drawnTabNames, SettingsWindowController.tabNames)
-        XCTAssertEqual(store.drawnTabNames, SettingsWindowController.tabNames.filter { $0 != "aiAgent" })
-        XCTAssertEqual(store.window?.toolbar?.items.map(\.itemIdentifier.rawValue), store.drawnTabNames)
-        XCTAssertNil(store.declaredRows(forTab: "aiAgent"))
+    /// Every pane keeps a card on both channels, so both draw every tab. A
+    /// cut that emptied a pane would take its tab away (`Distribution.offered`),
+    /// and this is where that would first show.
+    func testBothChannelsShouldDrawEveryTab() {
+        for distribution in Distribution.allCases {
+            let controller = makeController(distribution)
+            defer { controller.window?.close() }
+            XCTAssertEqual(controller.drawnTabNames, SettingsWindowController.tabNames, distribution.rawValue)
+            XCTAssertEqual(controller.window?.toolbar?.items.map(\.itemIdentifier.rawValue),
+                           controller.drawnTabNames, distribution.rawValue)
+        }
     }
 
     /// Read off the panes as drawn rather than the declaration, so a pane that
@@ -52,9 +52,9 @@ final class DistributionSettingsTests: XCTestCase {
             for row in Self.omitted {
                 if distribution == .appStore {
                     XCTAssertNil(controller.rowForTesting(row), "a store build drew \(row.rawValue)")
-                } else if row != .agentCommand && row != .commandName && row != .storeInICloud {
-                    // The two dependents are built with their cards but may be
-                    // hidden under a switch that is off; the questions are drawn.
+                } else if row != .commandName && row != .storeInICloud {
+                    // A dependent is built with its card but may be hidden
+                    // under a switch that is off; the questions are drawn.
                     XCTAssertNotNil(controller.rowForTesting(row), "a direct build lost \(row.rawValue)")
                 }
             }
@@ -63,14 +63,19 @@ final class DistributionSettingsTests: XCTestCase {
         }
     }
 
-    /// A row picked in the palette opens its pane; a pane the store build does
-    /// not have is not opened, rather than drawn with nothing on it.
-    func testAStoreBuildShouldNotOpenAPaneItDoesNotHave() {
-        let store = makeController(.appStore)
-        defer { store.window?.close() }
-        store.selectTabForTesting("advanced")
-        store.show(paneNamed: "aiAgent", revealing: .agentEnabled)
-        XCTAssertEqual(store.window?.toolbar?.selectedItemIdentifier?.rawValue, "advanced")
+    /// A row picked in the palette, or `BIRTA_MAC_OPEN_SETTINGS`, names a pane
+    /// by its tab's name. A name no tab has on this channel opens nothing and
+    /// leaves the window where it was, rather than an empty page. The AI Agent
+    /// tab's old name is the one a stale launch argument still carries.
+    func testAPaneNameNoTabHasShouldLeaveTheWindowAlone() {
+        for distribution in Distribution.allCases {
+            let controller = makeController(distribution)
+            defer { controller.window?.close() }
+            controller.selectTabForTesting("advanced")
+            controller.show(paneNamed: "aiAgent", revealing: nil)
+            XCTAssertEqual(controller.window?.toolbar?.selectedItemIdentifier?.rawValue, "advanced",
+                           distribution.rawValue)
+        }
     }
 
     func testAddThemeShouldOfferTheInstalledEditorOnlyWhereItCanBeRead() {
@@ -91,8 +96,7 @@ final class DistributionSettingsTests: XCTestCase {
         let store = PaletteSources.settingsPanes(offeredBy: .appStore)
         let direct = PaletteSources.settingsPanes(offeredBy: .direct)
         XCTAssertEqual(direct.count, SettingsWindowController.paneNames.count)
-        XCTAssertFalse(store.map(\.name).contains("aiAgent"))
-        XCTAssertEqual(store.count, direct.count - 1)
+        XCTAssertEqual(store.count, direct.count)
         let listed = store.flatMap { SettingsForm.rows(of: $0.pane) }
         XCTAssertFalse(listed.isEmpty)
         for row in Self.omitted { XCTAssertFalse(listed.contains(row), row.rawValue) }

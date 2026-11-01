@@ -126,7 +126,6 @@ enum PaletteSources {
             ("General", SettingsForm.general),
             ("Markdown", SettingsForm.markdown),
             ("Appearance", SettingsForm.appearance),
-            ("AI Agent", SettingsForm.aiAgent),
             ("Advanced", SettingsForm.advanced(showsWelcomeScreen: true)),
         ]
         return zip(SettingsWindowController.paneNames, forms)

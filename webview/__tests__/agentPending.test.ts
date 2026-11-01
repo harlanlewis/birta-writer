@@ -200,7 +200,10 @@ describe("agent run marker", () => {
      */
     const asMac = (): void => {
         (globalThis as { __i18n?: unknown }).__i18n = {
-            host: { capabilities: HOST_PROFILES.mac },
+            // The Mac app's profile with `agent` added: a host with no
+            // notification surface that runs an agent, which the hosting
+            // contract allows and no shipped host is.
+            host: { capabilities: [...HOST_PROFILES.mac, "agent"] },
         };
     };
 

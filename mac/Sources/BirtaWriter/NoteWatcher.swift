@@ -7,8 +7,8 @@ import BirtaWriterCore
 /// A rename made while the panel is idle has to be followed, and a delete has
 /// to be noticed before the next write: `AtomicFile.write` creates a missing
 /// file and every directory above it, so an unnoticed delete is undone rather
-/// than reported. Nothing else re-reads the disk between a launch, an agent
-/// run, and a summon onto a note already known unreadable.
+/// than reported. Nothing else re-reads the disk between a launch and a
+/// summon onto a note already known unreadable.
 ///
 /// `NSFilePresenter` rather than an FSEvents stream or a `DispatchSource` on a
 /// descriptor, for one reason: it is the only one of the three that says WHERE

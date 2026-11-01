@@ -478,14 +478,13 @@ export function createMessageHandlers(
                 case "done": {
                     if (msg.text !== undefined) {
                         // The MERGE is the page's; saying what it did is not.
-                        // Both hosts already report a merge that left changes
-                        // out, and each says something the page cannot: VS
-                        // Code that the file on disk holds the agent's full
-                        // version and Compare on the drift badge shows both
-                        // (`reportAgentMerge`), the Mac app which file its copy was
-                        // kept in (`Coordinator.settleAgentRescue`). A second
-                        // account from here would be the same event twice, in
-                        // the vaguer of the two voices.
+                        // The host reports a merge that left changes out, and
+                        // says something the page cannot: in VS Code, that the
+                        // file on disk holds the agent's full version and
+                        // Compare on the drift badge shows both
+                        // (`reportAgentMerge`). A second account from here
+                        // would be the same event twice, in the vaguer of the
+                        // two voices.
                         notifyAgentMergeResult(
                             msg.requestId, mergeAgentResult(msg.requestId, msg.text));
                     }
@@ -720,11 +719,10 @@ export function createMessageHandlers(
             // the list back IS the update, and the surfaces that decided their
             // contents once are the only ones that have to be told.
             //
-            // What this replaces is a page RELOAD, which is what the Mac app
-            // did when /ai was switched on or off: the capability is read at
-            // boot, so the only way to hand over a new one was to boot again,
-            // and the editor was torn down and rebuilt under whoever was
-            // looking at it for a change that moves two menu rows.
+            // The alternative is a page RELOAD: the capability is read at
+            // boot, so without this the only way to hand over a new one is to
+            // boot again, which tears the editor down and rebuilds it under
+            // whoever is looking at it for a change that moves two menu rows.
             setHostCapabilities(msg.capabilities);
             // The one command whose idle state is decided by a capability as
             // well as by the document: a host menu dims its row by that list.

@@ -155,7 +155,7 @@ final class NewFolderTabTests: XCTestCase {
             XCTAssertTrue(inside, "Coordinator.swift:\(index + 1) ends the wait outside those two places")
         }
         let callers = lines.filter { $0.contains("writeSaveSomebodyAskedFor()") && !$0.contains("func ") && !isComment($0) }
-        XCTAssertEqual(callers.count, 4, "Cmd+S, its debug stand-in, Copy Reference and an /ai run, and nothing else")
+        XCTAssertEqual(callers.count, 3, "Cmd+S, its debug stand-in and Copy Reference, and nothing else")
         XCTAssertTrue(try body(of: "func saveNow()", in: text).contains("self.writeSaveSomebodyAskedFor()"))
         XCTAssertTrue(try body(of: "private func copyAgentReference()", in: text).contains("self.writeSaveSomebodyAskedFor()"))
     }

@@ -4,7 +4,7 @@ import Foundation
 ///
 /// A port of the projections in `src/agentBridge/format.ts` and the span rules
 /// in `shared/agentContext.ts`, kept deliberately literal, for the same reason
-/// and by the same rule as `AgentRequest`: Swift cannot import the TypeScript,
+/// and by the same rule as `ProofreadFilter`: Swift cannot import the TypeScript,
 /// both surfaces must hand the same shape to the same tools, and
 /// `AgentReferenceTests` carries the same cases the TypeScript tests do. A
 /// change to either has to be made in both.

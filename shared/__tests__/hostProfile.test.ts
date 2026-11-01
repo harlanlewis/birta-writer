@@ -110,13 +110,13 @@ describe("HOST_PROFILES", () => {
         // and serves it back over its own scheme, so it owns an image store;
         // its window has a sidebar to dock the outline in and a frame the
         // reader can drag wider than a reading measure; it has a Settings
-        // window of its own; it runs a coding agent as a child process; and
-        // it can open a window on a directory and list it for the page's file
-        // explorer. It provides none of the others: there is no text editor
-        // to switch to, no VS Code settings or keybindings UI, no read-only
-        // owner, and no editor font of its own.
+        // window of its own; and it can open a window on a directory and list
+        // it for the page's file explorer. It provides none of the others:
+        // there is no text editor to switch to, no VS Code settings or
+        // keybindings UI, no read-only owner, no editor font of its own, and
+        // no agent, because `/ai` is the extension's alone.
         expect(HOST_PROFILES.mac).toEqual(
-            ["spellAndGrammar", "imageUpload", "toc", "contentMeasure", "appPreferences", "agent",
+            ["spellAndGrammar", "imageUpload", "toc", "contentMeasure", "appPreferences",
              "projectFiles", "folderIndex", "stripTooltip"]);
     });
 
@@ -408,8 +408,9 @@ describe("the mac profile's copies", () => {
      *
      * The list itself is already compared above, so a rename that landed in
      * `HOST_PROFILES.mac` and not in the shell fails there. What had NO guard is
-     * a capability name spelled anywhere ELSE in Swift: the `agent` in the
-     * filter beside the list is one, and `Bridge.swift` used to carry another,
+     * a capability name spelled anywhere ELSE in Swift: the `projectFiles` and
+     * `folderIndex` in the filter beside the list are two, and `Bridge.swift`
+     * used to carry another,
      * a `hostCapabilities.contains("proofreading")` written when that WAS a
      * capability. `spellAndGrammar` replaced it, the Swift kept the old
      * spelling, and the expression became permanently false rather than wrong

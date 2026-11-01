@@ -10,16 +10,18 @@ import Foundation
 /// What is here is the one thing that cannot be pure, which is running the
 /// shell, plus the scheduling around it.
 ///
+/// Its one reader is the terminal command's row in Settings, which says
+/// whether the directory `bwr` is linked into is on that `PATH`.
+///
 /// Resolved EAGERLY at launch, on a background queue, because a shell that
 /// reads somebody's whole startup arrangement is not fast and the alternative
-/// is paying for it in front of a person who has just clicked Test. By the
-/// time any agent run is possible a human has had to reach a menu or a button,
-/// so `value()` finds the answer already there and does not wait at all.
+/// is paying for it in front of a person who has just opened Settings. By
+/// the time the row is drawn a human has had to reach a menu, so `value()`
+/// finds the answer already there and does not wait at all.
 ///
 /// It still waits, with a cap, rather than falling back the moment it is not
-/// ready. Falling back would make the FIRST run after launch the one that
-/// reports an installed tool as missing, and that run is the Test button,
-/// whose entire job is to tell the truth about exactly that.
+/// ready. Falling back would make the first Settings window after launch the
+/// one that reports a reachable command as off the `PATH`.
 final class LoginShellPath {
     static let shared = LoginShellPath()
 
@@ -71,7 +73,8 @@ final class LoginShellPath {
         }
     }
 
-    /// The `PATH` to give a child, or nil to leave the environment alone.
+    /// The `PATH` a command run from Terminal would see, or nil when nothing
+    /// is known beyond what the app was launched with.
     ///
     /// Merged rather than substituted, so a directory the app was launched
     /// with is never taken away by a shell that did not mention it.

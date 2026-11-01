@@ -985,12 +985,11 @@ export async function run({ page, check, baseUrl }) {
     await page.waitForTimeout(150);
     let labels = await slashLabels();
     // Rows bound to a capability the Mac shell does NOT provide. "Ask Agent" is
-    // deliberately absent from this list: the shell runs one now, so its row
-    // belongs, and moving it to the offered set below is the point.
+    // one: `/ai` is the extension's alone, and the shell declares no `agent`.
     // "Check style" and "Highlight note markers" are deliberately NOT here any
     // more: both are answered inside the page, so they are the editor's own
     // rows and belong on every surface (they are asserted present below).
-    const GATED_LABELS = ["Edit Raw Markdown", "Settings", "Edit Keyboard Shortcuts",
+    const GATED_LABELS = ["Ask Agent", "Ask Agent (advanced)", "Edit Raw Markdown", "Settings", "Edit Keyboard Shortcuts",
         "Lock Edits (Read-only)",
         "Editor Font", "Full Width", "Fixed Width"];
     check("mac: Show all commands lists no row bound to a capability the shell lacks",
@@ -1006,7 +1005,7 @@ export async function run({ page, check, baseUrl }) {
     // put its row back, or the check above would pass on a page that offers
     // nothing at all.
     check("mac: Show all commands lists the rows the shell's own capabilities earn",
-        ["Image", "Ask Agent", "Check spelling", "Check grammar"].every((l) => labels.includes(l)),
+        ["Image", "Check spelling", "Check grammar"].every((l) => labels.includes(l)),
         JSON.stringify(labels));
     // The sidebar's row, present because the shell declares `toc`. Its label is
     // dynamic (Hide/Show), so this asks for the subject rather than for a
@@ -1940,11 +1939,14 @@ export async function run({ page, check, baseUrl }) {
 
     // ── A failed /ai run, on a host that cannot raise a notification ──
     //
-    // The Mac shell has no notification surface for the page's own failures, so
-    // the editor's corner IS the notification and the reason has to appear
-    // there. The VS Code arm is in e2e/agentGutter and e2e/slashMenu, both of
-    // which assert the corner stays EMPTY; without this one, a build that
-    // never showed the message anywhere would pass all three.
+    // No shipped host is one: the Mac shell has no notification surface and
+    // runs no agent. But the hosting contract allows a host that runs an agent
+    // and lacks notifications, and for that host the editor's corner IS the
+    // notification. This page is the one with a real layout engine and no
+    // `notifications` capability, so the corner's geometry is checked here.
+    // The VS Code arm is in e2e/agentGutter and e2e/slashMenu, both of which
+    // assert the corner stays EMPTY; without this one, a build that never
+    // showed the message anywhere would pass all three.
     //
     // Driven by the report alone rather than through the slash menu: the
     // message is what the page reacts to, and a run id it does not recognise

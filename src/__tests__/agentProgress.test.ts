@@ -1,11 +1,9 @@
 /**
  * The `/ai` progress reader, over output captured from real harnesses.
  *
- * The cases come from `shared/__fixtures__/agentProgressCases.json`, which
- * `mac/Tests/BirtaWriterCoreTests/AgentProgressTests.swift` reads too, so a
- * line only one of the two readers produces fails in one suite rather than
- * sitting undiscovered in whichever implementation was not updated. The
- * fixture's own header carries the captures' provenance.
+ * The cases come from `shared/__fixtures__/agentProgressCases.json`, kept as
+ * data rather than inline so the captures stay byte for byte what a real run
+ * printed. The fixture's own header carries their provenance.
  */
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";

@@ -65,45 +65,13 @@ final class BridgeTests: XCTestCase {
                        .requestHostDiagnostics(id: "d1"))
         XCTAssertEqual(WebviewMessage.parse(#"{"type":"requestHostDiagnostics"}"#),
                        .other(type: "requestHostDiagnostics"))
-        // The wire name the page actually posts (`notifyAgentCancel`). The
-        // parse table used to say `stopAgentRun`, which nothing sends, so a
-        // click on the gutter marker reached `.other` and cancelled nothing.
-        XCTAssertEqual(WebviewMessage.parse(#"{"type":"agentCancel","requestId":"r1"}"#),
-                       .agentCancel(requestId: "r1"))
-        // The composer's send, with every optional the page can set. `skill`
-        // is carried although this host offers no picker (MAR-483), so a host
-        // that grows the scan changes nothing here.
-        XCTAssertEqual(
-            WebviewMessage.parse(#"{"type":"askAgentAdvanced","prompt":"tighten","requestId":"r2","model":"opus","effort":"high","skill":"house-style"}"#),
-            .askAgent(prompt: "tighten", requestId: "r2", model: "opus", effort: "high", skill: "house-style"))
-        XCTAssertEqual(WebviewMessage.parse(#"{"type":"askAgent","prompt":"x","requestId":"r3"}"#),
-                       .askAgent(prompt: "x", requestId: "r3", model: nil, effort: nil, skill: nil))
-        // The old spelling must not quietly work again.
-        XCTAssertEqual(WebviewMessage.parse(#"{"type":"stopAgentRun","requestId":"r1"}"#),
-                       .other(type: "stopAgentRun"))
-        // The app acts on the merge outcome now: `partial` and `conflict` leave
-        // the agent's version only in the copy beside the note.
-        XCTAssertEqual(WebviewMessage.parse(#"{"type":"agentMergeResult","requestId":"r1","outcome":"conflict"}"#),
-                       .agentMergeResult(requestId: "r1", outcome: "conflict"))
-        XCTAssertEqual(WebviewMessage.parse(#"{"type":"agentMergeResult","requestId":"r1"}"#),
-                       .other(type: "agentMergeResult"))
-        // An attachment's bytes are a plain base64 STRING, not the `$bytes`
-        // wrapper `uploadImage` uses: the composer encodes this one itself
-        // (`shared/messages.ts`).
-        XCTAssertEqual(
-            WebviewMessage.parse(#"{"type":"agentAttachment","id":"a1","name":"shot.png","bytes":"AQID"}"#),
-            .agentAttachment(id: "a1", name: "shot.png", bytes: Data([1, 2, 3])))
-        // Undecodable or absent bytes still PARSE, and that is deliberate. The
-        // composer disables Send until every attachment resolves, so the one
-        // outcome that must not happen is falling through to `.other` and
-        // never answering: an empty payload is answered with a null path,
-        // which frees the button.
-        XCTAssertEqual(
-            WebviewMessage.parse(#"{"type":"agentAttachment","id":"a1","name":"x"}"#),
-            .agentAttachment(id: "a1", name: "x", bytes: Data()))
-        XCTAssertEqual(
-            WebviewMessage.parse(#"{"type":"agentAttachment","name":"x","bytes":"AQID"}"#),
-            .other(type: "agentAttachment"))
+        // `/ai` is the extension's alone: this host declares no `agent`
+        // capability, so the page never posts these, and one that arrived
+        // anyway is not a request this host answers.
+        for type in ["askAgent", "askAgentAdvanced", "agentCancel", "agentMergeResult", "agentAttachment"] {
+            XCTAssertEqual(WebviewMessage.parse(#"{"type":"\#(type)","requestId":"r1","id":"a1"}"#),
+                           .other(type: type), type)
+        }
         XCTAssertEqual(WebviewMessage.parse(#"{"type":"clipboardWrite","format":"markdown","data":"**b**"}"#),
                        .clipboardWrite(format: "markdown", data: "**b**"))
         XCTAssertEqual(WebviewMessage.parse(#"{"type":"setToolbarLayout","item":{"id":"bold","placement":"hidden"},"order":["italic","bold"]}"#),
@@ -620,31 +588,6 @@ final class BridgeTests: XCTestCase {
         XCTAssertEqual(WebviewMessage.parse(#"{"type":"resolveEmbedMeta","id":"e1","url":"https://a.b"}"#),
                        .resolveEmbedMeta(id: "e1", url: "https://a.b"))
         XCTAssertEqual(WebviewMessage.parse(#"{"type":"unfurlUrl","id":"u1"}"#), .other(type: "unfurlUrl"))
-    }
-
-    /// The reply the composer is waiting on. `path` is null on failure rather
-    /// than absent: the page reads it to decide between a resolved chip and a
-    /// failed one, and both stop the Send button waiting.
-    func testAgentAttachmentSavedCarriesItsPathOrAnExplicitNull() {
-        let ok = HostMessage.agentAttachmentSaved(id: "a1", path: "/tmp/birta-ai-1/1-shot.png").jsonObject()
-        XCTAssertEqual(ok["type"] as? String, "agentAttachmentSaved")
-        XCTAssertEqual(ok["id"] as? String, "a1")
-        XCTAssertEqual(ok["path"] as? String, "/tmp/birta-ai-1/1-shot.png")
-
-        let failed = HostMessage.agentAttachmentSaved(id: "a1", path: nil).jsonObject()
-        XCTAssertTrue(failed["path"] is NSNull)
-        XCTAssertTrue(JSONSerialization.isValidJSONObject(failed))
-    }
-
-    /// The corner line a live run posts, in the shape `shared/messages.ts`
-    /// declares (`AgentProgressMessage`): the run's own id, and the line as
-    /// the page shows it.
-    func testAgentProgressCarriesTheRunsIdAndItsLine() {
-        let object = HostMessage.agentProgress(requestId: "r1", line: "Read note.md").jsonObject()
-        XCTAssertEqual(object["type"] as? String, "agentProgress")
-        XCTAssertEqual(object["requestId"] as? String, "r1")
-        XCTAssertEqual(object["line"] as? String, "Read note.md")
-        XCTAssertTrue(JSONSerialization.isValidJSONObject(object))
     }
 
     func testThePathBarShouldTravelAsSegmentsOrNullAndAClickAsAPath() {

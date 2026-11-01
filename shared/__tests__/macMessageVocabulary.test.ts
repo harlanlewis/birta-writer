@@ -10,9 +10,10 @@
  * from a message that IS reachable in the Mac app and is being dropped, and the two
  * look identical from inside `.other`.
  *
- * The hazard is not hypothetical, and it has now fired three times:
+ * The hazard is not hypothetical, and it has fired three times:
  * `copyAgentReference` (a live palette button that did nothing, found by eye
- * from a screenshot), `agentCancel` (see below), and `agentAttachment`.
+ * from a screenshot), `agentCancel` (see below), and `agentAttachment`, the
+ * last two while the Mac app still ran `/ai`.
  *
  * THE ENUMERATION IS DERIVED FROM THE COMPILER, never from a regex or a line
  * range. This is worth stating because two earlier attempts to count these by
@@ -106,13 +107,15 @@ const DELIBERATELY_UNPARSED: Record<string, string> = {
     requestFmSuggestions: "frontmatter suggestions come from a workspace's other documents",
     exportHtml: "no export destination: the Mac app has no Save As for a rendered file",
     whatsNewSeen: "the extension's release notes; the Mac app's update offer is its own",
-
-    // ASKED IN THE MAC APP, and deliberately not answered, because the page's own
-    // documented behaviour without an answer is the behaviour the Mac app wants. This
-    // is the third category rather than a variety of the first: the question
-    // IS put, so a reason here has to argue that the silence is right, not
-    // that nothing asks.
-    requestAgentCapabilities: "the panel renders no model or effort control when capabilities are absent, which is what `shared/messages.ts` says absent means, and is correct for a host that runs no harness probe: `openAgentPanel` does not wait on the reply, so nothing is blocked by it never coming",
+    // `/ai` is the extension's alone. The Mac app runs no agent and declares no
+    // `agent` capability, so Ask Agent, its composer and its gutter marker are
+    // never offered and nothing on this surface posts these.
+    askAgent: "no `agent` capability, so the slash row and the palette row that post it are withdrawn",
+    askAgentAdvanced: "no `agent` capability, so the composer that posts it is never opened",
+    agentCancel: "no `agent` capability: no run starts, so no gutter marker is drawn to click",
+    agentMergeResult: "no `agent` capability: no run lands, so the page has no merge to report",
+    agentAttachment: "no `agent` capability, so the composer that attaches files is never opened",
+    requestAgentCapabilities: "no `agent` capability, so the composer that asks for the harness's models and efforts is never opened",
 
     // Editor state the extension persists into workspace/global storage, and
     // the Mac app does not.
@@ -180,10 +183,9 @@ describe("the Mac app's parse table against the page's outbound vocabulary", () 
      * THE ONE THAT FOUND A LIVE BUG.
      *
      * A case whose wire name nothing posts is dead, and it reads exactly like
-     * a handled message. `stopAgentRun` sat in the parse table for as long as
-     * the Mac app had `/ai`, while the page posted `agentCancel`, so clicking the
-     * gutter marker to cancel a run did nothing and `AgentRunner.stop` was
-     * unreachable from the page.
+     * a handled message. `stopAgentRun` sat in the parse table while the Mac
+     * app ran `/ai` and the page posted `agentCancel`, so clicking the gutter
+     * marker to cancel a run did nothing.
      */
     it("every case in the Mac app's parse table should be a type the page can actually post", () => {
         const stale = parsed.filter((t) => !toHost.includes(t));
