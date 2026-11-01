@@ -2820,7 +2820,7 @@
         "@types/mocha": "^10.0.10",
         "@types/node": "^20.19.43",
         "@types/vscode": "1.95.0",
-        "@vitest/coverage-v8": "^5.0.0",
+        "@vitest/coverage-v8": "^5.0.5",
         "@vscode/test-electron": "^3.1.0",
         "@vscode/vsce": "^3.9.2",
         "esbuild": "^0.28.2",
@@ -2830,7 +2830,8 @@
         "ovsx": "1.2.0",
         "playwright": "^1.63.0",
         "typescript": "^6.0.3",
-        "vitest": "^5.0.0",
+        "vite": "^7.3.7",
+        "vitest": "^5.0.5",
         "vscode-uri": "^3.2.0"
     },
     "dependencies": {
@@ -2845,9 +2846,9 @@
         "@milkdown/prose": "7.22.1",
         "@milkdown/transformer": "7.22.1",
         "@milkdown/utils": "7.22.1",
-        "dompurify": "^3.4.15",
+        "dompurify": "^3.4.17",
         "harper.js": "^2.10.0",
-        "katex": "^0.16.47",
+        "katex": "^0.18.11",
         "mathjs": "^15.2.0",
         "mermaid": "^12.0.0",
         "refractor": "^5.0.0",
@@ -2857,9 +2858,11 @@
     },
     "pnpm": {
         "overrides": {
-            "fast-uri": "^3.1.7",
+            "fast-uri": "^3.1.9",
+            "happy-dom": "^21.0.4",
+            "katex": "^0.18.11",
             "lodash-es": "^4.18.1",
-            "serialize-javascript": "^7.0.5"
+            "serialize-javascript": "^7.1.2"
         },
         "patchedDependencies": {
             "@milkdown/transformer@7.22.1": "patches/@milkdown__transformer@7.22.1.patch"
