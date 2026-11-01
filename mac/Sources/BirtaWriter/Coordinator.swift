@@ -443,11 +443,12 @@ final class Coordinator {
     var onFolderDefault: ((URL) -> URL?)?
 
     /// Whether an open window is bound to a path, file or no file
-    /// (`WindowSet.boundByAWindow`), for the one note this window names
-    /// itself: the missing-note screen's Discard. A new tab of a folder window
-    /// holds a name before anything is written there, and a note made over
-    /// it would be a second buffer on that path.
-    var isNameHeldByAWindow: ((URL) -> Bool)?
+    /// (`WindowSet.boundByAWindow`), for the names this window picks itself:
+    /// the missing-note screen's Discard and Rename/Move. A new tab of a
+    /// folder window holds a name before anything is written there, and a
+    /// note made or moved over it would be a second buffer on that path.
+    /// Answers a matcher, built once and asked of every candidate.
+    var heldNames: (() -> (URL) -> Bool)?
 
     /// The app's Open panel (`WindowSet.openDocumentPanel`), for the empty
     /// state's and the missing-file card's Browse button. The set's, because
@@ -1219,11 +1220,7 @@ final class Coordinator {
             // Nothing is lost by waiting. The file you have not left yet is
             // the one on screen, which is the one thing Open Recent is not
             // for, and it joins the list the moment you go anywhere else.
-            //
-            // Not a note that was never written: there is no file to go back
-            // to, and Open Recent only draws files that exist, so it would
-            // spend a place in the list on nothing.
-            if !awaitsFirstText { Prefs.rememberRecent(oldValue) }
+            Prefs.rememberRecent(oldValue)
             Prefs.rememberRecent(boundURL)
             // Both facts are about the path being left.
             awaitsFirstText = false
@@ -1888,7 +1885,7 @@ final class Coordinator {
             // failure this exists to remove.
             if obj["type"] as? String == "__birtaSaveNow" {
                 measure.mark("debug-save-now")
-                flushThen { [weak self] in self?.write(.explicitSave) }
+                flushThen { [weak self] in self?.writeSaveSomebodyAskedFor() }
                 return
             }
             // The answer to the question a file changed underneath the app
@@ -3324,7 +3321,7 @@ final class Coordinator {
             // NOT reported as a discard, which is what the caller reads to
             // decide whether to rescue a note that was deleted underneath us:
             // a buffer nobody edited is still the only copy of one of those.
-            guard isEdited else { keep(.save); return }
+            guard hasUnwrittenBytes else { keep(.save); return }
             // Nor for a note nobody has written that holds nothing: there is
             // no file and the buffer is blank, so Save could write nothing
             // and Don't Save could lose nothing.
@@ -3677,11 +3674,7 @@ final class Coordinator {
     /// write can end up waiting for the disk: a tick that finds this window's
     /// previous write still in flight goes ahead rather than standing on the
     /// main thread for it (`reconcileWithDisk`'s `mayWait`).
-    ///
-    /// `asked` is whether somebody asked for this write (a save), which is
-    /// the one write allowed to make a never-written note's file with nothing
-    /// in it (`UnwrittenNote.mayWrite`).
-    private func writeLatest(_ reason: StaticString, waiting: Bool = true, asked: Bool = false) {
+    private func writeLatest(_ reason: StaticString, waiting: Bool = true) {
         // `noteMissing` alongside `hasLoaded`, and both are about the same
         // thing: a path this write would create rather than update.
         // Every attempt, with the four facts that decide it, for
@@ -3704,7 +3697,7 @@ final class Coordinator {
         // with text in it, not from a hide, a close, a quit or a tab moving on
         // (MAR-488). Traced for the reason the line above is: "no file" is
         // equally what a write that was never attempted leaves.
-        guard asked || UnwrittenNote.mayWrite(awaitingText: awaitsFirstText, buffer: latest) else {
+        guard UnwrittenNote.mayWrite(awaitingText: awaitsFirstText, buffer: latest) else {
             if measure.enabled { measure.trace("writeheld unwritten at=\(boundURL.lastPathComponent)") }
             return
         }
@@ -3767,7 +3760,7 @@ final class Coordinator {
         switch AutosavePolicy.action(for: trigger, autosaveEnabled: autosave) {
         case .now:
             cancelPendingAutosave()
-            writeLatest("write", asked: trigger == .explicitSave)
+            writeLatest("write")
         case .deferred:
             scheduleAutosave()
         case .skip:
@@ -4131,7 +4124,7 @@ final class Coordinator {
             guard let self else { return }
             self.write(.explicitSave)
             do {
-                let target = try Coordinator.makeNoteFile(alsoTaken: self.isNameHeldByAWindow ?? { _ in false })
+                let target = try Coordinator.makeNoteFile(alsoTaken: self.heldNames?() ?? { _ in false })
                 if self.bindingSlot == .document { Prefs.documentURL = nil }
                 Prefs.currentNoteURL = target
                 self.bindingSlot = .currentNote
@@ -4385,7 +4378,13 @@ final class Coordinator {
     var isOnScreen: Bool { panel.isVisible && !panel.isMiniaturized }
 
     /// Whether the buffer is ahead of the file right now.
-    var hasUnwrittenBytes: Bool { isEdited }
+    ///
+    /// A never-written note with text in it counts whatever `isEdited` says:
+    /// a flush can bring its first text across without the sync that sets
+    /// the flag, and that text exists nowhere but here (`UnwrittenNote`).
+    var hasUnwrittenBytes: Bool {
+        isEdited || UnwrittenNote.holdsTextOnlyInBuffer(awaitingText: awaitsFirstText, buffer: latest)
+    }
 
     /// Whether an `/ai` run is still going in this window.
     ///
@@ -4895,7 +4894,10 @@ final class Coordinator {
             let source = self.boundURL
             guard target.standardizedFileURL != source.standardizedFileURL else { return }
             let manager = FileManager.default
-            if manager.fileExists(atPath: target.path) {
+            // A name an open tab holds is taken although nothing may be on
+            // disk there yet (a new tab of a folder window), and taking it
+            // would put two buffers over one path.
+            if manager.fileExists(atPath: target.path) || self.heldNames?()(target) == true {
                 self.measure.trace("relocate refused=taken \(target.lastPathComponent)")
                 self.statusOverlay.flash("There is already a file called \(target.lastPathComponent) there.")
                 return
@@ -4962,10 +4964,21 @@ final class Coordinator {
     func saveNow() {
         flushThen { [weak self] in
             guard let self else { return }
-            self.write(.explicitSave)
+            self.writeSaveSomebodyAskedFor()
             self.statusOverlay.flash("Saved.")
             self.focusEditorIfVisible()
         }
+    }
+
+    /// A save the person asked for, by Cmd+S or File > Save: the one write
+    /// that may make a never-written note's file with nothing in it, because
+    /// they asked for the file (`UnwrittenNote`). Every other `.explicitSave`
+    /// is the app flushing for its own reasons (an agent run, Copy Reference,
+    /// the welcome screen, leaving a document, Discard) and leaves a blank
+    /// unwritten note unwritten.
+    private func writeSaveSomebodyAskedFor() {
+        awaitsFirstText = false
+        write(.explicitSave)
     }
 
     private func writeToPasteboard(_ text: String, asHTML: Bool = false) {

@@ -45,6 +45,15 @@ public enum UnwrittenNote {
         noteMissing || (awaitingText && isBlank(buffer))
     }
 
+    /// Whether the buffer holds text that is nowhere on disk because the
+    /// note has never been written: unwritten bytes, whatever the edited flag
+    /// says. The flag is set by the page's sync, and a flush can bring the
+    /// first text across without one, so a rule that asks "is there anything
+    /// to lose" asks this too.
+    public static func holdsTextOnlyInBuffer(awaitingText: Bool, buffer: String) -> Bool {
+        awaitingText && !isBlank(buffer)
+    }
+
     private static func isBlank(_ text: String) -> Bool {
         text.allSatisfy(\.isWhitespace)
     }

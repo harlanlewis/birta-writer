@@ -252,4 +252,16 @@ final class RecentFilesTests: XCTestCase {
                                     rootedAt: URL(fileURLWithPath: "/work/./Project/"), exists: all)
         XCTAssertTrue(menu.recent.isEmpty, menu.recent.map(\.url.path).description)
     }
+
+    // MARK: remembering
+
+    /// A path with no file behind it is not remembered: it would never be
+    /// drawn, and would spend a place in a capped list on nothing. A new tab
+    /// of a folder window, never written, is the case (`UnwrittenNote`).
+    func testAPathWithNoFileShouldNotBeRemembered() {
+        let before = urls(["/a/old.md"])
+        XCTAssertEqual(RecentFiles.remembering(url("/a/Untitled.md"), into: before, exists: { _ in false }), before)
+        XCTAssertEqual(RecentFiles.remembering(url("/a/new.md"), into: before, exists: all),
+                       RecentFiles.recording(url("/a/new.md"), into: before))
+    }
 }

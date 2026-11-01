@@ -164,7 +164,7 @@ final class WindowSet {
             self?.newNote(in: folder, beside: coordinator)
         }
         coordinator.onFolderDefault = { [weak self] root in self?.folderDefault(in: root) }
-        coordinator.isNameHeldByAWindow = { [weak self] url in self?.boundByAWindow(url) ?? false }
+        coordinator.heldNames = { [weak self] in self?.boundByAWindow() ?? { _ in false } }
         coordinator.onTrashFolder = { [weak self, weak coordinator] folder in
             guard let coordinator else { return }
             self?.trashFolder(folder, from: coordinator)
@@ -358,7 +358,14 @@ final class WindowSet {
             // recorded order, and the tab that was showing is selected last,
             // after every tab exists to be selected among.
             var made: [Coordinator] = []
-            for path in group.tabs {
+            // A folder group with no tab left to restore (its only tab was a
+            // note never written) is still the folder: it opens on the
+            // folder's own choice of file, as opening the folder does.
+            var tabs = group.tabs
+            if tabs.isEmpty, let root, let first = folderDefault(in: root) {
+                tabs = [first.path]
+            }
+            for path in tabs {
                 let url = URL(fileURLWithPath: path)
                 let frame = group.frame.map(NSRectFromString)
                 // Each tab joins after the one made before it, because
@@ -449,11 +456,11 @@ final class WindowSet {
             // that window, so it appears in the explorer beside the rest:
             // New Note in a folder window is a note in the folder.
             if let here = key, let root = here.explorerRoot {
-                let target = try Coordinator.makeNoteFile(in: root, alsoTaken: boundByAWindow)
+                let target = try Coordinator.makeNoteFile(in: root, alsoTaken: boundByAWindow())
                 open(makeWindow(on: target, slot: nil, inGroupOf: here, explorerRoot: root))
                 return
             }
-            let target = try Coordinator.makeNoteFile(alsoTaken: boundByAWindow)
+            let target = try Coordinator.makeNoteFile(alsoTaken: boundByAWindow())
             Prefs.currentNoteURL = target
             open(makeWindow(on: target, slot: .currentNote))
         } catch {
@@ -484,12 +491,12 @@ final class WindowSet {
     func newTab(in spawn: Coordinator) {
         do {
             if let root = spawn.explorerRoot {
-                let target = Coordinator.unusedNoteURL(in: root, alsoTaken: boundByAWindow)
+                let target = Coordinator.unusedNoteURL(in: root, alsoTaken: boundByAWindow())
                 let tab = makeWindow(on: target, slot: nil, inGroupOf: spawn, explorerRoot: root)
                 tab.awaitFirstText(openingOnOverview: true)
                 open(tab)
             } else {
-                let target = try Coordinator.makeNoteFile(alsoTaken: boundByAWindow)
+                let target = try Coordinator.makeNoteFile(alsoTaken: boundByAWindow())
                 Prefs.currentNoteURL = target
                 open(makeWindow(on: target, slot: .currentNote, inGroupOf: spawn))
             }
@@ -503,8 +510,12 @@ final class WindowSet {
     /// asks this as well as the disk, because a new tab of a folder window is
     /// bound to a name before anything is written there (`newTab`), and a
     /// second note given that name would be a second buffer over its path.
-    private func boundByAWindow(_ url: URL) -> Bool {
-        windows.contains { FileIdentity.sameFile($0.boundFile, url) }
+    ///
+    /// Built once per question and asked of many paths, so naming a note does
+    /// not cost an identity check per window per candidate name
+    /// (`FileIdentity.matcher`).
+    private func boundByAWindow() -> (URL) -> Bool {
+        FileIdentity.matcher(for: windows.map(\.boundFile))
     }
 
     /// The explorer's New Note in a folder: a note made in `folder`, as a tab
@@ -512,7 +523,7 @@ final class WindowSet {
     /// root, and the same reasoning about the slot.
     func newNote(in folder: URL, beside spawn: Coordinator) {
         do {
-            let target = try Coordinator.makeNoteFile(in: folder, alsoTaken: boundByAWindow)
+            let target = try Coordinator.makeNoteFile(in: folder, alsoTaken: boundByAWindow())
             open(makeWindow(on: target, slot: nil, inGroupOf: spawn, explorerRoot: spawn.explorerRoot))
         } catch {
             NSLog("Birta Writer: could not make a new note: \(error)")
@@ -790,15 +801,13 @@ final class WindowSet {
     /// opens on the next candidate, or on a new note when the open file was
     /// the only one.
     func folderDefault(in root: URL) -> URL? {
-        let openElsewhere: (URL) -> Bool = { [windows] candidate in
-            windows.contains { FileIdentity.sameFile($0.boundFile, candidate) }
-        }
+        let openElsewhere = boundByAWindow()
         if let found = DirectoryListing.firstToOpen(in: root, recents: Prefs.recentDocuments,
                                                     accepts: { DocumentTypes.accepts($0) && !openElsewhere($0) }) {
             return found
         }
         do {
-            return try Coordinator.makeNoteFile(in: root, alsoTaken: boundByAWindow)
+            return try Coordinator.makeNoteFile(in: root, alsoTaken: boundByAWindow())
         } catch {
             NSLog("Birta Writer: could not make a note in \(root.path): \(error)")
             return nil
@@ -1082,8 +1091,19 @@ final class WindowSet {
             // A file under this tab's own folder is a file of the folder, and
             // a rooted tab holds no slot (`replaceFile` says why), so it is
             // opened in place and no setting is written.
+            //
+            // Through `replaceFile`, never straight to `openInPlace`: the
+            // vacancy was read off the host's copy of the buffer, and the page
+            // can hold keystrokes whose sync has not landed yet (a new tab
+            // typed into a moment ago). The flush brings them across first;
+            // a tab that turns out to hold text is then written on the hiding
+            // rule, or, with autosave off, left alone while the file opens
+            // beside it, so no keystroke can be dropped by the takeover.
             if let root = here.explorerRoot, DirectoryListing.isInside(target, root: root) {
-                here.openInPlace(target, slot: nil)
+                here.replaceFile(with: target, revealing: nil) { [weak self, weak here] url in
+                    guard let self, let here else { return }
+                    self.open(self.makeWindow(on: url, slot: nil, inGroupOf: here, explorerRoot: root))
+                }
                 return
             }
             Prefs.documentURL = target
@@ -1222,10 +1242,7 @@ final class WindowSet {
                 // other, a rebind; a window that opens a file and closes never
                 // rebinds, so without this the file it was showing is one Open
                 // Recent has never heard of.
-                //
-                // Not a note that was never written: there is no file to go
-                // back to (`Coordinator.boundURL`'s `didSet` says the same).
-                if !tab.awaitsFirstText { Prefs.rememberRecent(tab.boundFile) }
+                Prefs.rememberRecent(tab.boundFile)
                 // The document slot goes with the window that held it. The slot
                 // is the setting a rename writes back to, and with the window
                 // gone there is nothing to write back for. It must not outlive

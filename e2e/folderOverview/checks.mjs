@@ -16,15 +16,33 @@
  */
 const OVERVIEW = ".fo-surface";
 
-async function openOverview(page) {
-    await page.evaluate(() => window.__runCommand("showFolderOverview"));
-    await page.waitForSelector(`${OVERVIEW} .lg-node`, { timeout: 5000 });
-    await page.waitForTimeout(100);
+/**
+ * Wait until the overview has settled: drawn, holding keyboard focus (it
+ * places focus once its pieces are in), and, on a host that keeps a recent
+ * files list, showing its rows. Those are what every check after an opening
+ * reads, so they are what is waited for.
+ */
+async function settled(page, { rows = true } = {}) {
+    await page.waitForFunction(({ sel, rows }) => {
+        const s = document.querySelector(sel);
+        return !!s && !!s.querySelector(".lg-node") && s.contains(document.activeElement)
+            && (!rows || s.querySelectorAll(".fo-row").length > 0);
+    }, { sel: OVERVIEW, rows }, { timeout: 5000 });
 }
 
+async function openOverview(page, options) {
+    await page.evaluate(() => window.__runCommand("showFolderOverview"));
+    await settled(page, options);
+}
+
+/** Whether the overview closed, saying so when the wait timed out rather than leaving a bare false. */
 async function closed(page) {
-    await page.waitForFunction((sel) => !document.querySelector(sel), OVERVIEW, { timeout: 3000 }).catch(() => {});
-    return page.evaluate((sel) => !document.querySelector(sel), OVERVIEW);
+    try {
+        await page.waitForFunction((sel) => !document.querySelector(sel), OVERVIEW, { timeout: 3000 });
+        return { closed: true };
+    } catch {
+        return { closed: false, why: "timed out after 3s waiting for the overview to close" };
+    }
 }
 
 export async function run({ page, check, baseUrl }) {
@@ -92,7 +110,7 @@ export async function run({ page, check, baseUrl }) {
     await page.keyboard.press("Escape");
     const escaped = await closed(page);
     const editorFocused = await page.evaluate(() => !!document.activeElement?.closest(".ProseMirror"));
-    check("Escape closes the overview and hands focus back to the editor", escaped && editorFocused,
+    check("Escape closes the overview and hands focus back to the editor", escaped.closed && editorFocused,
         JSON.stringify({ escaped, editorFocused }));
     const openedOnEscape = await page.evaluate(() => window.__posted.filter((m) => m.type === "openProjectFile").length);
     check("Escape opens nothing", openedOnEscape === 0, `opens=${openedOnEscape}`);
@@ -103,21 +121,22 @@ export async function run({ page, check, baseUrl }) {
     const dotClosed = await closed(page);
     const dotOpened = await page.evaluate(() => window.__posted.filter((m) => m.type === "openProjectFile").map((m) => m.path));
     check("a second-ring dot closes the overview and opens its note in this window",
-        dotClosed && JSON.stringify(dotOpened) === JSON.stringify(["deep/detail-3.md"]), JSON.stringify({ dotClosed, dotOpened }));
+        dotClosed.closed && JSON.stringify(dotOpened) === JSON.stringify(["deep/detail-3.md"]), JSON.stringify({ dotClosed, dotOpened }));
 
     // ── The hub opens too ────────────────────────────────────────────────
     await openOverview(page);
     await page.locator(`${OVERVIEW} .lg-node--self`).click();
-    await closed(page);
+    const hubClosed = await closed(page);
     const hubOpened = await page.evaluate(() => window.__posted.filter((m) => m.type === "openProjectFile").map((m) => m.path).at(-1));
-    check("the hub at the centre is a note to open, not the current one", hubOpened === "index.md", String(hubOpened));
+    check("the hub at the centre is a note to open, not the current one",
+        hubClosed.closed && hubOpened === "index.md", JSON.stringify({ hubClosed, hubOpened }));
 
     // ── A recent row opens its file ──────────────────────────────────────
     await openOverview(page);
     await page.locator(`${OVERVIEW} .fo-row[data-path="topics/topic-5.md"]`).click();
     const rowClosed = await closed(page);
     const rowOpened = await page.evaluate(() => window.__posted.filter((m) => m.type === "openProjectFile").map((m) => m.path).at(-1));
-    check("a recent file's row closes the overview and opens it", rowClosed && rowOpened === "topics/topic-5.md",
+    check("a recent file's row closes the overview and opens it", rowClosed.closed && rowOpened === "topics/topic-5.md",
         JSON.stringify({ rowClosed, rowOpened }));
     const asksTotal = await page.evaluate(() => window.__posted.filter((m) => m.type === "requestFolderRecents").length);
     check("every opening asks for the recent files afresh", asksTotal === 4, `asks=${asksTotal}`);
@@ -126,7 +145,7 @@ export async function run({ page, check, baseUrl }) {
     await page.goto(`${baseUrl}/index.html?recents=0`);
     await page.waitForSelector(".milkdown .ProseMirror", { timeout: 15000 });
     await page.waitForTimeout(300);
-    await openOverview(page);
+    await openOverview(page, { rows: false });
     const bare = await page.evaluate((sel) => {
         const s = document.querySelector(sel);
         const visible = (el) => !!el && !el.hidden && el.getBoundingClientRect().height > 0;
@@ -135,7 +154,8 @@ export async function run({ page, check, baseUrl }) {
     check("a host that keeps no recent files list shows the graph and no recent files section",
         !bare.heading && !bare.empty && bare.nodes > 1, JSON.stringify(bare));
     await page.keyboard.press("Escape");
-    await closed(page);
+    const bareClosed = await closed(page);
+    check("Escape closes it there too", bareClosed.closed, JSON.stringify(bareClosed));
 
     // ── The folder graph off ─────────────────────────────────────────────
     await page.goto(`${baseUrl}/index.html?graph=0`);
@@ -157,7 +177,7 @@ export async function run({ page, check, baseUrl }) {
     // ── A new folder tab: the command right behind the init ──────────────
     await page.goto(`${baseUrl}/index.html?newTab=1`);
     await page.waitForSelector(`${OVERVIEW} .lg-node`, { timeout: 15000 });
-    await page.waitForTimeout(100);
+    await settled(page);
     const tab = await page.evaluate((sel) => ({
         centre: document.querySelector(sel)?.querySelector(".lg-node--self")?.dataset.id ?? null,
         overviews: document.querySelectorAll(sel).length,
@@ -167,15 +187,21 @@ export async function run({ page, check, baseUrl }) {
     await page.keyboard.press("Escape");
     const tabEscaped = await closed(page);
     const tabFocused = await page.evaluate(() => !!document.activeElement?.closest(".ProseMirror"));
-    check("Escape leaves the blank note with the caret in it", tabEscaped && tabFocused,
+    check("Escape leaves the blank note with the caret in it", tabEscaped.closed && tabFocused,
         JSON.stringify({ tabEscaped, tabFocused }));
     const updatesBefore = await page.evaluate(() => window.__posted.filter((m) => m.type === "update").length);
     check("an untouched new tab sends no content to write", updatesBefore === 0, `updates=${updatesBefore}`);
     await page.keyboard.type("First line");
-    await page.waitForFunction(() => window.__posted.some((m) => m.type === "update" && m.content.includes("First line")),
-        null, { timeout: 3000 }).catch(() => {});
+    let typedWhy = null;
+    try {
+        await page.waitForFunction(() => window.__posted.some((m) => m.type === "update" && m.content.includes("First line")),
+            null, { timeout: 3000 });
+    } catch {
+        typedWhy = "timed out after 3s waiting for an update carrying the typed text";
+    }
     const typed = await page.evaluate(() => window.__posted.filter((m) => m.type === "update").at(-1)?.content ?? null);
-    check("the first keystrokes reach the host as the note's content", typed?.includes("First line") === true, JSON.stringify(typed));
+    check("the first keystrokes reach the host as the note's content", typed?.includes("First line") === true,
+        JSON.stringify({ typed, typedWhy }));
 
     check("no page errors", errors.length === 0, JSON.stringify(errors));
 }

@@ -590,9 +590,11 @@ enum Prefs {
         }
     }
 
-    /// Put `url` at the front of the list.
+    /// Put `url` at the front of the list, if it is a file on disk
+    /// (`RecentFiles.remembering`).
     static func rememberRecent(_ url: URL) {
-        recentDocuments = RecentFiles.recording(url, into: recentDocuments)
+        recentDocuments = RecentFiles.remembering(url, into: recentDocuments,
+                                                  exists: { FileManager.default.fileExists(atPath: $0.path) })
     }
 
     /// The outline panel as the reader last left it, so a page load puts it

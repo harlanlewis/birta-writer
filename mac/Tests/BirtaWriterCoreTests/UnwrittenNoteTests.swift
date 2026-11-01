@@ -52,4 +52,16 @@ final class UnwrittenNoteTests: XCTestCase {
                            buffer.debugDescription)
         }
     }
+
+    /// Text in a never-written note is unwritten bytes whatever the edited
+    /// flag says, and nothing else here is.
+    func testOnlyTextInAWaitingNoteShouldCountAsHeldOnlyInTheBuffer() {
+        for buffer in written {
+            XCTAssertTrue(UnwrittenNote.holdsTextOnlyInBuffer(awaitingText: true, buffer: buffer))
+            XCTAssertFalse(UnwrittenNote.holdsTextOnlyInBuffer(awaitingText: false, buffer: buffer))
+        }
+        for buffer in blanks {
+            XCTAssertFalse(UnwrittenNote.holdsTextOnlyInBuffer(awaitingText: true, buffer: buffer))
+        }
+    }
 }

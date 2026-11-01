@@ -222,4 +222,26 @@ final class OpenSetTests: XCTestCase {
     func testFrontingAPathNoGroupHoldsShouldAnswerNil() {
         XCTAssertNil(set([a]).fronting(b))
     }
+
+    // MARK: a folder window with nothing left to restore
+
+    /// A folder window whose only tab was a note never written comes back
+    /// as the folder, with no tabs, for the caller to open on the folder's
+    /// own choice of file. A loose window with nothing left, and a folder
+    /// window whose folder has gone, are still dropped.
+    func testAFolderGroupWhoseTabsAreGoneShouldBeKeptWhileItsFolderIsThere() {
+        let unwritten = "/vault/Untitled.md"
+        let stored = OpenSet(groups: [
+            OpenSet.Group(root: "/vault", tabs: [unwritten], frame: "{{1, 2}, {3, 4}}"),
+            OpenSet.Group(root: "/gone", tabs: ["/gone/x.md"]),
+            OpenSet.Group(tabs: [b]),
+        ])
+        let pruned = stored.pruned(exists: { $0 == "/vault" })
+        XCTAssertEqual(pruned.groups.map(\.root), ["/vault"])
+        XCTAssertEqual(pruned.groups[0].tabs, [])
+        XCTAssertEqual(pruned.groups[0].frame, "{{1, 2}, {3, 4}}", "it comes back where it was")
+        XCTAssertNil(pruned.groups[0].selectedTab)
+        XCTAssertEqual(plan(stored, exists: { $0 == "/vault" }).groups.map(\.root), ["/vault"],
+                       "the launch plan restores it rather than falling back to a single window")
+    }
 }

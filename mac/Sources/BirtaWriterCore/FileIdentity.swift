@@ -9,6 +9,30 @@ import Foundation
 /// identity for the file, so ask it whenever both URLs resolve to something
 /// that exists.
 public enum FileIdentity {
+    /// Whether a path names one of `files`, asked of many paths against one
+    /// set of files: a new note's free name, a folder's file to open on.
+    ///
+    /// The files' resolved paths are worked out once, so a path that is not
+    /// on disk (every candidate name a new note is offered) costs one lookup
+    /// in a set rather than an identity check per file. The identity check is
+    /// kept for a path that IS on disk, because only there can the same file
+    /// hide behind another spelling (a case-insensitive volume, a hard link),
+    /// and only there can the file system say so.
+    public static func matcher(for files: [URL],
+                               exists: @escaping (URL) -> Bool = { FileManager.default.fileExists(atPath: $0.path) },
+                               sameFile: @escaping (URL, URL) -> Bool = FileIdentity.sameFile) -> (URL) -> Bool {
+        let keys = Set(files.map(resolvedPath))
+        return { url in
+            if keys.contains(resolvedPath(url)) { return true }
+            guard exists(url) else { return false }
+            return files.contains { sameFile($0, url) }
+        }
+    }
+
+    private static func resolvedPath(_ url: URL) -> String {
+        url.resolvingSymlinksInPath().standardizedFileURL.path
+    }
+
     /// True when `a` and `b` are the same file.
     ///
     /// Uses the file system's identity when both exist. When either does not,

@@ -57,7 +57,12 @@ import Foundation
 ///
 /// Tabs whose file is gone are dropped before any of that, and a group left
 /// with none is dropped too: a note deleted in the Finder while the app was
-/// quit must not come back as a window standing on a missing file.
+/// quit must not come back as a window standing on a missing file. The one
+/// exception is a folder window whose folder is still there: it comes back
+/// with no tabs, and the caller opens it on the folder's own choice of file.
+/// A folder window's only tab is often a new note never typed into, which
+/// has no file to restore (`UnwrittenNote`), and the window is the folder,
+/// not that note.
 public struct OpenSet: Codable, Equatable, Sendable {
     /// One window, or one group of tabs sharing a frame.
     public struct Group: Codable, Equatable, Sendable {
@@ -120,12 +125,17 @@ public struct OpenSet: Codable, Equatable, Sendable {
     // MARK: editing
 
     /// The set with every tab that `exists` refuses dropped, each group's
-    /// selection clamped, and every group left empty removed.
+    /// selection clamped, and every group left empty removed, except a folder
+    /// group whose root `exists` still accepts, which is kept with no tabs.
     public func pruned(exists: (String) -> Bool) -> OpenSet {
         OpenSet(groups: groups.compactMap { group in
             var kept = group
             kept.tabs = group.tabs.filter(exists)
-            guard !kept.tabs.isEmpty else { return nil }
+            guard !kept.tabs.isEmpty else {
+                guard let root = group.root, exists(root) else { return nil }
+                kept.selected = 0
+                return kept
+            }
             kept.selected = min(max(group.selected, 0), kept.tabs.count - 1)
             if let showing = group.selectedTab, let index = kept.tabs.firstIndex(of: showing) {
                 kept.selected = index
@@ -172,7 +182,8 @@ public struct OpenSet: Codable, Equatable, Sendable {
     public struct LaunchPlan: Equatable, Sendable {
         /// The groups to restore, back to front. Every tab in every group
         /// exists, and the caller may build them in this order and end up
-        /// with the right one in front.
+        /// with the right one in front. A folder group may hold no tabs, and
+        /// then opens on the folder's own choice of file.
         public var groups: [Group]
         /// Whether a fresh blank note goes in front of them all. The caller
         /// makes the file, because making a file is not this type's to do.
