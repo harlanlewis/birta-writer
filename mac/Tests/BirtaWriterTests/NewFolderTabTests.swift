@@ -111,12 +111,12 @@ final class NewFolderTabTests: XCTestCase {
     }
 
     /// Every write funnels through `writeLatest`, so the hold is asked there,
-    /// before the bytes go to the writer, and nothing passes it.
+    /// before the bytes go to the writer, and only an asked-for save passes it.
     func testTheOneWriteFunnelShouldHoldABlankUnwrittenNoteBeforeSubmitting() throws {
         let text = try source("BirtaWriter/Coordinator.swift")
         let funnel = try body(of: "private func writeLatest(", in: text)
-        let hold = try XCTUnwrap(funnel.range(of: "guard UnwrittenNote.mayWrite(awaitingText: awaitsFirstText, buffer: latest) else"),
-                                 "writeLatest no longer asks UnwrittenNote, or something is let past it")
+        let hold = try XCTUnwrap(funnel.range(of: "guard saveAskedFor || UnwrittenNote.mayWrite(awaitingText: awaitsFirstText, buffer: latest) else"),
+                                 "writeLatest no longer asks UnwrittenNote, or something other than an asked-for save is let past it")
         let submit = try XCTUnwrap(funnel.range(of: "writer.submit("))
         XCTAssertLessThan(hold.lowerBound, submit.lowerBound, "the hold must come before the write")
         // The quit prompt does not ask about a note with nothing to save.
@@ -124,67 +124,118 @@ final class NewFolderTabTests: XCTestCase {
         XCTAssertTrue(decide.contains("UnwrittenNote.mayWrite(awaitingText: awaitsFirstText, buffer: latest)"))
     }
 
-    /// Only a save the person asked for makes a blank never-written note's
+    /// Only a save somebody asked for makes a blank never-written note's
     /// file. `.explicitSave` is also how the app flushes for its own reasons
-    /// (an agent run, Copy Reference, the welcome screen, leaving a document,
-    /// Discard), so the trigger cannot be the permission: the wait is ended
-    /// by name, in one function, called from Cmd+S and from the debug hook
-    /// that stands in for Cmd+S.
-    func testOnlyASaveSomebodyAskedForShouldEndTheWait() throws {
+    /// (the welcome screen, leaving a document, Discard), so the trigger
+    /// cannot be the permission. The asked-for save is let past the hold for
+    /// its one write and does not end the wait itself: only the bytes landing
+    /// do, so a refused save leaves the note waiting. Its callers are named:
+    /// Cmd+S, the debug hook that stands in for it, and the two gestures that
+    /// hand the file's path to something that will read it.
+    func testOnlyASaveSomebodyAskedForShouldMakeTheFileAndOnlyALandedWriteEndTheWait() throws {
         let text = try source("BirtaWriter/Coordinator.swift")
         let write = try body(of: "private func write(_ trigger: WriteTrigger)", in: text)
         XCTAssertFalse(write.contains("explicitSave"), "the trigger must not be what lets a blank note's file be made")
+        let asked = try body(of: "private func writeSaveSomebodyAskedFor()", in: text)
+        XCTAssertFalse(asked.contains("awaitsFirstText"), "a save that may be refused must not end the wait before it lands")
+        XCTAssertTrue(asked.contains("saveAskedFor = true") && asked.contains("defer { saveAskedFor = false }"))
+        let funnel = try body(of: "private func writeLatest(", in: text)
+        XCTAssertTrue(funnel.contains("guard saveAskedFor || UnwrittenNote.mayWrite("))
         let lines = text.components(separatedBy: "\n")
-        let enders = lines.indices.filter { lines[$0].contains("awaitsFirstText = false") && !lines[$0].contains("var awaitsFirstText") && !isComment(lines[$0]) }
-        let didSets = ["private var everSeenOnDisk = false {", "private var boundURL: URL {",
-                       "private func writeSaveSomebodyAskedFor()"]
-        XCTAssertEqual(enders.count, 3, "the wait ends in exactly three places: \(enders.map { $0 + 1 })")
+        let enders = lines.indices.filter {
+            lines[$0].contains("awaitsFirstText = false") && !lines[$0].contains("var awaitsFirstText") && !isComment(lines[$0])
+        }
+        let places = ["private var everSeenOnDisk = false {", "private var boundURL: URL {"]
+        XCTAssertEqual(enders.count, 2, "the wait ends where the note lands and where the tab is rebound: \(enders.map { $0 + 1 })")
         for index in enders {
-            let inside = didSets.contains { sig in
+            let inside = places.contains { sig in
                 guard let start = lines.firstIndex(where: { $0.contains(sig) }) else { return false }
                 return (start...min(start + 60, lines.count - 1)).contains(index)
             }
-            XCTAssertTrue(inside, "Coordinator.swift:\(index + 1) ends the wait outside the three places")
+            XCTAssertTrue(inside, "Coordinator.swift:\(index + 1) ends the wait outside those two places")
         }
         let callers = lines.filter { $0.contains("writeSaveSomebodyAskedFor()") && !$0.contains("func ") && !isComment($0) }
-        XCTAssertEqual(callers.count, 2, "Cmd+S and its debug stand-in, and nothing else")
+        XCTAssertEqual(callers.count, 4, "Cmd+S, its debug stand-in, Copy Reference and an /ai run, and nothing else")
         XCTAssertTrue(try body(of: "func saveNow()", in: text).contains("self.writeSaveSomebodyAskedFor()"))
+        XCTAssertTrue(try body(of: "private func copyAgentReference()", in: text).contains("self.writeSaveSomebodyAskedFor()"))
     }
 
     private func isComment(_ line: String) -> Bool {
         line.trimmingCharacters(in: .whitespaces).hasPrefix("//")
     }
 
-    /// A tab taken over by a file from outside goes through `replaceFile`,
-    /// which flushes the page before deciding: vacancy is read off the host's
-    /// buffer, and keystrokes whose sync has not landed exist only in the
-    /// page. A never-written note with text counts as unwritten bytes whatever
-    /// the edited flag says, because that flush brings text across without it.
-    func testAnOutsideOpenShouldFlushATabBeforeTakingItOver() throws {
+    /// A window taken over by a file from outside goes through `replaceFile`,
+    /// in both branches, which flushes the page before deciding: vacancy is
+    /// read off the host's buffer, and keystrokes whose sync has not landed
+    /// exist only in the page. A never-written note with text counts as
+    /// unwritten bytes whatever the edited flag says.
+    func testAnOutsideOpenShouldFlushAWindowBeforeTakingItOver() throws {
         let set = try source("BirtaWriter/WindowSet.swift")
         let arm = try XCTUnwrap(set.range(of: "case .vacantFront:"))
         let next = try XCTUnwrap(set.range(of: "case let .tabBeside", range: arm.upperBound..<set.endIndex))
         let body = String(set[arm.upperBound..<next.lowerBound])
-        let rooted = try XCTUnwrap(body.components(separatedBy: "Prefs.documentURL = target").first)
-        XCTAssertTrue(rooted.contains("here.replaceFile(with: target"), "a folder tab must be flushed before it is replaced")
-        XCTAssertFalse(rooted.contains("here.openInPlace("), "openInPlace does not flush, so it can drop typed text")
+        XCTAssertEqual(body.components(separatedBy: "here.replaceFile(with: target").count - 1, 2,
+                       "the folder branch and the loose branch both take the window over through the flush")
+        XCTAssertFalse(body.contains("here.openInPlace("), "openInPlace does not flush, so it can drop typed text")
         let coordinator = try source("BirtaWriter/Coordinator.swift")
         XCTAssertTrue(coordinator.contains(
             "isEdited || UnwrittenNote.holdsTextOnlyInBuffer(awaitingText: awaitsFirstText, buffer: latest)"))
     }
 
-    /// Rename/Move refuses a name an open tab holds, file or no file.
-    func testARenameShouldRefuseANameAnOpenTabHolds() throws {
-        let relocate = try body(of: "func relocateActiveFile(to target: URL)", in: source("BirtaWriter/Coordinator.swift"))
-        XCTAssertTrue(relocate.contains("manager.fileExists(atPath: target.path) || self.heldNames?()(target) == true"))
+    /// The takeover waits on a flush, and the tab is spoken for from the
+    /// moment it is chosen: a second open routed meanwhile must not see it as
+    /// vacant (`OpenRoutingTests` holds where that open goes).
+    func testATabBeingTakenOverShouldStopBeingVacantAtOnce() throws {
+        let text = try source("BirtaWriter/Coordinator.swift")
+        let replace = try body(of: "func replaceFile(with url: URL", in: text)
+        let mark = try XCTUnwrap(replace.range(of: "isBeingTakenOver = true"))
+        let flush = try XCTUnwrap(replace.range(of: "flushThen("))
+        XCTAssertLessThan(mark.lowerBound, flush.lowerBound, "marked before the round trip, not after it")
+        let clear = try XCTUnwrap(replace.range(of: "self.isBeingTakenOver = false"))
+        let decide = try XCTUnwrap(replace.range(of: "!self.isVacant"))
+        XCTAssertLessThan(clear.lowerBound, decide.lowerBound, "cleared before the tab's own vacancy is asked")
+        XCTAssertTrue(try body(of: "var isVacant: Bool {", in: text).contains("!isBeingTakenOver"))
     }
 
-    /// A folder window whose tabs were all never written comes back on the
-    /// folder's own choice of file (`OpenSet.pruned` keeps the group).
-    func testARestoredFolderGroupWithNoTabsShouldOpenOnTheFolderDefault() throws {
-        let launch = try body(of: "func openAtLaunch(launchedWith: URL?)", in: source("BirtaWriter/WindowSet.swift"))
-        XCTAssertTrue(launch.contains("if tabs.isEmpty, let root, let first = folderDefault(in: root)"))
+    /// Rename/Move refuses a name an open tab holds, file or no file, and
+    /// says which of the two it was.
+    func testARenameShouldRefuseANameAnOpenTabHoldsInItsOwnWords() throws {
+        let relocate = try body(of: "func relocateActiveFile(to target: URL)", in: source("BirtaWriter/Coordinator.swift"))
+        XCTAssertTrue(relocate.contains("if self.heldNames?()(target) == true {"))
+        XCTAssertTrue(relocate.contains("\"Another tab is already using the name \\(target.lastPathComponent).\""))
+        XCTAssertFalse(relocate.contains("|| self.heldNames"), "a held name is not a file that is already there")
+    }
+
+    /// A folder with nothing to open opens on a note that is not written
+    /// yet, live: no file appears in the folder.
+    func testAFolderWithNothingToOpenShouldOpenOnANoteWithNoFile() throws {
+        let set = WindowSet()
+        let choice = set.folderDefault(in: folder)
+        XCTAssertTrue(choice.unwritten)
+        XCTAssertEqual(choice.url.deletingLastPathComponent().standardizedFileURL, folder.standardizedFileURL)
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: folder.path), [],
+                       "choosing the note must write nothing into the folder")
+    }
+
+    /// Every binding to the folder's choice says it is unwritten when it is,
+    /// so the hold keeps it off disk; and the choice writes nothing itself.
+    func testEveryWindowOnAFolderDefaultShouldBeToldItIsUnwritten() throws {
+        let set = try source("BirtaWriter/WindowSet.swift")
+        let choose = try body(of: "func folderDefault(in root: URL)", in: set)
+        XCTAssertFalse(choose.contains("makeNoteFile"), "the folder's choice must not write a note")
+        XCTAssertEqual(choose.components(separatedBy: "boundByAWindow()").count - 1, 1, "one predicate, built once")
+        let openDirectory = try body(of: "func openDirectory(at folder: URL", in: set)
+        XCTAssertTrue(openDirectory.contains("if choice.unwritten { made.awaitFirstText(openingOnOverview: false) }"))
+        let launch = try body(of: "func openAtLaunch(launchedWith: URL?)", in: set)
+        XCTAssertTrue(launch.contains("restoredUnwritten = choice.unwritten"))
+        XCTAssertTrue(launch.contains("if restoredUnwritten { made.first?.awaitFirstText(openingOnOverview: false) }"))
         XCTAssertTrue(launch.contains("for path in tabs {"), "the loop must read the filled list")
+        XCTAssertTrue(launch.contains("hadUnwrittenTab") == false, "the launch reads the plan, which already pruned")
+        XCTAssertTrue(try body(of: "private func snapshotOpenSet()", in: set)
+            .contains("hadUnwrittenTab: members.contains(where: \\.awaitsFirstText) ? true : nil"))
+        let coordinator = try source("BirtaWriter/Coordinator.swift")
+        XCTAssertTrue(try body(of: "func openFolderDefault(_ choice: WindowSet.FolderDefault)", in: coordinator)
+            .contains("if choice.unwritten { awaitFirstText(openingOnOverview: false) }"))
     }
 
     /// Remembering a recent file goes through one funnel, which refuses a
@@ -222,7 +273,7 @@ final class NewFolderTabTests: XCTestCase {
                 XCTAssertTrue(code.contains("alsoTaken:"), "\(file): a new note that can take a held name: \(code)")
             }
         }
-        XCTAssertGreaterThanOrEqual(calls, 6, "the call sites were not found; this guard is watching nothing")
+        XCTAssertGreaterThanOrEqual(calls, 5, "the call sites were not found; this guard is watching nothing")
         let discard = try body(of: "func startNewNoteHere()", in: source("BirtaWriter/Coordinator.swift"))
         XCTAssertTrue(discard.contains("alsoTaken: self.heldNames?()"))
         XCTAssertTrue(try source("BirtaWriter/WindowSet.swift")

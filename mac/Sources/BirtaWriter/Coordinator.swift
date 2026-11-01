@@ -438,9 +438,9 @@ final class Coordinator {
 
     /// The file a folder's window opens on, which is `WindowSet`'s to answer
     /// because it turns on what the other windows hold
-    /// (`WindowSet.folderDefault`). Nil when there is nothing to open, not
-    /// even a new note.
-    var onFolderDefault: ((URL) -> URL?)?
+    /// (`WindowSet.folderDefault`): a file there, or a note not written
+    /// yet. Nil only once the window set has gone.
+    var onFolderDefault: ((URL) -> WindowSet.FolderDefault?)?
 
     /// Whether an open window is bound to a path, file or no file
     /// (`WindowSet.boundByAWindow`), for the names this window picks itself:
@@ -531,7 +531,7 @@ final class Coordinator {
             // never reaches the new binding, because rebinding unregisters
             // the old file's presenter (`NoteWatcherTests` holds that).
             guard self.trash(url), mayLeave, let next = self.onFolderDefault?(root) else { return }
-            self.openInPlace(next, slot: nil)
+            self.openFolderDefault(next)
         }
     }
 
@@ -597,9 +597,20 @@ final class Coordinator {
     /// `line` is where the open was asked to land, or nil: it goes to the
     /// page this reload builds, and to `orTab` when the replace is abandoned,
     /// so the line follows the file to whichever page ends up showing it.
-    func replaceFile(with url: URL, revealing line: Int?, orTab: @escaping (URL) -> Void) {
+    ///
+    /// `slot` is what the window holds afterwards: nil for a file of a
+    /// folder, which is every explorer route; the document slot for a file
+    /// an outside open hands a loose vacant window.
+    ///
+    /// The tab stops counting as vacant from this call until the flush
+    /// answers (`isBeingTakenOver`), so a second open routed in that window
+    /// meanwhile goes beside it rather than taking the same tab twice.
+    func replaceFile(with url: URL, revealing line: Int?, slot: ActiveBinding.Slot? = nil,
+                     orTab: @escaping (URL) -> Void) {
+        isBeingTakenOver = true
         flushThen(persisting: false) { [weak self] in
             guard let self else { return }
+            self.isBeingTakenOver = false
             self.write(.panelHidden)
             // A missing file is replaced whatever its buffer holds:
             // `openInPlace` keeps the text first, and a tab beside it would
@@ -608,9 +619,9 @@ final class Coordinator {
                 orTab(url)
                 return
             }
-            // A file in somebody's project is not the app's document, so the
-            // tab takes no slot; `WindowSet` never hands one to a rooted tab.
-            self.openInPlace(url, slot: nil, revealing: line)
+            // A file in somebody's project is not the app's document, so a
+            // rooted tab takes no slot; `WindowSet` never hands one to it.
+            self.openInPlace(url, slot: slot, revealing: line)
         }
     }
 
@@ -1348,9 +1359,16 @@ final class Coordinator {
     ///
     /// A note nobody has written yet, with nothing in it, is vacant too: it
     /// was never on disk, so leaving it costs nothing (`UnwrittenNote`).
+    ///
+    /// Never while a takeover is waiting on its flush: the tab is already
+    /// spoken for (`replaceFile`).
     var isVacant: Bool {
-        UnwrittenNote.isVacant(noteMissing: noteMissing, awaitingText: awaitsFirstText, buffer: latest)
+        !isBeingTakenOver
+            && UnwrittenNote.isVacant(noteMissing: noteMissing, awaitingText: awaitsFirstText, buffer: latest)
     }
+
+    /// Set from a `replaceFile` call until its flush answers.
+    private var isBeingTakenOver = false
 
     /// Take `url` over in this window, in place of the file it is on.
     ///
@@ -1381,6 +1399,15 @@ final class Coordinator {
         refreshTitle()
         show()
         if let kept { statusOverlay.flash("Kept what you wrote in \(kept.lastPathComponent).") }
+    }
+
+    /// Move this tab to its folder's own choice of file, which may be a note
+    /// not written yet (`WindowSet.folderDefault`).
+    func openFolderDefault(_ choice: WindowSet.FolderDefault) {
+        openInPlace(choice.url, slot: nil)
+        // After the rebind, which ends any earlier wait: this one is about
+        // the path just bound.
+        if choice.unwritten { awaitFirstText(openingOnOverview: false) }
     }
 
     /// Write the buffer to a recovered file beside the missing one, when it
@@ -3703,7 +3730,7 @@ final class Coordinator {
         // with text in it, not from a hide, a close, a quit or a tab moving on
         // (MAR-488). Traced for the reason the line above is: "no file" is
         // equally what a write that was never attempted leaves.
-        guard UnwrittenNote.mayWrite(awaitingText: awaitsFirstText, buffer: latest) else {
+        guard saveAskedFor || UnwrittenNote.mayWrite(awaitingText: awaitsFirstText, buffer: latest) else {
             if measure.enabled { measure.trace("writeheld unwritten at=\(boundURL.lastPathComponent)") }
             return
         }
@@ -3863,7 +3890,7 @@ final class Coordinator {
 
         flushThen { [weak self] in
             guard let self else { return }
-            self.write(.explicitSave)
+            self.writeSaveSomebodyAskedFor()
             // The save above can be refused: the file changed outside the app
             // since it was last read, and the panel holds edits of its own
             // (`reconcileWithDisk`'s conflict). The question that refusal put
@@ -4198,7 +4225,7 @@ final class Coordinator {
         guard state == .warm else { return }
         flushThen { [weak self] in
             guard let self else { return }
-            self.write(.explicitSave)
+            self.writeSaveSomebodyAskedFor()
             self.requestEditorContext { [weak self] selection in
                 guard let self else { return }
                 guard let selection else {
@@ -4903,9 +4930,14 @@ final class Coordinator {
             // A name an open tab holds is taken although nothing may be on
             // disk there yet (a new tab of a folder window), and taking it
             // would put two buffers over one path.
-            if manager.fileExists(atPath: target.path) || self.heldNames?()(target) == true {
+            if manager.fileExists(atPath: target.path) {
                 self.measure.trace("relocate refused=taken \(target.lastPathComponent)")
                 self.statusOverlay.flash("There is already a file called \(target.lastPathComponent) there.")
+                return
+            }
+            if self.heldNames?()(target) == true {
+                self.measure.trace("relocate refused=held \(target.lastPathComponent)")
+                self.statusOverlay.flash("Another tab is already using the name \(target.lastPathComponent).")
                 return
             }
             do {
@@ -4976,16 +5008,28 @@ final class Coordinator {
         }
     }
 
-    /// A save the person asked for, by Cmd+S or File > Save: the one write
-    /// that may make a never-written note's file with nothing in it, because
-    /// they asked for the file (`UnwrittenNote`). Every other `.explicitSave`
-    /// is the app flushing for its own reasons (an agent run, Copy Reference,
-    /// the welcome screen, leaving a document, Discard) and leaves a blank
+    /// A save the person asked for: the one write that may make a
+    /// never-written note's file with nothing in it, because they asked for
+    /// the file (`UnwrittenNote`). Cmd+S, and the two gestures that hand the
+    /// file's path to something that will read it (Copy Reference, an `/ai`
+    /// run), since a path to no file is not what either asked for. Every
+    /// other `.explicitSave` is the app flushing for its own reasons (the
+    /// welcome screen, leaving a document, Discard) and leaves a blank
     /// unwritten note unwritten.
+    ///
+    /// It is let past the hold for the one write and does not end the wait
+    /// itself: only the bytes landing do (`everSeenOnDisk`), so a save
+    /// refused for any reason leaves the note waiting, and the next hide does
+    /// not make the empty file nobody got.
     private func writeSaveSomebodyAskedFor() {
-        awaitsFirstText = false
+        saveAskedFor = true
+        defer { saveAskedFor = false }
         write(.explicitSave)
     }
+
+    /// True only inside `writeSaveSomebodyAskedFor`, whose `.explicitSave`
+    /// writes at once (`AutosavePolicy`), so the flag cannot outlive it.
+    private var saveAskedFor = false
 
     private func writeToPasteboard(_ text: String, asHTML: Bool = false) {
         let pb = NSPasteboard.general

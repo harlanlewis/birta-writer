@@ -97,6 +97,16 @@ final class OpenRoutingTests: XCTestCase {
         XCTAssertEqual(route("/notes-archive/c.md", windows), .newWindow,
                        "the caller's isInside decides the boundary; this one is strict about it")
     }
+
+    /// A tab whose takeover is waiting on its flush reports itself not
+    /// vacant, so a second file opened into its folder meanwhile becomes a
+    /// tab of that folder's window instead of taking the same tab twice.
+    func testASecondOpenWhileTheFrontTabIsBeingTakenOverShouldBecomeATab() {
+        let vacant = [OpenRouting.Window(file: "/notes/Untitled.md", root: "/notes", isVacant: true, group: "g")]
+        XCTAssertEqual(route("/notes/a.md", vacant), .vacantFront, "the first open takes the tab")
+        let spoken = [OpenRouting.Window(file: "/notes/Untitled.md", root: "/notes", isVacant: false, group: "g")]
+        XCTAssertEqual(route("/notes/b.md", spoken), .tabIn(0), "the second goes beside it, in the same window")
+    }
 }
 
 /// Where a row of the explorer sends its file: into the tab it was clicked
