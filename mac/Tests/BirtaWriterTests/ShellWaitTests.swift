@@ -106,8 +106,14 @@ final class ShellWaitTests: XCTestCase {
     /// has been waited for.
     func testEveryCloseShouldAnswerTheShellAfterTheWriteHasLanded() throws {
         let text = try source("BirtaWriter/WindowSet.swift")
-        for (signature, settle) in [("func close(_ coordinator: Coordinator)", "prepareToClose {"),
-                                    ("func closeWindow(_ coordinator: Coordinator)", "prepareToClose {"),
+        // Both close gestures reach the shell through `retire` or the hide,
+        // and nowhere else.
+        for gesture in ["func close(_ coordinator: Coordinator)", "func closeWindow(_ coordinator: Coordinator)"] {
+            let body = try body(of: gesture, in: text)
+            XCTAssertTrue(body.contains("retire("), "\(gesture) no longer closes through retire")
+            XCTAssertTrue(body.contains("closeLastWindow("), "\(gesture) no longer hides through closeLastWindow")
+        }
+        for (signature, settle) in [("private func retire(_ members: [Coordinator])", "prepareToClose {"),
                                     ("func closeLastWindow(_ coordinator: Coordinator)", "settleForWaitingShell {")] {
             let body = try body(of: signature, in: text)
             let settled = try XCTUnwrap(body.range(of: settle), "\(signature) no longer settles the buffer through \(settle)")
@@ -123,7 +129,9 @@ final class ShellWaitTests: XCTestCase {
         let text = try source("BirtaWriter/WindowSet.swift")
         let body = try body(of: "func closeLastWindow(_ coordinator: Coordinator)", in: text)
         XCTAssertTrue(body.contains("waits.isWaiting(on:"), "every other last window must hide as it always did")
-        XCTAssertTrue(body.contains("dismissAll()"))
+        XCTAssertTrue(body.contains("hideQuickNote()"))
+        let hide = try self.body(of: "private func hideQuickNote()", in: text)
+        XCTAssertTrue(hide.contains("dismissAll()"), "without a Dock icon the hide is a dismissal")
         XCTAssertTrue(body.contains("answer != .cancel"), "Cancel on the sheet must leave the window up")
     }
 

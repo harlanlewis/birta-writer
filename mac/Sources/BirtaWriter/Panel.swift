@@ -257,8 +257,9 @@ final class AppPanel: NSPanel {
     /// close when nobody is.
     ///
     /// The close button and Cmd+W both arrive here, and what they mean is the
-    /// app's to decide: with several windows open this one closes, and with one
-    /// it hides, so the editor stays mounted and the next summon is immediate.
+    /// app's to decide: a window closes, unless it is the quick note left as
+    /// the last one, which hides so the editor stays mounted and the next
+    /// summon is immediate (`WindowSet.close`).
     ///
     /// The fall-through matters as much as the request, and did not exist while
     /// nothing could close a window. Without it there is no way to close this

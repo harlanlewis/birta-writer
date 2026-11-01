@@ -32,21 +32,33 @@ public enum TabGroupPolicy {
         case closeTab
         /// Close every tab in this window; other windows stay.
         case closeWindow
-        /// Nothing would be left: hide everything and keep the pages mounted,
-        /// so the next summon is instant. The rule the last window always had.
+        /// Close it for real, and leave the quick note behind it, hidden and
+        /// mounted, so the hotkey, the menu-bar item and the Dock icon have a
+        /// note to bring back and nothing else.
+        case closeToQuickNote
+        /// The quick note is the last window: hide it and keep the page
+        /// mounted, so the next summon is instant.
         case hideAll
     }
 
-    /// Cmd+W and the close button: the tab in front goes, unless it is the
-    /// last tab of the last window, which hides instead.
-    public static func whatCloseDoes(windows: Int) -> CloseOutcome {
-        windows > 1 ? .closeTab : .hideAll
+    /// Cmd+W and the close button: the tab in front goes, and so does the
+    /// last window unless it is the quick note, which hides instead.
+    ///
+    /// A closed window does not come back, on the next summon, Dock click or
+    /// launch. Only the quick note (the scratchpad or the note New Note last
+    /// made, alone in a window of its own) is a thing the app keeps on hand,
+    /// because it is what the summon is for.
+    public static func whatCloseDoes(windows: Int, lastIsQuickNote: Bool) -> CloseOutcome {
+        guard windows <= 1 else { return .closeTab }
+        return lastIsQuickNote ? .hideAll : .closeToQuickNote
     }
 
-    /// Shift+Cmd+W: the whole window goes, unless it holds every window the
-    /// app has, which is the last-window case again.
-    public static func whatCloseWindowDoes(tabsInWindow: Int, windows: Int) -> CloseOutcome {
-        tabsInWindow >= windows ? .hideAll : .closeWindow
+    /// Shift+Cmd+W: the whole window goes. A window holding every window the
+    /// app has is the last-window case again: it closes to the quick note,
+    /// unless it is the quick note.
+    public static func whatCloseWindowDoes(tabsInWindow: Int, windows: Int, lastIsQuickNote: Bool) -> CloseOutcome {
+        guard tabsInWindow >= windows else { return .closeWindow }
+        return tabsInWindow == 1 && lastIsQuickNote ? .hideAll : .closeToQuickNote
     }
 
     // MARK: the band

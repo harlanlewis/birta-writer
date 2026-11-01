@@ -10,6 +10,7 @@ final class OpenSetTests: XCTestCase {
     private let c = "/notes/C.md"
     private let blank = "/notes/Blank.md"
     private let pad = "/notes/Birta Writer.md"
+    private let quick = "/notes/Quick.md"
 
     private let all: (String) -> Bool = { _ in true }
     private let none: (String) -> Bool = { _ in false }
@@ -26,6 +27,7 @@ final class OpenSetTests: XCTestCase {
                       exists: ((String) -> Bool)? = nil,
                       isBlank: ((String) -> Bool)? = nil,
                       recents: [String] = [],
+                      restoresWindows: Bool = true,
                       openToBlankNote: Bool = false,
                       launchedWith: String? = nil) -> OpenSet.LaunchPlan {
         OpenSet.launchPlan(stored: stored,
@@ -33,6 +35,8 @@ final class OpenSetTests: XCTestCase {
                            isBlank: isBlank ?? none,
                            recents: recents,
                            fallback: pad,
+                           restoresWindows: restoresWindows,
+                           quickNote: quick,
                            openToBlankNote: openToBlankNote,
                            launchedWith: launchedWith)
     }
@@ -109,6 +113,7 @@ final class OpenSetTests: XCTestCase {
         let viaLink = "/Users/me/notes/A.md"
         let restored = OpenSet.launchPlan(stored: set([a, b]),
                                           exists: all, isBlank: none, recents: [], fallback: pad,
+                                          restoresWindows: true, quickNote: quick,
                                           openToBlankNote: false,
                                           launchedWith: viaLink,
                                           sameFile: { $0.hasSuffix("/A.md") && $1.hasSuffix("/A.md") || $0 == $1 })
@@ -143,6 +148,62 @@ final class OpenSetTests: XCTestCase {
     }
 
     // MARK: storage
+
+    // MARK: a quit that closed the windows
+
+    func testAQuitThatClosedTheWindowsShouldOpenOnlyTheQuickNote() {
+        let launched = plan(set([a, b]), recents: [c], restoresWindows: false)
+        XCTAssertEqual(launched.groups, [OpenSet.Group(tabs: [quick])],
+                       "neither the recorded windows nor the most recent file comes back")
+        XCTAssertFalse(launched.opensBlankNote)
+    }
+
+    func testAQuitThatClosedTheWindowsShouldStillOpenTheFileTheLaunchWasAskedFor() {
+        let launched = plan(set([a, b]), restoresWindows: false, launchedWith: c)
+        XCTAssertEqual(launched.groups, [OpenSet.Group(tabs: [c])])
+    }
+
+    func testAQuitThatClosedTheWindowsShouldStillHonourTheBlankNoteSetting() {
+        let launched = plan(set([a, blank]), isBlank: { $0 == self.blank },
+                            restoresWindows: false, openToBlankNote: true)
+        XCTAssertEqual(launched.groups, [], "a blank note in the closed set is not fronted, a new one is made")
+        XCTAssertTrue(launched.opensBlankNote)
+    }
+
+    func testABlankQuickNoteShouldBeOpenedRatherThanJoinedByAnotherWhenNothingIsRestored() {
+        let launched = plan(set([a]), isBlank: { $0 == self.quick },
+                            restoresWindows: false, openToBlankNote: true)
+        XCTAssertEqual(launched.groups, [OpenSet.Group(tabs: [quick])],
+                       "relaunching a few times must not accumulate empty notes")
+        XCTAssertFalse(launched.opensBlankNote)
+    }
+
+    func testOnlyAQuitThePersonMadeWithTheSystemSettingOnShouldCloseTheWindows() {
+        var closing: [String] = []
+        var asked = 0
+        for unattended in [false, true] {
+            for sessionEnding in [false, true] {
+                for systemKeepsWindows in [false, true] {
+                    asked += 1
+                    if OpenSet.quitClosesWindows(unattended: unattended, sessionEnding: sessionEnding,
+                                                 systemKeepsWindows: systemKeepsWindows) {
+                        closing.append("\(unattended)/\(sessionEnding)/\(systemKeepsWindows)")
+                    }
+                }
+            }
+        }
+        XCTAssertEqual(asked, 8, "the sweep must reach every combination")
+        XCTAssertEqual(closing, ["false/false/false"],
+                       "an update, an installer, the session ending, or the setting off each keep the windows")
+    }
+
+    func testRestoringShouldBeTheOnlyThingThatDecidesWhetherTheRecordingIsRead() {
+        // The same stored set and recents either way: the flag alone moves the answer.
+        let kept = plan(set([a, b]), recents: [c], restoresWindows: true)
+        let closed = plan(set([a, b]), recents: [c], restoresWindows: false)
+        XCTAssertEqual(kept.groups.flatMap(\.tabs), [a, b])
+        XCTAssertEqual(closed.groups.flatMap(\.tabs), [quick])
+    }
 
     func testTheSetShouldSurviveARoundTripThroughItsStoredForm() throws {
         let stored = OpenSet(groups: [

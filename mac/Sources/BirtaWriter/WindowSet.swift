@@ -304,6 +304,18 @@ final class WindowSet {
         let asked = askedFolder == nil ? launchedWith?.standardizedFileURL : nil
         let scratchpad = Prefs.scratchpadURL!
         let currentNote = Prefs.currentNoteURL
+        // Rule 0 of the plan: the windows come back unless the last quit
+        // closed them (`Prefs.takeQuitClosedWindows` says why the mark records
+        // the close rather than the keep).
+        let restores = !Prefs.takeQuitClosedWindows()
+        // A document slot left over from windows the quit closed names a file
+        // no window is on, and it outranks every note wherever the settings
+        // are asked for the active file; the window that held it is gone, so
+        // the slot goes too, as it would have on that window's close. Before
+        // the plan's inputs are read, so they and every later reader of the
+        // active file agree.
+        if !restores { Prefs.documentURL = nil }
+        let quickNote = Prefs.binding(enteringAt: .currentNote).url
         let plan = OpenSet.launchPlan(
             stored: Prefs.openSet,
             // A scratchpad that has never been written does not exist yet,
@@ -325,6 +337,8 @@ final class WindowSet {
             },
             recents: Prefs.recentDocuments.map(\.standardizedFileURL.path),
             fallback: Prefs.activeURL.standardizedFileURL.path,
+            restoresWindows: restores,
+            quickNote: quickNote.standardizedFileURL.path,
             openToBlankNote: Prefs.openToBlankNote,
             launchedWith: asked?.path,
             // The same file spelled two ways is one file, through a symlinked
@@ -1124,77 +1138,83 @@ final class WindowSet {
 
     /// The close button and Cmd+W.
     ///
-    /// The LAST window hides rather than closing, and that is load-bearing
-    /// rather than a nicety. Hiding keeps the page mounted, which is what makes
-    /// the next summon instant; tearing the WKWebView down would turn every
-    /// summon after a Cmd+W into a cold start, which is the promise this whole
-    /// app is built around. Somebody running one window therefore sees exactly
-    /// the behaviour they always did.
+    /// A window that closes is gone: it is not put back by the next summon,
+    /// a Dock click, or a launch. That includes the last one, which closes
+    /// for real and leaves the quick note behind it, hidden and mounted
+    /// (`leaveQuickNote`), so the summon still has something instant to bring
+    /// up and it is a note rather than the document somebody just closed.
+    /// The quick note itself, alone as the last window, hides instead: it is
+    /// what the summon is for, and tearing its WKWebView down would make the
+    /// next summon a cold start. `TabGroupPolicy.whatCloseDoes` is the rule.
     ///
-    /// Any other window really closes, through the same question a quit asks of
-    /// it: with autosave off and unwritten bytes it asks, and Cancel leaves the
-    /// window where it is.
+    /// Every real close goes through the same question a quit asks: with
+    /// autosave off and unwritten bytes it asks, and Cancel leaves the window
+    /// where it is.
     func close(_ coordinator: Coordinator) {
-        guard TabGroupPolicy.whatCloseDoes(windows: windows.count) == .closeTab else {
+        // Asked only of a last window: the answer is a filesystem question,
+        // and every other close would pay it for nothing.
+        let quick = windows.count <= 1 && isQuickNote(coordinator)
+        switch TabGroupPolicy.whatCloseDoes(windows: windows.count, lastIsQuickNote: quick) {
+        case .hideAll:
             closeLastWindow(coordinator)
-            return
-        }
-        let file = coordinator.boundFile
-        let failuresBefore = coordinator.writeFailures
-        coordinator.prepareToClose { [weak self] proceed in
-            guard proceed, let self else { return }
-            // The bytes the close decided on have landed: `prepareToClose`
-            // waits for its write. A shell blocked on this file hears now.
-            self.documentClosed(coordinator, file: file, failuresBefore: failuresBefore)
-            // The file this window was on joins the recents list, and closing
-            // is the second of the only two ways a file stops being on screen.
-            // `Coordinator.boundURL`'s `didSet` records the other, a rebind,
-            // and it is the one slot every rebind passes through; a window that
-            // opens a file and closes never rebinds, so without this the file
-            // it was showing is one Open Recent has never heard of. With one
-            // window that could not happen, because the only way to stop
-            // looking at a file was to go to another one.
-            Prefs.rememberRecent(coordinator.boundFile)
-            // The document slot goes with the window that held it. The slot
-            // is the setting a rename writes back to, and with the window
-            // gone there is nothing to write back for. It must not outlive
-            // the window: a document setting left standing is a file the app
-            // would open in preference to every note, on a launch with
-            // nothing recorded and on Back to My Notes.
-            if coordinator.bindingSlot == .document { Prefs.documentURL = nil }
-            self.windows.removeAll { $0 === coordinator }
-            coordinator.tearDown()
-            // The tab that went may have been the second-to-last of its bar,
-            // which then disappears and hands its row back to the page.
-            self.windows.forEach { $0.tabsChanged() }
-            self.releaseUnwatchedRoots()
-            self.recordOpenSetSoon()
+        case .closeTab, .closeWindow, .closeToQuickNote:
+            retire([coordinator])
         }
     }
 
     /// Shift+Cmd+W: every tab in `coordinator`'s window, through the same
     /// question a quit asks of each, serially, one Cancel refusing the rest.
-    /// A window holding every window the app has hides instead, which is the
-    /// last-window rule (`TabGroupPolicy.whatCloseWindowDoes`).
+    /// A window holding every window the app has closes to the quick note,
+    /// or hides when it is the quick note
+    /// (`TabGroupPolicy.whatCloseWindowDoes`).
     func closeWindow(_ coordinator: Coordinator) {
         let members = tabs(of: coordinator)
-        guard TabGroupPolicy.whatCloseWindowDoes(tabsInWindow: members.count, windows: windows.count) == .closeWindow else {
-            dismissAll()
-            return
+        let quick = members.count >= windows.count && isQuickNote(coordinator)
+        switch TabGroupPolicy.whatCloseWindowDoes(tabsInWindow: members.count, windows: windows.count,
+                                                  lastIsQuickNote: quick) {
+        case .hideAll:
+            closeLastWindow(coordinator)
+        case .closeTab, .closeWindow, .closeToQuickNote:
+            retire(members)
         }
+    }
+
+    /// Close `members` for real, one at a time, each through
+    /// `prepareToClose`, stopping at the first Cancel. When that leaves the
+    /// app with no window, the quick note takes the empty place.
+    private func retire(_ members: [Coordinator]) {
         var remaining = members
         func next() {
-            guard !remaining.isEmpty else { return }
+            guard !remaining.isEmpty else {
+                if windows.isEmpty { leaveQuickNote() }
+                return
+            }
             let tab = remaining.removeFirst()
             let file = tab.boundFile
             let failuresBefore = tab.writeFailures
             tab.prepareToClose { [weak self] proceed in
                 guard proceed, let self else { return }
+                // The bytes the close decided on have landed: `prepareToClose`
+                // waits for its write. A shell blocked on this file hears now.
                 self.documentClosed(tab, file: file, failuresBefore: failuresBefore)
+                // The file this window was on joins the recents list, and
+                // closing is the second of the only two ways a file stops being
+                // on screen. `Coordinator.boundURL`'s `didSet` records the
+                // other, a rebind; a window that opens a file and closes never
+                // rebinds, so without this the file it was showing is one Open
+                // Recent has never heard of.
                 Prefs.rememberRecent(tab.boundFile)
+                // The document slot goes with the window that held it. The slot
+                // is the setting a rename writes back to, and with the window
+                // gone there is nothing to write back for. It must not outlive
+                // the window: a document setting left standing is a file the
+                // app would open in preference to every note, on a launch with
+                // nothing recorded and on Back to My Notes.
                 if tab.bindingSlot == .document { Prefs.documentURL = nil }
                 self.windows.removeAll { $0 === tab }
                 tab.tearDown()
+                // The tab that went may have been the second-to-last of its
+                // bar, which then disappears and hands its row back to the page.
                 self.windows.forEach { $0.tabsChanged() }
                 self.releaseUnwatchedRoots()
                 self.recordOpenSetSoon()
@@ -1204,7 +1224,41 @@ final class WindowSet {
         next()
     }
 
-    /// Cmd+W on the last window, which hides rather than closes.
+    /// Whether `coordinator` is on the quick note: the scratchpad or the note
+    /// New Note last made, in a window that is not rooted at a folder. Whether
+    /// it is ALONE is the policy's question (`TabGroupPolicy`), so the rule
+    /// that a note sharing a tab bar closes like any document lives once.
+    private func isQuickNote(_ coordinator: Coordinator) -> Bool {
+        guard coordinator.explorerRoot == nil else { return false }
+        let file = coordinator.boundFile
+        return FileIdentity.sameFile(file, Prefs.scratchpadURL)
+            || Prefs.currentNoteURL.map { FileIdentity.sameFile(file, $0) } == true
+    }
+
+    /// The last window has closed. Put the quick note in its place, mounted
+    /// and hidden, which is the state a launch leaves the app in.
+    ///
+    /// There is always a window: the summon key, the menu-bar item, the Dock
+    /// icon and every command that acts on "the window in front" ask this set
+    /// for one, and an app with none would answer each of them with nothing.
+    ///
+    /// What happens to the focus follows the Dock setting, which is the
+    /// reader saying what kind of program this is (`WindowPolicy`). With a
+    /// Dock icon the app stays active with no window, as any document app
+    /// does when its last window closes. Without one the app has nothing left
+    /// on screen to be active for, so the reader goes back to what they were
+    /// in, as a dismissal does.
+    private func leaveQuickNote() {
+        let binding = Prefs.binding(enteringAt: .currentNote)
+        makeWindow(on: binding.url, slot: binding.slot).start()
+        summonActivation.disarm()
+        guard !Prefs.showInDock else { return }
+        hidePreferences?()
+        returnToPreviousApp()
+    }
+
+    /// Cmd+W on the quick note when it is the last window, which hides rather
+    /// than closes.
     ///
     /// For a file a shell is blocked on in `bwr --wait` the hide is not
     /// enough: a hide writes only with autosave on, and the shell is about to
@@ -1215,15 +1269,28 @@ final class WindowSet {
     private func closeLastWindow(_ coordinator: Coordinator) {
         let file = coordinator.boundFile
         guard waits.isWaiting(on: file.path) else {
-            dismissAll()
+            hideQuickNote()
             return
         }
         let failuresBefore = coordinator.writeFailures
         coordinator.settleForWaitingShell { [weak self] answer in
             guard let self, answer != .cancel else { return }
-            self.dismissAll()
+            self.hideQuickNote()
             self.documentClosed(coordinator, file: file, failuresBefore: failuresBefore)
         }
+    }
+
+    /// The quick note hiding as the last window. Where the focus goes follows
+    /// the Dock setting, for the reason `leaveQuickNote` gives: a last window
+    /// closing is one gesture whatever it held. Without a Dock icon it is a
+    /// dismissal, back to what the reader was in.
+    private func hideQuickNote() {
+        guard Prefs.showInDock else {
+            dismissAll()
+            return
+        }
+        summonActivation.disarm()
+        windows.forEach { $0.hide() }
     }
 
     // MARK: a shell waiting on a document
@@ -1499,6 +1566,13 @@ final class WindowSet {
                 // Now rather than on the next turn: this is the recording the
                 // next launch restores, and there is no next turn.
                 recordOpenSet()
+                // A quit the person made closes the windows when macOS says
+                // quitting does; one nobody made (an update, an installer, the
+                // session ending) keeps them (`OpenSet.launchPlan`, rule 0).
+                if OpenSet.quitClosesWindows(unattended: quitIsUnattended, sessionEnding: sessionIsEnding,
+                                             systemKeepsWindows: Prefs.systemQuitKeepsWindows) {
+                    Prefs.setQuitClosedWindows()
+                }
                 releaseHotkey()
                 // Every window has written what it is going to. A shell still
                 // waiting on any of them is told the app quit, which is not a
@@ -1548,8 +1622,20 @@ final class WindowSet {
     /// asking. On all of them: a sheet on the second window would wait just as
     /// forever as one on the first.
     func quitUnattended() {
+        quitIsUnattended = true
         windows.forEach { $0.quitIsUnattended = true }
     }
+
+    /// Whether the quit under way is one nobody made, which the next launch
+    /// reads as a reason to put the windows back.
+    private var quitIsUnattended = false
+
+    /// Whether the session is ending (log out, restart, shut down). That quit
+    /// is the system's, and macOS's own Reopen windows when logging back in
+    /// is what decides whether the app comes back at all; when it does, it
+    /// comes back with its windows, as every restoring app does.
+    private var sessionIsEnding = false
+    private var powerOffObserver: NSObjectProtocol?
 
     /// Every window dims and says what the update is doing, because the
     /// restart that ends this takes all of them, not only the one the offer
@@ -1684,6 +1770,13 @@ final class WindowSet {
         installTabChordMonitor()
         observeSystemAppearance()
         observeSpaceChanges()
+        // Posted before the terminate a log out, restart or shut down sends,
+        // which is the only thing that tells that quit from the person's own.
+        powerOffObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.willPowerOffNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.sessionIsEnding = true }
+        }
         if Measure.isEnabled { installDebugSignals() }
     }
 
