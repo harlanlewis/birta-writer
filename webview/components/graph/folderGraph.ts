@@ -58,6 +58,16 @@ export function analyzeFolder(index: FolderIndex): FolderAnalysis {
     return { degree, hubs, orphans, dangling: danglingList };
 }
 
+/**
+ * The note a view of the whole folder centres on when no note is open: the
+ * first of `analyzeFolder`'s hubs, so the overview's centre and the top of
+ * the whole-folder view's "Most connected" list are always the same note.
+ * Null when no note links to another.
+ */
+export function folderHub(index: FolderIndex): string | null {
+    return analyzeFolder(index).hubs[0] ?? null;
+}
+
 export interface FolderFilter {
     /** Only notes of these OKF types; null for every note. An untyped note is `""`. */
     types: ReadonlySet<string> | null;
