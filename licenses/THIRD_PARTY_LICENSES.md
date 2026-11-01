@@ -3468,7 +3468,7 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 </details>
 
-### dompurify@3.4.15
+### dompurify@3.4.17
 
 - License: Apache-2.0
 - Source: https://github.com/cure53/DOMPurify
@@ -4411,7 +4411,7 @@ SOFTWARE.
 
 </details>
 
-### katex@0.16.47
+### katex@0.18.11
 
 - License: MIT
 - Source: https://katex.org
