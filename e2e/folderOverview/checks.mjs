@@ -9,7 +9,10 @@
  * above the fold; focus lands on the first recent file; Escape closes it and
  * hands focus back to the editor; a dot and a row each close it and open their
  * note; a host with no recent files list shows no section for one; with the
- * folder graph off the command is reported idle and runs nothing.
+ * folder graph off the command is reported idle and runs nothing; and the
+ * Mac app's new folder tab, where the command arrives straight behind the init
+ * of an empty note that the index does not hold, opens the overview and
+ * Escape leaves a note that takes typing.
  */
 const OVERVIEW = ".fo-surface";
 
@@ -150,6 +153,29 @@ export async function run({ page, check, baseUrl }) {
     await page.waitForTimeout(300);
     const offOpened = await page.evaluate((sel) => !!document.querySelector(sel), OVERVIEW);
     check("and running it anyway opens nothing", !offOpened, String(offOpened));
+
+    // ── A new folder tab: the command right behind the init ──────────────
+    await page.goto(`${baseUrl}/index.html?newTab=1`);
+    await page.waitForSelector(`${OVERVIEW} .lg-node`, { timeout: 15000 });
+    await page.waitForTimeout(100);
+    const tab = await page.evaluate((sel) => ({
+        centre: document.querySelector(sel)?.querySelector(".lg-node--self")?.dataset.id ?? null,
+        overviews: document.querySelectorAll(sel).length,
+    }), OVERVIEW);
+    check("a command sent behind the init of a new tab opens one overview, on the folder's hub",
+        tab.centre === "index.md" && tab.overviews === 1, JSON.stringify(tab));
+    await page.keyboard.press("Escape");
+    const tabEscaped = await closed(page);
+    const tabFocused = await page.evaluate(() => !!document.activeElement?.closest(".ProseMirror"));
+    check("Escape leaves the blank note with the caret in it", tabEscaped && tabFocused,
+        JSON.stringify({ tabEscaped, tabFocused }));
+    const updatesBefore = await page.evaluate(() => window.__posted.filter((m) => m.type === "update").length);
+    check("an untouched new tab sends no content to write", updatesBefore === 0, `updates=${updatesBefore}`);
+    await page.keyboard.type("First line");
+    await page.waitForFunction(() => window.__posted.some((m) => m.type === "update" && m.content.includes("First line")),
+        null, { timeout: 3000 }).catch(() => {});
+    const typed = await page.evaluate(() => window.__posted.filter((m) => m.type === "update").at(-1)?.content ?? null);
+    check("the first keystrokes reach the host as the note's content", typed?.includes("First line") === true, JSON.stringify(typed));
 
     check("no page errors", errors.length === 0, JSON.stringify(errors));
 }

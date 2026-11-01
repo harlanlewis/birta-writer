@@ -45,6 +45,10 @@
 <script>
   const params = new URLSearchParams(location.search);
   const RECENTS = params.get("recents") !== "0";
+  // The Mac app's Cmd+T in a folder window (MAR-488): a note that is not
+  // written yet, so empty and not in the index, with the overview command
+  // sent straight behind the init, as the app sends it on the first ready.
+  const NEW_TAB = params.get("newTab") === "1";
   window.__i18n = {
     translations: {},
     isMac: true,
@@ -55,9 +59,12 @@
     host: { capabilities: ["toc", "projectFiles", "folderIndex", "contentMeasure"], arrangements: [], shortcuts: [] },
   };
   window.__posted = [];
-  const CONTENT = ["# Standup", "", "Body.", ""].join("\n");
+  const CONTENT = NEW_TAB ? "" : ["# Standup", "", "Body.", ""].join("\n");
 
   const SELF = "notes/standup.md";
+  // What the host says this document is in the index: nothing, for a note
+  // that is not on disk yet.
+  const INDEXED_SELF = NEW_TAB ? null : SELF;
   const HUB = "index.md";
   const note = (path, name, type = null) => ({ path, name, type, tags: [], status: null, trust: null, staleAfter: null });
   const edge = (from, to) => ({ from, to, target: to, kind: "wiki", text: to, line: 3 });
@@ -76,9 +83,10 @@
       window.__posted.push(msg);
       if (msg.type === "ready") {
         window.postMessage({ type: "init", content: CONTENT, frontmatter: "", syncVersion: 1 }, "*");
+        if (NEW_TAB) { window.postMessage({ type: "editorCommand", command: "showFolderOverview" }, "*"); }
       }
       if (msg.type === "requestFolderIndex") {
-        window.postMessage({ type: "folderIndex", index: window.__folderIndex, self: SELF }, "*");
+        window.postMessage({ type: "folderIndex", index: window.__folderIndex, self: INDEXED_SELF }, "*");
       }
       if (msg.type === "requestFolderRecents" && RECENTS) {
         window.postMessage({ type: "folderRecents", paths: window.__recents }, "*");

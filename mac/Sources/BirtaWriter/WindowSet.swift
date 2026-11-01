@@ -448,11 +448,11 @@ final class WindowSet {
             // that window, so it appears in the explorer beside the rest:
             // New Note in a folder window is a note in the folder.
             if let here = key, let root = here.explorerRoot {
-                let target = try Coordinator.makeNoteFile(in: root)
+                let target = try Coordinator.makeNoteFile(in: root, alsoTaken: boundByAWindow)
                 open(makeWindow(on: target, slot: nil, inGroupOf: here, explorerRoot: root))
                 return
             }
-            let target = try Coordinator.makeNoteFile()
+            let target = try Coordinator.makeNoteFile(alsoTaken: boundByAWindow)
             Prefs.currentNoteURL = target
             open(makeWindow(on: target, slot: .currentNote))
         } catch {
@@ -465,20 +465,30 @@ final class WindowSet {
     /// as a tab beside the one in `spawn`'s window (MAR-393).
     ///
     /// A tab is a window, so this is `newNote` with the window placed into
-    /// `spawn`'s tab group instead of cascaded off it. In a directory window
-    /// the note is made in the root and the tab shares the root, so it shows
-    /// up in the explorer beside the rest; the current-note slot stays with
-    /// the notes folder, because a note in somebody's project is not the
-    /// app's current note. Elsewhere the note takes the slot exactly as
+    /// `spawn`'s tab group instead of cascaded off it. Elsewhere than a
+    /// directory window the note takes the current-note slot exactly as
     /// Cmd+N's does; the two gestures differ in where the window goes and in
     /// nothing else.
+    ///
+    /// In a directory window the tab shares the root and opens on the Folder
+    /// Overview, over a note in the root that is NOT written yet (MAR-488).
+    /// A tab opened there is as often a way to go somewhere in the folder as
+    /// a place to write, and a dot or a recent file moves the tab to that
+    /// note; a file made up front would be an empty Untitled note left in
+    /// the folder for every tab used that way. So the tab is bound to a free
+    /// name and the first write with text in it makes the file
+    /// (`UnwrittenNote`); Escape leaves the blank note to type into. It takes
+    /// no slot, because a note in somebody's project is not the app's
+    /// current note.
     func newTab(in spawn: Coordinator) {
         do {
             if let root = spawn.explorerRoot {
-                let target = try Coordinator.makeNoteFile(in: root)
-                open(makeWindow(on: target, slot: nil, inGroupOf: spawn, explorerRoot: root))
+                let target = Coordinator.unusedNoteURL(in: root, alsoTaken: boundByAWindow)
+                let tab = makeWindow(on: target, slot: nil, inGroupOf: spawn, explorerRoot: root)
+                tab.awaitFirstText(openingOnOverview: true)
+                open(tab)
             } else {
-                let target = try Coordinator.makeNoteFile()
+                let target = try Coordinator.makeNoteFile(alsoTaken: boundByAWindow)
                 Prefs.currentNoteURL = target
                 open(makeWindow(on: target, slot: .currentNote, inGroupOf: spawn))
             }
@@ -488,12 +498,20 @@ final class WindowSet {
         }
     }
 
+    /// Whether an open window is bound to `url`, file or no file. A new note
+    /// asks this as well as the disk, because a new tab of a folder window is
+    /// bound to a name before anything is written there (`newTab`), and a
+    /// second note given that name would be a second buffer over its path.
+    private func boundByAWindow(_ url: URL) -> Bool {
+        windows.contains { FileIdentity.sameFile($0.boundFile, url) }
+    }
+
     /// The explorer's New Note in a folder: a note made in `folder`, as a tab
     /// beside `spawn`. `newTab(in:)` with the folder chosen rather than the
     /// root, and the same reasoning about the slot.
     func newNote(in folder: URL, beside spawn: Coordinator) {
         do {
-            let target = try Coordinator.makeNoteFile(in: folder)
+            let target = try Coordinator.makeNoteFile(in: folder, alsoTaken: boundByAWindow)
             open(makeWindow(on: target, slot: nil, inGroupOf: spawn, explorerRoot: spawn.explorerRoot))
         } catch {
             NSLog("Birta Writer: could not make a new note: \(error)")
@@ -779,7 +797,7 @@ final class WindowSet {
             return found
         }
         do {
-            return try Coordinator.makeNoteFile(in: root)
+            return try Coordinator.makeNoteFile(in: root, alsoTaken: boundByAWindow)
         } catch {
             NSLog("Birta Writer: could not make a note in \(root.path): \(error)")
             return nil
@@ -1203,7 +1221,10 @@ final class WindowSet {
                 // other, a rebind; a window that opens a file and closes never
                 // rebinds, so without this the file it was showing is one Open
                 // Recent has never heard of.
-                Prefs.rememberRecent(tab.boundFile)
+                //
+                // Not a note that was never written: there is no file to go
+                // back to (`Coordinator.boundURL`'s `didSet` says the same).
+                if !tab.awaitsFirstText { Prefs.rememberRecent(tab.boundFile) }
                 // The document slot goes with the window that held it. The slot
                 // is the setting a rename writes back to, and with the window
                 // gone there is nothing to write back for. It must not outlive

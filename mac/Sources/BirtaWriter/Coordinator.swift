@@ -1105,7 +1105,37 @@ final class Coordinator {
     /// Read alongside a live `fileExists` to tell a DELETION from a note that
     /// has never been written. Set by a successful read and by a successful
     /// write; cleared with the binding, since it is a fact about one path.
-    private var everSeenOnDisk = false
+    ///
+    /// Seeing the note on disk, by any route (this window's write, a read, a
+    /// file somebody else put at the name), also ends `awaitsFirstText`: the
+    /// folder holds a file with this name now, whatever made it.
+    private var everSeenOnDisk = false {
+        didSet { if everSeenOnDisk { awaitsFirstText = false } }
+    }
+
+    /// Whether this window's note has never been written and is waiting for
+    /// its first text before a file is made for it: a new tab of a folder
+    /// window (`WindowSet.newTab`, `UnwrittenNote`). Until then every write
+    /// the app makes on its own is refused while the buffer is blank, so a
+    /// tab used only to navigate leaves nothing in the folder.
+    ///
+    /// Cleared once the note is on disk (`everSeenOnDisk`), which the first
+    /// write with text in it or a save somebody asked for puts it, and by
+    /// rebinding, since it is a fact about one path.
+    private(set) var awaitsFirstText = false
+
+    /// Whether the page this window loads next opens on the Folder Overview,
+    /// spent by the first page to come up warm. A remount after a
+    /// content-process death is not the gesture that asked for it.
+    private var opensOnFolderOverview = false
+
+    /// Bind this window as a note nobody has written yet, and, when asked,
+    /// open its first page on the Folder Overview: Cmd+T in a folder window
+    /// (MAR-488). Before the page is served, so the first `ready` finds it.
+    func awaitFirstText(openingOnOverview: Bool) {
+        awaitsFirstText = true
+        opensOnFolderOverview = openingOnOverview
+    }
 
     /// Where the bound file went when it was trashed, so it can be put back.
     ///
@@ -1182,8 +1212,15 @@ final class Coordinator {
             // Nothing is lost by waiting. The file you have not left yet is
             // the one on screen, which is the one thing Open Recent is not
             // for, and it joins the list the moment you go anywhere else.
-            Prefs.rememberRecent(oldValue)
+            //
+            // Not a note that was never written: there is no file to go back
+            // to, and Open Recent only draws files that exist, so it would
+            // spend a place in the list on nothing.
+            if !awaitsFirstText { Prefs.rememberRecent(oldValue) }
             Prefs.rememberRecent(boundURL)
+            // Both facts are about the path being left.
+            awaitsFirstText = false
+            opensOnFolderOverview = false
             // The watcher follows the binding, or it goes on reporting moves
             // of a file the panel is no longer editing and misses the one it
             // is. `noteMovedOnDisk` rebinds and re-watches in one step, so it
@@ -1304,7 +1341,12 @@ final class Coordinator {
     /// text: `openInPlace` keeps whatever exists nowhere else in a recovered
     /// file beside the old one before it rebinds (`keepTextNothingElseHolds`).
     /// A buffer the Trash holds every byte of needs no such copy.
-    var isVacant: Bool { noteMissing }
+    ///
+    /// A note nobody has written yet, with nothing in it, is vacant too: it
+    /// was never on disk, so leaving it costs nothing (`UnwrittenNote`).
+    var isVacant: Bool {
+        UnwrittenNote.isVacant(noteMissing: noteMissing, awaitingText: awaitsFirstText, buffer: latest)
+    }
 
     /// Take `url` over in this window, in place of the file it is on.
     ///
@@ -2493,6 +2535,14 @@ final class Coordinator {
             // and which of its files this is. After `initDoc`, so the editor
             // is on the paint path and the tree settles in behind it.
             sendProjectRoot()
+            // Cmd+T in a folder window opens its tab on the Folder Overview
+            // (MAR-488). The page's own command, sent the way View > Folder
+            // Overview sends it, so the host declares nothing new; once, so a
+            // remount does not put the overview back over a note in use.
+            if opensOnFolderOverview {
+                opensOnFolderOverview = false
+                host.send(.editorCommand("showFolderOverview"))
+            }
             // And the commands the page can run here, for the app's palette;
             // asked rather than volunteered, so a host with no palette is
             // never sent the list.
@@ -3268,6 +3318,13 @@ final class Coordinator {
             // decide whether to rescue a note that was deleted underneath us:
             // a buffer nobody edited is still the only copy of one of those.
             guard isEdited else { keep(.save); return }
+            // Nor for a note nobody has written that holds nothing: there is
+            // no file and the buffer is blank, so Save could write nothing
+            // and Don't Save could lose nothing.
+            guard UnwrittenNote.mayWrite(awaitingText: awaitsFirstText, buffer: latest) else {
+                keep(.save)
+                return
+            }
             guard !quitIsUnattended else {
                 writeLatest("decideFinalWrite")
                 keep(.save)
@@ -3613,7 +3670,11 @@ final class Coordinator {
     /// write can end up waiting for the disk: a tick that finds this window's
     /// previous write still in flight goes ahead rather than standing on the
     /// main thread for it (`reconcileWithDisk`'s `mayWait`).
-    private func writeLatest(_ reason: StaticString, waiting: Bool = true) {
+    ///
+    /// `asked` is whether somebody asked for this write (a save), which is
+    /// the one write allowed to make a never-written note's file with nothing
+    /// in it (`UnwrittenNote.mayWrite`).
+    private func writeLatest(_ reason: StaticString, waiting: Bool = true, asked: Bool = false) {
         // `noteMissing` alongside `hasLoaded`, and both are about the same
         // thing: a path this write would create rather than update.
         // Every attempt, with the four facts that decide it, for
@@ -3632,6 +3693,14 @@ final class Coordinator {
         // the iCloud switch would leave an empty note in iCloud Drive and
         // another in Documents.
         guard hasLoaded, !noteMissing, !isWelcoming else { return }
+        // A note nobody has written yet gets its file from the first write
+        // with text in it, not from a hide, a close, a quit or a tab moving on
+        // (MAR-488). Traced for the reason the line above is: "no file" is
+        // equally what a write that was never attempted leaves.
+        guard asked || UnwrittenNote.mayWrite(awaitingText: awaitsFirstText, buffer: latest) else {
+            if measure.enabled { measure.trace("writeheld unwritten at=\(boundURL.lastPathComponent)") }
+            return
+        }
         // A file presenter only hears about COORDINATED changes, which Finder
         // makes and `rm` in a terminal does not, so a delete can reach this
         // point unannounced. `AtomicFile.write` would then recreate the file
@@ -3691,7 +3760,7 @@ final class Coordinator {
         switch AutosavePolicy.action(for: trigger, autosaveEnabled: autosave) {
         case .now:
             cancelPendingAutosave()
-            writeLatest("write")
+            writeLatest("write", asked: trigger == .explicitSave)
         case .deferred:
             scheduleAutosave()
         case .skip:
@@ -4016,15 +4085,20 @@ final class Coordinator {
     /// window, and this window, when the missing-note screen's Discard has
     /// nowhere left to write. Throwing rather than reporting, so each caller
     /// puts the message where its own gesture was made.
-    static func makeNoteFile() throws -> URL {
-        try makeNoteFile(in: Prefs.notesDirectory)
+    static func makeNoteFile(alsoTaken: (URL) -> Bool = { _ in false }) throws -> URL {
+        try makeNoteFile(in: Prefs.notesDirectory, alsoTaken: alsoTaken)
     }
 
     /// The same note, in a folder the caller names: a directory window's root,
     /// where New Note and New Tab make their notes (MAR-457).
-    static func makeNoteFile(in directory: URL) throws -> URL {
+    ///
+    /// `alsoTaken` names a path as in use although nothing is on disk there:
+    /// a note an open tab is bound to that has not been written yet
+    /// (`WindowSet.boundByAWindow`). Making a file there would put a second
+    /// buffer over that tab's path before its first write.
+    static func makeNoteFile(in directory: URL, alsoTaken: (URL) -> Bool = { _ in false }) throws -> URL {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let target = Coordinator.unusedNoteURL(in: directory)
+        let target = Coordinator.unusedNoteURL(in: directory, alsoTaken: alsoTaken)
         try AtomicFile.writeString("", to: target)
         // The folder may have just been made, here or by the write. Its mark
         // is a file inside it, so a folder that was deleted and recreated has
@@ -4855,17 +4929,19 @@ final class Coordinator {
     /// does. It also guarantees a usable name from any template at all, which
     /// is what lets this stay a pure naming question: a format somebody is
     /// halfway through typing must never be able to stop a new note.
-    static func unusedNoteURL(in directory: URL) -> URL {
+    static func unusedNoteURL(in directory: URL, alsoTaken: (URL) -> Bool = { _ in false }) -> URL {
         let parts = NoteNameTemplate.parts(Prefs.newNoteNameTemplate)
-        return unusedURL(in: directory, stem: parts.stem, extension: parts.ext)
+        return unusedURL(in: directory, stem: parts.stem, extension: parts.ext, alsoTaken: alsoTaken)
     }
 
     /// `stem.ext` in `directory`, with a number appended until nothing is
     /// there. Shared so a new note and a rescued one number the same way.
-    static func unusedURL(in directory: URL, stem: String, extension ext: String) -> URL {
+    /// `alsoTaken` counts a path as occupied although no file is there yet.
+    static func unusedURL(in directory: URL, stem: String, extension ext: String,
+                          alsoTaken: (URL) -> Bool = { _ in false }) -> URL {
         var candidate = directory.appendingPathComponent("\(stem).\(ext)")
         var n = 2
-        while FileManager.default.fileExists(atPath: candidate.path) {
+        while FileManager.default.fileExists(atPath: candidate.path) || alsoTaken(candidate) {
             candidate = directory.appendingPathComponent("\(stem) \(n).\(ext)")
             n += 1
         }
