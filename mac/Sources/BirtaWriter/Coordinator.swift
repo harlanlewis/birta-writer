@@ -5556,6 +5556,124 @@ final class Coordinator {
         }
     }
 
+    // MARK: Append to Note
+
+    /// File > Append to Note…: add this note's body to the end of a file the
+    /// reader picks, under a timestamped heading (`NoteAppend` decides the
+    /// bytes). The note itself is left exactly as it is, the way Save a Copy
+    /// As leaves it: the append is a copy of the note going somewhere, not
+    /// the note moving.
+    ///
+    /// `openTabs` is every window the app has, asked when the answer lands.
+    /// A file already open in one of them is appended to THROUGH that tab's
+    /// buffer (`receiveAppend`), never behind it: a write to the file under a
+    /// tab holding its own copy is two buffers over one path, and whichever
+    /// writes second loses the other's bytes, which is the loss
+    /// `OpenRouting` already refuses by fronting an open tab.
+    func appendToNote(openTabs: @escaping () -> [Coordinator]) {
+        NSApp.activate(ignoringOtherApps: true)
+        flushThen { [weak self] in
+            guard let self else { return }
+            let chooser = NSOpenPanel()
+            chooser.title = "Append to Note"
+            chooser.prompt = "Append"
+            chooser.message = "This note is added to the end of the file you choose, under the date and time."
+            chooser.allowedContentTypes = DocumentTypes.openedContentTypes
+            chooser.allowsMultipleSelection = false
+            chooser.canChooseDirectories = false
+            chooser.directoryURL = self.boundURL.deletingLastPathComponent()
+            let respond: (NSApplication.ModalResponse) -> Void = { [weak self] resp in
+                guard resp == .OK, let url = chooser.url, let self else { return }
+                // The picker's grant is what makes the write legal under the
+                // store's sandbox, and it is live only now.
+                SandboxAccess.remember(url)
+                // `latest` read now rather than when the sheet opened, as
+                // Save a Copy As does.
+                self.appendToFile(self.latest, to: url, openTabs: openTabs())
+            }
+            if self.panel.isVisible {
+                chooser.beginSheetModal(for: self.panel, completionHandler: respond)
+            } else {
+                respond(chooser.runModal())
+            }
+        }
+    }
+
+    private func appendToFile(_ note: String, to url: URL, openTabs: [Coordinator]) {
+        let name = url.lastPathComponent
+        guard NoteAppend.body(of: note) != nil else {
+            flashStatus("Nothing to append: this note has no text under its metadata.")
+            return
+        }
+        let heading = NoteAppend.heading(for: Date())
+        let windows = openTabs.map { NoteAppend.Window(file: $0.boundFile, holdsBuffer: $0.holdsAppendableBuffer) }
+        switch NoteAppend.destination(target: url, source: boundURL, windows: windows) {
+        case .thisNote:
+            flashStatus("That is this note. Choose another file to append it to.")
+            return
+        case let .tab(index):
+            openTabs[index].receiveAppend(note, heading: heading, to: url) { [weak self] saved in
+                switch saved {
+                case true?: self?.flashStatus("Appended to \(name).")
+                case false?: self?.flashStatus("Appended to \(name), which is open in another tab and not saved yet.")
+                case nil: self?.flashStatus("Nothing was appended to \(name): its tab could not take it. Try again.")
+                }
+            }
+            return
+        case .file:
+            break
+        }
+        // Not open, or open in a tab that holds no copy of it yet (one that
+        // reads the file when its page loads): the file is the only copy.
+        // Appended to the bytes as read, never to a decoded and re-encoded
+        // string, so the target is left exactly as it was.
+        do {
+            let data = try Data(contentsOf: url)
+            guard let text = String(data: data, encoding: .utf8) else {
+                flashStatus("\(name) is not UTF-8 text, so nothing was appended.")
+                return
+            }
+            guard let suffix = NoteAppend.suffix(after: text, note: note, heading: heading) else { return }
+            try AtomicFile.write(data + Data(suffix.utf8), to: url)
+        } catch {
+            NSAlert(error: error).runModal()
+            return
+        }
+        flashStatus("Appended to \(name).")
+    }
+
+    /// Whether this window holds the copy of its file that matters, so an
+    /// append has to go into it. False for a window whose page will read the
+    /// file when it loads, whose note is missing, or whose read failed.
+    private var holdsAppendableBuffer: Bool { hasLoaded && !reloadFromDisk && !noteMissing }
+
+    /// Another window is appending a note to this window's file. It goes into
+    /// the buffer and onto the page, after the page's own unflushed typing,
+    /// and is then written the way an edit is: soon with autosave on, and
+    /// left as an unsaved change with it off, since the reader's setting says
+    /// nothing reaches this file until they save it. `done` says which, or
+    /// nil when the tab stopped holding `url` while its page flushed: the
+    /// flush is a round trip, and the tab can be rebound to another file
+    /// before it lands, whose buffer this must not be composed onto.
+    private func receiveAppend(_ note: String, heading: String, to url: URL,
+                       done: @escaping (_ written: Bool?) -> Void) {
+        flushThen(persisting: false) { [weak self] in
+            guard let self else { return }
+            guard self.holdsAppendableBuffer, FileIdentity.sameFile(self.boundURL, url),
+                  let next = NoteAppend.compose(target: self.latest, note: note, heading: heading) else {
+                done(nil)
+                return
+            }
+            self.latest = next
+            self.isEdited = true
+            if self.state == .warm {
+                self.pushDocument(next, syncVersion: self.guardState.bumpVersion())
+            }
+            self.write(.edit)
+            done(AutosavePolicy.action(for: .edit, autosaveEnabled: Prefs.autosave) != .skip)
+        }
+    }
+
     /// Run an editor command in the page: the one path every command row in
     /// `AppMenu` reaches, whether it was picked from a menu or fired by its key
     /// equivalent, which AppKit takes before the page sees the keydown.

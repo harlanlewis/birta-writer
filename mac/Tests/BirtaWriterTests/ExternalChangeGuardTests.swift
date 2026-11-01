@@ -89,6 +89,10 @@ final class ExternalChangeGuardTests: XCTestCase {
         "makeNoteFile",           // a new note, at a path nothing is bound to yet
         "relocateActiveFile",     // a rename with no file to move yet, at the new path
         "saveAs",                 // Save As writes a copy and leaves the binding alone
+        // Append to Note, to a file no window holds a copy of: one that does
+        // goes through that window's buffer (`NoteAppend.destination`), and
+        // this window's own file is refused as a target.
+        "appendToFile",
     ]
     private static let writesTheBoundFile: Set<String> = [
         "seedFirstRunNote",       // the tour, over the empty scratchpad on a first run

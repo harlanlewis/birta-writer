@@ -984,6 +984,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding, 
         Prefs.recentDocuments = []
     }
     @objc func menuSaveAs() { front?.saveAs() }
+    /// Every window is handed over, asked when the picker answers, so a file
+    /// already open in a tab is appended to through that tab (`appendToNote`).
+    @objc func menuAppendToNote() { front?.appendToNote { [windows] in windows.windows } }
     @objc func menuMoveToTrash() { front?.moveBoundFileToTrash() }
     @objc func revealLastSave() { front?.revealLastSave() }
     @objc func menuRevealInFinder() { front?.revealBoundFile() }
@@ -1686,7 +1689,7 @@ extension AppDelegate: NSMenuDelegate, NSMenuItemValidation {
             return false
         }
         switch action {
-        case #selector(copyEverything), #selector(menuSaveAs), #selector(shareNote):
+        case #selector(copyEverything), #selector(menuSaveAs), #selector(menuAppendToNote), #selector(shareNote):
             return front?.hasContent ?? false
         case #selector(revealLastSave):
             return front?.lastSavedURL != nil
@@ -1718,7 +1721,7 @@ extension AppDelegate: NSMenuDelegate, NSMenuItemValidation {
     private static let documentCommands: Set<Selector> = [
         #selector(menuNewNote), #selector(menuNewTab), #selector(menuOpenDocument),
         #selector(menuOpenMenu(_:)), #selector(menuOpenRecent(_:)), #selector(menuOpenRecentDocument(_:)),
-        #selector(menuSaveNow), #selector(menuSaveAs), #selector(menuMoveToTrash),
+        #selector(menuSaveNow), #selector(menuSaveAs), #selector(menuAppendToNote), #selector(menuMoveToTrash),
         #selector(menuRevealInFinder), #selector(menuCopyPath),
         #selector(copyEverything), #selector(shareNote), #selector(revealLastSave),
         #selector(menuBackToNotes), #selector(menuRunEditorCommand(_:)),

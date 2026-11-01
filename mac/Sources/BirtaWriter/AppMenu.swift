@@ -453,6 +453,12 @@ enum AppMenu {
               action: .app(#selector(AppDelegate.menuSaveNow)), menu: .file),
         .init(title: "Save a Copy As…", key: "s", modifiers: [.command, .shift],
               action: .app(#selector(AppDelegate.menuSaveAs)), menu: .file),
+        // The note added to the end of another file, under a timestamped
+        // heading: an inbox or a daily note as a log (MAR-381). No chord; the
+        // palette reaches it by name.
+        .init(title: "Append to Note…",
+              action: .app(#selector(AppDelegate.menuAppendToNote)), menu: .file,
+              aliases: ["Append to File", "Add to Note", "Add to Inbox"]),
         // Where this window's file is: the Finder's two answers, with the
         // chords VS Code gives the same pair on a Mac.
         .init(title: "Reveal in Finder", key: "r", modifiers: [.command, .option],

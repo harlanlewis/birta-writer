@@ -297,6 +297,7 @@ final class AppMenuTests: XCTestCase {
     func testTheFileMenuShouldOpenRecentThroughASubmenuOfItsOwn() {
         let file = build(.file)
         XCTAssertEqual(titles(of: file), ["New Note", "New Tab", "Open…", "Open Recent", "Go to File…", "Save", "Save a Copy As…",
+                                        "Append to Note…",
                                         "-", "Reveal in Finder", "Copy Path", "Move to Trash…",
                                         "-", "Back to My Notes",
                                         "-", "Copy Everything", "Share…", "Reveal Last Save in Finder"])
