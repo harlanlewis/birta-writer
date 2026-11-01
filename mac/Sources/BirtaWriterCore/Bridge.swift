@@ -164,6 +164,9 @@ public enum WebviewMessage: Equatable {
     /// request subscribes the page: the host answers with `folderIndex` now
     /// and again whenever the root changes, until the page is gone.
     case requestFolderIndex
+    /// Ask which files under this window's root were opened most recently,
+    /// for the folder overview (MAR-488). Answered once, with `folderRecents`.
+    case requestFolderRecents
     /// A segment of the path bar was clicked, by the absolute path the host
     /// handed it in `pathBar`. The host shows that folder (or selects that
     /// file) in the Finder, and refuses a path its own bar did not draw.
@@ -358,6 +361,7 @@ public enum WebviewMessage: Equatable {
         case "openProjectFile":
             return str("path").map { .openProjectFile(path: $0, newTab: bool("newTab") ?? false, line: int("line")) } ?? .other(type: type)
         case "requestFolderIndex": return .requestFolderIndex
+        case "requestFolderRecents": return .requestFolderRecents
         case "revealPath": return str("path").map { .revealPath($0) } ?? .other(type: type)
         case "pathBarMenu":
             guard let raw = dict["segments"] as? [[String: Any]],
@@ -553,6 +557,9 @@ public enum HostMessage: Equatable {
     /// file sits in it (`self`, root-relative). A nil index is a window with
     /// no folder; a nil `self` is a file the index does not hold.
     case folderIndex(FolderIndex?, self: String?)
+    /// The answer to `requestFolderRecents`: files under the root,
+    /// root-relative, most recent first (`DirectoryListing.recentPaths`).
+    case folderRecents(paths: [String])
     /// The hidden-files setting moved, from this window's row or another's.
     case fileExplorerConfig(showHidden: Bool)
     /// The least the docked explorer may be, in CSS pixels: wide enough for
@@ -729,6 +736,8 @@ public enum HostMessage: Equatable {
             return ["type": "directoryChanged", "paths": paths]
         case let .folderIndex(index, selfPath):
             return ["type": "folderIndex", "index": index?.jsonObject ?? NSNull(), "self": selfPath ?? NSNull()]
+        case let .folderRecents(paths):
+            return ["type": "folderRecents", "paths": paths]
         case let .fileExplorerConfig(showHidden):
             return ["type": "fileExplorerConfig", "showHidden": showHidden]
         case let .fileExplorerFloor(width):

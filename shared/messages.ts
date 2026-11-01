@@ -511,6 +511,12 @@ export type ToExtensionMessage =
     // `folderIndex`, now and again whenever the folder changes under it, until
     // the page is gone: one request subscribes this page.
     | { type: "requestFolderIndex" }
+    // Ask, once per opening of the folder overview, which files in this
+    // document's folder were opened most recently. A host that keeps a recent
+    // files list answers `folderRecents`; one that keeps none (VS Code, whose
+    // own recents are its own) need not answer, and the overview then draws
+    // no recent files section at all rather than an empty one.
+    | { type: "requestFolderRecents" }
     // ── A tooltip the page cannot draw, under `stripTooltip` ──
     // The chip belongs against its control, and for a control in the bar's
     // first row that is inside the strip the host paints over the page (the
@@ -1077,6 +1083,10 @@ export type ToWebviewMessage =
     // index; a null `self` is a document outside the index (past its cap, or
     // not a note the walk reads).
     | { type: "folderIndex"; index: FolderIndex | null; self: string | null }
+    // The answer to `requestFolderRecents`: files under the same root the
+    // index walks, root-relative and POSIX-separated, most recent first.
+    // Sent only when asked, so it is never stale by more than one opening.
+    | { type: "folderRecents"; paths: string[] }
     // A host with a palette of its own asks what the page can run here; the
     // page answers with `paletteCommands` now and again after every later
     // change to the list. Ask once, after `init`.

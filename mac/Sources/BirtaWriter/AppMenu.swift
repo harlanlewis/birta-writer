@@ -753,6 +753,11 @@ enum AppMenu {
               action: .app(#selector(AppDelegate.menuTogglePathBar)), menu: .view, group: 3,
               state: .title(.pathBar, whenOn: "Hide Path Bar"),
               aliases: ["File Path", "Breadcrumbs"]),
+        // The folder overview (MAR-488): the page's command, over the page.
+        // Dimmed rather than withdrawn in a window on a loose file, which the
+        // page reports as having nothing to act on (`idleCommands`).
+        .init(title: "Folder Overview",
+              action: .command("showFolderOverview"), menu: .view, group: 3),
 
         .init(title: "Proofreading", action: .submenu, menu: .view, group: 4,
               // Not gated on itself: the disclosure that holds the gate has to

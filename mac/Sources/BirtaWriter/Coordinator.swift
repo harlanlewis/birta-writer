@@ -2720,6 +2720,12 @@ final class Coordinator {
         case .requestFolderIndex:
             folderIndexSubscribed = true
             onFolderIndexRequest?()
+        case .requestFolderRecents:
+            // The Open Recent list, cut to this window's root. A window with
+            // no root has no folder to list, and its page never asks.
+            guard let explorerRoot else { break }
+            host.send(.folderRecents(paths: DirectoryListing.recentPaths(
+                in: explorerRoot, recents: Prefs.recentDocuments, accepts: DocumentTypes.accepts)))
         case let .projectFileMenu(path, kind, x, y):
             showProjectFileMenu(relative: path, kind: kind, x: x, y: y)
         case let .stripTooltip(tooltip):

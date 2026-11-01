@@ -636,6 +636,11 @@
                 "category": "Birta Writer"
             },
             {
+                "command": "birta.editor.showFolderOverview",
+                "title": "%command.editor.showFolderOverview.title%",
+                "category": "Birta Writer"
+            },
+            {
                 "command": "birta.editor.toggleFileExplorer",
                 "title": "%command.editor.toggleFileExplorer.title%",
                 "category": "Birta Writer"
@@ -1410,6 +1415,10 @@
                 },
                 {
                     "command": "birta.editor.focusReviewSidebar",
+                    "when": "activeCustomEditorId == 'birta.editor'"
+                },
+                {
+                    "command": "birta.editor.showFolderOverview",
                     "when": "activeCustomEditorId == 'birta.editor'"
                 },
                 {
