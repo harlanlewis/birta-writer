@@ -19,6 +19,7 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ### Changed
 
+- In a folder window, Cmd+T opens the new tab on the Folder Overview. Click a note to open it in that tab, or press Escape to start writing a new one. The new note is only saved to the folder once you type in it, so a tab you use just to jump to another note leaves no empty Untitled file behind.
 - A file opened from outside every open folder (from the Finder, Open With, a Dock drop or Open Recent) now opens in a window of its own by default, instead of a tab beside the window in front. Files inside a folder that is open in Birta Writer for Mac still open as a tab of that folder's window. To get tabs back, set Settings > General > Open files in to New tab; a choice you already made is kept.
 
 ---
