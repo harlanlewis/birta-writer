@@ -81,6 +81,26 @@ final class NoteAppendTests: XCTestCase {
                        "\(heading)\n\nNote\n")
     }
 
+    /// A target with nothing in it but a byte-order mark or white space has
+    /// nothing to be separated from either, so it opens with the heading as
+    /// an empty one does. Its bytes stay, the mark included, and the heading
+    /// starts the line after them.
+    func testATargetWithNoTextShouldOpenWithTheHeadingAndKeepItsBytes() {
+        let cases: [(target: String, expected: String)] = [
+            ("\u{FEFF}", "\u{FEFF}\(heading)\n\nNote\n"),
+            ("\n", "\n\(heading)\n\nNote\n"),
+            ("\n\n\n", "\n\n\n\(heading)\n\nNote\n"),
+            ("  \n \t\n", "  \n \t\n\(heading)\n\nNote\n"),
+            ("   ", "   \n\(heading)\n\nNote\n"),
+            ("\u{FEFF}\n", "\u{FEFF}\n\(heading)\n\nNote\n"),
+            ("\r\n", "\r\n\(heading)\r\n\r\nNote\r\n"),
+        ]
+        for c in cases {
+            XCTAssertEqual(NoteAppend.compose(target: c.target, note: "Note", heading: heading), c.expected,
+                           c.target.debugDescription)
+        }
+    }
+
     func testAByteOrderMarkShouldStayWhereItWas() {
         let target = "\u{FEFF}Inbox\n"
         let out = NoteAppend.compose(target: target, note: "Note", heading: heading)
