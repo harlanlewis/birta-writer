@@ -989,9 +989,10 @@ export type ToWebviewMessage =
     | { type: "syntaxSetsChanged"; sets: readonly SyntaxSet[] }
     // What the HOST provides changed while the page was up: the whole
     // capability list as it now stands, replacing the one the page booted
-    // with (shared/hostProfile.ts). The Mac app sends it when /ai is switched
-    // on or off, which is the one capability a user moves; a host that never
-    // moves one never sends this and nothing about the page changes.
+    // with (shared/hostProfile.ts). For a host whose user can switch its agent
+    // on and off, which is the one capability that moves; a host that never
+    // moves one never sends this and nothing about the page changes. No
+    // shipped host sends it today.
     //
     // The list, never a delta, for the reason the boot declaration is a list:
     // the profile is what the host IS, so a message carrying one capability

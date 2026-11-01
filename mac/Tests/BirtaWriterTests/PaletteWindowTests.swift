@@ -217,7 +217,7 @@ final class PaletteWindowTests: XCTestCase {
     func testSettingsShouldBeOneGroupPerPaneNamedAsTheWindowNamesThem() {
         let catalog = realCatalog()
         let groups = catalog.items.filter { $0.section == PaletteSources.settingsSection }
-        XCTAssertEqual(groups.map(\.title), ["General", "Markdown", "Appearance", "AI Agent", "Advanced"])
+        XCTAssertEqual(groups.map(\.title), ["General", "Markdown", "Appearance", "Advanced"])
         XCTAssertEqual(groups.map(\.title), SettingsWindowController.paneTitles,
                        "the groups say what the window's toolbar says, in its order")
         XCTAssertEqual(PaletteSources.settingsPanes.count, SettingsWindowController.paneNames.count,

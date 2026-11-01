@@ -5,8 +5,8 @@ import XCTest
 ///
 /// The mirroring is the point rather than the coverage: two ports of one rule
 /// agree today and drift the first time a case is added to one of them, and
-/// what makes that visible is that the suites read the same. `AgentRequestTests`
-/// and `AgentReferenceTests` are the same arrangement.
+/// what makes that visible is that the suites read the same.
+/// `AgentReferenceTests` is the same arrangement.
 final class ProofreadFilterTests: XCTestCase {
     /// The span of `target` in `text`, in the page's own units.
     private func span(_ text: String, _ target: String) -> (Int, Int) {

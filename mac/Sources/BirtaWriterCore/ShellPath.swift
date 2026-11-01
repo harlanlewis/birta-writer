@@ -4,11 +4,10 @@ import Foundation
 ///
 /// The problem this exists for: a GUI application launched by the Finder or
 /// the Dock inherits `launchd`'s `PATH`, which is `/usr/bin:/bin:/usr/sbin:/sbin`
-/// and nothing else. Every agent CLI the AI Agent pane offers installs
-/// somewhere else, so `/ai` and its Test button report a tool the person uses
-/// daily as not installed. The pane's own promise is the standard to meet:
-/// it says the tool must be "runnable from Terminal", so what a command gets
-/// has to be what Terminal would have given it.
+/// and nothing else. The terminal command's row asks whether the directory
+/// it links `bwr` into is on the person's `PATH`, and asked against
+/// `launchd`'s it would say no for nearly everybody whose Terminal says yes.
+/// So the `PATH` read has to be the one Terminal would have given them.
 ///
 /// Asking the shell is the only way to know. A list of likely directories
 /// (`~/.local/bin`, `/opt/homebrew/bin`, and whatever is next) is a guess that
@@ -92,8 +91,8 @@ public enum ShellPath {
     /// by having fewer places to look.
     ///
     /// Empty segments are dropped. A trailing colon in `PATH` means the
-    /// current directory on some shells, and the current directory of an
-    /// agent run is the person's note folder.
+    /// current directory on some shells, which says nothing about where a
+    /// command is installed.
     public static func childPath(resolved: String?, inherited: String?) -> String? {
         let entries = [resolved, inherited]
             .compactMap { $0 }

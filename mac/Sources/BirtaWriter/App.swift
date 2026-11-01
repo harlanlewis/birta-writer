@@ -188,16 +188,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding, 
         // First, and off the main thread. Running somebody's login shell to
         // find out where their tools are takes as long as their startup files
         // take, and the alternative to paying for it now is paying for it in
-        // front of a person who has just asked for an agent.
+        // front of a person who has just opened Settings.
         //
-        // Only where something can ask: the agent and the terminal command's
-        // PATH check are the two readers, and a channel that offers neither
-        // would run somebody's whole startup for nothing. A late reader still
-        // gets an answer, because `value()` starts the shell itself.
-        let distribution = Distribution.current
-        if distribution.offersAgent || distribution.offersTerminalCommand {
+        // Only where something can ask: the terminal command's PATH check is
+        // the one reader, and a channel that does not offer the command would
+        // run somebody's whole startup for nothing. A late reader still gets
+        // an answer, because `value()` starts the shell itself.
+        if Distribution.current.offersTerminalCommand {
             LoginShellPath.shared.prewarm()
         }
+        Prefs.forgetRetiredKeys()
         // Before ANYTHING reads a stored path: the notes-move offer below, the
         // windows a launch puts back, the recents. On the store channel each
         // of those is unreadable until its grant is renewed; elsewhere this
@@ -1482,7 +1482,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding, 
             wasDeclined: !UpdatePolicy.shouldOffer(tag: staged.tag,
                                                    declined: Prefs.updateDeclinedTag),
             offerOnScreen: offering,
-            workInFlight: windows.windows.contains(where: \.hasAgentRunInFlight),
             attendance: UpdatePolicy.Attendance(
                 appIsActive: NSApp.isActive,
                 hasUnwrittenBytes: windows.windows.contains(where: \.hasUnwrittenBytes),
@@ -1576,9 +1575,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding, 
                 refusedSummonCombo: { [weak self] in self?.windows.refusedSummonCombo },
                 onChange: { [weak self] work in self?.front?.preferencesChanged(beforeReload: work) },
                 onChangeEverywhere: { [weak self] in self?.windows.preferencesChangedEverywhere() },
-                onHostCapabilitiesChange: { [weak self] in
-                    self?.windows.applyHostCapabilitiesEverywhere()
-                },
                 onReset: { [weak self] in self?.windows.settingsWereReset() },
                 onShowWelcome: { [weak self] in self?.showWelcome() },
                 onCheckForUpdates: { [weak self] in self?.menuCheckForUpdates() },

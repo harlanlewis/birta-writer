@@ -3,7 +3,7 @@
  *
  * Swift cannot import TypeScript, so `mac/Sources/BirtaWriterCore/SyntaxSets.swift`
  * restates `shared/syntaxSets.ts` and the `syntax` field on `EDITOR_COMMANDS`.
- * The same family as `ProofreadFilter`, `AgentRequest` and `StyleCategories`,
+ * The same family as `ProofreadFilter`, `AgentReference` and `StyleCategories`,
  * and the same failure mode: two copies that agree today and drift the day one
  * of them gains a target, with nothing to say so.
  *

@@ -41,13 +41,8 @@ export BIRTA_MAC_SCRATCHPAD="$NOTE"
 export BIRTA_MAC_DEFAULTS_SUITE="com.birtalabs.birta-writer.external-change.$$"
 LOG="$(mktemp -t mac-external-change)"
 printf 'first line\n' > "$NOTE"
-# An agent the arms below can stand in for: the command runs in the note's
-# folder, so what "the agent" does is whatever agent.sh says at the time, and
-# each arm writes its own. Written before the launch, because the page is told
-# at boot whether the host has an agent at all, and `/ai` is withdrawn without
-# it; and after the trap is armed, so a write that fails leaves no plist
-# behind with nothing to remove it. `end_app` tolerates an empty PID, which
-# is what the trap sees if the launch itself is what fails.
+# `end_app` tolerates an empty PID, which is what the trap sees if the launch
+# itself is what fails.
 #
 # SIGTERM through the app's own handler, never SIGKILL, which orphans WebKit's
 # helpers. The ONE exit trap: a second `trap ... EXIT` replaces this one.
@@ -59,8 +54,6 @@ end_app() {
     PID=""
 }
 trap 'end_app; rm -rf "$DIR"; defaults delete "$BIRTA_MAC_DEFAULTS_SUITE" >/dev/null 2>&1 || true; rm -f "$HOME/Library/Preferences/$BIRTA_MAC_DEFAULTS_SUITE.plist"; rm -f "$LOG"' EXIT
-defaults write "$BIRTA_MAC_DEFAULTS_SUITE" agentEnabled -bool YES
-defaults write "$BIRTA_MAC_DEFAULTS_SUITE" agentCommand -string 'sh agent.sh {prompt}'
 BIRTA_MAC_MEASURE=1 "$APP" 2>"$LOG" &
 PID=$!
 
@@ -80,29 +73,6 @@ wait_for() { # wait_for <mark> <timeout-s>
 post() { # post <json>: hand the running app one debug message
     printf '%s' "$1" > "$DIR/.debug-message.json"
     kill -URG "$PID"
-}
-wait_for_file() { # wait_for_file <path> <timeout-s>: a marker a stand-in agent leaves
-    local n=0
-    while [ ! -e "$1" ]; do
-        sleep 0.1; n=$((n+1))
-        if [ $n -gt $(( $2 * 10 )) ]; then echo "timeout waiting for $1" >&2; cat "$LOG" >&2; exit 1; fi
-    done
-}
-# Start one `/ai` run whose agent is agent.sh, through the page's own command
-# so the page registers the run and merges its landing, exactly as the slash
-# menu's row does. Returns once the agent has started; a run that never starts
-# is an arm measuring nothing, so that is a stop rather than a failure.
-start_run() { # start_run <agent.sh body>
-    printf '%s\n' "$1" > "$DIR/agent.sh"
-    rm -f "$DIR/run-started" "$DIR/run-ended"
-    post '{"type":"editorCommand","command":"askAgent","args":{"prompt":"wait"}}'
-    wait_for_file "$DIR/run-started" 15
-}
-expect_no_question_since() { # expect_no_question_since <asked-before> <what>
-    checks=$((checks + 1))
-    if [ "$(traces "diskdrift asked")" -gt "$1" ]; then
-        fail "$2: the question was put"
-    fi
 }
 # SIGUSR1 is a toggle, not a direction; `show` marks `visible` and `hide`
 # marks nothing, so the direction a toggle went is read back rather than
@@ -251,143 +221,6 @@ if [ "$(stat -f %i "$NOTE")" != "$before_ino" ]; then
     fail "a summon and a hide over an unchanged file replaced it (new inode)"
 fi
 
-echo "an /ai run's own write, with nothing typed meanwhile"
-# The run edits the bound file at this window's request, so its write is not
-# somebody else's change: a finished run takes the file into a panel that
-# holds nothing the run has not seen, and no question is put (MAR-478).
-asked_before=$(traces "diskdrift asked")
-start_run 'touch run-started
-sleep 1
-printf "%s\nagent wrote this\n" "$(cat Note.md)" > Note.md
-sleep 2
-touch run-ended'
-wait_for_file "$DIR/run-ended" 15; sleep 3
-post '{"type":"__birtaSaveNow"}'; sleep 1.5
-checks=$((checks + 1))
-case "$(cat "$NOTE")" in
-    *"agent wrote this"*) ;;
-    *) fail "the run's own write did not land: '$(cat "$NOTE")'" ;;
-esac
-expect_no_question_since "$asked_before" "a run's own landing is not somebody else's change"
-
-echo "an /ai run's own write, with typing during the run"
-# The same run, with a sentence typed after the agent has written. The
-# agent's `printf >` reaches no presenter (the header above), so the first
-# look at the disk after it is whichever comes first: the typing's autosave,
-# which finds a dirty buffer and refuses the write (a conflict), or a look
-# with the buffer still clean, which takes the file (a re-read). Either is
-# the write being NOTICED, which is what the old guard withheld: it did not
-# look, so the typing's autosave wrote the buffer over the agent's file.
-# Whichever way, the file keeps the agent's text and the landing folds the
-# typing into it. The panel is up for this arm and the next: a question
-# needs a window to be put on, so "no question in the middle of a run" is
-# only a claim about the run when the window is there to ask it, and up
-# BEFORE the run, so the summon's own look is not what this arm counts.
-show_panel
-asked_before=$(traces "diskdrift asked")
-noticed_before=$(( $(traces "diskdrift conflict") + $(traces "diskdrift reread") ))
-start_run 'touch run-started
-sleep 1
-printf "%s\nagent wrote this too\n" "$(cat Note.md)" > Note.md
-sleep 6
-touch run-ended'
-sleep 2.5
-checks=$((checks + 1))
-case "$(cat "$NOTE")" in
-    *"agent wrote this too"*) ;;
-    *) fail "the stand-in agent's write never reached the file, so this arm measures nothing" ;;
-esac
-post '{"type":"__testInsertText","text":"typed while the agent worked "}'; sleep 1.5
-checks=$((checks + 1))
-case "$(cat "$NOTE")" in
-    *"agent wrote this too"*) ;;
-    *) fail "typing during a run autosaved over the run's own write: '$(cat "$NOTE")'" ;;
-esac
-# Noticed is either verdict: the buffer is clean when the agent writes, so the
-# app usually re-reads before the typing lands (the agent's text is then what
-# the typing goes into), and refuses only when the typing got there first.
-checks=$((checks + 1))
-noticed=$(( $(traces "diskdrift conflict") + $(traces "diskdrift reread") ))
-if [ "$noticed" -le "$noticed_before" ]; then
-    fail "the run's write was not noticed under the typing: no reread and no conflict"
-    grep -E "^birta-trace (writeattempt|diskdrift)" "$LOG" | tail -12 | sed 's/^/    /' >&2
-fi
-expect_no_question_since "$asked_before" "no question in the middle of a run"
-wait_for_file "$DIR/run-ended" 15; sleep 3
-checks=$((checks + 1))
-case "$(cat "$NOTE")" in
-    *"agent wrote this too"*"typed while the agent worked"*|*"typed while the agent worked"*"agent wrote this too"*) ;;
-    *) fail "the landing did not fold the agent's text around the typing: '$(cat "$NOTE")'"; ls -l "$DIR" >&2 ;;
-esac
-expect_no_question_since "$asked_before" "the landing itself put no question"
-
-echo "a third program's change during an /ai run"
-# The case MAR-478 is the record of: while a run is in flight, a change made by
-# something that is NOT the run. The app cannot tell the two apart, and it
-# does not need to: the write is refused on the same terms as any file that
-# moved, and the landing brings the change in the way it brings the agent's.
-# Nothing the run does here touches the file, so every byte that moves is the
-# outside writer's. The change goes at the TOP of the file while the typing
-# lands at the caret, which the arms above have left at the end: two edits to
-# the same lines are the overlap the rescue copy exists for, and that case is
-# the page's merge tests' to hold; this arm is about a change that folds in.
-asked_before=$(traces "diskdrift asked")
-conflicts_before=$(traces "diskdrift conflict")
-start_run 'touch run-started
-sleep 7
-touch run-ended'
-sleep 0.5
-base="$(cat "$NOTE")"
-printf 'changed by a third program\n%s\n' "$base" > "$NOTE"
-post '{"type":"__testInsertText","text":"typed during the run "}'; sleep 1.5
-expect_bytes "changed by a third program"$'\n'"$base" "an edited buffer does not autosave over a third program's change while a run is in flight"
-expect_trace "diskdrift conflict" $((conflicts_before + 1)) "the third program's change was noticed during the run"
-expect_no_question_since "$asked_before" "no question in the middle of a run"
-wait_for_file "$DIR/run-ended" 15; sleep 3
-checks=$((checks + 1))
-case "$(cat "$NOTE")" in
-    *"changed by a third program"*"typed during the run"*|*"typed during the run"*"changed by a third program"*) ;;
-    *) fail "the landing did not keep the third program's change beside the typing: '$(cat "$NOTE")'"; ls -l "$DIR" >&2 ;;
-esac
-expect_no_question_since "$asked_before" "the landing of a third program's change put no question"
-
-echo "an /ai run asked for over an unanswered outside change"
-# The run writes the note before it starts, and that write is refused on the
-# same terms as any other over a file that moved. A run that started anyway
-# would open a file the panel does not hold: nothing typed meanwhile, and the
-# landing reads the agent's version over the panel's edits (MAR-490). So the
-# refusal ends the run before the agent is ever started, and the question the
-# typing's own autosave already put is the one to answer. The panel is up,
-# from the arm above, so that question has a window to be on.
-asked_before=$(traces "diskdrift asked")
-refused_before=$(traces "agent refused")
-printf 'changed before a run\n' > "$NOTE"
-post '{"type":"__testInsertText","text":"typed before the run "}'; sleep 1.5
-printf 'touch run-started\nprintf "agent wrote over it\\n" > Note.md\ntouch run-ended\n' > "$DIR/agent.sh"
-rm -f "$DIR/run-started" "$DIR/run-ended"
-post '{"type":"editorCommand","command":"askAgent","args":{"prompt":"wait"}}'; sleep 3
-expect_trace "agent refused" $((refused_before + 1)) "the run was refused rather than started"
-checks=$((checks + 1))
-if [ -e "$DIR/run-started" ]; then
-    fail "the agent was started over an unanswered outside change"
-fi
-expect_bytes "changed before a run" "the refused pre-run save wrote nothing"
-# Whichever write met the conflict first, the typing's autosave or the run's
-# own save, the question is up by now.
-expect_trace "diskdrift asked" $((asked_before + 1)) "the question the refusal answers to was put"
-post '{"type":"__birtaAnswerDiskDrift","answer":"keep"}'; sleep 1.5
-checks=$((checks + 1))
-case "$(cat "$NOTE")" in
-    *"typed before the run"*) ;;
-    *) fail "Keep My Changes after the refusal did not write the panel: '$(cat "$NOTE")'" ;;
-esac
-# Answered, the same request goes through: the refusal is the question's,
-# not the run's.
-start_run 'touch run-started
-touch run-ended'
-wait_for_file "$DIR/run-ended" 15; sleep 3
-hide_panel
-
 echo "a window that goes before anybody answers"
 # The question needs somebody there, and quitting is when there is nobody. The
 # buffer goes beside the file rather than over it, which is the same answer the
@@ -442,7 +275,7 @@ echo
 # stops running takes its assertions with it and leaves a green line with a
 # smaller number in it, which nobody reads as a failure. Raise this when arms
 # are added; a drop is the thing it exists to catch.
-EXPECTED_CHECKS=41
+EXPECTED_CHECKS=23
 if [ "$checks" -lt "$EXPECTED_CHECKS" ]; then
     echo "check-external-change: only $checks checks ran, expected at least $EXPECTED_CHECKS." >&2
     echo "  An arm stopped running. Nothing below its own assertions was measured." >&2

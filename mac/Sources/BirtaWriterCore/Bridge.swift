@@ -76,28 +76,6 @@ public enum WebviewMessage: Equatable {
     /// `linkTargetPicked` as a note-relative path, or null when cancelled.
     case pickLinkTarget(id: String)
     case openHostPreferences
-    /// `/ai`: the request typed after the pill, with the id the page will
-    /// match every `agentRun` report against.
-    case askAgent(prompt: String?, requestId: String?, model: String?, effort: String?, skill: String?)
-    /// Cancel a run, from a click on its gutter marker. The wire name is
-    /// `agentCancel`, which is what `notifyAgentCancel` posts; a case
-    /// spelled anything else is a case nothing ever reaches.
-    case agentCancel(requestId: String)
-    /// What the page's merge did with a finished run: `applied`, `partial`,
-    /// `conflict` or `unchanged`. The app acts on it because `partial` and
-    /// `conflict` leave the agent's version only in the file, and the app's
-    /// autosave is about to write the buffer over it (`AgentRescuePolicy`).
-    case agentMergeResult(requestId: String, outcome: String)
-    /// A file the `/ai-advanced` composer is attaching, on its way to a path
-    /// the agent can read. `bytes` is base64: unlike `uploadImage`, which uses
-    /// the `$bytes` wrapper, the panel encodes this one itself and sends a
-    /// plain string (`shared/messages.ts`).
-    ///
-    /// The app MUST answer, and answering is not optional politeness: the composer
-    /// disables Send while any attachment is unresolved, so a request that
-    /// never comes back leaves the panel unable to send anything at all, the
-    /// typed prompt included.
-    case agentAttachment(id: String, name: String, bytes: Data)
     case clipboardWrite(format: String, data: String)
     /// The selection palette's button: put a reference to where the caret is,
     /// and the selected lines, on the clipboard. Answered by asking the page
@@ -290,25 +268,6 @@ public enum WebviewMessage: Equatable {
             guard let id = str("id"), let path = str("path") else { return .other(type: type) }
             return .resolveLinkTarget(id: id, path: path, wiki: bool("wiki") ?? false)
         case "openHostPreferences": return .openHostPreferences
-        case "askAgent", "askAgentAdvanced":
-            // `skill` is carried although this host declares no `agentSkills`
-            // (it scans no folder), so a host that grows the scan changes
-            // nothing here; the page never sends one until then.
-            return .askAgent(prompt: str("prompt"), requestId: str("requestId"),
-                             model: str("model"), effort: str("effort"), skill: str("skill"))
-        case "agentCancel":
-            return str("requestId").map { .agentCancel(requestId: $0) } ?? .other(type: type)
-        case "agentMergeResult":
-            guard let id = str("requestId"), let outcome = str("outcome") else { return .other(type: type) }
-            return .agentMergeResult(requestId: id, outcome: outcome)
-        case "agentAttachment":
-            // A missing or undecodable payload is answered rather than
-            // dropped: `agentAttachmentSaved` with a null path is what tells
-            // the panel to mark the chip failed and re-enable Send.
-            guard let id = str("id") else { return .other(type: type) }
-            return .agentAttachment(id: id,
-                                    name: str("name") ?? "",
-                                    bytes: str("bytes").flatMap { Data(base64Encoded: $0) } ?? Data())
         case "clipboardWrite":
             guard let f = str("format"), let d = str("data") else { return .other(type: type) }
             return .clipboardWrite(format: f, data: d)
@@ -487,10 +446,6 @@ public enum HostMessage: Equatable {
     case unfurlResult(id: String, url: String, title: String?)
     /// Reply to `resolveEmbedMeta`.
     case embedMetaResult(id: String, url: String, title: String?)
-    /// Reply to `agentAttachment`: where the bytes went, or nil when they
-    /// could not be written. Nil is a real answer; the panel marks that chip
-    /// failed and stops waiting on it.
-    case agentAttachmentSaved(id: String, path: String?)
     /// Reply to `lintBlocks`, carrying the request's own `id` so a slow answer
     /// that a newer request has already superseded is dropped by the page
     /// rather than drawn over fresher text.
@@ -583,24 +538,6 @@ public enum HostMessage: Equatable {
     /// Ask the page which editor commands it can run here, answered with
     /// `paletteCommands`. A host that never asks is never sent the list.
     case requestPaletteCommands
-    /// What this host provides now, replacing the list the page booted with
-    /// (`HOST_PROFILES.mac` in shared/hostProfile.ts, filtered in
-    /// `Prefs.bootConfig`).
-    ///
-    /// One capability moves while a page is up, and it is the only reason
-    /// this exists: Settings, AI Agent, Enable /ai commands. Before it, that
-    /// switch RELOADED the page, which flushed the buffer and rebuilt the
-    /// editor under whoever was looking at it in order to add or remove two
-    /// menu rows. The list, never a delta, because the list is what a host
-    /// declares.
-    case hostCapabilitiesChanged([String])
-    /// One report about an `/ai` run. `status` drives the gutter marker the
-    /// page already draws for the extension.
-    case agentRun(requestId: String, status: String, harness: String?, text: String?, message: String?)
-    /// One short line of what a live `/ai` run is doing, for the corner notice
-    /// the page draws while it works. Advisory and transient: nothing is
-    /// persisted, and the page drops a line for a run it has already settled.
-    case agentProgress(requestId: String, line: String)
     /// Ask the page to draw a tooltip for a control the SHELL draws, or to
     /// take one away (`text` nil).
     ///
@@ -658,14 +595,6 @@ public enum HostMessage: Equatable {
             return ["type": "scrollToLine", "line": line]
         case let .lineOffsetUpdate(lineOffset):
             return ["type": "lineMapUpdate", "lineOffset": lineOffset]
-        case let .agentRun(requestId, status, harness, text, message):
-            var o: [String: Any] = ["type": "agentRun", "requestId": requestId, "status": status]
-            if let harness { o["harness"] = harness }
-            if let text { o["text"] = text }
-            if let message { o["message"] = message }
-            return o
-        case let .agentProgress(requestId, line):
-            return ["type": "agentProgress", "requestId": requestId, "line": line]
         case let .lintResults(id, results):
             return ["type": "lintResults", "id": id, "results": results.map(\.json)]
         case let .flushSave(id):
@@ -689,8 +618,6 @@ public enum HostMessage: Equatable {
             return ["type": "unfurlResult", "id": id, "url": url, "title": title ?? NSNull()]
         case let .embedMetaResult(id, url, title):
             return ["type": "embedMetaResult", "id": id, "url": url, "title": title ?? NSNull()]
-        case let .agentAttachmentSaved(id, path):
-            return ["type": "agentAttachmentSaved", "id": id, "path": path ?? NSNull()]
         case let .toolbarConfig(json):
             let config = (json.data(using: .utf8).flatMap { try? JSONSerialization.jsonObject(with: $0) } as? [String: Any]) ?? [:]
             return ["type": "toolbarConfig", "config": config]
@@ -750,8 +677,6 @@ public enum HostMessage: Equatable {
             return ["type": "pathBar", "segments": segments.map { $0.map(\.jsonObject) } ?? NSNull()]
         case .requestPaletteCommands:
             return ["type": "requestPaletteCommands"]
-        case let .hostCapabilitiesChanged(capabilities):
-            return ["type": "hostCapabilitiesChanged", "capabilities": capabilities]
         case let .editorCommand(command, arg):
             var row: [String: Any] = ["type": "editorCommand", "command": command]
             // Omitted rather than sent as null, the way every other optional

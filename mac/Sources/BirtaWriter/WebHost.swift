@@ -152,12 +152,13 @@ final class BirtaSchemeHandler: NSObject, WKURLSchemeHandler {
     /// for the save pipeline's verifying reparse (webview/utils/verifyOracle.ts
     /// says why it is a Blob and not a file under dist/).
     ///
-    /// Two grants here have no counterpart in the extension's policy and both
-    /// are local. `blob:` on `img-src` is the agent panel's attachment
-    /// thumbnail, which is an object URL over a file the user just dropped;
-    /// `'self'` on `connect-src` and `media-src` is this page's own origin,
-    /// where the extension leaves both to `default-src 'none'`. Neither
-    /// reaches the network, which is what makes "the same reach" a claim about
+    /// `blob:` on `img-src` is the extension's grant too: every declared
+    /// `img-src` grants the same schemes (`cspDirectives.test.ts`), so the one
+    /// page draws the same pictures on both surfaces. One grant here has no
+    /// counterpart in the extension's policy, and it is local: `'self'` on
+    /// `connect-src` and `media-src` is this page's own origin, where the
+    /// extension leaves both to `default-src 'none'`. It does not reach the
+    /// network, which is what makes "the same reach" a claim about
     /// remote hosts rather than about the whole policy.
     ///
     /// The network opt-in widens exactly two directives, and only to the

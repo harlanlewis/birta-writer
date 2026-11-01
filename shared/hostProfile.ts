@@ -127,8 +127,8 @@ export type HostCapability =
      * is what the composer's skill picker lists (`agentSkills` in
      * shared/messages.ts, sent with `agentCapabilities`).
      *
-     * Separate from `agent` because they are two host facts: the Mac app
-     * runs an agent and scans no skill folder, so it declares the first and
+     * Separate from `agent` because they are two host facts: a host can run
+     * an agent and scan no skill folder, and then it declares the first and
      * not this, and the page draws no picker there rather than one that
      * opens onto nothing. A skill picked here is a prefix on the composed
      * line, so the capability names the enumeration only.
@@ -268,11 +268,11 @@ export const APP_ONLY_CAPABILITIES: readonly HostCapability[] = ["appPreferences
  *
  * Almost none can. A profile is what the surface IS, so it is settled before
  * the page exists and the page is free to bake decisions on it. `agent` is the
- * exception, and it is one because a user moves it: Settings, AI Agent, Enable
- * /ai commands is a switch, and the host provides an agent or does not
- * according to it. The page used to be reloaded for that, which tore the
- * editor down and rebuilt it under whoever was looking at it in order to move
- * two menu rows.
+ * exception, and it is one because a user can move it: a host whose agent is
+ * behind a switch of its own provides one or does not according to it, and
+ * the alternative to this message is a reload, which tears the editor down
+ * and rebuilds it under whoever is looking at it in order to move two menu
+ * rows. No shipped host sends it today (docs/HOSTING.md has the contract).
  *
  * The constraint on membership, and the reason this is a list rather than a
  * sentence in a comment: a toolbar ITEM gated on a capability is built once,
@@ -292,7 +292,7 @@ export const HOST_PROFILES = {
     // and the e2e mac page restate this list as a literal, because neither
     // Swift nor an HTML bootstrap can import it. They are not free to drift:
     // shared/__tests__/hostProfile.test.ts parses both and fails.
-    mac: ["spellAndGrammar", "imageUpload", "toc", "contentMeasure", "appPreferences", "agent", "projectFiles", "folderIndex", "stripTooltip"] as readonly HostCapability[],
+    mac: ["spellAndGrammar", "imageUpload", "toc", "contentMeasure", "appPreferences", "projectFiles", "folderIndex", "stripTooltip"] as readonly HostCapability[],
 } as const satisfies Record<string, readonly HostCapability[]>;
 
 /**

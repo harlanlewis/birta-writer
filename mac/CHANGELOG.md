@@ -22,6 +22,10 @@ Versions are shared. Both files are stamped with the same release version, and a
 - In a folder window, Cmd+T opens the new tab on the Folder Overview. Click a note to open it in that tab, or press Escape to start writing a new one. The new note is only saved to the folder once you type in it, so a tab you use just to jump to another note leaves no empty Untitled file behind.
 - A file opened from outside every open folder (from the Finder, Open With, a Dock drop or Open Recent) now opens in a window of its own by default, instead of a tab beside the window in front. Files inside a folder that is open in Birta Writer for Mac still open as a tab of that folder's window. To get tabs back, set Settings > General > Open files in to New tab; a choice you already made is kept.
 
+### Removed
+
+- Breaking: Birta Writer for Mac no longer runs `/ai`. The slash command, Ask Agent and Ask Agent (advanced) in the Command Palette, and the Settings > AI Agent tab are gone, so the app never starts an agent CLI. To hand a note to an agent you run yourself, select text and use Copy Reference for AI Agent on the selection palette, then paste it into the agent. `/ai` in Birta Writer for VS Code is unchanged.
+
 ### Fixed
 
 - With saving off in Birta Writer for Mac, the last few characters typed just before clicking another file in the folder explorer could be lost, because the tab moved to the new file without counting them as unsaved. The tab now opens the file beside it instead, as it does for any unsaved text. With saving on, nothing was lost.

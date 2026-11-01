@@ -2,14 +2,11 @@ import Foundation
 
 /// Which channel delivered this build of Birta Writer, so the copy the Mac
 /// App Store installs and the copy downloaded from the project can be one
-/// program with the five differences the store's sandbox forces.
+/// program with the four differences the store's sandbox forces.
 ///
 /// The App Store build runs inside the App Sandbox, and the sandbox is what
 /// takes each of these away rather than a decision made here:
 ///
-///   - `/ai`, because it hands a prompt to a command on the user's own PATH,
-///     and a sandboxed process cannot run one with the access that command
-///     needs,
 ///   - the terminal command, because `bwr` is a symlink the app writes into
 ///     `~/.local/bin`, outside the container, pointing at a binary that then
 ///     runs outside the sandbox,
@@ -25,9 +22,9 @@ import Foundation
 ///
 /// Read from the sandbox at runtime rather than set by a compile flag, for
 /// the reason `AppFlavor` reads the bundle id: the sandbox is what forbids
-/// each of the five, so deriving the answers from it means the distribution
+/// each of the four, so deriving the answers from it means the distribution
 /// and its consequences cannot disagree. A flag can, and a flag that said
-/// "direct" on a sandboxed build would offer five things that then fail.
+/// "direct" on a sandboxed build would offer four things that then fail.
 /// macOS puts the container id in the environment of every sandboxed
 /// process, which is also how `NSHomeDirectory()` learns where home moved to.
 ///
@@ -41,11 +38,9 @@ import Foundation
 /// which it is not. The host profile (`shared/hostProfile.ts`) says what the
 /// SURFACE is; `AppFlavor` says which INSTALL this is; a `Prefs` row says
 /// what the person CHOSE. A distribution says what the channel's rules take
-/// away, and it reaches the page only through the profile's own filter:
-/// `/ai` is the `agent` capability, which `Prefs.bootConfig` already
-/// withdraws when this host provides no agent, and under the store it never
-/// does. So the page has no profile for the store and needs none;
-/// `Preferences.agentAvailable` is where the two meet.
+/// away, and none of the four reaches the page: each is a Settings row, a
+/// menu item or a part of the app's own chrome. So the page has no profile
+/// for the store and needs none.
 public enum Distribution: String, CaseIterable, Sendable {
     /// Downloaded from the project: the GitHub Release, `update.sh`, a local
     /// build. Not sandboxed, and able to do everything the app does.
@@ -56,7 +51,7 @@ public enum Distribution: String, CaseIterable, Sendable {
     /// The variable macOS sets in a sandboxed process's environment. Held as
     /// a constant so `shared/__tests__/distribution.test.ts` can check the
     /// spelling: a typo here is a store build that never learns it is one,
-    /// and offers five things the sandbox then refuses.
+    /// and offers four things the sandbox then refuses.
     public static let sandboxContainerVariable = "APP_SANDBOX_CONTAINER_ID"
 
     /// Whether `environment` is a sandboxed process's. Presence is the test
@@ -73,11 +68,6 @@ public enum Distribution: String, CaseIterable, Sendable {
 
     /// This process's distribution.
     public static let current = forSandbox(isSandboxed(ProcessInfo.processInfo.environment))
-
-    /// Whether `/ai` can be offered at all. Composed into
-    /// `AgentAvailability.isAvailable` beside the switch and the command, so
-    /// the row and the capability keep agreeing.
-    public var offersAgent: Bool { self == .direct }
 
     /// Whether Settings may put `bwr` on the PATH.
     public var offersTerminalCommand: Bool { self == .direct }
@@ -116,7 +106,6 @@ public enum Distribution: String, CaseIterable, Sendable {
     /// through here once, so a cut is one line in this switch.
     public func offers(_ row: SettingsRow) -> Bool {
         switch row {
-        case .agentEnabled, .agentCommand: return offersAgent
         case .commandLine, .commandName: return offersTerminalCommand
         case .autoUpdate: return updatesItself
         case .storeInICloud: return readsICloudDrive

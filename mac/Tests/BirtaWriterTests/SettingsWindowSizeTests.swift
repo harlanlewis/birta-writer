@@ -82,7 +82,7 @@ final class SettingsWindowSizeTests: XCTestCase {
     func testADeclaredGroupIntroShouldBeDrawnOnItsPane() {
         let controller = makeController()
         defer { controller.window?.close() }
-        controller.selectTabForTesting("aiAgent")
+        controller.selectTabForTesting("markdown")
         guard let content = controller.window?.contentView else {
             return XCTFail("the settings window has no content view")
         }
@@ -90,15 +90,15 @@ final class SettingsWindowSizeTests: XCTestCase {
 
         // Every paragraph, not the first: an intro is a list now, and reading
         // only its head would let the rest stop being drawn with this green.
-        let declared = SettingsForm.aiAgent.intro
-        XCTAssertFalse(declared.isEmpty, "the AI Agent pane declares no intro to check")
+        let declared = SettingsForm.markdown.intro
+        XCTAssertFalse(declared.isEmpty, "the Markdown pane declares no intro to check")
         for paragraph in declared {
             XCTAssertNotNil(field(in: content, saying: paragraph),
-                            "a declared intro paragraph is not drawn on the AI Agent pane")
+                            "a declared intro paragraph is not drawn on the Markdown pane")
         }
         guard let intro = declared.first,
               let field = field(in: content, saying: intro) else {
-            return XCTFail("the declared intro is not drawn on the AI Agent pane")
+            return XCTFail("the declared intro is not drawn on the Markdown pane")
         }
         // It is prose, so it takes more than one line. A single line would
         // mean it was drawn truncated rather than wrapped, which is the one

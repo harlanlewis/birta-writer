@@ -11,8 +11,8 @@
  * run any of them, and the alternative to a seam is porting each one to Swift
  * by hand: a second copy of the questions, their order, their validation and
  * their cancel semantics, drifting from the first as either side changes.
- * `AgentRequest.swift` and `AgentReference.swift` are the two such ports that
- * already exist, and their headers exist to name where the two have diverged.
+ * `AgentReference.swift` is one such port, and its header exists to name where
+ * the two have diverged.
  *
  * What crosses the wire is the STEP, one at a time, never the flow. Batching
  * would be fewer round trips and would lose the two things the flows actually

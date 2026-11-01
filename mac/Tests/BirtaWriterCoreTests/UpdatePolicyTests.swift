@@ -276,7 +276,6 @@ final class UpdatePolicyTests: XCTestCase {
                                        autoUpdate: true,
                                        wasDeclined: false,
                                        offerOnScreen: false,
-                                       workInFlight: false,
                                        attendance: away)
     }
 
@@ -300,7 +299,6 @@ final class UpdatePolicyTests: XCTestCase {
             ("the setting off", { $0.autoUpdate = false }),
             ("the version declined", { $0.wasDeclined = true }),
             ("the offer on screen", { $0.offerOnScreen = true }),
-            ("work in flight", { $0.workInFlight = true }),
             ("unwritten bytes", { $0.attendance.hasUnwrittenBytes = true }),
             ("in front and just typed", { $0.attendance.appIsActive = true }),
         ]

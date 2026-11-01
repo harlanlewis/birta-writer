@@ -7,8 +7,8 @@ import Foundation
 /// their validation rule and the composed report are all the page's, so a
 /// second flow moving onto the seam adds a definition there and no Swift here.
 /// That is the whole reason the seam exists, and it is what tells this apart
-/// from `AgentRequest.swift` and `AgentReference.swift`, which are ports of
-/// behaviour and carry headers naming where the two copies have diverged.
+/// from `AgentReference.swift`, which is a port of behaviour and carries a
+/// header naming where the two copies have diverged.
 ///
 /// Parsing is strict, and a step that does not parse is not a step. A sheet
 /// drawn from half a request would ask a question the page did not write, and

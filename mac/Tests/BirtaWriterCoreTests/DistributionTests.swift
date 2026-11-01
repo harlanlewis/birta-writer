@@ -33,7 +33,6 @@ final class DistributionTests: XCTestCase {
         XCTAssertEqual(Distribution.allCases.count, 2)
         for distribution in Distribution.allCases {
             let direct = distribution == .direct
-            XCTAssertEqual(distribution.offersAgent, direct, distribution.rawValue)
             XCTAssertEqual(distribution.offersTerminalCommand, direct, distribution.rawValue)
             XCTAssertEqual(distribution.updatesItself, direct, distribution.rawValue)
             XCTAssertEqual(distribution.readsInstalledEditorThemes, direct, distribution.rawValue)
@@ -57,12 +56,11 @@ final class DistributionTests: XCTestCase {
     }
 
     /// The rows a store build omits, enumerated from the type: every row is
-    /// asked, and exactly these six are taken away. A row added later is
+    /// asked, and exactly these four are taken away. A row added later is
     /// offered everywhere until somebody decides otherwise here.
     func testAStoreBuildShouldOmitExactlyTheRowsItsSandboxTakesAway() {
         let omitted = SettingsRow.allCases.filter { !Distribution.appStore.offers($0) }
-        XCTAssertEqual(Set(omitted), [.agentEnabled, .agentCommand, .commandLine, .commandName, .autoUpdate,
-                                      .storeInICloud])
+        XCTAssertEqual(Set(omitted), [.commandLine, .commandName, .autoUpdate, .storeInICloud])
         XCTAssertTrue(SettingsRow.allCases.allSatisfy(Distribution.direct.offers))
     }
 
@@ -75,8 +73,11 @@ final class DistributionTests: XCTestCase {
             XCTAssertTrue(store.groups.allSatisfy { !$0.rows.isEmpty }, "a store pane drew an empty card")
             XCTAssertTrue(SettingsForm.rows(of: store).allSatisfy(Distribution.appStore.offers))
         }
-        // The pane that holds nothing else: its tab goes with its rows.
-        XCTAssertTrue(Distribution.appStore.offered(SettingsForm.aiAgent).groups.isEmpty)
+        // A pane holding nothing the channel offers is left with no cards,
+        // which is what takes its tab away. No shipped pane is one today, so
+        // the case is built here rather than found.
+        let onlyTakenAway = SettingsPane(groups: [SettingsGroup(rows: [.autoUpdate, .storeInICloud])])
+        XCTAssertTrue(Distribution.appStore.offered(onlyTakenAway).groups.isEmpty)
         // And the rest of Advanced survives.
         XCTAssertEqual(SettingsForm.rows(of: Distribution.appStore.offered(SettingsForm.advanced(showsWelcomeScreen: true))),
                        [.resetSettings, .welcomeScreen])

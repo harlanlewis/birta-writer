@@ -44,7 +44,6 @@ enum Prefs {
         case viewState
         case saveAsDirectory
         case autosave
-        case agentCommand
         case rescuedBufferPath
         case showInDock
         case showInMenuBar
@@ -54,7 +53,6 @@ enum Prefs {
         case storeInICloud
         case hasSeenWelcome
         case autoUpdate
-        case agentEnabled
         case commandName
         case newNoteNameTemplate
         case lastUpdateCheck
@@ -127,6 +125,18 @@ enum Prefs {
         .hasSeenWelcome, .lastNotesDirectory, .lastScratchpadFile, .seededDefaultThemes, .accessGrants,
     ]
 
+    /// Keys no setting reads any more, removed at every launch and by a
+    /// reset. Not cases of `Key`, because nothing may read them: they are here
+    /// so a value somebody stored is not left behind in their defaults domain
+    /// once the setting that wrote it is gone. `agentCommand` is a shell line
+    /// that can carry a home path or a name, which is the kind of value
+    /// `changedSettingsDescription` refuses to quote.
+    static let retiredKeys = ["agentCommand", "agentEnabled"]
+
+    static func forgetRetiredKeys() {
+        for key in retiredKeys { d.removeObject(forKey: key) }
+    }
+
     /// Put every setting back to its default, and touch no file on disk.
     ///
     /// The note is deliberately not in scope. A reset is about the settings a
@@ -153,6 +163,7 @@ enum Prefs {
         for key in Key.allCases where !survivesReset.contains(key) {
             d.removeObject(forKey: key.rawValue)
         }
+        forgetRetiredKeys()
         hasSeenWelcome = true
         // The Dock default written down, as a first launch does: left absent,
         // the next launch would take it for an install from before the
@@ -781,18 +792,6 @@ enum Prefs {
         set { d.set(newValue, forKey: Key.autosave.rawValue) }
     }
 
-    /// The shell command `/ai` runs, with `{prompt}` where the quoted request
-    /// goes. The same shape as the extension's `birta.agent.command`, so a
-    /// command tuned there can be pasted here unchanged. Empty turns `/ai` off:
-    /// the capability is withdrawn and the page never offers the row.
-    static var agentCommand: String {
-        // The default is the fallback preset's own template rather than a
-        // second copy of that string, so the template menu can always reach
-        // the command a fresh install holds.
-        get { d.string(forKey: Key.agentCommand.rawValue) ?? AgentPreset.fallback.template }
-        set { d.set(newValue, forKey: Key.agentCommand.rawValue) }
-    }
-
     /// Where a buffer went that could not be written to its own file.
     ///
     /// Set when a window goes with a file somebody else changed underneath it
@@ -851,18 +850,6 @@ enum Prefs {
         Bundle.main.bundleURL
             .appendingPathComponent("Contents/MacOS", isDirectory: true)
             .appendingPathComponent(CommandInstall.executableName)
-    }
-
-    /// Whether this host can hand a prompt to an agent at all.
-    ///
-    /// Three ways to have none, and the row and the capability must agree
-    /// with all of them: the switch is off, there is no command to run, or
-    /// this build's channel cannot run one (`Distribution.offersAgent`).
-    /// Asking here rather than at each call site is what keeps them from
-    /// disagreeing.
-    static var agentAvailable: Bool {
-        AgentAvailability.isAvailable(enabled: agentEnabled, command: agentCommand,
-                                      distribution: Distribution.current)
     }
 
     /// Whether the app has a Dock icon, and so appears in Cmd+Tab and gets an
@@ -1028,22 +1015,6 @@ enum Prefs {
         register(true)
     }
 
-    /// Whether `/ai` is offered at all.
-    ///
-    /// OFF by default, which is a change of posture rather than a default
-    /// picked at random: `/ai` runs a shell command on this Mac, and a
-    /// capability that runs commands is one somebody should switch on rather
-    /// than one they should discover already on. `agentCommand` still holds
-    /// WHAT would run, so switching this on does not ask the question again.
-    ///
-    /// The command being empty still withdraws the capability too, so there
-    /// are two ways to have no agent and neither of them can offer a row that
-    /// runs nothing.
-    static var agentEnabled: Bool {
-        get { d.bool(forKey: Key.agentEnabled.rawValue) }
-        set { d.set(newValue, forKey: Key.agentEnabled.rawValue) }
-    }
-
     /// What a new note is called, as a `strftime` template.
     ///
     /// A template rather than a fixed name because the only thing anybody
@@ -1065,7 +1036,7 @@ enum Prefs {
     /// The privacy rule is `shared/feedback/compose.ts`'s, and it is why this
     /// is a hand-written list rather than a dump of the defaults domain: **a
     /// setting's NAME is diagnostic, a setting's VALUE may be the user's
-    /// data.** A note path, an agent command line and a filename template can
+    /// data.** A note path, a command name and a filename template can
     /// each carry a directory name or a person's name, so those report only
     /// that they differ. What is quoted is what cannot carry either: a
     /// boolean, a number, a chord, or a value from a fixed set.
@@ -1087,8 +1058,6 @@ enum Prefs {
         report("automatic updates", !autoUpdate, "off")
         report("show in Dock", !showInDock, "off")
         report("show in menu bar", !showInMenuBar, "off")
-        report("agent", !agentEnabled, "off")
-        report("agent command", agentEnabled && agentCommand != AgentPreset.fallback.template)
         // The name only, never whether the link is there: this list is of
         // settings that differ from their defaults, and installation is a fact
         // about the filesystem rather than a setting.
@@ -1411,26 +1380,19 @@ enum Prefs {
             // Swift cannot import it, so this literal restates it and
             // shared/__tests__/hostProfile.test.ts parses this file and
             // fails when the two disagree.
-            // The literal IS the profile, and the filter is what a user
-            // setting withdraws from it. Kept as a literal on purpose: it is
-            // the copy `shared/__tests__/hostProfile.test.ts` parses against
+            // The literal IS the profile, and the filter is what the window
+            // withdraws from it. Kept as a literal on purpose: it is the copy
+            // `shared/__tests__/hostProfile.test.ts` parses against
             // `HOST_PROFILES.mac`, and a list built by appending would give
             // that guard nothing to read.
             //
-            // Withdrawing `agent` is a capability doing its job rather than a
-            // feature flag sneaking in: a capability names what the HOST
-            // provides, and with `/ai` switched off, with no command to run,
-            // or on a channel whose sandbox cannot run one (`Distribution`),
-            // this host provides no agent. `AgentAvailabilityTests` holds all
-            // three arms of that answer; `BootConfigTests` holds the filter.
-            //
-            // Withdrawing `projectFiles` is the same shape: a window on a loose
-            // file is a host with no directory to provide, so the page it
+            // Withdrawing `projectFiles` is a capability doing its job rather
+            // than a feature flag: a window on a loose file is a host with no
+            // directory to provide, so the page it
             // mounts is never offered the explorer (MAR-457). `folderIndex`
             // goes with it: the index is of the window's root, and a window
             // on a loose file has none to index (MAR-480).
-            hostCapabilities: ["spellAndGrammar", "imageUpload", "toc", "contentMeasure", "appPreferences", "agent", "projectFiles", "folderIndex", "stripTooltip"]
-                .filter { $0 != "agent" || agentAvailable }
+            hostCapabilities: ["spellAndGrammar", "imageUpload", "toc", "contentMeasure", "appPreferences", "projectFiles", "folderIndex", "stripTooltip"]
                 .filter { ($0 != "projectFiles" && $0 != "folderIndex") || explorerRoot != nil },
             viewStateJSON: viewState,
             hostShortcuts: AppMenu.shortcuts

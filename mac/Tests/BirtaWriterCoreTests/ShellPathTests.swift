@@ -4,9 +4,9 @@ import XCTest
 /// How the app reads a `PATH` out of a shell, and what it does with the answer.
 ///
 /// The defect behind all of it: an app launched from the Finder gets
-/// `launchd`'s four system directories, every agent CLI is installed somewhere
-/// else, and the AI Agent pane's Test button therefore reports a tool somebody
-/// uses every day as not installed. The parsing is where that gets subtle,
+/// `launchd`'s four system directories, so asked against that, the terminal
+/// command's row says the directory `bwr` is linked into is off a `PATH`
+/// that Terminal would have put it on. The parsing is where that gets subtle,
 /// because an rc file is somebody's own program and may print anything at all
 /// around the value.
 final class ShellPathTests: XCTestCase {
@@ -61,8 +61,8 @@ final class ShellPathTests: XCTestCase {
         XCTAssertEqual(ShellPath.childPath(resolved: "/a:/b:/a", inherited: "/b:/c"), "/a:/b:/c")
     }
 
-    /// A trailing colon means the current directory to some shells, and the
-    /// current directory of an agent run is somebody's note folder.
+    /// A trailing colon means the current directory to some shells, which
+    /// says nothing about where a command is installed.
     func testAnEmptySegmentShouldNotBecomeTheCurrentDirectory() {
         XCTAssertEqual(ShellPath.childPath(resolved: "/a::/b:", inherited: nil), "/a:/b")
     }

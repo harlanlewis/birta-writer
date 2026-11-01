@@ -1,13 +1,8 @@
 {
   "_comment": [
-    "The /ai progress reader's cases, as data, because there are two implementations of it:",
-    "src/agentBridge/agentProgress.ts for the extension and",
-    "mac/Sources/BirtaWriterCore/AgentProgress.swift for Birta Writer for Mac. Neither",
-    "language can import the other, so the cases live here and both suites read this file:",
-    "src/__tests__/agentProgress.test.ts and",
-    "mac/Tests/BirtaWriterCoreTests/AgentProgressTests.swift. Both assert the count they ran,",
-    "and shared/__tests__/agentProgressPort.test.ts holds the two readers' constants and",
-    "words together.",
+    "The /ai progress reader's cases, as data: src/agentBridge/agentProgress.ts is the",
+    "reader, and src/__tests__/agentProgress.test.ts reads this file and asserts the count",
+    "it ran.",
     "",
     "The two structured streams are the actual bytes a real run printed, on the version",
     "their names carry, captured 2026-09-20, for the reason the help fixtures are",
@@ -22,8 +17,8 @@
     "`shows` is what the LAST of those reads answered, null for nothing. `structured` and",
     "`lastSaid` are the reader's state after the whole case.",
     "",
-    "Add a case here, not in one suite. A case only one implementation passes is the",
-    "finding, not the fixture's problem."
+    "Add a case here rather than in the suite, so a case is data a second reader could",
+    "be held to."
   ],
   "cases": [
     {

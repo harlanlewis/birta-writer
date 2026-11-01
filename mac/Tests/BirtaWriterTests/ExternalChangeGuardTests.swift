@@ -85,7 +85,6 @@ final class ExternalChangeGuardTests: XCTestCase {
     private static let writesBesideTheNote: Set<String> = [
         "rescueMissingNote",      // the buffer, beside a note that was deleted
         "rescueDriftedBuffer",    // the buffer, beside a note something else changed
-        "rescueAgentVersion",     // the agent's version, beside the note
         "makeNoteFile",           // a new note, at a path nothing is bound to yet
         "relocateActiveFile",     // a rename with no file to move yet, at the new path
         "saveAs",                 // Save As writes a copy and leaves the binding alone
@@ -210,43 +209,8 @@ final class ExternalChangeGuardTests: XCTestCase {
         }
     }
 
-    /// An `/ai` run in flight decides whether a conflict ASKS now, never
-    /// whether the file is looked at (MAR-478).
-    ///
-    /// The shape this pins is the order: the run's status is read after the
-    /// disk has been compared, so the write is refused for a file that moved
-    /// whatever moved it. A guard on the run ahead of the comparison is the
-    /// exemption this replaced, under which autosave wrote over a third
-    /// program's change for as long as an agent took, and the check itself
-    /// reads as cautious either way, which is why the order is pinned rather
-    /// than left to a reader. The comparison's own verdicts are `DiskDrift`'s,
-    /// and what the arms of `mac/scripts/check-external-change.sh` drive is
-    /// the app doing this to a real file.
-    func testARunInFlightShouldGovernOnlyWhetherAConflictAsksNow() throws {
-        let body = try functionBody(named: "reconcileWithDisk", in: source())
-        let code = body.components(separatedBy: "\n")
-            .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
-            .joined(separator: "\n")
-        let run = try XCTUnwrap(code.range(of: "agent.hasRunsInFlight"),
-                                "reconcileWithDisk no longer consults the run at all, so a conflict "
-                                + "found in the middle of one asks about the file the agent is editing")
-        let judge = try XCTUnwrap(code.range(of: "DiskDrift.judge("),
-                                  "the comparison is gone or renamed, and this guard names it")
-        XCTAssertTrue(judge.lowerBound < run.lowerBound,
-                      "the run is consulted before the disk is compared, which is the check "
-                      + "standing down for every writer while an agent works")
-        XCTAssertEqual(code.components(separatedBy: "agent.hasRunsInFlight").count - 1, 1,
-                       "the run is consulted in one place, the asking, and nowhere before it")
-        // The negation is the rule: a run in flight SUPPRESSES the question.
-        // The order and count above hold with the sense inverted, and the
-        // script's arms cannot see the sense at all when the window is down.
-        XCTAssertTrue(code.contains("if asking, !agent.hasRunsInFlight {"),
-                      "a conflict during a run must refuse the write and not ask; "
-                      + "the ask is the one thing the run withholds")
-    }
-
-    /// The other side of the same rule: a summon is where a stale panel is
-    /// corrected and the only place there is a window to put the question on.
+    /// A summon is where a stale panel is corrected, and the only place there
+    /// is a window to put the question on.
     func testTheSummonShouldReconcileToo() throws {
         let text = try source()
         let show = try XCTUnwrap(text.range(of: "\n    func show(activating: Bool = true) {"))
@@ -254,35 +218,5 @@ final class ExternalChangeGuardTests: XCTestCase {
         let end = try XCTUnwrap(after.range(of: "\n    }\n"))
         XCTAssertTrue(after[..<end.lowerBound].contains("reconcileWithDisk("),
                       "a summon that does not look is how a file edited elsewhere stays invisible")
-    }
-
-    /// An `/ai` run writes the note before it starts, so the agent opens the
-    /// bytes on screen. That write goes through the same check as every other
-    /// and can be refused the same way, and a run that starts anyway opens a
-    /// file the panel does not hold: with nothing typed meanwhile the landing
-    /// reads `buffer == handoff`, settles, and reloads the agent's version
-    /// over the panel's edits (MAR-490). So between the save and the run, the
-    /// refusal is consulted, and it ends the run rather than the run going
-    /// ahead. Pinned as an order because each of the three calls is correct
-    /// on its own; only the sequence is the rule.
-    func testARunShouldNotStartOnAPreRunSaveTheConflictRefused() throws {
-        let body = try functionBody(named: "runAgent", in: source())
-        let code = body.components(separatedBy: "\n")
-            .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
-            .joined(separator: "\n")
-        // The save the person is understood to have asked for, since a run
-        // hands the note's path to a reader (`writeSaveSomebodyAskedFor`).
-        let save = try XCTUnwrap(code.range(of: "self.writeSaveSomebodyAskedFor()"),
-                                 "the run no longer writes the note first, so the agent opens stale bytes")
-        let refused = try XCTUnwrap(code.range(of: "guard !self.driftUnresolved else {"),
-                                    "the run no longer asks whether its pre-run save was refused")
-        let run = try XCTUnwrap(code.range(of: "self.agent.run("),
-                                "the run's start is gone or renamed, and this guard names it")
-        XCTAssertTrue(save.lowerBound < refused.lowerBound,
-                      "asked before the save, the flag describes the previous write, not this one")
-        XCTAssertTrue(refused.lowerBound < run.lowerBound,
-                      "asked after the run starts, the agent is already reading the file")
-        XCTAssertTrue(code[refused.lowerBound..<run.lowerBound].contains("DiskDrift.runRefused("),
-                      "the refusal says which question to answer, in the sheet's own words")
     }
 }

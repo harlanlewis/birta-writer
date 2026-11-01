@@ -83,7 +83,6 @@ describe("the distribution seam", () => {
     it("every fact the channel decides should have a reader outside the seam", () => {
         const outsideSeam = all.filter((f) => !f.path.endsWith("Distribution.swift"));
         const facts: Record<string, RegExp> = {
-            offersAgent: /\.offersAgent\b/,
             offersTerminalCommand: /\.offersTerminalCommand\b/,
             readsInstalledEditorThemes: /\.readsInstalledEditorThemes\b/,
             "updatesItself(flavour:)": /\.updatesItself\(flavour:/,
@@ -95,29 +94,17 @@ describe("the distribution seam", () => {
         }
         // And the seam declares each of them, so the regexes above are
         // matching the real names and not a near miss.
-        for (const fact of ["offersAgent", "offersTerminalCommand", "readsInstalledEditorThemes",
+        for (const fact of ["offersTerminalCommand", "readsInstalledEditorThemes",
             "keepsAccessGrants", "readsICloudDrive"]) {
             expect(seam).toContain(`public var ${fact}: Bool`);
         }
         expect(seam).toContain("public func updatesItself(flavour: AppFlavor) -> Bool");
     });
 
-    it("the agent capability should be withdrawn through the one availability the row also reads", () => {
-        // `Prefs.bootConfig` filters `agent` by `agentAvailable`, and that is
-        // the only route by which the channel reaches the page. A channel read
-        // anywhere else would be a second reader of the fact, which is what
-        // the host-profile rules forbid, and a channel read nowhere here is a
-        // store build whose page still offers `/ai`.
-        const prefs = readFileSync(join(APP_TARGET, "Preferences.swift"), "utf8");
-        const getter = /static var agentAvailable: Bool \{([\s\S]*?)\n    \}/.exec(prefs);
-        expect(getter, "Prefs.agentAvailable moved; fix the anchor").not.toBeNull();
-        expect(getter![1]).toContain("distribution: Distribution.current");
-    });
-
     it("the login shell should run at launch only on a channel with something to ask it", () => {
-        // The agent and the terminal command's PATH check are its only
-        // readers, and a store build offers neither, so an ungated launch
-        // call runs somebody's whole startup for nothing. A late reader is
+        // The terminal command's PATH check is its only reader, and a store
+        // build does not offer the command, so an ungated launch call runs
+        // somebody's whole startup for nothing. A late reader is
         // not lost: `value()` starts the shell itself.
         const eager = readers(
             app.filter((f) => !f.path.endsWith("LoginShellPath.swift")),
@@ -126,7 +113,7 @@ describe("the distribution seam", () => {
         expect(eager).toEqual(["mac/Sources/BirtaWriter/App.swift"]);
         const appSwift = readFileSync(join(APP_TARGET, "App.swift"), "utf8");
         expect(appSwift).toMatch(
-            /if distribution\.offersAgent \|\| distribution\.offersTerminalCommand \{\s*\n\s*LoginShellPath\.shared\.prewarm\(\)/,
+            /if Distribution\.current\.offersTerminalCommand \{\s*\n\s*LoginShellPath\.shared\.prewarm\(\)/,
         );
     });
 

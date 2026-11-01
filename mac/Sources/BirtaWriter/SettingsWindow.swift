@@ -60,18 +60,15 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
 
     /// The panes, in toolbar order.
     ///
-    /// Three, and the middle one names its subject rather than a place: a tab
-    /// costs a click to discover what is on it, so it has to be worth the
-    /// click. An Editor pane existed, was removed when its only row was
-    /// Autosave, and came back holding three unrelated rows and an agent. The
-    /// rows that were not about the agent have gone to General, and what is
-    /// left is one subject, which is what the tab is now called.
+    /// A tab costs a click to discover what is on it, so each one names a
+    /// subject worth the click rather than a place.
     ///
     /// The split is by WHAT the rows are about. General is the app as an
     /// application on this Mac: how you reach it, where it puts your bytes,
     /// which note a summon opens, and how it behaves at login and on the
-    /// network. AI Agent is the command `/ai` hands a prompt to. Advanced is
-    /// what the app does to itself: replace itself, and the gestures that undo
+    /// network. Markdown is which syntax the editor offers to write, and
+    /// Appearance is how the page looks. Advanced is what the app does to
+    /// itself: replace itself, and the gestures that undo
     /// rather than set. Autosave is in General under the argument that removed
     /// the middle pane the first time: it is about when your bytes reach disk,
     /// not about what the editor does with them.
@@ -84,14 +81,13 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     ///
     /// Which rows are on which pane is `SettingsForm`'s and not this enum's.
     private enum Tab: String, CaseIterable {
-        case general, markdown, appearance, aiAgent, advanced
+        case general, markdown, appearance, advanced
 
         var title: String {
             switch self {
             case .general: return "General"
             case .markdown: return "Markdown"
             case .appearance: return "Appearance"
-            case .aiAgent: return "AI Agent"
             case .advanced: return "Advanced"
             }
         }
@@ -105,10 +101,6 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
             case .markdown: return "textformat"
             // The glyph System Settings uses for the same pane.
             case .appearance: return "circle.lefthalf.filled"
-            // Not a robot and not a brain: the pane is about handing a request
-            // to something that answers, which is what this glyph is for
-            // everywhere else on the system.
-            case .aiAgent: return "sparkles"
             case .advanced: return "wrench.and.screwdriver"
             }
         }
@@ -129,34 +121,6 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     private let hotkeyCaption = Caption("")
     private let scratchpadPath = PathLabel(Prefs.scratchpadURL)
     private let networkSwitch = NSSwitch()
-    private let agentField = NSTextField(string: Prefs.agentCommand)
-    /// A PULL-DOWN rather than a popup, which is what keeps it from claiming
-    /// to be the setting: choosing an entry writes the field below and is then
-    /// done with, and the field is what `/ai` runs whatever it says a moment
-    /// later.
-    ///
-    /// Shut, it names the tool the command is RUNNING rather than the last
-    /// entry anybody picked, which is a different claim and a checkable one:
-    /// it is read back out of the field, by program name alone
-    /// (`AgentPreset.matching`), so an edited flag cannot make it lie and a
-    /// command of somebody's own puts it back to asking.
-    private let agentPresetPopup = NSPopUpButton()
-    /// Runs the command once with a trivial prompt and shows what came back.
-    /// A command is a shell line somebody typed, and until it has been run
-    /// nothing on this pane can tell an installed tool from a typo.
-    private let agentTestButton = NSButton(title: "Test", target: nil, action: nil)
-    /// The selected tool's own documentation, under the command field.
-    ///
-    /// One button that MOVES rather than a link per preset: what it points at
-    /// is read back out of the command (`AgentPreset.matching`), so it names
-    /// the tool being run rather than the last entry anybody picked, and a
-    /// command this build does not recognise leaves nothing to link to.
-    private let agentDocLink = LinkButton(title: AgentPreset.fallback.title,
-                                          url: AgentPreset.fallback.documentation)
-    /// What the row's stack is arranging, so the link can be taken out of the
-    /// layout entirely rather than left as a blank line.
-    private var agentDocLinkHolder: NSView?
-    private let agentEnabledSwitch = NSSwitch()
     /// The terminal command: whether the link is there, and what it is called.
     ///
     /// The switch's position is read off the FILESYSTEM every time the pane is
@@ -188,11 +152,6 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     /// The name the link on disk is under, as `showCommand` last read it, so
     /// a rename knows what to take away. Nil when no link of ours is there.
     private var commandLinkedName: String?
-    /// Whether the page currently running was booted with the agent
-    /// capability. Compared against `Prefs.agentAvailable` after every write
-    /// on this pane, so the editor is reloaded when the answer changed and
-    /// left alone when it did not.
-    private var agentCapabilityInPage = Prefs.agentAvailable
     private let newNoteField = NSTextField(string: Prefs.newNoteNameTemplate)
     private let dockSwitch = NSSwitch()
     private let menuBarSwitch = NSSwitch()
@@ -213,11 +172,10 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     private let networkCaption = Caption("")
     /// The cards holding a row that comes and goes with the answer above it.
     /// Kept because hiding a row means reaching back into the card that drew
-    /// it: Location under Store in iCloud Drive, File name under New windows
-    /// open with, and the agent command under the switch that enables it.
+    /// it: Location under Store in iCloud Drive, and File name under New
+    /// windows open with.
     private var filesGroup: NSView?
     private var notesGroup: NSView?
-    private var agentGroup: NSView?
     private var commandGroup: NSView?
     private let newNoteCaption = Caption("")
     private let updateSwitch = NSSwitch()
@@ -308,14 +266,6 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     private let loginCaption = Caption(LoginItemState.off.caption)
     private let loginSettingsButton = NSButton(title: "Open System Settings…", target: nil, action: nil)
 
-    /// A runner of this window's own, for the Test button and nothing else.
-    ///
-    /// Not the Coordinator's. A probe is not a `/ai` run: it is not registered
-    /// as one, cannot be cancelled from the panel, and never reaches the note,
-    /// so sharing the object that tracks live runs would only give this a way
-    /// to interfere with them.
-    private let agentProbe = AgentRunner()
-
     /// Which build this window is drawing for.
     ///
     /// Taken rather than read from `AppFlavor.current`, and every one of this
@@ -365,16 +315,6 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     /// changes, and this is for one with a surface the application owns. The
     /// publishing targets are the first of those, and `WindowSet` holds why.
     private let onChangeEverywhere: () -> Void
-    /// Hand every window's page the capabilities this host provides now, with
-    /// no reload.
-    ///
-    /// A third closure rather than `onChangeEverywhere`, because what it does
-    /// is the difference this exists for: that one reloads, and reloading was
-    /// the whole cost of moving the `/ai` switch. Everywhere rather than the
-    /// front window, for the reason the publishing targets are: a back window
-    /// left on the old answer would go on offering a command the settings had
-    /// just withdrawn.
-    private let onHostCapabilitiesChange: () -> Void
     /// Show the welcome window. Injected rather than built here: the window is
     /// the app delegate's, so it survives this one being closed.
     private let onShowWelcome: () -> Void
@@ -424,7 +364,6 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
          refusedSummonCombo: @escaping () -> HotkeyCombo? = { nil },
          onChange: @escaping (BeforeReload?) -> Void,
          onChangeEverywhere: @escaping () -> Void,
-         onHostCapabilitiesChange: @escaping () -> Void = {},
          onReset: @escaping () -> Void = {},
          onShowWelcome: @escaping () -> Void,
          onCheckForUpdates: @escaping () -> Void,
@@ -446,7 +385,6 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         self.refusedSummonCombo = refusedSummonCombo
         self.onChange = onChange
         self.onChangeEverywhere = onChangeEverywhere
-        self.onHostCapabilitiesChange = onHostCapabilitiesChange
         self.onReset = onReset
         self.onShowWelcome = onShowWelcome
         self.onCheckForUpdates = onCheckForUpdates
@@ -602,7 +540,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
 
     /// The tabs this window draws: every pane its channel leaves a card on.
     /// A channel that takes away everything a pane holds takes the tab with
-    /// it (the store build's AI Agent), rather than drawing an empty page.
+    /// it, rather than drawing an empty page.
     private var tabs: [Tab] { Tab.allCases.filter { !pane(for: $0).groups.isEmpty } }
 
     /// The names of the tabs THIS window draws, for a check that a channel's
@@ -616,7 +554,6 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         case .general: return distribution.offered(SettingsForm.general)
         case .markdown: return distribution.offered(SettingsForm.markdown)
         case .appearance: return distribution.offered(SettingsForm.appearance)
-        case .aiAgent: return distribution.offered(SettingsForm.aiAgent)
         case .advanced: return advancedPane
         }
     }
@@ -726,13 +663,12 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     /// with the suite green both times.
     ///
     /// Deliberately one-way: it only reveals. Putting the rows back is what
-    /// `showFiles`, `showAgent` and `showNoteMode` do from the real settings,
+    /// `showFiles`, `showCommand` and `showNoteMode` do from the real settings,
     /// so nothing here has to remember a previous state.
     func showEveryConditionalRowForTesting() {
         let cards: [(NSView?, SettingsRow, SettingsPane)] = [
             (filesGroup, .location, pane(for: .general)),
             (notesGroup, .newNoteName, pane(for: .general)),
-            (agentGroup, .agentCommand, pane(for: .aiAgent)),
             (commandGroup, .commandName, advancedPane),
         ]
         for (card, row, pane) in cards {
@@ -785,7 +721,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         wireAppearanceControls()
 
         // Titles come from the types, so a case added to `NoteMode` or
-        // `AgentPreset` appears here without this file being edited. The
+        // `FileOpenTarget` appears here without this file being edited. The
         // menu's own order is the type's declaration order.
         opensPopup.removeAllItems()
         opensPopup.addItems(withTitles: NoteMode.allCases.map(\.title))
@@ -799,35 +735,15 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         openFilesPopup.target = self
         openFilesPopup.action = #selector(chooseOpenFilesIn)
 
-        // Item 0 is the button's own title under `pullsDown`, never an answer,
-        // which is why the presets start at 1.
-        agentPresetPopup.pullsDown = true
-        agentPresetPopup.removeAllItems()
-        agentPresetPopup.addItems(withTitles: [Self.presetMenuPrompt] + AgentPreset.allCases.map(\.title))
-        agentPresetPopup.controlSize = .small
-        agentPresetPopup.target = self
-        agentPresetPopup.action = #selector(chooseAgentPreset)
-
         updateButton.target = self
         updateButton.action = #selector(checkForUpdatesNow)
         updateButton.controlSize = .small
-        agentTestButton.target = self
-        agentTestButton.action = #selector(testAgentCommand)
-        agentTestButton.controlSize = .small
         resetButton.target = self
         resetButton.action = #selector(resetAllSettings)
         resetButton.controlSize = .small
         welcomeButton.target = self
         welcomeButton.action = #selector(showWelcomeAgain)
         welcomeButton.controlSize = .small
-
-        agentField.placeholderString = "claude -p {prompt}"
-        agentField.delegate = self
-        agentField.font = .monospacedSystemFont(ofSize: NSFont.smallSystemFontSize, weight: .regular)
-        // No width constraint: this one is the full width of its card, under
-        // the row rather than beside it. A command is long, monospaced and
-        // edited character by character, and 260pt of it is a slot to squint
-        // at rather than a field to work in.
 
         newNoteField.delegate = self
         newNoteField.font = .monospacedSystemFont(ofSize: NSFont.smallSystemFontSize, weight: .regular)
@@ -856,7 +772,6 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
             (networkSwitch, Prefs.networkEnabled, #selector(toggleNetwork)),
             (iCloudSwitch, Prefs.noteHome == .iCloud, #selector(toggleICloud)),
             (updateSwitch, Prefs.autoUpdate, #selector(toggleAutoUpdate)),
-            (agentEnabledSwitch, Prefs.agentEnabled, #selector(toggleAgentEnabled)),
             (commandSwitch, false, #selector(toggleCommandInstalled)),
             (autosaveSwitch, Prefs.autosave, #selector(toggleAutosave)),
             (dockSwitch, Prefs.showInDock, #selector(toggleShowInDock)),
@@ -915,20 +830,11 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         dockSwitch.state = Prefs.showInDock ? .on : .off
         menuBarSwitch.state = Prefs.showInMenuBar ? .on : .off
         hotkeyRecorder.setCombo(Prefs.hotkey)
-        agentField.stringValue = Prefs.agentCommand
         newNoteField.stringValue = Prefs.newNoteNameTemplate
-        agentEnabledSwitch.state = Prefs.agentEnabled ? .on : .off
         let sets = Prefs.syntaxSets
         for (set, control) in syntaxSwitches {
             control.state = sets.contains(set) ? .on : .off
         }
-        // The two callers of this both leave the page holding whatever
-        // `Prefs` says: the build, which runs before anything is offered, and
-        // Reset, which reloads unconditionally afterwards. Either way the
-        // mirror is true again from here.
-        agentCapabilityInPage = Prefs.agentAvailable
-        showAgentPreset()
-        showAgent()
         showRowAvailability()
         showNoteMode()
         showNoteNamePreview()
@@ -1005,20 +911,6 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         showSummon()
     }
 
-    /// The agent command exists only when the switch above it is on.
-    ///
-    /// Off is not "on but ignored": with `/ai` withdrawn there is no command
-    /// to name, and a field sitting there editable would be a setting for a
-    /// thing that does not run.
-    private func showAgent() {
-        guard let agentGroup else { return }
-        SettingsWindowController.setRowHidden(
-            agentGroup,
-            row: SettingsForm.index(of: .agentCommand, inPane: pane(for: .aiAgent)) ?? 1,
-            hidden: !Prefs.agentEnabled)
-        fitWindowToPane()
-    }
-
     /// What the terminal command row shows, read off the disk.
     ///
     /// The switch follows the LINK rather than a preference, so a command
@@ -1063,8 +955,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
 
     /// Draw the name row, or take it away.
     ///
-    /// Off is not "on but ignored", the same rule the agent command row keeps:
-    /// with no link on disk there is no command to name, and a field sitting
+    /// Off is not "on but ignored": with no link on disk there is no command to name, and a field sitting
     /// there would be a setting for a file nobody has. `showsCommandName` is
     /// the rule, refusal included.
     private func showCommandName(shown: Bool) {
@@ -1227,51 +1118,6 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         onCheckForUpdates()
     }
 
-    /// What the pull-down reads with its menu shut when the command below it
-    /// names no tool this build knows.
-    private static let presetMenuPrompt = "Select AI"
-
-    /// What it reads for a given command: the tool being run, or the prompt.
-    ///
-    /// A PULL-DOWN still, so this is not the menu claiming to be the setting:
-    /// the field below it is what `/ai` runs, and choosing an entry writes
-    /// that field and is then done with. What the title says is the answer to
-    /// a question somebody looking at a shell command should not have to
-    /// parse, which is which of these tools it is. Matched on the program
-    /// alone (`AgentPreset.matching`), so an edited flag does not make the
-    /// menu forget the tool it is still running.
-    private static func presetMenuTitle(for command: String) -> String {
-        AgentPreset.matching(command: command)?.title ?? presetMenuPrompt
-    }
-
-    /// Put the pull-down's title back in step with the command field.
-    private func showAgentPreset() {
-        showAgentPreset(for: Prefs.agentCommand)
-    }
-
-    /// Draw the pull-down and the link against `command`, whatever is stored.
-    ///
-    /// Split out so a check can drive both against a command of its own
-    /// without writing a setting: what is worth checking is that the pane
-    /// FOLLOWS the command, and a version that read `Prefs` once at build time
-    /// would look identical against the default.
-    func showAgentPreset(for command: String) {
-        agentPresetPopup.item(at: 0)?.title = Self.presetMenuTitle(for: command)
-        // Item 0 IS the button's title under `pullsDown`, and AppKit caches
-        // what it drew: without this the button keeps the old word until
-        // something else makes it re-lay out.
-        agentPresetPopup.synchronizeTitleAndSelectedItem()
-        // The link follows the same answer the pull-down's title does, so a
-        // command naming a tool this build does not know leaves no link rather
-        // than one pointing at somebody else's documentation.
-        let preset = AgentPreset.matching(command: command)
-        if let preset {
-            agentDocLink.point(at: preset.documentation, titled: preset.title)
-        }
-        agentDocLinkHolder?.isHidden = preset == nil
-        fitWindowToPane()
-    }
-
     /// Draw a screen from its declaration.
     ///
     /// `SettingsForm` says which rows a pane holds and in what order; this says
@@ -1299,7 +1145,6 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
             // reaching back into the card that drew it.
             if group.rows.contains(.location) { filesGroup = box }
             if group.rows.contains(.newNoteName) { notesGroup = box }
-            if group.rows.contains(.agentCommand) { agentGroup = box }
             if group.rows.contains(.commandName) { commandGroup = box }
             sections.append(box)
         }
@@ -1359,22 +1204,9 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
             return (commandSwitch, [], commandCaption)
         case .commandName:
             // The field at the trailing edge, the way the note-name template's
-            // is, rather than full width under the label the way the agent's
-            // command is: what goes in this one is a single word. Monospaced
+            // is: what goes in this one is a single word. Monospaced
             // because it is a word for a shell rather than a setting to read.
             return (commandField, [], commandNameCaption)
-        case .agentEnabled: return (agentEnabledSwitch, [], nil)
-        case .agentCommand:
-            // The field is BELOW rather than beside: a shell command is long
-            // and monospaced, and the pull-down is what sits at the trailing
-            // edge because it is the shortcut rather than the setting. Test is
-            // beside the pull-down, since both act on the command rather than
-            // describing it.
-            let link = Self.link(agentDocLink)
-            agentDocLinkHolder = link
-            return (Self.trailingControls([agentTestButton, agentPresetPopup]),
-                    [agentField, link],
-                    Caption("Terminal command executed by /ai in Birta Writer."))
         case .commonMark:
             return (commonMarkSwitch,
                     [Self.captionRow(Caption(CommonMark.caption)),
@@ -1445,13 +1277,6 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         // Drive switched on.
         showFiles()
         showNoteMode()
-        showAgent()
-        // After the pane exists, or the documentation link is never told what
-        // the command names: `wireControls` runs once, from the FIRST pane
-        // built, and the link is a view the AI Agent pane creates later. Left
-        // out, a command naming no tool still shows the link the button was
-        // constructed with, pointing at the wrong tool's documentation.
-        showAgentPreset()
         showNoteNamePreview()
         // Also after, and for a second reason: these two write through
         // `rowViews`, which `render` is what fills. Called from
@@ -1583,12 +1408,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     /// reachable from the keyboard, and an `NSTextField` carrying a link is
     /// not in the key view loop.
     static func link(_ title: String, to url: URL) -> NSView {
-        link(LinkButton(title: title, url: url))
-    }
-
-    /// The same, around a link that already exists, for one whose destination
-    /// moves with a selection above it.
-    static func link(_ button: LinkButton) -> NSView {
+        let button = LinkButton(title: title, url: url)
         // Leading-aligned with the label above it, and hugging its own title
         // so the clickable area is the words rather than the row.
         let holder = NSView()
@@ -1777,11 +1597,9 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         ])
 
         // The line, then anything drawn full width under it, then the
-        // sentence. A view in `below` is a CONTROL rather than prose (the
-        // agent command field is the case this exists for), so it is inset to
-        // the label's edge the way a caption is but is not one.
+        // sentence.
         var arranged: [NSView] = [line]
-        arranged += below.map { $0 is NSTextField && !($0 is Caption) ? inset($0) : $0 }
+        arranged += below
         if let caption {
             caption.translatesAutoresizingMaskIntoConstraints = false
             // Inset to the label's leading edge, so the sentence starts under
@@ -1866,51 +1684,6 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
             iCloudSwitch.state == .on, in: window,
             redraw: { [weak self] in self?.showFiles() },
             apply: { [weak self] work in self?.onChange(work) })
-    }
-
-    /// A template is a SHORTCUT INTO the field below, never a second place the
-    /// setting lives. It writes the command and is then done with; the field
-    /// is what `/ai` runs, whatever it says a moment later.
-    @objc private func chooseAgentPreset() {
-        guard let preset = AgentPreset.allCases
-            .first(where: { $0.title == agentPresetPopup.titleOfSelectedItem }) else { return }
-        Prefs.agentCommand = preset.template
-        agentField.stringValue = preset.template
-        showAgentPreset()
-        syncAgentCapability()
-    }
-
-    @objc private func toggleAgentEnabled() {
-        Prefs.agentEnabled = agentEnabledSwitch.state == .on
-        showAgent()
-        syncAgentCapability()
-    }
-
-    /// Tell the pages only when the agent CAPABILITY has actually changed.
-    ///
-    /// The page is seeded with the host profile at boot, so a change to what
-    /// this host PROVIDES has to be handed to it again; what is handed over is
-    /// the capability list (`hostCapabilitiesChanged`,
-    /// `LIVE_HOST_CAPABILITIES` in shared/hostProfile.ts), not a fresh page.
-    /// It used to be a reload, which is not free to watch: the editor was torn
-    /// down and rebuilt under whoever was looking at it in order to add or
-    /// remove two menu rows.
-    ///
-    /// The guard survives the reload going away, and it is doing less work
-    /// than it was: a message is cheap where a reload was not. It stays
-    /// because the message is still a claim that something changed, and
-    /// posting one per keystroke of the command field would make every page
-    /// re-place its bar for a change that is not one.
-    ///
-    /// Swapping one working command for another does not change what this
-    /// host provides. `AgentAvailability` is the same rule `Prefs.bootConfig`
-    /// filters the capability with, asked here rather than restated, so the
-    /// two cannot drift apart and answer differently.
-    private func syncAgentCapability() {
-        let available = Prefs.agentAvailable
-        guard available != agentCapabilityInPage else { return }
-        agentCapabilityInPage = available
-        onHostCapabilitiesChange()
     }
 
     /// Everything back to defaults, in the order that leaves nothing stale.
@@ -2012,14 +1785,6 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     /// would otherwise be lost without a word.
     func controlTextDidChange(_ notification: Notification) {
         switch notification.object as? NSTextField {
-        case let field where field === agentField:
-            Prefs.agentCommand = agentField.stringValue
-            // While typing, not on blur. The pull-down and the link are a
-            // reading of the field, so leaving them on the last tool through
-            // a whole edit shows somebody a name and a documentation page for
-            // a command they have already replaced.
-            showAgentPreset(for: agentField.stringValue)
-            syncAgentCapability()
         case let field where field === newNoteField:
             // Stored as typed, including a half-finished token: expansion is
             // `NoteNameTemplate`'s and it falls back rather than failing, so a
@@ -2073,154 +1838,6 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     /// person actually has here is what their file will be called.
     private func showNoteNamePreview() {
         newNoteCaption.say(NoteNameTemplate.expand(Prefs.newNoteNameTemplate), bad: false)
-    }
-
-    // MARK: the agent test
-
-    /// Run the command in the field once, with a trivial prompt, and show what
-    /// came back.
-    ///
-    /// The one thing on this pane that can tell an installed tool from a typo.
-    /// Everything else here is a claim about a shell line nobody has run: the
-    /// pull-down names the program, the link points at its documentation, and
-    /// both are just as confident about a command that is not on PATH.
-    @objc private func testAgentCommand() {
-        let template = Prefs.agentCommand.trimmingCharacters(in: .whitespaces)
-        let name = Self.toolName(for: template)
-        guard !template.isEmpty else {
-            showAgentTestResult(name: name, result: AgentProbeResult(
-                succeeded: false, transcript: "",
-                failure: "There is no command to run. Choose a tool, or type one."))
-            return
-        }
-        // The button IS the progress indicator. A run takes as long as the
-        // tool takes to answer, which is seconds, and a spinner beside a
-        // button that still says Test invites a second click that starts a
-        // second child process.
-        agentTestButton.isEnabled = false
-        agentTestButton.title = "Testing…"
-        agentProbe.probe(template: template) { [weak self] result in
-            guard let self else { return }
-            self.agentTestButton.isEnabled = true
-            self.agentTestButton.title = "Test"
-            self.showAgentTestResult(name: name, result: result)
-        }
-    }
-
-    /// What to call the tool in the sheet: the preset's name where the command
-    /// names one, and otherwise the program it runs, which is the most this
-    /// can honestly say about somebody's own command line.
-    private static func toolName(for command: String) -> String {
-        AgentPreset.matching(command: command)?.title
-            ?? AgentRequest.harnessName(from: command)
-            ?? "The agent"
-    }
-
-    /// The sheet: what happened, which tool it was, and what it printed.
-    ///
-    /// The transcript is in an accessory view rather than in `informativeText`
-    /// because an agent's answer is arbitrarily long and a sheet built around
-    /// one label grows until it is taller than the screen. It is selectable,
-    /// so a failure can be copied into a search.
-    private func showAgentTestResult(name: String, result: AgentProbeResult) {
-        // Only onto a window that is still on screen. A test takes as long as
-        // the tool takes, and Settings can be shut in the meantime: a sheet
-        // begun on a closed window either goes nowhere or brings the window
-        // back, and neither is an answer to a question the person stopped
-        // asking.
-        guard let window, window.isVisible else { return }
-        Self.agentTestAlert(name: name, result: result).beginSheetModal(for: window)
-    }
-
-    /// The sheet itself, built rather than presented, so what it says is
-    /// checkable without a window and without anything appearing on screen.
-    static func agentTestAlert(name: String, result: AgentProbeResult) -> NSAlert {
-        let alert = NSAlert()
-        // Not "did not run": a command that started, authenticated and then
-        // exited with an error DID run, and that is the ordinary failure here.
-        // The pair says what the person asked, which is whether it works.
-        alert.messageText = result.succeeded ? "It works!" : "It did not work."
-        // The tool's name above whatever it printed, because the answer means
-        // nothing without knowing which tool gave it.
-        alert.informativeText = name
-        alert.alertStyle = result.succeeded ? .informational : .warning
-        // What the tool said, and where it said nothing, our own account of
-        // how it ended. Never both: two explanations of one failure read as
-        // two failures.
-        let body = readable(result.transcript)
-        alert.accessoryView = transcript(body.isEmpty ? (result.failure ?? "") : body)
-        // Acknowledge and nothing else. A test that has finished leaves
-        // nothing to decide, so a second button would be a question with no
-        // question behind it.
-        alert.addButton(withTitle: "Close")
-        return alert
-    }
-
-    /// What goes in the box: what the tool SAID, which for a command asking
-    /// its CLI for structured events is not what it printed.
-    ///
-    /// Two presets now carry those flags (`AgentPreset.template`), so the
-    /// transcript of a test that WORKED is JSON, and the sentence the reader
-    /// came for is one field inside an event that is itself wider than
-    /// `transcriptSize`. The headline above already answers whether it worked;
-    /// this box exists for what the tool said underneath, so a structured
-    /// transcript is reduced by the same reader the corner notice uses
-    /// (`BirtaWriterCore.AgentProgressReader.transcriptLines`).
-    ///
-    /// Reduced, never replaced: a transcript with no events in it is shown
-    /// exactly as the child printed it, and so is one whose events all said
-    /// nothing, because showing LESS than the tool printed is the one way this
-    /// could cost somebody the line they needed.
-    private static func readable(_ transcript: String) -> String {
-        guard let lines = AgentProgressReader.transcriptLines(transcript), !lines.isEmpty else {
-            return transcript.trimmingCharacters(in: .whitespacesAndNewlines)
-        }
-        return lines.joined(separator: "\n")
-    }
-
-    /// How big the transcript box is: wide enough for a wrapped shell line,
-    /// tall enough for a short answer without becoming a window of its own.
-    private static let transcriptSize = NSSize(width: 380, height: 140)
-
-    /// A scrollable, selectable, monospaced block of whatever a command
-    /// printed.
-    ///
-    /// Sized by its FRAME, and this is the part that is easy to get wrong.
-    /// `NSAlert` places an accessory view by reading that view's frame; it
-    /// does not run a layout pass over it, so a box described by constraints
-    /// alone hands the alert a zero rect. What that draws is the sheet in the
-    /// screenshot this was found from: an empty bezel sitting over the text it
-    /// belongs under, on a failure whose only useful content was inside it.
-    ///
-    /// The text view is sized the same way and told to track the box's width,
-    /// because the same absent layout pass leaves a bare `NSTextView` with no
-    /// width to wrap to and nothing drawn at all.
-    static func transcript(_ text: String) -> NSView {
-        let scroll = NSScrollView(frame: NSRect(origin: .zero, size: transcriptSize))
-        scroll.hasVerticalScroller = true
-        scroll.autohidesScrollers = true
-        scroll.drawsBackground = false
-        scroll.borderType = .bezelBorder
-
-        let content = scroll.contentSize
-        let view = NSTextView(frame: NSRect(origin: .zero, size: content))
-        view.minSize = NSSize(width: 0, height: content.height)
-        view.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude,
-                              height: CGFloat.greatestFiniteMagnitude)
-        view.isVerticallyResizable = true
-        view.isHorizontallyResizable = false
-        view.autoresizingMask = [.width]
-        view.textContainer?.containerSize = NSSize(width: content.width,
-                                                   height: CGFloat.greatestFiniteMagnitude)
-        view.textContainer?.widthTracksTextView = true
-        view.isEditable = false
-        view.isSelectable = true
-        view.drawsBackground = false
-        view.font = .monospacedSystemFont(ofSize: NSFont.smallSystemFontSize, weight: .regular)
-        view.textContainerInset = NSSize(width: 4, height: 4)
-        view.string = text
-        scroll.documentView = view
-        return scroll
     }
 
     @objc private func toggleAutosave() {
@@ -2425,18 +2042,9 @@ final class BackgroundView: NSView {
 /// the key view loop.
 @MainActor
 final class LinkButton: NSButton {
-    /// Settable, because one of these follows the agent pull-down and has to
-    /// point at whichever tool the command below it names. Still OWNED by the
-    /// button rather than looked up from a table keyed on its address.
-    private(set) var url: URL
-
-    /// Point at somewhere else, title and destination together, so the two
-    /// cannot be moved separately and disagree.
-    func point(at url: URL, titled title: String) {
-        self.url = url
-        self.title = title
-        toolTip = url.absoluteString
-    }
+    /// OWNED by the button rather than looked up from a table keyed on its
+    /// address.
+    let url: URL
 
     init(title: String, url: URL) {
         self.url = url
@@ -2495,8 +2103,8 @@ extension SettingsWindowController {
         formattingRowSwitch.target = self
         formattingRowSwitch.action = #selector(toggleFormattingRow)
 
-        // Item 0 is the button's own title under `pullsDown`, as the agent
-        // preset pull-down does it; the ways in start at 1.
+        // Item 0 is the button's own title under `pullsDown`, never an
+        // answer; the ways in start at 1.
         addThemeButton.pullsDown = true
         addThemeButton.controlSize = .small
         addThemeButton.removeAllItems()
