@@ -2596,7 +2596,13 @@ final class Coordinator {
             let pending = pendingFlushes.removeValue(forKey: id)
             switch guardState.judge(baseSyncVersion: base, seq: seq) {
             case .admit:
-                latest = split.document(body: content)
+                let flushed = split.document(body: content)
+                // A flush can carry keystrokes no sync has reported yet, and
+                // the callers that do not persist (hiding, the explorer's
+                // replace) read `isEdited` to decide whether leaving is safe.
+                // Bytes that moved the buffer are an edit whoever brought them.
+                if flushed != latest { isEdited = true }
+                latest = flushed
                 // Only for a caller that has said its own `then` does not
                 // decide. `flushThen` holds the argument; the short version is
                 // that this used to write unconditionally, on the belief that
