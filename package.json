@@ -13,7 +13,7 @@
     "engines": {
         "vscode": "^1.101.0"
     },
-    "packageManager": "pnpm@10.6.1",
+    "packageManager": "pnpm@12.16.1",
     "extensionKind": [
         "workspace",
         "ui"
@@ -2864,22 +2864,5 @@
         "remark-math": "^6.0.0",
         "remark-mdx": "^3.1.1",
         "unist-util-visit": "^5.1.0"
-    },
-    "pnpm": {
-        "overrides": {
-            "fast-uri": "^3.1.9",
-            "katex": "^0.18.11",
-            "lodash-es": "^4.18.1",
-            "minimatch@>=10 <11.0.1": "^11.0.1",
-            "serialize-javascript": "^7.1.2"
-        },
-        "patchedDependencies": {
-            "@milkdown/transformer@7.22.1": "patches/@milkdown__transformer@7.22.1.patch"
-        },
-        "peerDependencyRules": {
-            "allowedVersions": {
-                "vitest>@types/node": "22"
-            }
-        }
     }
 }
