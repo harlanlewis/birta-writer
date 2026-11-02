@@ -111,6 +111,9 @@ interface LoadResult {
     detail: string;
 }
 
+/** One verdict per specifier: each costs a process and a package load. */
+const loaded = new Map<string, LoadResult>();
+
 /**
  * What `require()` does with a bare specifier, asked of a child Node.
  *
@@ -123,6 +126,18 @@ interface LoadResult {
  * it has a `node_modules/<name>` entry; its absence is a broken tree.
  */
 function load(specifier: string): LoadResult {
+    const known = loaded.get(specifier);
+    if (known) return known;
+    const result = judge(specifier);
+    loaded.set(specifier, result);
+    return result;
+}
+
+/** Bounds a load whose top-level code keeps the event loop alive, so it is
+ *  named as refused rather than read as a test timeout. */
+const LOAD_TIMEOUT_MS = 20_000;
+
+function judge(specifier: string): LoadResult {
     if (specifier === "vscode") return { verdict: "builtin", detail: "" };
     const require_ = createRequire(path.join(repoRoot, "package.json"));
     if (require_("module").isBuiltin(specifier)) return { verdict: "builtin", detail: "" };
@@ -132,9 +147,10 @@ function load(specifier: string): LoadResult {
     const child = spawnSync(
         process.execPath,
         ["-e", `require(${JSON.stringify(specifier)})`],
-        { cwd: repoRoot, encoding: "utf8" },
+        { cwd: repoRoot, encoding: "utf8", timeout: LOAD_TIMEOUT_MS }, // budget-ok: a hang bound on a child process, not a test timeout
     );
     if (child.status === 0) return { verdict: "loads", detail: "" };
+    if (child.error) return { verdict: "refused", detail: child.error.message };
     const code = /code: '([A-Z_]+)'/.exec(child.stderr)?.[1] ?? `exit ${child.status}`;
     return { verdict: "refused", detail: code };
 }

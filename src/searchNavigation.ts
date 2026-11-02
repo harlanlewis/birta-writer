@@ -137,9 +137,8 @@ export function captureNavTarget(
         subscriptions.push(
             deps.onSelectionChange((event) => {
                 if (event.textEditor.document.uri.toString() !== key) { return; }
-                const selection = event.selections[0];
                 if (event.kind !== vscode.TextEditorSelectionChangeKind.Command) { return; }
-                finish(navTargetFromSelection(selection));
+                finish(navTargetFromSelection(event.selections[0]));
             }),
         );
 
