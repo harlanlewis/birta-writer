@@ -231,16 +231,25 @@ final class CommandRowTests: XCTestCase {
         return asks
     }
 
-    /// The shell runs only where its answer can change the row: a channel
-    /// that offers the command, with the command installed.
+    /// The shell runs only where its answer can change a row somebody is
+    /// looking at: a channel that offers the command, with the command
+    /// installed, on the pane that holds the row.
+    ///
+    /// Counted across the one call, because selecting the pane asks too when
+    /// the machine running this has a real link installed.
     func testTheShellShouldBeAskedOnlyWhereItsAnswerCanChangeTheRow() {
-        for (distribution, installed, expected) in [(Distribution.direct, true, 1),
-                                                    (.direct, false, 0),
-                                                    (.appStore, true, 0)] {
+        for (distribution, tab, installed, expected) in [(Distribution.direct, "advanced", true, 1),
+                                                         (.direct, "advanced", false, 0),
+                                                         (.appStore, "advanced", true, 0),
+                                                         (.direct, "general", true, 0)] {
             let controller = makeController(distribution)
+            defer { controller.window?.close() }
             let asks = counting(controller)
+            controller.selectTabForTesting(tab)
+            let before = asks.pending.count
             controller.refreshTerminalPath(installed: installed)
-            XCTAssertEqual(asks.pending.count, expected, "\(distribution) installed: \(installed)")
+            XCTAssertEqual(asks.pending.count - before, expected,
+                           "\(distribution) \(tab) installed: \(installed)")
         }
     }
 
@@ -249,7 +258,9 @@ final class CommandRowTests: XCTestCase {
     /// away.
     func testAnAnswerShouldBeKeptAndAnEmptyOneShouldNotReplaceIt() throws {
         let controller = makeController()
+        defer { controller.window?.close() }
         let asks = counting(controller)
+        controller.selectTabForTesting("advanced")
         controller.refreshTerminalPath(installed: true)
         try XCTUnwrap(asks.pending.last)("/usr/bin:/bin")
         XCTAssertEqual(controller.terminalPath, "/usr/bin:/bin")
@@ -257,5 +268,22 @@ final class CommandRowTests: XCTestCase {
         controller.refreshTerminalPath(installed: true)
         try XCTUnwrap(asks.pending.last)(nil)
         XCTAssertEqual(controller.terminalPath, "/usr/bin:/bin")
+    }
+
+    /// The answer arrives while somebody may be typing a new name, and must
+    /// leave what they typed where it is.
+    func testALateAnswerShouldLeaveANameBeingTypedAlone() throws {
+        let controller = makeController()
+        defer { controller.window?.close() }
+        let asks = counting(controller)
+        controller.selectTabForTesting("advanced")
+        let content = try XCTUnwrap(controller.window?.contentView)
+        let field = try XCTUnwrap(monospacedField(in: content), "the command name field was not drawn")
+        controller.refreshTerminalPath(installed: true)
+
+        field.stringValue = "half-typed"
+        try XCTUnwrap(asks.pending.last)("/usr/bin:/bin")
+
+        XCTAssertEqual(field.stringValue, "half-typed")
     }
 }

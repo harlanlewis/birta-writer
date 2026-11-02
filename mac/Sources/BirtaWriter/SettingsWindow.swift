@@ -476,6 +476,9 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         ])
         shown = tab
         fitWindowToPane()
+        // The terminal command's row is on this pane, so arriving at it is
+        // somebody coming to look at what that row says.
+        if tab == .advanced { refreshTerminalPath(installed: commandLinkedName != nil) }
     }
 
     /// Which pane is on screen, so `fitWindowToPane` knows what to measure.
@@ -939,8 +942,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         // What a rename has to take with it, remembered here because this is
         // the one place that reads the disk.
         commandLinkedName = installed ? name : nil
-        rowViews[.commandLine]?.apply(
-            commandAvailability(name: name, link: link, installed: installed, path: terminalPath))
+        showCommandAvailability()
         // While the command is there, and also while the last attempt was
         // REFUSED. A refusal is usually ABOUT the name (something else already
         // answers to it), and the refused attempt leaves nothing installed, so
@@ -1023,8 +1025,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     /// row would say about a directory of its own instead of about the command
     /// directory belonging to whoever is running it.
     /// `path` is the login shell's `PATH`, or nil while it has not answered,
-    /// which reports no `PATH` problem. An empty string is a real answer (a
-    /// shell with no `PATH` has the link off it) and not a probe that never ran.
+    /// which reports no `PATH` problem.
     func commandAvailability(name: String, link: URL, installed: Bool,
                              path: String?) -> RowAvailability {
         if let commandRefusal { return .warning(commandRefusal) }
@@ -1070,15 +1071,32 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     /// what does, an earlier command answering to it, is read off the disk
     /// when the row is drawn.
     ///
+    /// And only while the row is on screen, which is the Advanced pane: a
+    /// window coming forward on another pane has nobody looking at the row,
+    /// and arriving at Advanced asks then (`show`).
+    ///
     /// A shell that said nothing keeps the last answer rather than clearing
     /// it, so one failed run does not take a real warning away.
     func refreshTerminalPath(installed: Bool) {
-        guard distribution.offersTerminalCommand, installed else { return }
+        guard distribution.offersTerminalCommand, installed, shown == .advanced else { return }
         askTerminalPath { [weak self] path in
             guard let self, let path else { return }
             terminalPath = path
-            showCommand()
+            showCommandAvailability()
         }
+    }
+
+    /// The switch row's sentence, from the link `showCommand` last read and
+    /// the last `PATH` answer.
+    ///
+    /// Alone, rather than through `showCommand`, for an answer that arrives
+    /// while somebody may be typing a new name: redrawing the whole row would
+    /// put the stored name back over what they typed.
+    private func showCommandAvailability() {
+        rowViews[.commandLine]?.apply(commandAvailability(
+            name: commandLinkedName ?? Prefs.commandName, link: Prefs.commandLink,
+            installed: commandLinkedName != nil, path: terminalPath))
+        fitWindowToPane()
     }
 
     /// The file-name template exists only when a summon makes a new note.

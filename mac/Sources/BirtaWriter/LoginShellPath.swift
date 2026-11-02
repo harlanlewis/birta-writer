@@ -24,7 +24,8 @@ import Foundation
 final class LoginShellPath {
     static let shared = LoginShellPath()
 
-    /// How long the shell gets before it is ended.
+    /// How long a run may take, after which it is answered with nothing and
+    /// the shell is ended.
     ///
     /// A backstop against a startup file that blocks rather than a budget for
     /// a slow one. What it bounds is an rc file waiting for something that is
@@ -41,9 +42,6 @@ final class LoginShellPath {
     /// while one shell runs share its answer instead of starting more shells:
     /// a window coming forward redraws the row more than once.
     private var waiting: [(String?) -> Void]?
-    /// Which run `waiting` belongs to, so an answer that arrives after its
-    /// waiters were given up on is not handed to the next run's.
-    private var generation = 0
 
     init(shell: String? = nil, cap: TimeInterval = LoginShellPath.defaultCap) {
         self.shellOverride = shell
@@ -60,30 +58,25 @@ final class LoginShellPath {
             return
         }
         waiting = [answer]
-        generation += 1
-        let thisRun = generation
         DispatchQueue.global(qos: .utility).async { [self] in
             let path = run()
-            DispatchQueue.main.async { [self] in finish(thisRun, path) }
-        }
-        // The waiters are answered on time even when the run is not. Ending
-        // the shell closes its end of the pipe, but anything it started that
-        // inherited that pipe holds it open, and the read below would wait on
-        // it for as long as that lives; without this, every later ask would
-        // join a run that is never going to finish.
-        DispatchQueue.main.asyncAfter(deadline: .now() + cap + 2) { [self] in
-            finish(thisRun, nil)
+            DispatchQueue.main.async { [self] in
+                let answers = waiting ?? []
+                waiting = nil
+                for answer in answers { answer(path) }
+            }
         }
     }
 
-    private func finish(_ run: Int, _ path: String?) {
-        guard run == generation, let answers = waiting else { return }
-        waiting = nil
-        for answer in answers { answer(path) }
-    }
-
-    /// Run the shell and read its answer. Nil for anything that did not come
-    /// back with a fenced value.
+    /// Run the shell and read its answer, returning within `cap` whatever the
+    /// shell does. Nil for anything that did not come back with a fenced value.
+    ///
+    /// The output is read as it arrives and the read stops at the closing
+    /// fence, at end of file, or at the cap, whichever is first. Not a read to
+    /// end of file: anything the shell starts in the background inherits the
+    /// pipe, and a daemon an rc file launches can hold it open for as long as
+    /// it lives, which would leave this run, and every ask waiting on it,
+    /// waiting with it.
     private func run() -> String? {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: shellOverride
@@ -98,30 +91,48 @@ final class LoginShellPath {
         // Nothing to read from, so a startup file that asks a question sees
         // EOF and moves on instead of waiting out the cap.
         process.standardInput = FileHandle.nullDevice
+
+        let lock = NSLock()
+        var output = Data()
+        let settled = DispatchSemaphore(value: 0)
+        let fence = Data(ShellPath.closeMarker.utf8)
+        let reader = pipe.fileHandleForReading
+        reader.readabilityHandler = { handle in
+            let chunk = handle.availableData
+            lock.lock()
+            defer { lock.unlock() }
+            output.append(chunk)
+            if chunk.isEmpty || output.range(of: fence) != nil {
+                handle.readabilityHandler = nil
+                settled.signal()
+            }
+        }
         do {
             try process.run()
         } catch {
+            reader.readabilityHandler = nil
             return nil
         }
-        // TERM first, so a startup file can finish what it is doing, and then
-        // KILL by this process's own id, because an interactive shell may
-        // ignore a TERM and there is nothing here for it to clean up.
-        let bound = DispatchWorkItem {
-            guard process.isRunning else { return }
+        let deadline = DispatchTime.now() + cap
+        _ = settled.wait(timeout: deadline)
+        reader.readabilityHandler = nil
+        try? reader.close()
+        // The shell normally exits on its own a moment after it has printed,
+        // and is given until the deadline to. One still running then is
+        // ended: TERM first, so a startup file can finish what it is doing,
+        // then KILL by this process's own id, because an interactive shell
+        // may ignore a TERM.
+        while process.isRunning, DispatchTime.now() < deadline {
+            Thread.sleep(forTimeInterval: 0.01)
+        }
+        if process.isRunning {
             process.terminate()
             DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 1) {
                 if process.isRunning { kill(process.processIdentifier, SIGKILL) }
             }
         }
-        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + cap, execute: bound)
-        // Read to EOF BEFORE waiting on exit, and in that order: a shell that
-        // printed more than a pipe holds blocks on its next write, and a
-        // reader that waits for exit first would be waiting for a process
-        // that is waiting for it.
-        let data = (try? pipe.fileHandleForReading.readToEnd()) ?? Data()
-        process.waitUntilExit()
-        bound.cancel()
-        guard let output = String(data: data, encoding: .utf8) else { return nil }
-        return ShellPath.path(fromOutput: output)
+        lock.lock()
+        defer { lock.unlock() }
+        return ShellPath.path(fromOutput: String(decoding: output, as: UTF8.self))
     }
 }
