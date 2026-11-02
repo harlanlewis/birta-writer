@@ -14,7 +14,7 @@
  * that stylesheet no longer has rules for, so one document would render math
  * through two engines against a stylesheet written for one of them.
  *
- * Forcing them together with `pnpm.overrides` is the obvious escape and it is
+ * Forcing them together with a pnpm override is the obvious escape and it is
  * measured, not theoretical: it puts `micromark-extension-math` on 0.18, whose
  * work lands on the parse path, and `corpusMoveSampling` and `roundTripCorpus`
  * then exceed their 30s budget on a 58 KB document. See MAR-452.

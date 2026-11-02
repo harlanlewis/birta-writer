@@ -88,7 +88,7 @@ jobs:
       HAS_RELEASE_TOKEN: ${{ secrets.RELEASE_TOKEN != '' }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0 # full history for the notes range
           # The stamp commit at the end of this job pushes to main, which
@@ -158,10 +158,10 @@ jobs:
             echo "Releasing v$VERSION ($COUNT commit(s) since $PREV)." >> "$GITHUB_STEP_SUMMARY"
           fi
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         if: steps.plan.outputs.release == 'true'
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         if: steps.plan.outputs.release == 'true'
         with:
           node-version-file: .nvmrc
@@ -293,7 +293,7 @@ jobs:
       # time and never committed back.
       - name: Tag and create GitHub Release
         if: steps.plan.outputs.release == 'true'
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: v${{ steps.plan.outputs.version }}
           target_commitish: ${{ github.sha }}
@@ -310,7 +310,7 @@ jobs:
 
       - name: Hand the VSIX to the publish job
         if: steps.plan.outputs.release == 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: vsix
           path: releases/*.vsix
@@ -377,13 +377,13 @@ jobs:
       HAS_AZURE: ${{ secrets.AZURE_CLIENT_ID != '' }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         if: env.HAS_AZURE == 'true'
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         if: env.HAS_AZURE == 'true'
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         if: env.HAS_AZURE == 'true'
         with:
           node-version-file: .nvmrc
@@ -395,7 +395,7 @@ jobs:
 
       - name: Download the VSIX
         if: env.HAS_AZURE == 'true'
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: vsix
           path: releases
@@ -460,13 +460,13 @@ jobs:
       HAS_OVSX: ${{ secrets.OVSX_PAT != '' }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         if: env.HAS_OVSX == 'true'
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         if: env.HAS_OVSX == 'true'
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         if: env.HAS_OVSX == 'true'
         with:
           node-version-file: .nvmrc
@@ -478,7 +478,7 @@ jobs:
 
       - name: Download the VSIX
         if: env.HAS_OVSX == 'true'
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: vsix
           path: releases
@@ -528,13 +528,13 @@ jobs:
     steps:
       # The tag, not the branch: the release job pushes a CHANGELOG stamp
       # commit to main afterwards, so main and the tagged tree differ.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: v${{ needs.release.outputs.version }}
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: 'pnpm'
@@ -738,9 +738,9 @@ jobs:
     if: always() && contains(needs.*.result, 'failure')
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
 

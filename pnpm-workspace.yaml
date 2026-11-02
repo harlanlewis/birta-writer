@@ -1,2 +1,23 @@
 packages:
     - "packages/*"
+
+# pnpm reads its settings here, never from a `pnpm` field in package.json.
+overrides:
+    fast-uri: ^3.1.9
+    katex: ^0.18.11
+    lodash-es: ^4.18.1
+    "minimatch@>=10 <11.0.1": ^11.0.1
+    serialize-javascript: ^7.1.2
+
+patchedDependencies:
+    "@milkdown/transformer@7.22.1": patches/@milkdown__transformer@7.22.1.patch
+
+# Every dependency that ships an install script is named, because an
+# undeclared one fails the install. All three are denied, which is how every
+# install and release has run: esbuild resolves its platform binary as an
+# optional dependency, and keytar and vsce-sign arrive with vsce. Allowing one
+# is a change to what an install executes, so it gets its own reason here.
+allowBuilds:
+    "@vscode/vsce-sign": false
+    esbuild: false
+    keytar: false
