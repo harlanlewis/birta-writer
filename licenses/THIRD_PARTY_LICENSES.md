@@ -133,7 +133,7 @@ SOFTWARE.
 
 </details>
 
-### @chevrotain/cst-dts-gen@11.1.2
+### @chevrotain/cst-dts-gen@13.2.0
 
 - License: Apache-2.0
 - Source: git://github.com/Chevrotain/chevrotain
@@ -346,7 +346,7 @@ Apache License
 
 </details>
 
-### @chevrotain/gast@11.1.2
+### @chevrotain/gast@13.2.0
 
 - License: Apache-2.0
 - Source: git://github.com/Chevrotain/chevrotain
@@ -559,7 +559,7 @@ Apache License
 
 </details>
 
-### @chevrotain/regexp-to-ast@11.1.2
+### @chevrotain/regexp-to-ast@13.2.0
 
 - License: Apache-2.0
 - Source: git://github.com/Chevrotain/chevrotain
@@ -772,7 +772,7 @@ Apache License
 
 </details>
 
-### @chevrotain/utils@11.1.2
+### @chevrotain/utils@13.2.0
 
 - License: Apache-2.0
 - Source: git://github.com/Chevrotain/chevrotain
@@ -1268,7 +1268,7 @@ SOFTWARE.
 
 </details>
 
-### @mermaid-js/parser@2.0.0
+### @mermaid-js/parser@2.0.1
 
 - License: MIT
 - Source: https://github.com/mermaid-js/mermaid/tree/develop/packages/mermaid/parser/#readme
@@ -1953,7 +1953,7 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 </details>
 
-### chevrotain@11.1.2
+### chevrotain@13.2.0
 
 - License: Apache-2.0
 - Source: https://chevrotain.io/docs/
@@ -5499,7 +5499,7 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 </details>
 
-### mermaid@12.0.0
+### mermaid@12.2.0
 
 - License: MIT
 - Source: https://github.com/mermaid-js/mermaid
