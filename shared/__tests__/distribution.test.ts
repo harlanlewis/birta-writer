@@ -101,20 +101,23 @@ describe("the distribution seam", () => {
         expect(seam).toContain("public func updatesItself(flavour: AppFlavor) -> Bool");
     });
 
-    it("the login shell should run at launch only on a channel with something to ask it", () => {
-        // The terminal command's PATH check is its only reader, and a store
-        // build does not offer the command, so an ungated launch call runs
-        // somebody's whole startup for nothing. A late reader is
-        // not lost: `value()` starts the shell itself.
-        const eager = readers(
+    it("the login shell should be asked by the terminal command's row alone, never at launch", () => {
+        // Running somebody's whole startup is not free, and its one reader is
+        // the Settings row that checks `bwr` against PATH. That row asks only
+        // on a channel offering the command, with it installed, while the
+        // Advanced pane is shown (`refreshTerminalPath`, held behaviourally
+        // by CommandRowTests); this
+        // holds that nothing else asks, App.swift included.
+        const askers = readers(
             app.filter((f) => !f.path.endsWith("LoginShellPath.swift")),
-            /LoginShellPath\.shared\.prewarm\(\)/,
+            /LoginShellPath\./,
         );
-        expect(eager).toEqual(["mac/Sources/BirtaWriter/App.swift"]);
-        const appSwift = readFileSync(join(APP_TARGET, "App.swift"), "utf8");
-        expect(appSwift).toMatch(
-            /if Distribution\.current\.offersTerminalCommand \{\s*\n\s*LoginShellPath\.shared\.prewarm\(\)/,
-        );
+        expect(askers).toEqual(["mac/Sources/BirtaWriter/SettingsWindow.swift"]);
+        const settings = readFileSync(join(APP_TARGET, "SettingsWindow.swift"), "utf8");
+        // And it asks when the window comes forward, which is when somebody
+        // who just edited their shell's startup comes back to look.
+        const becomeKey = settings.slice(settings.indexOf("func windowDidBecomeKey("));
+        expect(becomeKey.slice(0, becomeKey.indexOf("\n    }\n"))).toContain("refreshTerminalPath(");
     });
 
     it("the store build should be the sandboxed one, with the access a store copy needs", () => {

@@ -46,34 +46,6 @@ final class ShellPathTests: XCTestCase {
         XCTAssertNil(ShellPath.path(fromOutput: backwards))
     }
 
-    // MARK: the merge
-
-    func testTheChildShouldGetTheShellsOrderingFirstAndKeepWhatItAlreadyHad() {
-        let merged = ShellPath.childPath(resolved: "/opt/homebrew/bin:/usr/bin",
-                                         inherited: "/usr/bin:/sbin")
-        // The shell's own ordering is what decides between two copies of a
-        // tool, so it comes first; the inherited entry the shell did not
-        // mention is kept rather than taken away.
-        XCTAssertEqual(merged, "/opt/homebrew/bin:/usr/bin:/sbin")
-    }
-
-    func testADirectoryNamedTwiceShouldAppearOnce() {
-        XCTAssertEqual(ShellPath.childPath(resolved: "/a:/b:/a", inherited: "/b:/c"), "/a:/b:/c")
-    }
-
-    /// A trailing colon means the current directory to some shells, which
-    /// says nothing about where a command is installed.
-    func testAnEmptySegmentShouldNotBecomeTheCurrentDirectory() {
-        XCTAssertEqual(ShellPath.childPath(resolved: "/a::/b:", inherited: nil), "/a:/b")
-    }
-
-    func testAShellThatSaidNothingShouldLeaveTheInheritedPathAsItIs() {
-        XCTAssertEqual(ShellPath.childPath(resolved: nil, inherited: "/usr/bin:/bin"),
-                       "/usr/bin:/bin")
-        XCTAssertNil(ShellPath.childPath(resolved: nil, inherited: nil))
-        XCTAssertNil(ShellPath.childPath(resolved: "", inherited: ""))
-    }
-
     // MARK: how the shell is asked
 
     /// Login AND interactive. Login alone misses `.zshrc`, which is where a

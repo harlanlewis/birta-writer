@@ -18,8 +18,8 @@ final class CommandRowTests: XCTestCase {
         _ = NSApplication.shared
     }
 
-    private func makeController() -> SettingsWindowController {
-        SettingsWindowController(flavour: .release, distribution: .direct, onHotkeyChange: { 0 }, onChange: { _ in },
+    private func makeController(_ distribution: Distribution = .direct) -> SettingsWindowController {
+        SettingsWindowController(flavour: .release, distribution: distribution, onHotkeyChange: { 0 }, onChange: { _ in },
                                  onChangeEverywhere: {}, onShowWelcome: {},
                                  onCheckForUpdates: {})
     }
@@ -186,7 +186,8 @@ final class CommandRowTests: XCTestCase {
     func testARefusalShouldReplaceWhateverElseTheRowWouldSay() {
         let controller = makeController()
         controller.commandRefusal = "A file of that name is already there."
-        let availability = controller.commandAvailability(name: "bwr", link: link, installed: false)
+        let availability = controller.commandAvailability(name: "bwr", link: link, installed: false,
+                                                          path: nil)
         XCTAssertTrue(availability.isProblem)
         XCTAssertEqual(availability.note, "A file of that name is already there.")
     }
@@ -207,5 +208,82 @@ final class CommandRowTests: XCTestCase {
         XCTAssertEqual(SettingsWindowController.typedName(in: field), Prefs.defaultCommandName)
         field.stringValue = " notes "
         XCTAssertEqual(SettingsWindowController.typedName(in: field), "notes")
+    }
+
+    // MARK: when the row asks the login shell
+
+    /// Before the shell has answered, the row says nothing about `PATH`
+    /// rather than reporting a problem it has not checked.
+    func testAnUnansweredPathShouldNotBeReportedAsAProblem() {
+        let availability = makeController().commandAvailability(name: "bwr", link: link,
+                                                                installed: true, path: nil)
+        XCTAssertFalse(availability.isProblem, availability.note)
+    }
+
+    /// The asks the row makes, held for the test to answer.
+    private final class Asks {
+        var pending: [(String?) -> Void] = []
+    }
+
+    private func counting(_ controller: SettingsWindowController) -> Asks {
+        let asks = Asks()
+        controller.askTerminalPath = { asks.pending.append($0) }
+        return asks
+    }
+
+    /// The shell runs only where its answer can change a row somebody is
+    /// looking at: a channel that offers the command, with the command
+    /// installed, on the pane that holds the row.
+    ///
+    /// Counted across the one call, because selecting the pane asks too when
+    /// the machine running this has a real link installed.
+    func testTheShellShouldBeAskedOnlyWhereItsAnswerCanChangeTheRow() {
+        for (distribution, tab, installed, expected) in [(Distribution.direct, "advanced", true, 1),
+                                                         (.direct, "advanced", false, 0),
+                                                         (.appStore, "advanced", true, 0),
+                                                         (.direct, "general", true, 0)] {
+            let controller = makeController(distribution)
+            defer { controller.window?.close() }
+            let asks = counting(controller)
+            controller.selectTabForTesting(tab)
+            let before = asks.pending.count
+            controller.refreshTerminalPath(installed: installed)
+            XCTAssertEqual(asks.pending.count - before, expected,
+                           "\(distribution) \(tab) installed: \(installed)")
+        }
+    }
+
+    /// An answer is what the row draws from next; a shell that said nothing
+    /// keeps the last answer, so one failed run cannot take a real warning
+    /// away.
+    func testAnAnswerShouldBeKeptAndAnEmptyOneShouldNotReplaceIt() throws {
+        let controller = makeController()
+        defer { controller.window?.close() }
+        let asks = counting(controller)
+        controller.selectTabForTesting("advanced")
+        controller.refreshTerminalPath(installed: true)
+        try XCTUnwrap(asks.pending.last)("/usr/bin:/bin")
+        XCTAssertEqual(controller.terminalPath, "/usr/bin:/bin")
+
+        controller.refreshTerminalPath(installed: true)
+        try XCTUnwrap(asks.pending.last)(nil)
+        XCTAssertEqual(controller.terminalPath, "/usr/bin:/bin")
+    }
+
+    /// The answer arrives while somebody may be typing a new name, and must
+    /// leave what they typed where it is.
+    func testALateAnswerShouldLeaveANameBeingTypedAlone() throws {
+        let controller = makeController()
+        defer { controller.window?.close() }
+        let asks = counting(controller)
+        controller.selectTabForTesting("advanced")
+        let content = try XCTUnwrap(controller.window?.contentView)
+        let field = try XCTUnwrap(monospacedField(in: content), "the command name field was not drawn")
+        controller.refreshTerminalPath(installed: true)
+
+        field.stringValue = "half-typed"
+        try XCTUnwrap(asks.pending.last)("/usr/bin:/bin")
+
+        XCTAssertEqual(field.stringValue, "half-typed")
     }
 }

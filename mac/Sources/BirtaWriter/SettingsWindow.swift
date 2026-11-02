@@ -152,6 +152,13 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     /// The name the link on disk is under, as `showCommand` last read it, so
     /// a rename knows what to take away. Nil when no link of ours is there.
     private var commandLinkedName: String?
+    /// The login shell's `PATH` as it last answered, or nil before it has.
+    /// Nil draws no `PATH` problem: a row that has not checked says nothing
+    /// rather than guessing.
+    var terminalPath: String?
+    /// How the row asks for that `PATH`: the person's own login shell. A seam
+    /// so a check can count the asks and answer them itself.
+    var askTerminalPath: (@escaping (String?) -> Void) -> Void = { LoginShellPath.shared.ask($0) }
     private let newNoteField = NSTextField(string: Prefs.newNoteNameTemplate)
     private let dockSwitch = NSSwitch()
     private let menuBarSwitch = NSSwitch()
@@ -469,6 +476,9 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         ])
         shown = tab
         fitWindowToPane()
+        // The terminal command's row is on this pane, so arriving at it is
+        // somebody coming to look at what that row says.
+        if tab == .advanced { refreshTerminalPath(installed: commandLinkedName != nil) }
     }
 
     /// Which pane is on screen, so `fitWindowToPane` knows what to measure.
@@ -932,7 +942,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
         // What a rename has to take with it, remembered here because this is
         // the one place that reads the disk.
         commandLinkedName = installed ? name : nil
-        rowViews[.commandLine]?.apply(commandAvailability(name: name, link: link, installed: installed))
+        showCommandAvailability()
         // While the command is there, and also while the last attempt was
         // REFUSED. A refusal is usually ABOUT the name (something else already
         // answers to it), and the refused attempt leaves nothing installed, so
@@ -1014,15 +1024,13 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     /// Takes the link rather than reading `Prefs`, so a check can ask what the
     /// row would say about a directory of its own instead of about the command
     /// directory belonging to whoever is running it.
-    /// `path` is the login shell's `PATH`, injectable so a test can put the
-    /// link's directory on it or off it and reach both answers; the default
-    /// is what the row draws with. An empty string is a real answer (a shell
-    /// with no `PATH` has the link off it) and not a probe that never ran.
+    /// `path` is the login shell's `PATH`, or nil while it has not answered,
+    /// which reports no `PATH` problem.
     func commandAvailability(name: String, link: URL, installed: Bool,
-                             path: String = LoginShellPath.shared.childPath() ?? "") -> RowAvailability {
+                             path: String?) -> RowAvailability {
         if let commandRefusal { return .warning(commandRefusal) }
         let directory = link.deletingLastPathComponent()
-        guard installed else { return .available() }
+        guard installed, let path else { return .available() }
         let standing = CommandInstall.standing(
             name: name,
             directory: directory.path,
@@ -1049,6 +1057,46 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
             ? CommandInstall.install(link: Prefs.commandLink, target: Prefs.commandTarget)
             : CommandInstall.uninstall(link: Prefs.commandLink)
         showCommand()
+        refreshTerminalPath(installed: commandLinkedName != nil)
+    }
+
+    /// Ask the login shell for its `PATH` again, and redraw the row from the
+    /// answer.
+    ///
+    /// Only where the answer can change what the row says: a channel that
+    /// offers the command, with the command installed. Asked when the window
+    /// comes forward, which is when somebody who just fixed their shell's
+    /// startup comes back to look, and when the switch installs the command.
+    /// A rename needs no ask, because the `PATH` does not depend on the name;
+    /// what does, an earlier command answering to it, is read off the disk
+    /// when the row is drawn.
+    ///
+    /// And only while the row is on screen, which is the Advanced pane: a
+    /// window coming forward on another pane has nobody looking at the row,
+    /// and arriving at Advanced asks then (`show`).
+    ///
+    /// A shell that said nothing keeps the last answer rather than clearing
+    /// it, so one failed run does not take a real warning away.
+    func refreshTerminalPath(installed: Bool) {
+        guard distribution.offersTerminalCommand, installed, shown == .advanced else { return }
+        askTerminalPath { [weak self] path in
+            guard let self, let path else { return }
+            terminalPath = path
+            showCommandAvailability()
+        }
+    }
+
+    /// The switch row's sentence, from the link `showCommand` last read and
+    /// the last `PATH` answer.
+    ///
+    /// Alone, rather than through `showCommand`, for an answer that arrives
+    /// while somebody may be typing a new name: redrawing the whole row would
+    /// put the stored name back over what they typed.
+    private func showCommandAvailability() {
+        rowViews[.commandLine]?.apply(commandAvailability(
+            name: commandLinkedName ?? Prefs.commandName, link: Prefs.commandLink,
+            installed: commandLinkedName != nil, path: terminalPath))
+        fitWindowToPane()
     }
 
     /// The file-name template exists only when a summon makes a new note.
@@ -1769,8 +1817,10 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTe
     func windowDidBecomeKey(_ notification: Notification) {
         showLoginItem(LoginItem.state)
         // Same reason, one directory over: the link this row reports is one a
-        // shell can remove while the window sits there.
+        // shell can remove while the window sits there, and the `PATH` it is
+        // checked against is one a person edits in another app.
         showCommand()
+        refreshTerminalPath(installed: commandLinkedName != nil)
         // And the appearance: View > Theme and the palette move the same
         // setting this pane shows, and the window is not told.
         refreshAppearance()
