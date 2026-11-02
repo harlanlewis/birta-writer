@@ -109,8 +109,8 @@ async function searchJump(api: BirtaApi, uri: vscode.Uri): Promise<BirtaEditorCo
         query: NEEDLE,
         triggerSearch: true,
     });
-    // `search.action.getSearchResults` postdates the engines floor (absent in
-    // 1.95.0), so the readiness poll is best-effort: where the command exists
+    // `search.action.getSearchResults` is absent from older builds (1.95.0
+    // lacks it), so the readiness poll is best-effort: where the command exists
     // it removes the race outright; where it doesn't, the stepping loop below
     // still converges because focusNextSearchResult on a not-yet-populated
     // view is a no-op and awaitSelection polls before the next step.

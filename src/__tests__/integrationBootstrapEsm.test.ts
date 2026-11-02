@@ -1,27 +1,32 @@
 /**
- * The integration suite's Extension Host half may not depend on an ESM-only
- * package, by any import style.
+ * Every package the integration suite's Extension Host half loads must be
+ * loadable by `require()`, by any import style.
  *
  * `src/test/suite/**` compiles to CommonJS (tsconfig.integration.json) and is
- * loaded INSIDE the Extension Host, which runs the Node that VS Code ships.
- * `require()` of an ESM graph needs Node 20.19; the `engines.vscode` floor ships
- * Node 20.18, one release below it. Nothing on a PR launches that runtime, so a
- * dependency that cannot load there is green on every contributor's Node, green
- * on stable VS Code, green in every CI job, and red only in the nightly Release
- * run, where it blocks publishing until someone reads the log. mocha 12 did
- * exactly that from 2026-09-10, and mocha is pinned to 11 because of it.
+ * loaded INSIDE the Extension Host, which runs the Node that VS Code ships. The
+ * `engines.vscode` floor (1.101) ships Node 22.15, which `require()`s an ES
+ * module graph unflagged, so an ESM-only package is no longer refused for being
+ * ESM. Two shapes still are: a package whose `exports` map offers no `require`
+ * condition and no CommonJS-loadable default, and an ES module graph that uses
+ * top-level `await` (ERR_REQUIRE_ASYNC_MODULE). Nothing on a contributor's
+ * machine or in the unit job launches the Extension Host, so either shape is
+ * green everywhere except the floor's own launch.
  *
- * THE IMPORT STYLE IS NOT THE FIX, and this is the part that cost a wrong
- * first attempt. Rewriting the static import as `await import("mocha")` moved
- * the error without removing it: mocha 12's own CommonJS shim (`lib/mocha.cjs`)
- * `require()`s an ESM file inside the package, so the failure reappeared one
- * frame deeper, inside the dependency. A package whose graph is ESM cannot be
- * loaded at the floor at all. So this guard judges the DEPENDENCY, and counts a
- * dynamic import as reaching it just as a static one does.
+ * THE IMPORT STYLE IS NOT THE FIX. Rewriting a static import as `await import()`
+ * moves the error into the dependency without removing it, because a package's
+ * own CommonJS shim can itself `require()` what the host cannot load. So this
+ * guard judges the DEPENDENCY, and counts a dynamic import as reaching it just as
+ * a static one does.
+ *
+ * The verdict is the real loader's, not a reading of the manifest: each package
+ * is `require()`d in a child Node, outside Vitest's module system. That child is
+ * the runner's Node (`.nvmrc`), not the floor's, so it stands in for the floor
+ * only on the property asserted first, that it loads ES modules through
+ * `require()` at all. The floor's own launch is CI's `integration-floor` job.
  *
  * `src/test/runTest.ts` is deliberately out of scope. It runs on the runner's
  * own Node rather than in the Extension Host, so the floor's limit does not
- * reach it and refusing an ESM-only import there would refuse something safe.
+ * reach it.
  *
  * A type-only import IS spared: it is erased before emit and reaches no runtime.
  */
@@ -29,6 +34,7 @@ import { describe, it, expect } from "vitest";
 import * as fs from "fs";
 import * as path from "path";
 import { createRequire } from "module";
+import { spawnSync } from "child_process";
 import ts from "typescript";
 
 const repoRoot = path.resolve(__dirname, "..", "..");
@@ -97,77 +103,78 @@ function packageReferences(file: string): PackageReference[] {
     return packageReferencesIn(fs.readFileSync(file, "utf8"), file);
 }
 
-type Verdict = "builtin" | "esm" | "cjs" | "unresolved";
+type Verdict = "builtin" | "loads" | "refused" | "unresolved";
+
+/** The child's answer, kept whole so a failure can say why. */
+interface LoadResult {
+    verdict: Verdict;
+    detail: string;
+}
 
 /**
- * What kind of thing a bare specifier names.
+ * What `require()` does with a bare specifier, asked of a child Node.
  *
  * `builtin` covers Node's own modules and `vscode`: the first live inside the
- * runtime, the second is injected by the Extension Host, and neither can be an
- * ESM graph.
+ * runtime, the second is injected by the Extension Host and is not installed.
  *
- * `unresolved` is deliberately NOT a pass. An earlier cut of this read the
- * manifest through `require.resolve(specifier + "/package.json")`, which an
- * `exports` map is free to refuse, and a package that refuses it came back
- * indistinguishable from a builtin. That is an instrument reporting success
- * because it could not look, so the caller treats this verdict as a failure and
- * names the package rather than skipping it.
- *
- * Reading the manifest off disk is what avoids that: every package the suite can
- * import is a direct dependency, so it has a `node_modules/<name>` entry, and a
- * plain file read is not subject to an exports map at all.
+ * `unresolved` is deliberately NOT a pass. A package that is not installed
+ * cannot be judged, and a guard that cannot answer must say so rather than read
+ * as a clean sweep. Every package the suite imports is a direct dependency, so
+ * it has a `node_modules/<name>` entry; its absence is a broken tree.
  */
-function classify(specifier: string): Verdict {
-    if (specifier === "vscode") return "builtin";
+function load(specifier: string): LoadResult {
+    if (specifier === "vscode") return { verdict: "builtin", detail: "" };
     const require_ = createRequire(path.join(repoRoot, "package.json"));
-    if (require_("module").isBuiltin(specifier)) return "builtin";
-
-    const manifestPath = path.join(
-        repoRoot,
-        "node_modules",
-        specifier,
-        "package.json",
+    if (require_("module").isBuiltin(specifier)) return { verdict: "builtin", detail: "" };
+    if (!fs.existsSync(path.join(repoRoot, "node_modules", specifier, "package.json"))) {
+        return { verdict: "unresolved", detail: "no node_modules entry" };
+    }
+    const child = spawnSync(
+        process.execPath,
+        ["-e", `require(${JSON.stringify(specifier)})`],
+        { cwd: repoRoot, encoding: "utf8" },
     );
-    if (!fs.existsSync(manifestPath)) return "unresolved";
-    const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8")) as {
-        type?: string;
-    };
-    return manifest.type === "module" ? "esm" : "cjs";
+    if (child.status === 0) return { verdict: "loads", detail: "" };
+    const code = /code: '([A-Z_]+)'/.exec(child.stderr)?.[1] ?? `exit ${child.status}`;
+    return { verdict: "refused", detail: code };
 }
 
 describe("the integration suite's Extension Host half", () => {
-    it("a dependency on an ESM-only package should be absent, because the engines floor cannot load one", () => {
+    it("the child Node should load ES modules through require(), or no verdict below stands in for the floor", () => {
+        // Asserted first because every other verdict is read off this child.
+        // A runner Node without require(esm) would refuse every ESM package and
+        // fail the sweep for a reason that is not the floor's.
+        const child = spawnSync(
+            process.execPath,
+            ["-p", "process.features.require_module === true"],
+            { encoding: "utf8" },
+        );
+        expect(child.stdout.trim(), `runner Node ${process.version}`).toBe("true");
+    });
+
+    it("every package it loads should be require()-able, because the Extension Host loads the suite as CommonJS", () => {
         const seen = suiteSources().flatMap(packageReferences);
 
-        // The instrument has to have reached the source. Zero third-party
-        // packages is a legitimate state here, so counting the judged subset
-        // would assert nothing; what has to be true is that the walk parsed real
-        // imports out of real files. Every integration test imports `vscode`, so
-        // its absence means the AST walk found nothing and the check below is
-        // vacuous rather than satisfied.
+        // The instrument has to have reached the source. Every integration test
+        // imports `vscode`, so its absence means the AST walk found nothing and
+        // the check below is vacuous rather than satisfied.
         expect(seen.length).toBeGreaterThan(0);
         expect(seen.map((s) => s.specifier)).toContain("vscode");
 
-        // An unresolved package fails alongside an ESM one. It means the guard
-        // could not answer, and a guard that cannot answer must say so rather
-        // than report a clean sweep.
-        const offenders = seen.filter((s) => {
-            const v = classify(s.specifier);
-            return v === "esm" || v === "unresolved";
-        });
+        // An unresolved package fails alongside a refused one: the guard could
+        // not answer, and must say so rather than report a clean sweep.
+        const offenders = seen
+            .map((s) => ({ ...s, result: load(s.specifier) }))
+            .filter((s) => s.result.verdict === "refused" || s.result.verdict === "unresolved");
         expect(
             offenders.map(
-                (o) =>
-                    `${o.file} ${o.via}-imports "${o.specifier}" (${classify(o.specifier)})`,
+                (o) => `${o.file} ${o.via}-imports "${o.specifier}" (${o.result.verdict}: ${o.result.detail})`,
             ),
         ).toEqual([]);
-    });
 
-    it("mocha should resolve to a CommonJS package, since the bootstrap loads it at the floor", () => {
-        // The specific pin this guard was written for. The check above would
-        // catch a regression here too, but only while the bootstrap still names
-        // mocha; this one fails even if the import moves, and names the reason.
-        expect(classify("mocha")).toBe("cjs");
+        // A floor on the judged set: mocha is the one third-party package the
+        // bootstrap loads, so at least one verdict above was the loader's own.
+        expect(seen.filter((s) => load(s.specifier).verdict === "loads").length).toBeGreaterThan(0);
     });
 
     it("the walk should reach every file in the suite directory, so a new test file cannot escape it", () => {
@@ -176,18 +183,17 @@ describe("the integration suite's Extension Host half", () => {
         expect(files.map((f) => path.basename(f))).toContain("index.ts");
     });
 
-    it("the classifier should discriminate all four verdicts, so the check above cannot pass by always answering the same thing", () => {
-        // A classifier that cannot tell an ESM package from a CommonJS one makes
-        // the assertion above decoration. `harper.js` is ESM-only and present in
-        // this tree, and it is the case that broke the first cut of this
-        // function: its `exports` map refuses `./package.json`, so resolving the
-        // manifest through the module system answered "not judged" and read as a
-        // pass. `typescript` is CommonJS and equally present.
-        expect(classify("harper.js")).toBe("esm");
-        expect(classify("typescript")).toBe("cjs");
-        expect(classify("path")).toBe("builtin");
-        expect(classify("vscode")).toBe("builtin");
-        expect(classify("a-package-that-is-not-installed")).toBe("unresolved");
+    it("the loader should discriminate all four verdicts, so the check above cannot pass by always answering the same thing", () => {
+        // mocha 12 is an ES module graph that require() loads. harper.js is
+        // ESM whose `exports` map offers `import` alone, so require() refuses
+        // it; it is the real-world shape of a package the floor cannot load.
+        // `typescript` is plain CommonJS.
+        expect(load("mocha").verdict).toBe("loads");
+        expect(load("typescript").verdict).toBe("loads");
+        expect(load("harper.js")).toEqual({ verdict: "refused", detail: "ERR_PACKAGE_PATH_NOT_EXPORTED" });
+        expect(load("path").verdict).toBe("builtin");
+        expect(load("vscode").verdict).toBe("builtin");
+        expect(load("a-package-that-is-not-installed").verdict).toBe("unresolved");
     });
 
     it("the import walk should catch both forms that load a package and spare the one that does not", () => {

@@ -11,7 +11,7 @@
     "license": "FSL-1.1-ALv2",
     "icon": "media/icon.png",
     "engines": {
-        "vscode": "^1.95.0"
+        "vscode": "^1.101.0"
     },
     "packageManager": "pnpm@10.6.1",
     "extensionKind": [
@@ -2827,15 +2827,15 @@
     "devDependencies": {
         "@types/jsdom": "^30.0.0",
         "@types/mocha": "^10.0.10",
-        "@types/node": "^20.19.43",
-        "@types/vscode": "1.95.0",
+        "@types/node": "~22.15.35",
+        "@types/vscode": "1.101.0",
         "@vitest/coverage-v8": "^5.0.5",
         "@vscode/test-electron": "^3.1.0",
         "@vscode/vsce": "^3.9.2",
         "esbuild": "^0.28.2",
         "js-yaml": "^5.4.2",
         "jsdom": "30.0.1",
-        "mocha": "^11.8.0",
+        "mocha": "^12.0.3",
         "ovsx": "1.2.0",
         "playwright": "^1.63.0",
         "typescript": "^6.0.3",
@@ -2868,7 +2868,6 @@
     "pnpm": {
         "overrides": {
             "fast-uri": "^3.1.9",
-            "happy-dom": "^21.0.4",
             "katex": "^0.18.11",
             "lodash-es": "^4.18.1",
             "minimatch@>=10 <11.0.1": "^11.0.1",
@@ -2879,7 +2878,7 @@
         },
         "peerDependencyRules": {
             "allowedVersions": {
-                "vitest>@types/node": "20"
+                "vitest>@types/node": "22"
             }
         }
     }

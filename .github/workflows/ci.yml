@@ -318,8 +318,8 @@ jobs:
 
   # The `engines.vscode` floor is the one runtime no other check here launches,
   # and a dependency is the thing that routinely breaks it. mocha 12 is the
-  # worked example: ESM-only, and `require()` of an ESM graph needs Node 20.19
-  # while the floor's VS Code ships Node 20.18. It was green on every
+  # worked example: ESM-only, and unloadable by `require()` on the Node 20.18
+  # that the floor's VS Code shipped before the floor rose to 1.101. It was green on every
   # contributor's Node, green on stable VS Code, and green in every job above,
   # and it blocked three nights of releases before anyone read the nightly's log.
   # Until this job existed, the Release run was the first launch of the floor,

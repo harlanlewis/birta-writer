@@ -126,8 +126,8 @@ export function parseEntry(entry: string): ParsedEntry {
  * identical matcher on a config toggle (`styleMatcherFor`) is near-free.
  *
  * The cliff is engine-version-dependent, and a current Electron pays far less
- * than the worst case. `engines.vscode` still admits 1.95, whose Chromium is
- * years older, so chunking is insurance against whichever V8 the host ships,
+ * than the worst case. `engines.vscode` still admits 1.101, whose Chromium is
+ * well behind current, so chunking is insurance against whichever V8 the host ships,
  * and it wins on every engine measured.
  *
  * The trigger is the `\s+` whitespace widening below — with literal spaces the

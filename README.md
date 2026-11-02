@@ -62,7 +62,7 @@ Install the extension from the [VS Code Marketplace](https://marketplace.visuals
 
 Everything is rebindable in VS Code's Keyboard Shortcuts. See [Features and settings](docs/FEATURES.md) for complete feature reference, settings list, and keyboard shortcuts.
 
-Requires VS Code 1.95 or later.
+Requires VS Code 1.101 or later.
 
 Also published to [Open VSX](https://open-vsx.org/extension/BirtaLabs/birta-writer), so it appears in the built-in extension search of VSCodium, Cursor, Windsurf, Gitpod and other editors that read that registry.
 
