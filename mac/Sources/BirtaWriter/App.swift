@@ -185,18 +185,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding, 
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        // First, and off the main thread. Running somebody's login shell to
-        // find out where their tools are takes as long as their startup files
-        // take, and the alternative to paying for it now is paying for it in
-        // front of a person who has just opened Settings.
-        //
-        // Only where something can ask: the terminal command's PATH check is
-        // the one reader, and a channel that does not offer the command would
-        // run somebody's whole startup for nothing. A late reader still gets
-        // an answer, because `value()` starts the shell itself.
-        if Distribution.current.offersTerminalCommand {
-            LoginShellPath.shared.prewarm()
-        }
         Prefs.forgetRetiredKeys()
         // Before ANYTHING reads a stored path: the notes-move offer below, the
         // windows a launch puts back, the recents. On the store channel each

@@ -11,12 +11,12 @@ import Foundation
 ///
 /// Asking the shell is the only way to know. A list of likely directories
 /// (`~/.local/bin`, `/opt/homebrew/bin`, and whatever is next) is a guess that
-/// goes stale, and it is wrong in the direction that matters: it would find
-/// most tools and fail silently on the one somebody installed their own way.
+/// goes stale, and it is wrong in the direction that matters: right for most
+/// people, and silently wrong for whoever arranged their `PATH` their own way.
 /// The login-and-interactive shell reads exactly the files that set `PATH` for
 /// that person, so it answers for the arrangement they actually have.
 ///
-/// Pure, and in Core, so the parsing and the merge are checkable without
+/// Pure, and in Core, so the parsing is checkable without
 /// running a shell. `LoginShellPath` in the app is what runs one.
 public enum ShellPath {
     /// Fences around the answer, so an rc file that prints a greeting, a
@@ -67,8 +67,8 @@ public enum ShellPath {
     /// The value between the markers, or nil when the shell never printed one.
     ///
     /// Nil rather than an empty string for a shell that failed, so a caller
-    /// can tell "it said nothing" from "it said nothing was on PATH" and keep
-    /// what it already had in the first case.
+    /// can tell "it said nothing" from "it said nothing was on PATH" and
+    /// report no problem it has not checked in the first case.
     public static func path(fromOutput output: String) -> String? {
         guard let open = output.range(of: openMarker),
               let close = output.range(of: closeMarker, range: open.upperBound..<output.endIndex)
@@ -78,27 +78,5 @@ public enum ShellPath {
         let value = String(output[open.upperBound..<close.lowerBound])
             .trimmingCharacters(in: .whitespacesAndNewlines)
         return value.isEmpty ? nil : value
-    }
-
-    /// The `PATH` a child gets: what the shell reported, then anything the
-    /// app already had that the shell did not mention.
-    ///
-    /// A merge rather than a replacement. The shell's answer comes first
-    /// because it is the person's own ordering, and theirs is what decides
-    /// between two copies of a tool; the inherited entries are kept behind it
-    /// because dropping them could take away a directory the app was given
-    /// deliberately, and there is no version of this feature that is improved
-    /// by having fewer places to look.
-    ///
-    /// Empty segments are dropped. A trailing colon in `PATH` means the
-    /// current directory on some shells, which says nothing about where a
-    /// command is installed.
-    public static func childPath(resolved: String?, inherited: String?) -> String? {
-        let entries = [resolved, inherited]
-            .compactMap { $0 }
-            .flatMap { $0.split(separator: ":", omittingEmptySubsequences: true).map(String.init) }
-        var seen = Set<String>()
-        let unique = entries.filter { seen.insert($0).inserted }
-        return unique.isEmpty ? nil : unique.joined(separator: ":")
     }
 }

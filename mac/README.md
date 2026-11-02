@@ -115,6 +115,8 @@ What the app WRITES is a separate list, one extension long, and `DocumentTypes` 
 
 Settings, Advanced, Open from Terminal installs `bwr`: a symlink in `~/.local/bin` pointing at `Contents/MacOS/bwr` inside the bundle. A link rather than a copy, so an app that moves or replaces itself carries its command with it, and in a directory the user owns, so nothing about the gesture needs a password. `bwr-dev` is the name a development build offers, for the reason its hotkey and its note differ: the two bundles are meant to sit in `/Applications` together, and one name would mean whichever was installed second silently took the other's. The name is editable, because the only thing about this that can collide with somebody's machine is the word, and renaming it moves the link rather than leaving a second one behind.
 
+A link in place is not yet a command that runs: `~/.local/bin` is on nobody's `PATH` by default, and an earlier directory can hold something else by the same name. So with the command installed, the row says which, checked against the `PATH` your login shell gives Terminal (`LoginShellPath`, `BirtaWriterCore.ShellPath`). The shell runs only then, when Settings comes forward or the switch installs the command, and never at launch, because it runs your whole startup and most launches never open Settings. It runs again each time rather than reusing an answer, so a fix to your startup files shows the next time you come back to the window. Until it answers, the row says nothing about `PATH`; a shell that hangs is ended, and is answered for, after `LoginShellPath.defaultCap`.
+
 | Typed | What happens |
 | -- | -- |
 | `bwr` | Every window comes up, as the summon key does. A call from a shell is a request rather than a toggle. |
