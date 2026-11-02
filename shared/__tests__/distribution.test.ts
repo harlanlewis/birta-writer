@@ -104,8 +104,9 @@ describe("the distribution seam", () => {
     it("the login shell should be asked by the terminal command's row alone, never at launch", () => {
         // Running somebody's whole startup is not free, and its one reader is
         // the Settings row that checks `bwr` against PATH. That row asks only
-        // on a channel offering the command, with it installed
-        // (`refreshTerminalPath`, held behaviourally by CommandRowTests); this
+        // on a channel offering the command, with it installed, while the
+        // Advanced pane is shown (`refreshTerminalPath`, held behaviourally
+        // by CommandRowTests); this
         // holds that nothing else asks, App.swift included.
         const askers = readers(
             app.filter((f) => !f.path.endsWith("LoginShellPath.swift")),
