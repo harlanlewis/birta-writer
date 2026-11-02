@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+---
+
+## [2026.1102.0] - 2026, November 2
+
 ### Added
 
 - Folder Overview, a command in the Command Palette, shows the folder's most connected note with the notes linked to it and the notes two steps away around it. Click a dot to open that note, or press Escape to go back to yours. It needs `birta.folderGraph` on, and the palette row is hidden while it is off.
