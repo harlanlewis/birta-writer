@@ -42,7 +42,7 @@ const tableRows = [...features.matchAll(/^\| `(birta\.[A-Za-z0-9.]+)` \| (.+?) \
 
 /**
  * The minimum VS Code version each user-facing document states. Both name it in
- * prose ("Requires VS Code 1.95 or later"), so match the number after the words.
+ * prose ("Requires VS Code 1.101 or later"), so match the number after the words.
  */
 const statedEngines = [
     { file: "README.md", text: readme },

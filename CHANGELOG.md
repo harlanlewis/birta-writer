@@ -8,6 +8,10 @@
 
 - Folder Overview, a command in the Command Palette, shows the folder's most connected note with the notes linked to it and the notes two steps away around it. Click a dot to open that note, or press Escape to go back to yours. It needs `birta.folderGraph` on, and the palette row is hidden while it is off.
 
+### Changed
+
+- Breaking: Birta Writer now requires VS Code 1.101 or later, up from 1.95. An older VS Code, or an editor built on one, keeps the version it has and is not offered this update.
+
 ---
 
 ## [2026.1101.0] - 2026, November 1

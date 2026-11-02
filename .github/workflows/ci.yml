@@ -317,14 +317,12 @@ jobs:
             else await github.rest.issues.createComment({ owner, repo, issue_number, body });
 
   # The `engines.vscode` floor is the one runtime no other check here launches,
-  # and a dependency is the thing that routinely breaks it. mocha 12 is the
-  # worked example: ESM-only, and `require()` of an ESM graph needs Node 20.19
-  # while the floor's VS Code ships Node 20.18. It was green on every
-  # contributor's Node, green on stable VS Code, and green in every job above,
-  # and it blocked three nights of releases before anyone read the nightly's log.
-  # Until this job existed, the Release run was the first launch of the floor,
-  # which made a dependency bump a floor-compatibility change that nothing told
-  # you about until after it merged.
+  # and a dependency is the thing that routinely breaks it: a package the
+  # floor's Node cannot `require()` is green on every contributor's Node, on
+  # stable VS Code and in every job above, and red only where the floor is
+  # launched. Without this job that is the nightly Release run, after the merge,
+  # which makes a dependency bump a floor-compatibility change nothing reports
+  # until it has shipped nothing for a night.
   #
   # Advisory rather than required, and behind a relevance check rather than a
   # workflow-level `paths` filter, for the reason `launch-perf` records above: a

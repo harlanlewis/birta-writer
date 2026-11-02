@@ -197,7 +197,7 @@ See [`BENEFITS.md`](BENEFITS.md#compatibility-with-other-markdown-tools) for the
 
 ## Requirements
 
-VS Code 1.95 or later, the floor `package.json` declares in `engines.vscode`. The Language Model Tool integration raised it from 1.80.
+VS Code 1.101 or later, the floor `package.json` declares in `engines.vscode`. The Language Model Tool integration raised it from 1.80 to 1.95, and the integration suite's test runner raised it to 1.101, whose Node 22.15 loads an ES module through `require()`.
 
 ## Known limitations
 
