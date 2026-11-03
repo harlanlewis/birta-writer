@@ -14,6 +14,7 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ### Fixed
 
+- A file that begins with a UTF-8 byte-order mark keeps it when Birta Writer for Mac saves the file. Before, the first save removed the mark, which some Windows tools use to recognise the file as UTF-8. Appending a note to a file that is open in a tab also keeps it now.
 - With saving off in Birta Writer for Mac, Save a Copy As, Append to Note, Copy Everything and Share no longer save the note you are in. Its unsaved changes now stay unsaved until you save them, as the setting promises. With saving on, nothing changes.
 
 ---

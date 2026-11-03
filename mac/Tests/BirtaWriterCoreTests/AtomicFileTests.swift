@@ -150,6 +150,50 @@ final class AtomicFileTests: XCTestCase {
         XCTAssertEqual(after.mode, before.mode)
     }
 
+    /// A file that starts with a byte-order mark keeps it through a save,
+    /// although the buffer the save writes was read through a decode that
+    /// dropped it.
+    func testAFileThatStartsWithAByteOrderMarkShouldKeepItWhenItsTextIsWritten() throws {
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let target = dir.appendingPathComponent("marked.md")
+        try (AtomicFile.utf8Mark + Data("# old\n".utf8)).write(to: target)
+        let read = try String(contentsOf: target, encoding: .utf8)
+        XCTAssertEqual(read, "# old\n", "the decode is expected to drop the mark; if it stops, this test's premise is gone")
+
+        XCTAssertTrue(try AtomicFile.writeString("# new\n", to: target))
+        XCTAssertEqual(try Data(contentsOf: target), AtomicFile.utf8Mark + Data("# new\n".utf8))
+    }
+
+    /// The unchanged-content skip compares the bytes that would be written, so
+    /// a marked file whose text did not change is left alone rather than
+    /// rewritten without its mark or rewritten at all.
+    func testAMarkedFileWhoseTextDidNotChangeShouldNotBeWritten() throws {
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let target = dir.appendingPathComponent("marked-same.md")
+        try (AtomicFile.utf8Mark + Data("same\n".utf8)).write(to: target)
+        let read = try String(contentsOf: target, encoding: .utf8)
+        XCTAssertFalse(try AtomicFile.writeString(read, to: target))
+    }
+
+    /// The other direction: no mark is added where there was none, nor to a
+    /// file being made, and text that carries its own mark is not given two.
+    func testAMarkShouldBeWrittenOnlyWhereTheFileAlreadyHadOne() throws {
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let plain = dir.appendingPathComponent("plain.md")
+        try Data("a\n".utf8).write(to: plain)
+        try AtomicFile.writeString("b\n", to: plain)
+        XCTAssertEqual(try Data(contentsOf: plain), Data("b\n".utf8))
+
+        let fresh = dir.appendingPathComponent("fresh.md")
+        try AtomicFile.writeString("c\n", to: fresh)
+        XCTAssertEqual(try Data(contentsOf: fresh), Data("c\n".utf8))
+
+        let marked = dir.appendingPathComponent("marked-twice.md")
+        try (AtomicFile.utf8Mark + Data("d\n".utf8)).write(to: marked)
+        try AtomicFile.writeString("\u{FEFF}e\n", to: marked)
+        XCTAssertEqual(try Data(contentsOf: marked), AtomicFile.utf8Mark + Data("e\n".utf8))
+    }
+
     func testAContentChangeOfTheSameLengthIsStillWritten() throws {
         // The skip checks size first. A same-length edit is the case that would
         // survive a size-only comparison, so it is the one worth pinning.

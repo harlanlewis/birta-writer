@@ -166,13 +166,37 @@ public enum AtomicFile {
         return WriteResult(wrote: true, stamp: published)
     }
 
+    /// Write `text` as UTF-8, keeping the byte-order mark the target already
+    /// starts with.
+    ///
+    /// Foundation's UTF-8 decode drops a leading mark, so every buffer read
+    /// from a file that had one arrives without it, and encoding that buffer
+    /// as it stands would take the mark off the file on its first save. The
+    /// mark is the file's and not the text's, so it is answered here, from the
+    /// file, and every string the app holds stays free of it: the disk-drift
+    /// comparison reads through the same decode and compares like with like.
+    /// A file that has no mark, and a file being created, get none.
     @discardableResult
     public static func writeString(_ text: String, to url: URL) throws -> Bool {
-        try write(Data(text.utf8), to: url)
+        try write(encoded(text, for: url), to: url)
     }
 
     public static func writeStringReporting(_ text: String, to url: URL) throws -> WriteResult {
-        try writeReporting(Data(text.utf8), to: url)
+        try writeReporting(encoded(text, for: url), to: url)
+    }
+
+    static let utf8Mark = Data([0xEF, 0xBB, 0xBF])
+
+    static func encoded(_ text: String, for url: URL) -> Data {
+        let data = Data(text.utf8)
+        guard !data.starts(with: utf8Mark), startsWithMark(url.resolvingSymlinksInPath()) else { return data }
+        return utf8Mark + data
+    }
+
+    private static func startsWithMark(_ url: URL) -> Bool {
+        guard let handle = try? FileHandle(forReadingFrom: url) else { return false }
+        defer { try? handle.close() }
+        return (try? handle.read(upToCount: utf8Mark.count)) == utf8Mark
     }
 
     // ── The target's identity, as the file system reports it ──────────────
