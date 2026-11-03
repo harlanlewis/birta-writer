@@ -4791,11 +4791,18 @@ final class Coordinator {
     /// the flush is a round trip, and the note can be gone by the time it lands.
     private func withFlushedContent(_ body: @escaping (String) -> Void) {
         guard hasContent else { return }
-        // Not persisting: copying or sharing the note reads the buffer and
-        // writes nothing, so the autosave setting is the only thing that
-        // decides whether this note is on disk.
+        // Not persisting: copying or sharing the note reads the buffer, and
+        // the autosave setting is the only thing that decides whether this
+        // note is on disk.
         flushThen(persisting: false) { [weak self] in
-            guard let self, self.hasContent else { return }
+            guard let self else { return }
+            // What the flush brought across is an edit like any other: with
+            // autosave on it is saved on the usual schedule, with it off it
+            // stays unsaved. Writing it in the flush instead would ignore the
+            // setting in one direction, and not writing it at all would leave
+            // it unsaved in the other.
+            if self.isEdited { self.write(.edit) }
+            guard self.hasContent else { return }
             body(self.latest)
         }
     }
@@ -5437,11 +5444,16 @@ final class Coordinator {
     /// stays bound to the same file: this is "save a copy", not "move".
     func saveAs() {
         NSApp.activate(ignoringOtherApps: true)
-        // Not persisting: the copy is written to the chosen file, and with
-        // autosave off this note keeps its unsaved changes rather than having
-        // them written by the flush on the way to a copy.
+        // Not persisting: the copy is written to the chosen file, and this
+        // note is saved or not by the autosave setting alone.
         flushThen(persisting: false) { [weak self] in
             guard let self else { return }
+            // What the flush brought across is an edit like any other: with
+            // autosave on it is saved on the usual schedule, with it off it
+            // stays unsaved. Writing it in the flush instead would ignore the
+            // setting in one direction, and not writing it at all would leave
+            // it unsaved in the other.
+            if self.isEdited { self.write(.edit) }
             let panel = NSSavePanel()
             panel.title = "Save a Copy As"
             panel.nameFieldStringValue = Coordinator.suggestedFileName(for: self.latest)
@@ -5488,9 +5500,15 @@ final class Coordinator {
     func appendToNote(openTabs: @escaping () -> [Coordinator]) {
         NSApp.activate(ignoringOtherApps: true)
         // Not persisting, for the reason Save a Copy As is not: the bytes go
-        // to another file, and this note is left as it is.
+        // to another file, and this note is saved or not by the setting.
         flushThen(persisting: false) { [weak self] in
             guard let self else { return }
+            // What the flush brought across is an edit like any other: with
+            // autosave on it is saved on the usual schedule, with it off it
+            // stays unsaved. Writing it in the flush instead would ignore the
+            // setting in one direction, and not writing it at all would leave
+            // it unsaved in the other.
+            if self.isEdited { self.write(.edit) }
             let chooser = NSOpenPanel()
             chooser.title = "Append to Note"
             chooser.prompt = "Append"

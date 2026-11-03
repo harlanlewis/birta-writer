@@ -169,31 +169,42 @@ final class FlushWriteTests: XCTestCase {
     /// The third kind: a `then` that neither consults the policy nor saves this
     /// note has no save of its own behind the flush, so the flush's write is
     /// the only one, and with autosave off it is a save nobody asked for.
-    /// Such a call says which it wants. The three that write elsewhere (Save a
-    /// Copy As, Append to Note, and the clipboard and Share through
-    /// `withFlushedContent`) promise to leave this note as it is, so they say
-    /// false.
+    /// Such a call says which it wants.
+    ///
+    /// The three that copy the note elsewhere (Save a Copy As, Append to Note,
+    /// and the clipboard and Share through `withFlushedContent`) are pinned by
+    /// name: they hand what the flush brought to `write(.edit)`, so the
+    /// setting decides in both directions, and that makes them the first kind.
+    /// Taking the default there writes this note with autosave off; dropping
+    /// the `write(.edit)` leaves a flushed keystroke unsaved with it on.
     func testAFlushWithNoSaveOfItsOwnShouldSayWhetherItPersists() {
         let lines = source()
         guard !lines.isEmpty else { return }
 
-        var neither: [String: Call] = [:]
-        for call in flushCalls(in: lines) where !consultsPolicy(call.body) && !savesItself(call.body) {
+        var neither = 0
+        var byFunction: [String: Call] = [:]
+        for call in flushCalls(in: lines) {
+            if let name = enclosingFunction(of: call, in: lines) { byFunction[name] = call }
+            guard !consultsPolicy(call.body), !savesItself(call.body) else { continue }
+            neither += 1
             XCTAssertTrue(call.text.contains("persisting:"),
                           "Coordinator.swift:\(call.line) neither saves this note nor asks AutosavePolicy, so "
                             + "the default's write is the only one it makes; say persisting: true or false: "
                             + call.text.trimmingCharacters(in: .whitespaces))
-            if let name = enclosingFunction(of: call, in: lines) { neither[name] = call }
         }
+        XCTAssertGreaterThan(neither, 0, "no flush of the third kind was found; this guard is watching nothing")
 
         for name in ["saveAs", "appendToNote", "withFlushedContent"] {
-            guard let call = neither[name] else {
-                XCTFail("no flush of the third kind in \(name); this guard stopped recognising it")
+            guard let call = byFunction[name] else {
+                XCTFail("no flush in \(name); this guard must follow it")
                 continue
             }
             XCTAssertTrue(call.text.contains("persisting: false"),
-                          "\(name) writes elsewhere and leaves this note as it is, so its flush must not "
-                            + "write it (Coordinator.swift:\(call.line))")
+                          "\(name) copies the note elsewhere, so its flush must not write this note "
+                            + "(Coordinator.swift:\(call.line))")
+            XCTAssertTrue(call.body.contains("write(.edit)"),
+                          "\(name) must hand what its flush brought to the autosave funnel, or a flushed "
+                            + "keystroke stays unsaved with autosave on (Coordinator.swift:\(call.line))")
         }
     }
 
