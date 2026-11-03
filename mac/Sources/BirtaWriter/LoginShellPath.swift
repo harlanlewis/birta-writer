@@ -94,13 +94,19 @@ final class LoginShellPath {
 
         let lock = NSLock()
         var output = Data()
+        // Set under the lock when the handle is closed. A handler call can
+        // already be in flight when the cap runs out, and `availableData` on
+        // a closed handle raises, so the read happens under the same lock
+        // and only while the handle is open.
+        var closed = false
         let settled = DispatchSemaphore(value: 0)
         let fence = Data(ShellPath.closeMarker.utf8)
         let reader = pipe.fileHandleForReading
         reader.readabilityHandler = { handle in
-            let chunk = handle.availableData
             lock.lock()
             defer { lock.unlock() }
+            guard !closed else { return }
+            let chunk = handle.availableData
             output.append(chunk)
             if chunk.isEmpty || output.range(of: fence) != nil {
                 handle.readabilityHandler = nil
@@ -115,20 +121,38 @@ final class LoginShellPath {
         }
         let deadline = DispatchTime.now() + cap
         _ = settled.wait(timeout: deadline)
+        lock.lock()
+        closed = true
         reader.readabilityHandler = nil
         try? reader.close()
+        lock.unlock()
         // The shell normally exits on its own a moment after it has printed,
         // and is given until the deadline to. One still running then is
-        // ended: TERM first, so a startup file can finish what it is doing,
-        // then KILL by this process's own id, because an interactive shell
-        // may ignore a TERM.
+        // ended with what it started in the foreground (a `sleep`, a prompt
+        // waiting on a terminal, an `ssh-add`), which would otherwise outlive
+        // it: TERM first, so a startup file can finish what it is doing, then
+        // KILL, because an interactive shell may ignore a TERM.
+        //
+        // By process group, read while the shell is alive. `Process` starts
+        // the shell as the leader of a group of its own, its foreground
+        // children share it, and a daemon a startup file launches (an agent)
+        // leaves it, so the group is exactly what this run owns. Never the
+        // app's own group, which would end the app.
         while process.isRunning, DispatchTime.now() < deadline {
             Thread.sleep(forTimeInterval: 0.01)
         }
         if process.isRunning {
+            let pid = process.processIdentifier
+            let group = getpgid(pid)
+            let owned = group > 0 && group != getpgid(0)
             process.terminate()
+            if owned { kill(-group, SIGTERM) }
             DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 1) {
-                if process.isRunning { kill(process.processIdentifier, SIGKILL) }
+                if owned {
+                    kill(-group, SIGKILL)
+                } else if process.isRunning {
+                    kill(pid, SIGKILL)
+                }
             }
         }
         lock.lock()

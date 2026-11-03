@@ -23,17 +23,37 @@ import XCTest
 /// This is the deterministic half.
 ///
 /// Derived rather than hand-listed. The rule is a property of each call site's
-/// own closure: a `then` that consults the policy must not have been written
-/// to already. So every `flushThen` call is found, its closure is read, and the
-/// ones that consult the policy are required to say `persisting: false`. A new
-/// caller joins by being written, and a fourth `WriteTrigger` joins by not
-/// being `.explicitSave`, neither of which needs an edit here.
+/// own closure, which falls in one of three kinds. A `then` that consults the
+/// policy must not have been written to already, so it says
+/// `persisting: false`. A `then` that saves this note itself takes the default,
+/// because the flush's write is one it makes anyway. A `then` that does
+/// neither (a copy written elsewhere, an append to another file, the clipboard,
+/// a reload that reads the file back) has no save of its own to lean on, so
+/// the flush's write is the only one there is, and the call spells out which
+/// it wants. A new caller joins by being written, and a fourth `WriteTrigger`
+/// joins by not being `.explicitSave`, neither of which needs an edit here.
 @MainActor
 final class FlushWriteTests: XCTestCase {
     /// The only trigger `AutosavePolicy` cannot refuse: it IS the user saying
     /// so, so a caller following with one always wants the bytes written and
     /// the flush writing them first changes nothing.
     private let alwaysWrites = "write(.explicitSave)"
+
+    /// Whether this closure saves this note itself, through the explicit save
+    /// or the funnel a save somebody asked for goes through.
+    private func savesItself(_ body: String) -> Bool {
+        body.contains(alwaysWrites) || body.contains("writeSaveSomebodyAskedFor")
+    }
+
+    /// The function a call sits in, read back from the call to the nearest
+    /// `func` declaration above it.
+    private func enclosingFunction(of call: Call, in lines: [String]) -> String? {
+        for line in lines[..<(call.line - 1)].reversed() {
+            guard let range = line.range(of: "func ") else { continue }
+            return String(line[range.upperBound...].prefix { $0 != "(" })
+        }
+        return nil
+    }
 
     private func source() -> [String] {
         let url = URL(fileURLWithPath: #filePath)
@@ -63,7 +83,8 @@ final class FlushWriteTests: XCTestCase {
             // only the parenthesised form finds exactly the marked calls, so
             // the sweep would confirm that everything it looked at was marked
             // and never notice the eleven it had not looked at.
-            guard line.contains("flushThen"), !line.contains("func flushThen") else { continue }
+            guard line.contains("flushThen"), !line.contains("func flushThen"),
+                  !line.trimmingCharacters(in: .whitespaces).hasPrefix("//") else { continue }
             let indent = line.prefix { $0 == " " }.count
             // A call written on ONE line closes its own closure, and reading
             // past it would sweep in whatever followed until the next brace at
@@ -128,21 +149,87 @@ final class FlushWriteTests: XCTestCase {
     }
 
     /// The other half, and the one that keeps the first honest: a caller that
-    /// always writes must NOT be marked, or the marking would spread until it
+    /// always saves must NOT be marked, or the marking would spread until it
     /// meant nothing and the assertion above would hold trivially.
     func testAFlushThatIsAlwaysFollowedByASaveShouldNotBeMarked() {
         let lines = source()
         guard !lines.isEmpty else { return }
 
         var plain = 0
-        for call in flushCalls(in: lines) where !consultsPolicy(call.body) {
+        for call in flushCalls(in: lines) where !consultsPolicy(call.body) && savesItself(call.body) {
             plain += 1
-            XCTAssertFalse(call.text.contains("persisting: false"),
-                           "Coordinator.swift:\(call.line) does not consult the policy, so marking it says "
-                             + "something untrue about why: " + call.text.trimmingCharacters(in: .whitespaces))
+            XCTAssertFalse(call.text.contains("persisting:"),
+                           "Coordinator.swift:\(call.line) saves this note itself, so the default is the "
+                             + "honest spelling: " + call.text.trimmingCharacters(in: .whitespaces))
         }
 
         XCTAssertGreaterThan(plain, 0, "every flush was classified as deciding; the predicate discriminates nothing")
+    }
+
+    /// The third kind: a `then` that neither consults the policy nor saves this
+    /// note has no save of its own behind the flush, so the flush's write is
+    /// the only one, and with autosave off it is a save nobody asked for.
+    /// Such a call says which it wants.
+    ///
+    /// The three that copy the note elsewhere (Save a Copy As, Append to Note,
+    /// and the clipboard and Share through `withFlushedContent`) are pinned by
+    /// name: they hand what the flush brought to `write(.edit)`, so the
+    /// setting decides in both directions, and that makes them the first kind.
+    /// Taking the default there writes this note with autosave off; dropping
+    /// the `write(.edit)` leaves a flushed keystroke unsaved with it on.
+    func testAFlushWithNoSaveOfItsOwnShouldSayWhetherItPersists() {
+        let lines = source()
+        guard !lines.isEmpty else { return }
+
+        var neither = 0
+        var byFunction: [String: Call] = [:]
+        for call in flushCalls(in: lines) {
+            if let name = enclosingFunction(of: call, in: lines) { byFunction[name] = call }
+            guard !consultsPolicy(call.body), !savesItself(call.body) else { continue }
+            neither += 1
+            XCTAssertTrue(call.text.contains("persisting:"),
+                          "Coordinator.swift:\(call.line) neither saves this note nor asks AutosavePolicy, so "
+                            + "the default's write is the only one it makes; say persisting: true or false: "
+                            + call.text.trimmingCharacters(in: .whitespaces))
+        }
+        XCTAssertGreaterThan(neither, 0, "no flush of the third kind was found; this guard is watching nothing")
+
+        for name in ["saveAs", "appendToNote", "withFlushedContent"] {
+            guard let call = byFunction[name] else {
+                XCTFail("no flush in \(name); this guard must follow it")
+                continue
+            }
+            XCTAssertTrue(call.text.contains("persisting: false"),
+                          "\(name) copies the note elsewhere, so its flush must not write this note "
+                            + "(Coordinator.swift:\(call.line))")
+            XCTAssertTrue(call.body.contains("write(.edit)"),
+                          "\(name) must hand what its flush brought to the autosave funnel, or a flushed "
+                            + "keystroke stays unsaved with autosave on (Coordinator.swift:\(call.line))")
+        }
+    }
+
+    /// A flush that timed out ran `then` against `latest`, which can lack
+    /// keystrokes the page still holds. A closure that then replaces the
+    /// page's document (`pushDocument`) would discard them, so it has to be
+    /// told whether the page answered, and refuse when it did not.
+    func testAFlushThatPushesADocumentOverThePageShouldRefuseWhenThePageDidNotAnswer() {
+        let lines = source()
+        guard !lines.isEmpty else { return }
+
+        var pushing = 0
+        for call in flushCalls(in: lines) where call.body.contains("pushDocument(") {
+            pushing += 1
+            let spoken = call.text.trimmingCharacters(in: .whitespaces)
+            XCTAssertTrue(call.text.contains("flushThenAnswered") && call.text.contains("answered in"),
+                          "Coordinator.swift:\(call.line) pushes a document over the page after a flush, so it "
+                            + "must ask whether the page answered: " + spoken)
+            XCTAssertTrue(call.body.contains("guard answered"),
+                          "Coordinator.swift:\(call.line) is told whether the page answered and must refuse "
+                            + "when it did not: " + spoken)
+        }
+        // Append to Note's receiving tab is one; finding none means the sweep
+        // stopped recognising the shape, not that the risk went away.
+        XCTAssertGreaterThanOrEqual(pushing, 1, "no flush closure pushes a document; this guard is watching nothing")
     }
 
     /// The other half of the same rule. A `persisting: false` caller decides

@@ -1235,6 +1235,13 @@ final class WindowSet {
                 return
             }
             let tab = remaining.removeFirst()
+            // Closed already, by another close made while an earlier tab's
+            // sheet was up. Its page is torn down and would never answer, so
+            // asking it would stall the chain before the quick note is left.
+            guard windows.contains(where: { $0 === tab }) else {
+                next()
+                return
+            }
             let file = tab.boundFile
             let failuresBefore = tab.writeFailures
             tab.prepareToClose { [weak self] proceed in
@@ -1632,6 +1639,11 @@ final class WindowSet {
                 guard let self else { done(proceed); return }
                 guard proceed else {
                     self.windows.forEach { $0.forgetQuitDecision() }
+                    // A Cancel here ends a log out too, and the session goes
+                    // on: the next quit is the person's own again, and has to
+                    // be told apart from the system's as if no log out had
+                    // begun. Left set, every later quit would keep the windows.
+                    self.sessionIsEnding = false
                     done(false)
                     return
                 }

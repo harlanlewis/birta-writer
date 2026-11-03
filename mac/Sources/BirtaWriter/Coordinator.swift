@@ -1377,6 +1377,13 @@ final class Coordinator {
         refreshTitle()
         show()
         if let kept { statusOverlay.flash("Kept what you wrote in \(kept.lastPathComponent).") }
+        // Where a takeover landed, and what it kept. An outside open reaches
+        // here after `replaceFile`'s flush answers, so a check that read the
+        // binding when the open was asked would read the window before it
+        // moved.
+        if measure.enabled {
+            measure.trace("takeover at=\(url.lastPathComponent) kept=\(kept?.lastPathComponent ?? "none")")
+        }
     }
 
     /// Move this tab to its folder's own choice of file, which may be a note
@@ -3115,19 +3122,30 @@ final class Coordinator {
     ///   Save / Don't Save sheet, so somebody who answers Don't Save has
     ///   already had their buffer written.
     private func flushThen(persisting: Bool = true, _ then: @escaping () -> Void) {
+        flushThenAnswered(persisting: persisting) { _ in then() }
+    }
+
+    /// `flushThen`, telling `then` whether the page answered.
+    ///
+    /// False only when a warm page let the timeout pass, which is the one case
+    /// where the page may hold keystrokes `latest` does not. A caller that goes
+    /// on to replace the page's document (`pushDocument`) has to refuse then,
+    /// because the push would discard them; a caller that only reads or
+    /// writes `latest` does not need to ask.
+    private func flushThenAnswered(persisting: Bool, _ then: @escaping (_ answered: Bool) -> Void) {
         guard state == .warm else {
-            then()
+            then(true)
             return
         }
         let id = "flush-\(UUID().uuidString)"
         var done = false
-        let finish: () -> Void = { if !done { done = true; then() } }
-        pendingFlushes[id] = PendingFlush(persists: persisting) { _ in finish() }
+        let finish: (Bool) -> Void = { answered in if !done { done = true; then(answered) } }
+        pendingFlushes[id] = PendingFlush(persists: persisting) { _ in finish(true) }
         host.send(.flushSave(id: id))
         DispatchQueue.main.asyncAfter(deadline: .now() + flushTimeout) { [weak self] in
             guard let self, self.pendingFlushes.removeValue(forKey: id) != nil else { return }
             NSLog("Birta Writer: flush timed out; running against the last admitted content")
-            finish()
+            finish(false)
         }
     }
 
@@ -4647,7 +4665,9 @@ final class Coordinator {
     /// content that did not change.
     func relocateActiveFile(to target: URL) {
         guard target.standardizedFileURL != boundURL.standardizedFileURL else { return }
-        flushThen { [weak self] in
+        // Persisting, whatever the autosave setting: the flush's write is
+        // what puts the buffer on disk before the file under it is moved.
+        flushThen(persisting: true) { [weak self] in
             guard let self else { return }
             // Read the bound file HERE, not when the move was asked for. A
             // second rename arriving while the first is still flushing would
@@ -4771,8 +4791,18 @@ final class Coordinator {
     /// the flush is a round trip, and the note can be gone by the time it lands.
     private func withFlushedContent(_ body: @escaping (String) -> Void) {
         guard hasContent else { return }
-        flushThen { [weak self] in
-            guard let self, self.hasContent else { return }
+        // Not persisting: copying or sharing the note reads the buffer, and
+        // the autosave setting is the only thing that decides whether this
+        // note is on disk.
+        flushThen(persisting: false) { [weak self] in
+            guard let self else { return }
+            // What the flush brought across is an edit like any other: with
+            // autosave on it is saved on the usual schedule, with it off it
+            // stays unsaved. Writing it in the flush instead would ignore the
+            // setting in one direction, and not writing it at all would leave
+            // it unsaved in the other.
+            if self.isEdited { self.write(.edit) }
+            guard self.hasContent else { return }
             body(self.latest)
         }
     }
@@ -5194,8 +5224,16 @@ final class Coordinator {
         let text = view.labelFrameInWindow()
         let close = panel.standardWindowButton(.closeButton)
             .map { $0.convert($0.bounds, to: nil) } ?? .zero
+        // Where the three window buttons end, so a check can hold the title
+        // clear of the system's own controls rather than of a constant that
+        // was true of one macOS release.
+        let buttonsEnd = [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton]
+            .compactMap { panel.standardWindowButton($0) }
+            .filter { !$0.isHidden }
+            .map { $0.convert($0.bounds, to: nil).maxX }
+            .max() ?? 0
         measure.trace(String(
-            format: "titlebar x=%.1f y=%.1f w=%.1f h=%.1f visW=%.1f visTextW=%.1f needW=%.1f gotW=%.1f inkW=%.1f fieldW=%.1f cellW=%.1f textMidY=%.1f closeMidY=%.1f attached=%@ text=%@",
+            format: "titlebar x=%.1f y=%.1f w=%.1f h=%.1f visW=%.1f visTextW=%.1f needW=%.1f gotW=%.1f inkW=%.1f fieldW=%.1f cellW=%.1f textMidY=%.1f closeMidY=%.1f buttonsEnd=%.1f attached=%@ text=%@",
             frame.origin.x, frame.origin.y, frame.width, frame.height,
             // What an ANCESTOR leaves of us. Every other number here is a
             // frame this code set, so they agree with each other by
@@ -5206,7 +5244,7 @@ final class Coordinator {
             // TitleBar.titleFit.
             view.titleFit().needed, view.titleFit().given, view.drawnInkWidth(),
             view.titleFieldWidth(), view.titleCellWidth(),
-            text.midY, close.midY,
+            text.midY, close.midY, buttonsEnd,
             panel.titlebarAccessoryViewControllers.contains(titleBar) ? "yes" : "no",
             // The DRAWN characters, not the accessibility label. The label now
             // carries the whole name whatever the window's width, which is
@@ -5406,8 +5444,16 @@ final class Coordinator {
     /// stays bound to the same file: this is "save a copy", not "move".
     func saveAs() {
         NSApp.activate(ignoringOtherApps: true)
-        flushThen { [weak self] in
+        // Not persisting: the copy is written to the chosen file, and this
+        // note is saved or not by the autosave setting alone.
+        flushThen(persisting: false) { [weak self] in
             guard let self else { return }
+            // What the flush brought across is an edit like any other: with
+            // autosave on it is saved on the usual schedule, with it off it
+            // stays unsaved. Writing it in the flush instead would ignore the
+            // setting in one direction, and not writing it at all would leave
+            // it unsaved in the other.
+            if self.isEdited { self.write(.edit) }
             let panel = NSSavePanel()
             panel.title = "Save a Copy As"
             panel.nameFieldStringValue = Coordinator.suggestedFileName(for: self.latest)
@@ -5453,8 +5499,16 @@ final class Coordinator {
     /// `OpenRouting` already refuses by fronting an open tab.
     func appendToNote(openTabs: @escaping () -> [Coordinator]) {
         NSApp.activate(ignoringOtherApps: true)
-        flushThen { [weak self] in
+        // Not persisting, for the reason Save a Copy As is not: the bytes go
+        // to another file, and this note is saved or not by the setting.
+        flushThen(persisting: false) { [weak self] in
             guard let self else { return }
+            // What the flush brought across is an edit like any other: with
+            // autosave on it is saved on the usual schedule, with it off it
+            // stays unsaved. Writing it in the flush instead would ignore the
+            // setting in one direction, and not writing it at all would leave
+            // it unsaved in the other.
+            if self.isEdited { self.write(.edit) }
             let chooser = NSOpenPanel()
             chooser.title = "Append to Note"
             chooser.prompt = "Append"
@@ -5538,9 +5592,12 @@ final class Coordinator {
     /// before it lands, whose buffer this must not be composed onto.
     private func receiveAppend(_ note: String, heading: String, to url: URL,
                        done: @escaping (_ written: Bool?) -> Void) {
-        flushThen(persisting: false) { [weak self] in
+        // Answered, because the append replaces the page's document below: a
+        // page that let the flush time out may hold typing `latest` lacks,
+        // and pushing over it would discard that typing.
+        flushThenAnswered(persisting: false) { [weak self] answered in
             guard let self else { return }
-            guard self.holdsAppendableBuffer, FileIdentity.sameFile(self.boundURL, url),
+            guard answered, self.holdsAppendableBuffer, FileIdentity.sameFile(self.boundURL, url),
                   let next = NoteAppend.compose(target: self.latest, note: note, heading: heading) else {
                 done(nil)
                 return
@@ -5609,7 +5666,11 @@ final class Coordinator {
         // A changed file, document or network setting means a fresh page:
         // flush the current buffer to where it belongs, then reload against
         // the new prefs. Cheap, and it keeps one code path.
-        flushThen { [weak self] in
+        //
+        // Persisting, whatever the autosave setting: the reload below reads
+        // the file from disk, so a buffer the flush did not write would be
+        // replaced by the bytes it had not saved yet.
+        flushThen(persisting: true) { [weak self] in
             guard let self else { return }
             let reload: () -> Void = { [weak self] in
                 guard let self else { return }

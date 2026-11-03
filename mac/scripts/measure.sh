@@ -859,6 +859,7 @@ TB_TEXT="$(echo "$TITLEBAR" | sed -n 's/.*text=//p')"
 TB_TEXT_MID="$(echo "$TITLEBAR" | sed -n 's/.*textMidY=\([0-9.-]*\).*/\1/p')"
 TB_CLOSE_MID="$(echo "$TITLEBAR" | sed -n 's/.*closeMidY=\([0-9.-]*\).*/\1/p')"
 TB_CELL="$(echo "$TITLEBAR" | sed -n 's/.*cellW=\([0-9.-]*\).*/\1/p')"
+TB_BUTTONS_END="$(echo "$TITLEBAR" | sed -n 's/.*buttonsEnd=\([0-9.-]*\).*/\1/p')"
 if [ -z "$TITLEBAR" ]; then
     echo "titlebar             FAILED: the app reported no titlebar trace at all" >&2; exit 1
 fi
@@ -869,17 +870,19 @@ fi
 # which looks identical on screen to one that never arrived and identical in
 # the view hierarchy to one that worked. The width is what discriminates.
 #
-# 78 is not a number this repo owns: AppKit places a leading accessory clear of
-# the three window buttons itself, so the check measures the SYSTEM'S placement
-# rather than our arithmetic, and would fail if that inset ever moved. A
-# constant of ours here would have agreed with itself forever.
+# Clear of the window buttons means starting at or after where the last of
+# them ends, read off the live buttons (`buttonsEnd`), never a constant: AppKit
+# places a leading accessory itself and the inset is the system's, so a fixed
+# figure goes stale with a macOS release and then fails a correct placement. A
+# missing reading fails rather than passing against zero.
 if [ "$TB_ATTACHED" = "yes" ] \
-   && awk "BEGIN{exit !($TB_W > 0)}" \
-   && awk "BEGIN{exit !($TB_X >= 78)}" \
+   && [ -n "$TB_BUTTONS_END" ] \
+   && awk "BEGIN{exit !($TB_W > 0 && $TB_BUTTONS_END > 0)}" \
+   && awk "BEGIN{exit !($TB_X >= $TB_BUTTONS_END)}" \
    && [ "$TB_TEXT" = "Scratch pad.md" ]; then
-    echo "titlebar             ok: \"$TB_TEXT\" at x=$TB_X w=$TB_W, clear of the window buttons"
+    echo "titlebar             ok: \"$TB_TEXT\" at x=$TB_X w=$TB_W, clear of the window buttons (they end at $TB_BUTTONS_END)"
 else
-    echo "titlebar             FAILED: expected an attached accessory naming 'Scratch pad.md' at x>=78 with width>0" >&2
+    echo "titlebar             FAILED: expected an attached accessory naming 'Scratch pad.md' with width>0, starting at or after the window buttons' end (buttonsEnd=${TB_BUTTONS_END:-missing})" >&2
     echo "$TITLEBAR" >&2; exit 1
 fi
 
@@ -2284,17 +2287,32 @@ echo "two windows          ok: '$TWO_STAMP' went to $(basename "$TWO_FILE") and 
 # that has gone.
 #
 # `WindowSet.openDocument` asks the frontmost window and nothing else, so both
-# arms below are about that window: vacant, it takes the file and no second
-# window appears; holding unsaved text, it is left alone and the file gets a
-# window of its own. The second arm is the safety one, and it is the reason
-# this is a pair rather than one check: a rule that reused any window whose
-# file was missing would pass the first arm and rebind away from a buffer
-# holding the only copy of somebody's note.
+# arms below are about that window. A window on a file that has gone takes the
+# next file over and no second window appears, whatever its buffer holds
+# (`Coordinator.isVacant`). The second arm is the safety one, and it is the
+# reason this is a pair rather than one check: when the buffer holds the only
+# copy of what was typed, the takeover must first write it to a recovered file
+# beside the missing one, and that file must hold the typed text.
+#
+# The takeover waits on a flush of the page (`replaceFile`), so it lands after
+# the open returns. The window count comes from the open's own trace, which is
+# taken at once; where the window went and what it kept come from the
+# `takeover` trace `openInPlace` writes when it has moved.
 #
 # Driven through `__birtaOpen`, which skips the chooser and nothing else: the
 # rule under test is `openDocument`'s, and a probe that opened a window itself
 # would be a second answer able to agree with the real one while being checked.
 # The count comes back from `WindowSet` for the same reason.
+# Waits for a `takeover` trace newer than the count given, and prints it.
+takeover_after() { # takeover_after <count-before> <timeout-s>
+    local i=0 n
+    while [ "$i" -lt $(( $2 * 10 )) ]; do
+        n="$(grep -c "^birta-trace takeover " "$LOG" || true)"
+        if [ "$n" -gt "$1" ]; then grep "^birta-trace takeover " "$LOG" | tail -1 | sed 's/^birta-trace takeover //'; return 0; fi
+        sleep 0.1; i=$((i + 1))
+    done
+    return 1
+}
 printf '{"type":"__birtaNewWindow"}' > "$SCRATCH_DIR/.debug-message.json"
 kill -URG $PID; sleep 1.5
 rm -f "$SCRATCH_DIR/.debug-message.json"
@@ -2324,17 +2342,18 @@ if ! grep -q "^birta-trace noteMissing at=$(basename "$VACANT_FILE")$" "$LOG"; t
     grep "^birta-trace noteMissing " "$LOG" | tail -3 | sed 's/^/  /' >&2; exit 1
 fi
 printf 'a third note\n' > "$SCRATCH_DIR/Third note.md"
+TAKEOVERS="$(grep -c "^birta-trace takeover " "$LOG" || true)"
 printf '{"type":"__birtaOpen","path":"%s"}' "$SCRATCH_DIR/Third note.md" > "$SCRATCH_DIR/.debug-message.json"
-# Longer than the other waits here: taking the file over reloads the page, and
-# the arm below types into it.
-kill -URG $PID; sleep 3.0
+kill -URG $PID
+O_TAKEOVER="$(takeover_after "$TAKEOVERS" 5 || true)"
+# Taking the file over reloads the page, and the arm below types into it.
+sleep 1.5
 rm -f "$SCRATCH_DIR/.debug-message.json"
 OPENED="$(grep "^birta-trace open " "$LOG" | tail -1 | sed 's/^birta-trace open //')"
 O_WINDOWS="$(echo "$OPENED" | sed -n 's/.*windows=\([0-9-]*\).*/\1/p')"
-O_AT="$(echo "$OPENED" | sed -n 's/.*at=\(.*\) missing=.*/\1/p')"
-if [ "$O_WINDOWS" != 3 ] || [ "$O_AT" != "Third note.md" ] || [ "${OPENED#*missing=}" != "false" ]; then
+if [ "$O_WINDOWS" != 3 ] || [ "$O_TAKEOVER" != "at=Third note.md kept=none" ]; then
     echo "open into empty      FAILED: the file did not take over the window whose note had gone" >&2
-    echo "  wanted windows=3 at=Third note.md missing=false, got: ${OPENED:-<nothing>}" >&2; exit 1
+    echo "  wanted windows=3 and takeover at=Third note.md kept=none, got: ${OPENED:-<no open>} / ${O_TAKEOVER:-<no takeover>}" >&2; exit 1
 fi
 echo "open into empty      ok: the file took the window that was standing on a deleted note"
 
@@ -2342,8 +2361,8 @@ echo "open into empty      ok: the file took the window that was standing on a d
 #
 # Same gesture, same state, one difference: this window's buffer has text in it
 # that exists nowhere else, because the file it came from has just been
-# deleted. Rebinding it away would drop those bytes, so the file opened here
-# has to get a window of its own.
+# deleted. The window is still taken over, and those bytes have to be in a
+# recovered file beside the deleted one before it moves.
 O_STAMP="vacancy-$(date +%s)"
 printf '{"type":"__testInsertText","text":"%s\n"}' "$O_STAMP" > "$SCRATCH_DIR/.debug-message.json"
 kill -URG $PID; sleep 0.6
@@ -2357,17 +2376,21 @@ if ! grep -q "^birta-trace noteMissing at=Third note.md$" "$LOG"; then
     grep "^birta-trace noteMissing " "$LOG" | tail -3 | sed 's/^/  /' >&2; exit 1
 fi
 printf 'a fourth note\n' > "$SCRATCH_DIR/Fourth note.md"
+TAKEOVERS="$(grep -c "^birta-trace takeover " "$LOG" || true)"
 printf '{"type":"__birtaOpen","path":"%s"}' "$SCRATCH_DIR/Fourth note.md" > "$SCRATCH_DIR/.debug-message.json"
-kill -URG $PID; sleep 1.5
+kill -URG $PID
+K_TAKEOVER="$(takeover_after "$TAKEOVERS" 5 || true)"
+sleep 0.5
 rm -f "$SCRATCH_DIR/.debug-message.json"
 KEPT="$(grep "^birta-trace open " "$LOG" | tail -1 | sed 's/^birta-trace open //')"
 K_WINDOWS="$(echo "$KEPT" | sed -n 's/.*windows=\([0-9-]*\).*/\1/p')"
-K_AT="$(echo "$KEPT" | sed -n 's/.*at=\(.*\) missing=.*/\1/p')"
-if [ "$K_WINDOWS" != 4 ] || [ "$K_AT" != "Third note.md" ]; then
-    echo "open into empty      FAILED: a window holding the only copy of a note was rebound away from it" >&2
-    echo "  wanted windows=4 at=Third note.md, got: ${KEPT:-<nothing>}" >&2; exit 1
+K_FILE="$(echo "$K_TAKEOVER" | sed -n 's/.*kept=//p')"
+if [ "$K_WINDOWS" != 3 ] || [ "${K_TAKEOVER%% kept=*}" != "at=Fourth note.md" ] \
+   || [ -z "$K_FILE" ] || [ "$K_FILE" = none ] || ! grep -q "$O_STAMP" "$SCRATCH_DIR/$K_FILE" 2>/dev/null; then
+    echo "open into empty      FAILED: a window holding the only copy of a note moved without keeping it" >&2
+    echo "  wanted windows=3, takeover at=Fourth note.md, and '$O_STAMP' in the kept file; got: ${KEPT:-<no open>} / ${K_TAKEOVER:-<no takeover>}" >&2; exit 1
 fi
-echo "open into empty      ok: and a window still holding unsaved text kept it, in a window of its own"
+echo "open into empty      ok: and a window holding unsaved text kept it in $K_FILE before it moved"
 
 # A file a window CLOSED on joins the recents list.
 #
