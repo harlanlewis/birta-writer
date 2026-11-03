@@ -12,6 +12,10 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ## [Unreleased]
 
+### Fixed
+
+- With saving off in Birta Writer for Mac, Save a Copy As, Append to Note, Copy Everything and Share no longer save the note you are in. Its unsaved changes now stay unsaved until you save them, as the setting promises. With saving on, nothing changes.
+
 ---
 
 ## [2026.1102.0] - 2026, November 2

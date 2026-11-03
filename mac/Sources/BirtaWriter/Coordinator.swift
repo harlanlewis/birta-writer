@@ -1377,6 +1377,13 @@ final class Coordinator {
         refreshTitle()
         show()
         if let kept { statusOverlay.flash("Kept what you wrote in \(kept.lastPathComponent).") }
+        // Where a takeover landed, and what it kept. An outside open reaches
+        // here after `replaceFile`'s flush answers, so a check that read the
+        // binding when the open was asked would read the window before it
+        // moved.
+        if measure.enabled {
+            measure.trace("takeover at=\(url.lastPathComponent) kept=\(kept?.lastPathComponent ?? "none")")
+        }
     }
 
     /// Move this tab to its folder's own choice of file, which may be a note
@@ -4647,7 +4654,9 @@ final class Coordinator {
     /// content that did not change.
     func relocateActiveFile(to target: URL) {
         guard target.standardizedFileURL != boundURL.standardizedFileURL else { return }
-        flushThen { [weak self] in
+        // Persisting, whatever the autosave setting: the flush's write is
+        // what puts the buffer on disk before the file under it is moved.
+        flushThen(persisting: true) { [weak self] in
             guard let self else { return }
             // Read the bound file HERE, not when the move was asked for. A
             // second rename arriving while the first is still flushing would
@@ -4771,7 +4780,10 @@ final class Coordinator {
     /// the flush is a round trip, and the note can be gone by the time it lands.
     private func withFlushedContent(_ body: @escaping (String) -> Void) {
         guard hasContent else { return }
-        flushThen { [weak self] in
+        // Not persisting: copying or sharing the note reads the buffer and
+        // writes nothing, so the autosave setting is the only thing that
+        // decides whether this note is on disk.
+        flushThen(persisting: false) { [weak self] in
             guard let self, self.hasContent else { return }
             body(self.latest)
         }
@@ -5194,8 +5206,16 @@ final class Coordinator {
         let text = view.labelFrameInWindow()
         let close = panel.standardWindowButton(.closeButton)
             .map { $0.convert($0.bounds, to: nil) } ?? .zero
+        // Where the three window buttons end, so a check can hold the title
+        // clear of the system's own controls rather than of a constant that
+        // was true of one macOS release.
+        let buttonsEnd = [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton]
+            .compactMap { panel.standardWindowButton($0) }
+            .filter { !$0.isHidden }
+            .map { $0.convert($0.bounds, to: nil).maxX }
+            .max() ?? 0
         measure.trace(String(
-            format: "titlebar x=%.1f y=%.1f w=%.1f h=%.1f visW=%.1f visTextW=%.1f needW=%.1f gotW=%.1f inkW=%.1f fieldW=%.1f cellW=%.1f textMidY=%.1f closeMidY=%.1f attached=%@ text=%@",
+            format: "titlebar x=%.1f y=%.1f w=%.1f h=%.1f visW=%.1f visTextW=%.1f needW=%.1f gotW=%.1f inkW=%.1f fieldW=%.1f cellW=%.1f textMidY=%.1f closeMidY=%.1f buttonsEnd=%.1f attached=%@ text=%@",
             frame.origin.x, frame.origin.y, frame.width, frame.height,
             // What an ANCESTOR leaves of us. Every other number here is a
             // frame this code set, so they agree with each other by
@@ -5206,7 +5226,7 @@ final class Coordinator {
             // TitleBar.titleFit.
             view.titleFit().needed, view.titleFit().given, view.drawnInkWidth(),
             view.titleFieldWidth(), view.titleCellWidth(),
-            text.midY, close.midY,
+            text.midY, close.midY, buttonsEnd,
             panel.titlebarAccessoryViewControllers.contains(titleBar) ? "yes" : "no",
             // The DRAWN characters, not the accessibility label. The label now
             // carries the whole name whatever the window's width, which is
@@ -5406,7 +5426,10 @@ final class Coordinator {
     /// stays bound to the same file: this is "save a copy", not "move".
     func saveAs() {
         NSApp.activate(ignoringOtherApps: true)
-        flushThen { [weak self] in
+        // Not persisting: the copy is written to the chosen file, and with
+        // autosave off this note keeps its unsaved changes rather than having
+        // them written by the flush on the way to a copy.
+        flushThen(persisting: false) { [weak self] in
             guard let self else { return }
             let panel = NSSavePanel()
             panel.title = "Save a Copy As"
@@ -5453,7 +5476,9 @@ final class Coordinator {
     /// `OpenRouting` already refuses by fronting an open tab.
     func appendToNote(openTabs: @escaping () -> [Coordinator]) {
         NSApp.activate(ignoringOtherApps: true)
-        flushThen { [weak self] in
+        // Not persisting, for the reason Save a Copy As is not: the bytes go
+        // to another file, and this note is left as it is.
+        flushThen(persisting: false) { [weak self] in
             guard let self else { return }
             let chooser = NSOpenPanel()
             chooser.title = "Append to Note"
@@ -5609,7 +5634,11 @@ final class Coordinator {
         // A changed file, document or network setting means a fresh page:
         // flush the current buffer to where it belongs, then reload against
         // the new prefs. Cheap, and it keeps one code path.
-        flushThen { [weak self] in
+        //
+        // Persisting, whatever the autosave setting: the reload below reads
+        // the file from disk, so a buffer the flush did not write would be
+        // replaced by the bytes it had not saved yet.
+        flushThen(persisting: true) { [weak self] in
             guard let self else { return }
             let reload: () -> Void = { [weak self] in
                 guard let self else { return }
