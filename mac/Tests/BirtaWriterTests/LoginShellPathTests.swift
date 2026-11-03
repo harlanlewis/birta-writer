@@ -111,7 +111,17 @@ final class LoginShellPathTests: XCTestCase {
     /// A shell that never answers is ended, and the ask is answered with
     /// nothing rather than left waiting.
     func testAShellThatNeverAnswersShouldBeEndedAndTheAskAnswered() throws {
-        let script = try shell("sleep 300")
+        // The shell blocks on a child of its own, the shape a startup file
+        // waiting on a prompt or an agent has, and ignores TERM, as an
+        // interactive zsh does, so it is the KILL that ends it. Marked so the
+        // child can be found: a stuck child that outlived the shell is the
+        // leak this case is about.
+        let marker = "birta-stuck-child-\(UUID().uuidString)"
+        let script = try shell("trap '' TERM\nperl -e 'sleep 300' \(marker)")
+        addTeardownBlock { [weak self] in
+            guard let pids = try? self?.pgrep(marker) else { return }
+            for pid in pids.split(separator: "\n").compactMap({ Int32($0) }) { kill(pid, SIGKILL) }
+        }
         let resolver = LoginShellPath(shell: script.path, cap: 0.3)
         let answered = expectation(description: "answered")
         var answer: String? = "unanswered"
@@ -123,6 +133,8 @@ final class LoginShellPathTests: XCTestCase {
         Thread.sleep(forTimeInterval: 2)
         let found = try pgrep(script.path)
         XCTAssertTrue(found.isEmpty, "the shell is still running: \(found)")
+        let child = try pgrep(marker)
+        XCTAssertTrue(child.isEmpty, "the shell was ended and what it was waiting on was left running: \(child)")
     }
 
     /// A shell that starts something holding its output open never reaches

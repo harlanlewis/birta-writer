@@ -15,6 +15,8 @@ Versions are shared. Both files are stamped with the same release version, and a
 ### Fixed
 
 - A file that begins with a UTF-8 byte-order mark keeps it when Birta Writer for Mac saves the file. Before, the first save removed the mark, which some Windows tools use to recognise the file as UTF-8. Appending a note to a file that is open in a tab also keeps it now.
+- If your shell's startup files wait on something (a passphrase prompt, a `sleep`), opening Settings > Advanced in Birta Writer for Mac no longer leaves a stray process behind each time. The check for `bwr` on your PATH still gives up after a few seconds, and it now also ends whatever the shell was waiting on. Programs your startup files start in the background, such as `ssh-agent`, keep running.
+- In Birta Writer for Mac, cancelling a log out or restart at the app's Save sheet no longer leaves later quits in that session keeping your windows. Quitting follows macOS's Close windows when quitting setting again. If another app cancels the log out first, the next quit can still keep them.
 - With saving off in Birta Writer for Mac, Save a Copy As, Append to Note, Copy Everything and Share no longer save the note you are in. Its unsaved changes now stay unsaved until you save them, as the setting promises. With saving on, nothing changes.
 
 ---
