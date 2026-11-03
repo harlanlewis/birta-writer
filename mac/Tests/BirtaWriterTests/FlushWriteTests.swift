@@ -197,6 +197,30 @@ final class FlushWriteTests: XCTestCase {
         }
     }
 
+    /// A flush that timed out ran `then` against `latest`, which can lack
+    /// keystrokes the page still holds. A closure that then replaces the
+    /// page's document (`pushDocument`) would discard them, so it has to be
+    /// told whether the page answered, and refuse when it did not.
+    func testAFlushThatPushesADocumentOverThePageShouldRefuseWhenThePageDidNotAnswer() {
+        let lines = source()
+        guard !lines.isEmpty else { return }
+
+        var pushing = 0
+        for call in flushCalls(in: lines) where call.body.contains("pushDocument(") {
+            pushing += 1
+            let spoken = call.text.trimmingCharacters(in: .whitespaces)
+            XCTAssertTrue(call.text.contains("flushThenAnswered") && call.text.contains("answered in"),
+                          "Coordinator.swift:\(call.line) pushes a document over the page after a flush, so it "
+                            + "must ask whether the page answered: " + spoken)
+            XCTAssertTrue(call.body.contains("guard answered"),
+                          "Coordinator.swift:\(call.line) is told whether the page answered and must refuse "
+                            + "when it did not: " + spoken)
+        }
+        // Append to Note's receiving tab is one; finding none means the sweep
+        // stopped recognising the shape, not that the risk went away.
+        XCTAssertGreaterThanOrEqual(pushing, 1, "no flush closure pushes a document; this guard is watching nothing")
+    }
+
     /// The other half of the same rule. A `persisting: false` caller decides
     /// from `isEdited` whether leaving is safe (hiding with autosave off, the
     /// explorer replacing a tab), and the flush is what brings keystrokes no

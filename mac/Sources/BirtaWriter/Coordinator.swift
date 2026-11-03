@@ -3122,19 +3122,30 @@ final class Coordinator {
     ///   Save / Don't Save sheet, so somebody who answers Don't Save has
     ///   already had their buffer written.
     private func flushThen(persisting: Bool = true, _ then: @escaping () -> Void) {
+        flushThenAnswered(persisting: persisting) { _ in then() }
+    }
+
+    /// `flushThen`, telling `then` whether the page answered.
+    ///
+    /// False only when a warm page let the timeout pass, which is the one case
+    /// where the page may hold keystrokes `latest` does not. A caller that goes
+    /// on to replace the page's document (`pushDocument`) has to refuse then,
+    /// because the push would discard them; a caller that only reads or
+    /// writes `latest` does not need to ask.
+    private func flushThenAnswered(persisting: Bool, _ then: @escaping (_ answered: Bool) -> Void) {
         guard state == .warm else {
-            then()
+            then(true)
             return
         }
         let id = "flush-\(UUID().uuidString)"
         var done = false
-        let finish: () -> Void = { if !done { done = true; then() } }
-        pendingFlushes[id] = PendingFlush(persists: persisting) { _ in finish() }
+        let finish: (Bool) -> Void = { answered in if !done { done = true; then(answered) } }
+        pendingFlushes[id] = PendingFlush(persists: persisting) { _ in finish(true) }
         host.send(.flushSave(id: id))
         DispatchQueue.main.asyncAfter(deadline: .now() + flushTimeout) { [weak self] in
             guard let self, self.pendingFlushes.removeValue(forKey: id) != nil else { return }
             NSLog("Birta Writer: flush timed out; running against the last admitted content")
-            finish()
+            finish(false)
         }
     }
 
@@ -5563,9 +5574,12 @@ final class Coordinator {
     /// before it lands, whose buffer this must not be composed onto.
     private func receiveAppend(_ note: String, heading: String, to url: URL,
                        done: @escaping (_ written: Bool?) -> Void) {
-        flushThen(persisting: false) { [weak self] in
+        // Answered, because the append replaces the page's document below: a
+        // page that let the flush time out may hold typing `latest` lacks,
+        // and pushing over it would discard that typing.
+        flushThenAnswered(persisting: false) { [weak self] answered in
             guard let self else { return }
-            guard self.holdsAppendableBuffer, FileIdentity.sameFile(self.boundURL, url),
+            guard answered, self.holdsAppendableBuffer, FileIdentity.sameFile(self.boundURL, url),
                   let next = NoteAppend.compose(target: self.latest, note: note, heading: heading) else {
                 done(nil)
                 return
