@@ -12,6 +12,10 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ## [Unreleased]
 
+---
+
+## [2026.1103.0] - 2026, November 3
+
 ### Fixed
 
 - A file that begins with a UTF-8 byte-order mark keeps it when Birta Writer for Mac saves the file. Before, the first save removed the mark, which some Windows tools use to recognise the file as UTF-8. Appending a note to a file that is open in a tab also keeps it now.
