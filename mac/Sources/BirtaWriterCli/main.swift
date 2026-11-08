@@ -86,6 +86,7 @@ func report(_ line: String) {
 
 let usage = """
     usage: \(programName) [options] [file | folder ...]
+           \(programName) file --at <heading | line>
 
       \(programName)                open Birta Writer
       \(programName) notes.md       open a file, creating it if it is not there
@@ -98,6 +99,11 @@ let usage = """
       -v, --version   the version of the app this command belongs to
       -w, --wait      block until the document is closed and written, then
                       exit 0; so EDITOR='\(programName) --wait' works
+      --at <place>    open the one file named at a heading or a line, with
+                      the caret there: 'Getting Started' (any case),
+                      '#getting-started' or '#foo-1' (its anchor, the second
+                      Foo), 42 or L42 (a line). A heading the file does not
+                      have opens the file anyway and says so
       --              stop reading options, so a file may begin with a hyphen
 
     Files open where Open With opens them, which depends on what is already
@@ -175,7 +181,12 @@ func supportDirectory() -> URL {
 /// the document open with nobody waiting on it.
 let connectTimeout: TimeInterval = 20
 
-/// A connection to the app's `--wait` socket, launching the app when nothing
+/// How long a running app is given to answer `noted` to an `--at`. It holds
+/// the line and answers in one main-thread turn, so this is room for a busy
+/// main thread, not for a launch, which `connectTimeout` has already covered.
+let revealAnswerTimeout = 5
+
+/// A connection to the app's socket, launching the app when nothing
 /// answers.
 ///
 /// Connect first, launch only on a refusal, and retry only after a launch
@@ -184,23 +195,100 @@ let connectTimeout: TimeInterval = 20
 /// timeout dressed as a check. The bare launch carries no file and no
 /// summon; the file opened a moment later is what brings the window up.
 func connectToApp(at socket: URL) -> Int32 {
+    switch tryConnectToApp(at: socket) {
+    case let .success(fd): return fd
+    case let .failure(refusal):
+        fail(refusal.message)
+        exit(1)
+    }
+}
+
+/// Why nothing could be reached on the socket, with the sentence to print.
+struct ConnectRefusal: Error {
+    let message: String
+}
+
+/// `connectToApp` without the exit, for the one caller that can carry on
+/// without an answer: `--at`, whose file still opens when no app takes the
+/// line.
+func tryConnectToApp(at socket: URL) -> Result<Int32, ConnectRefusal> {
     guard ControlSocket.fits(socket.path) else {
-        fail("the socket path is too long for a Unix socket: \(socket.path)")
-        exit(1)
+        return .failure(.init(message: "the socket path is too long for a Unix socket: \(socket.path)"))
     }
-    if let fd = ControlSocket.connect(to: socket) { return fd }
+    if let fd = ControlSocket.connect(to: socket) { return .success(fd) }
     if dryRun {
-        fail("Birta Writer is not running (nothing answers at \(socket.path))")
-        exit(1)
+        return .failure(.init(message: "Birta Writer is not running (nothing answers at \(socket.path))"))
     }
-    guard launch(requireApp(), arguments: []) else { exit(1) }
+    guard launch(requireApp(), arguments: []) else {
+        return .failure(.init(message: "could not start Birta Writer"))
+    }
     let deadline = Date().addingTimeInterval(connectTimeout)
     while Date() < deadline {
-        if let fd = ControlSocket.connect(to: socket) { return fd }
+        if let fd = ControlSocket.connect(to: socket) { return .success(fd) }
         usleep(100_000)
     }
-    fail("Birta Writer started but nothing answers at \(socket.path)")
-    exit(1)
+    return .failure(.init(message: "Birta Writer started but nothing answers at \(socket.path)"))
+}
+
+/// Hand the app the line `--at` resolved to, and say whether it took it.
+///
+/// Never fatal. The file opening is what the caller asked for first, so an
+/// app that cannot take the line (no socket bound, or an app older than this
+/// command still running, which reads a `reveal` as a line it does not know
+/// and says nothing) costs the place and not the open: the reason goes to
+/// standard error and the file opens as a plain `bwr <file>` would.
+func holdReveal(_ line: Int, for target: CliInvocation.Target) {
+    let socket = ControlSocket.url(support: supportDirectory(), flavour: flavour)
+    let fd: Int32
+    switch tryConnectToApp(at: socket) {
+    case let .success(connected): fd = connected
+    case let .failure(refusal):
+        fail("\(refusal.message); opening \(target.url.lastPathComponent) without --at")
+        return
+    }
+    defer { close(fd) }
+    // The answer is waited for only as long as a running app takes to give
+    // it, so silence is a refusal rather than a hang.
+    var timeout = timeval(tv_sec: revealAnswerTimeout, tv_usec: 0)
+    setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size))
+    guard ControlSocket.send(ControlSocket.encode(.reveal(path: target.url.path, line: line)), on: fd),
+          let answer = ControlSocket.readLine(on: fd),
+          ControlSocket.decodeReply(answer) == .noted
+    else {
+        fail("Birta Writer did not take --at (is the running copy older than this command?); "
+             + "opening \(target.url.lastPathComponent) without it")
+        return
+    }
+}
+
+/// The line `--at` lands on in `target`, or nil with a warning when the file
+/// has no such place, in which case it is opened as a plain `bwr <file>`
+/// would. Read off the file on disk: the command runs before the app is
+/// asked anything, so a heading typed into an open window and not yet saved
+/// is not one this can find.
+///
+/// Exit 0 either way, because the file opened, which is what a caller asked
+/// for first; the sentence on standard error is the place it could not find.
+func revealLine(for place: HeadingTarget.Target, in target: CliInvocation.Target) -> Int? {
+    let text: String
+    if case .create = target {
+        text = ""
+    } else {
+        guard let data = FileManager.default.contents(atPath: target.url.path) else {
+            fail("cannot read \(target.url.lastPathComponent) to find --at in it; opening it where it was")
+            return nil
+        }
+        text = HeadingTarget.fileText(data)
+    }
+    if let line = HeadingTarget.resolve(place, in: text) { return line }
+    let name = target.url.lastPathComponent
+    switch place {
+    case let .heading(fragment):
+        fail("\(name) has no heading \"\(fragment)\"; opening it where it was")
+    case let .line(line):
+        fail("\(name) has \(HeadingTarget.lineCount(text)) lines, not \(line); opening it where it was")
+    }
+    return nil
 }
 
 /// Whether text is arriving on standard input.
@@ -343,6 +431,15 @@ case let .open(targets):
             waiting.append((fd, target))
             if dryRun { report("wait \(target.url.path)") }
         }
+    }
+    // `--at` is held by the app BEFORE the open, and the command waits for
+    // it to say so: the open is what spends it, whichever window
+    // `OpenRouting` hands the file to, so a line arriving after the file
+    // would reach nothing.
+    if let place = request.reveal, let target = targets.first,
+       let line = revealLine(for: place, in: target) {
+        if dryRun { report("reveal \(target.url.path) line \(line)") }
+        holdReveal(line, for: target)
     }
     for target in targets {
         if dryRun {

@@ -70,6 +70,77 @@ export async function run({ page, check, baseUrl }) {
     });
     check("the caret is still in the paragraph it was typing in", caretBlock !== null && caretBlock.startsWith("Opening paragraph.Q"), JSON.stringify(caretBlock));
 
+    // ── A reveal into the streamed tail ──
+    // A line the first chunk does not hold: `init` asks for it before the
+    // model has it, so the caret and the scroll have to land once the block
+    // arrives rather than on whatever the first screen ends with. Section N's
+    // heading is document line 8N - 3 in this fixture.
+    const tailLine = 8 * 2500 - 3;
+    await page.goto(`${baseUrl}/index.html?at=${tailLine}`);
+    await marked(page, "editor-painted");
+    const stillStreaming = await page.evaluate(() => performance.getEntriesByName("mdw:stream-end", "mark").length === 0);
+    check("the reveal is asked for while the target is not yet in the model", stillStreaming === true);
+    await marked(page, "stream-end");
+    await page.waitForFunction(() => {
+        const sel = window.getSelection();
+        const block = sel?.anchorNode && (sel.anchorNode.nodeType === 1 ? sel.anchorNode : sel.anchorNode.parentElement)?.closest(".ProseMirror > *");
+        return block?.tagName === "H2" && block.textContent.endsWith("Section 2500");
+    }, null, { timeout: 10000 }).catch(() => {});
+    const landed = await page.evaluate(() => {
+        const sel = window.getSelection();
+        const node = sel?.anchorNode;
+        const el = node && (node.nodeType === 1 ? node : node.parentElement);
+        const block = el?.closest(".ProseMirror > *");
+        const rect = block?.getBoundingClientRect();
+        return { tag: block?.tagName ?? null, text: block?.textContent ?? null, top: rect?.top ?? null, height: window.innerHeight };
+    });
+    check("the caret lands in the streamed heading it was asked for", landed.tag === "H2" && landed.text?.endsWith("Section 2500"), JSON.stringify(landed));
+    check("and that heading is on screen", landed.top !== null && landed.top >= 0 && landed.top < landed.height, JSON.stringify(landed));
+
+    // The same reveal as a `scrollToLine` message to a page already up (a
+    // search hit, a backlink, `bwr --at` on a file already open), posted
+    // while the stream still runs.
+    const blockAtCaret = () => page.evaluate(() => {
+        const node = window.getSelection()?.anchorNode;
+        const el = node && (node.nodeType === 1 ? node : node.parentElement);
+        const block = el?.closest(".ProseMirror > *");
+        return block ? { tag: block.tagName, text: block.textContent } : null;
+    });
+    const msgLine = 8 * 2400 - 3;
+    await page.goto(`${baseUrl}/index.html`);
+    await marked(page, "editor-painted");
+    check("the message is posted while the stream runs", await page.evaluate(() => performance.getEntriesByName("mdw:stream-end", "mark").length === 0));
+    await page.evaluate((line) => window.postMessage({ type: "scrollToLine", line }, "*"), msgLine);
+    await marked(page, "stream-end");
+    await page.waitForFunction(() => {
+        const node = window.getSelection()?.anchorNode;
+        const el = node && (node.nodeType === 1 ? node : node.parentElement);
+        return el?.closest(".ProseMirror > *")?.textContent.endsWith("Section 2400");
+    }, null, { timeout: 10000 }).catch(() => {});
+    const byMessage = await blockAtCaret();
+    check("a scrollToLine message into the tail lands once the tail arrives", byMessage?.tag === "H2" && byMessage.text.endsWith("Section 2400"), JSON.stringify(byMessage));
+
+    // Two reveals asked for while the tail streams: the open's own place,
+    // then a message naming another. The newer one is where the reader goes.
+    await page.goto(`${baseUrl}/index.html?at=${8 * 2500 - 3}`);
+    await marked(page, "editor-painted");
+    await page.evaluate((line) => window.postMessage({ type: "scrollToLine", line }, "*"), 8 * 2300 - 3);
+    await marked(page, "stream-end");
+    await page.waitForFunction(() => {
+        const node = window.getSelection()?.anchorNode;
+        const el = node && (node.nodeType === 1 ? node : node.parentElement);
+        return el?.closest(".ProseMirror > *")?.textContent.endsWith("Section 2300");
+    }, null, { timeout: 10000 }).catch(() => {});
+    const newest = await blockAtCaret();
+    check("of two reveals waiting on the tail, the newer one lands", newest?.tag === "H2" && newest.text.endsWith("Section 2300"), JSON.stringify(newest));
+
+    // A small document is whole at once, so its reveal is not held at all.
+    const smallLine = 8 * 5 - 3;
+    await page.goto(`${baseUrl}/index.html?small=1&at=${smallLine}`);
+    await marked(page, "editor-painted");
+    const small5 = await blockAtCaret();
+    check("a reveal in a small document lands by the first paint", small5?.tag === "H2" && small5.text.endsWith("Section 5"), JSON.stringify(small5));
+
     // ── Below the floor: a whole open ──
     await page.goto(`${baseUrl}/index.html?small=1`);
     await marked(page, "editor-painted");

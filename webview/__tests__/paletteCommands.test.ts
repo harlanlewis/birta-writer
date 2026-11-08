@@ -23,7 +23,7 @@ function deps(): MessageHandlerDeps {
     return {
         state: { getEditor: () => null, setEditor: () => {}, setLineMap: () => {}, getMarkdownSource: () => "", setMarkdownSource: () => {} },
         actions: {
-            placeCaretAtLine: () => {}, scrollToDocumentLine: () => {}, getSwitchTarget: () => undefined,
+            placeCaretAtLine: () => {}, scrollToDocumentLine: () => {}, whenLineHeld: (_line: number, reveal: () => void) => reveal(), getSwitchTarget: () => undefined,
             getSelectionContext: () => null, setLineOffset: () => {}, initEditor: async () => {}, retryScroll: () => {},
             getEditorView: () => null, refreshToc: () => {}, setLineNumbers: () => {}, setProjectRoot: () => {},
             applyDirectoryListing: () => {}, setCurrentProjectFile: () => {}, directoryChanged: () => {}, setFileExplorerShowHidden: () => {},

@@ -22,9 +22,11 @@ import type { EditorView, Node as ProseNode } from "../pm";
 import {
     createEditor,
     flushPendingEdit,
+    holdsBodyLine,
     isSettled,
     setProgressiveOpenMinCharsForTests,
     syncExternalContent,
+    whenDocumentWhole,
 } from "../editor";
 import { markdownFormat } from "../format/markdown";
 import { seedHeadingIds } from "../plugins/headingIdSync";
@@ -185,6 +187,45 @@ describe("progressive open", { timeout: budget(60_000) }, () => {
         expect(updates).toHaveLength(1);
         expect(updates[0]).toBe(text.replace("Opening paragraph.", "Opening paragraph. edited"));
     }, budget(20_000));
+
+    it("a body line should be held only once the chunk carrying it has landed", async () => {
+        const text = outline(SECTIONS);
+        const plan = planProgressiveOpen(text, markdownFormat, 0)!;
+        const firstLines = plan.first.split("\n").length - 1;
+        const lastLine = text.split("\n").length - 1;
+        editor = await createEditor(container, text, () => {});
+        expect(isSettled()).toBe(false);
+        expect(holdsBodyLine(1)).toBe(true);
+        expect(holdsBodyLine(firstLines)).toBe(true);
+        expect(holdsBodyLine(lastLine)).toBe(false);
+        await settled();
+        expect(holdsBodyLine(lastLine)).toBe(true);
+    });
+
+    it("what waits on the whole document should run once when the last chunk lands, and at once after", async () => {
+        const text = outline(SECTIONS);
+        editor = await createEditor(container, text, () => {});
+        const seen: number[] = [];
+        whenDocumentWhole(() => seen.push(view(editor!).state.doc.childCount));
+        expect(seen).toEqual([]);
+        await settled();
+        // It ran against the whole document, not the first screen.
+        expect(seen).toEqual([wholeParse(editor, text).childCount]);
+        whenDocumentWhole(() => seen.push(-1));
+        expect(seen).toHaveLength(2);
+    });
+
+    it("what waits on a document replaced before it is whole should never run", async () => {
+        const text = outline(SECTIONS);
+        editor = await createEditor(container, text, () => {});
+        let ran = 0;
+        whenDocumentWhole(() => { ran++; });
+        await editor.destroy();
+        editor = await createEditor(container, "# Small\n\nWhole at once.\n", () => {});
+        await settled();
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        expect(ran).toBe(0);
+    });
 
     it("an external sync while the document arrives should replace it whole and stop the stream", async () => {
         const text = outline(SECTIONS);

@@ -35,6 +35,7 @@ function stubDeps(topbarTb: ToolbarController | null): MessageHandlerDeps {
         actions: {
             placeCaretAtLine: () => {},
             scrollToDocumentLine: () => {},
+            whenLineHeld: (_line: number, reveal: () => void) => reveal(),
             getSwitchTarget: () => undefined,
             getSelectionContext: () => null,
             setLineOffset: () => {},

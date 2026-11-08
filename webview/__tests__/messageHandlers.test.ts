@@ -24,6 +24,7 @@ function stubDeps(): MessageHandlerDeps {
         actions: {
             placeCaretAtLine: () => {},
             scrollToDocumentLine: () => {},
+            whenLineHeld: (_line: number, reveal: () => void) => reveal(),
             getSwitchTarget: () => undefined,
             getSelectionContext: () => null,
             setLineOffset: () => {},
@@ -239,6 +240,27 @@ describe("scrollToLine handler", () => {
 
         expect(placeCaretAtLine).toHaveBeenCalledWith(12, 4, undefined);
         expect(scrollToDocumentLine).toHaveBeenCalledWith(12);
+    });
+
+    it("a line the model does not hold yet should wait for it before placing the caret or scrolling", () => {
+        const deps = stubDeps();
+        const placeCaretAtLine = vi.fn();
+        const scrollToDocumentLine = vi.fn();
+        const held: Array<{ line: number; reveal: () => void }> = [];
+        deps.actions.getEditorView = () => ({} as never);
+        deps.actions.placeCaretAtLine = placeCaretAtLine;
+        deps.actions.scrollToDocumentLine = scrollToDocumentLine;
+        deps.actions.whenLineHeld = (line, reveal) => { held.push({ line, reveal }); };
+        const handlers = createMessageHandlers(deps);
+
+        handlers.scrollToLine?.({ type: "scrollToLine", line: 900 }, container);
+
+        expect(held.map((h) => h.line)).toEqual([900]);
+        expect(placeCaretAtLine).not.toHaveBeenCalled();
+        expect(scrollToDocumentLine).not.toHaveBeenCalled();
+        held[0].reveal();
+        expect(placeCaretAtLine).toHaveBeenCalledWith(900, undefined, undefined);
+        expect(scrollToDocumentLine).toHaveBeenCalledWith(900);
     });
 
     it("a line from a search hit should still place the caret, with no column", () => {

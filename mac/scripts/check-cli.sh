@@ -189,6 +189,43 @@ run --wait folder < /dev/null
 expect_status 2 "$STATUS" "--wait on a folder"
 expect_contains "$OUT" "is a folder" "--wait on a folder says so"
 
+echo "--at, with no app to answer"
+# The place is resolved against the file BEFORE anything is asked of the app,
+# so the line it lands on is reported even though nothing then answers. A
+# place the file does not have opens the file anyway, says so, and asks the
+# app for nothing, so it succeeds with no app at all.
+printf -- '---\ntitle: x\n---\n# Intro\n\n## Second Part\n\n## Foo\n\n## Foo\n' > at.md
+run at.md --at 'second part' < /dev/null
+# Nothing takes the line, which costs the place and never the open.
+expect_status 0 "$STATUS" "--at a heading, no app"
+expect_contains "$OUT" "reveal $WORK/at.md line 6" "--at a heading resolves to its line, frontmatter counted"
+expect_contains "$OUT" "not running" "--at with no app says so"
+expect_contains "$OUT" "without --at" "--at with no app says the file opens without it"
+expect_contains "$OUT" "open $WORK/at.md" "--at with no app still opens the file"
+run at.md --at '## Second Part' < /dev/null
+expect_contains "$OUT" "reveal $WORK/at.md line 6" "--at a heading's own source line resolves"
+printf '\357\273\277# Marked\n\nbody\n' > bom.md
+run bom.md --at marked < /dev/null
+expect_contains "$OUT" "reveal $WORK/bom.md line 1" "--at finds a heading behind a byte-order mark"
+run --at '#foo-1' at.md < /dev/null
+expect_contains "$OUT" "reveal $WORK/at.md line 10" "--at a suffixed slug is the second of two"
+run at.md --at=L3 < /dev/null
+expect_contains "$OUT" "reveal $WORK/at.md line 3" "--at=L3 is a line"
+run at.md --at 'No Such Heading' < /dev/null
+expect_status 0 "$STATUS" "--at a heading the file lacks"
+expect_contains "$OUT" "has no heading \"No Such Heading\"" "--at a missing heading says so"
+expect_contains "$OUT" "open $WORK/at.md" "--at a missing heading still opens the file"
+run at.md --at 99 < /dev/null
+expect_status 0 "$STATUS" "--at a line past the end"
+expect_contains "$OUT" "has 10 lines, not 99" "--at past the end says how long the file is"
+run at.md real.md --at 3 < /dev/null
+expect_status 2 "$STATUS" "--at with two files"
+expect_contains "$OUT" "name exactly one" "--at with two files says so"
+run folder --at 3 < /dev/null
+expect_status 2 "$STATUS" "--at on a folder"
+run at.md --at < /dev/null
+expect_status 2 "$STATUS" "--at with no place"
+
 echo "an extensionless file, without --wait and under it"
 # `git commit` names COMMIT_EDITMSG. Without the flag it is a Makefile: refused
 # and not created. Under the flag the caller chose it: created, and it would
@@ -467,6 +504,31 @@ if [ -x "$APP_BIN" ]; then
         expect_status 0 "$STATUS" "--wait on the extensionless file after its tab closed"
         expect_contains "$(cat "$MSG")" "#	modified:   README.md" "the comment block is untouched, tab included"
         expect_contains "$(cat "$MSG")" "# On branch main" "the comment block is untouched"
+
+        echo "  --at lands the caret on its line, through the routing a Finder open takes"
+        # The note is already open, so this is `OpenRouting`'s existing arm:
+        # the reveal is registered through the real command (the dry run
+        # stops short of `open(1)` only), the open is driven through
+        # `WindowSet.openDocument` itself, and a character typed afterwards
+        # says where the caret went. The target is the note's LAST line, at
+        # column 0, which tells the landing apart from both places the caret
+        # could already be: the start of the document after a reload, and
+        # the end of the last line the arms above typed into.
+        summon
+        post '{"type":"__birtaSave"}' debug-save
+        sleep 0.5
+        LAST="$(awk 'NF { n = NR } END { print n }' "$NOTE")"
+        LAST_TEXT="$(sed -n "${LAST}p" "$NOTE")"
+        "$BWR" "$NOTE" --at "$LAST" > "$WORK/at1.out" 2>&1
+        expect_status 0 "$?" "--at against a running app"
+        expect_contains "$(cat "$WORK/at1.out")" "reveal $NOTE line $LAST" "--at reports the line it registered"
+        post "{\"type\":\"__birtaOpen\",\"path\":\"$NOTE\"}" debug-open
+        sleep 1
+        post '{"type":"__birtaKeys","keys":["Z"]}' debug-keys
+        sleep 0.5
+        post '{"type":"__birtaSave"}' debug-save
+        sleep 0.5
+        expect_contains "$(sed -n "${LAST}p" "$NOTE")" "Z$LAST_TEXT" "the character typed after --at lands at the start of line $LAST"
 
         echo "  a quit ends the wait nonzero and takes the socket away"
         start_wait "$WORK/w5.out"; W5=$WAIT_PID

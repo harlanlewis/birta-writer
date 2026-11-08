@@ -37,7 +37,7 @@ import { cachedCapabilities, probeHarness } from "./agentBridge/harnessProbe";
 import { harnessName } from "./agentBridge/harnessCapabilities";
 import { scanAgentSkills, type SkillScanIo } from "./agentBridge/agentSkills";
 import * as os from "os";
-import { scanHeadings } from "../shared/headingScan";
+import { findHeadingLine } from "../shared/headingTarget";
 import { extractOgDescription, extractOgTitle } from "./utils/openGraph";
 import type { LinkCardMeta } from "../shared/messages";
 import { isPubliclyRoutableUrl } from "./utils/urlGuard";
@@ -47,7 +47,6 @@ import type { ConnectorService } from "./connectors/connectorService";
 import { asConnectorId, runConnectFlow } from "./connectors/commands";
 import { askViaPalette, collectDiagnostics } from "./feedback/sendFeedback";
 import { openExternalUrl } from "./utils/openExternalUrl";
-import { slugify } from "../shared/slug";
 import { lintBlocks } from "./utils/harperService";
 import type { ToExtensionMessage, ToWebviewMessage, LogseqReason } from "../shared/messages";
 import type { EditorSelectionContext } from "../shared/agentContext";
@@ -2490,12 +2489,10 @@ export class MarkdownEditorProvider
     }
 
     /**
-     * 1-based line of the heading a link fragment names, or undefined. The
-     * fragment may be a ready slug (`#some-heading`, possibly percent-encoded)
-     * or raw heading text (a wikilink's `#Some Heading`); both are matched
-     * against the target's headings slugged EXACTLY the way the webview slugs
-     * its in-page anchors (shared/slug.ts + the same duplicate suffixing), so
-     * cross-file and in-page navigation always agree.
+     * 1-based line of the heading a link fragment names, or undefined.
+     * `findHeadingLine` (shared/headingTarget.ts) is the rule, shared with
+     * Birta Writer for Mac's `bwr --at` so cross-file navigation, the shell
+     * and the page's in-page anchors all name a heading the same way.
      */
     private async _findHeadingLine(
         targetUri: vscode.Uri,
@@ -2508,32 +2505,7 @@ export class MarkdownEditorProvider
         } catch {
             return undefined;
         }
-        let decoded = fragment;
-        try {
-            decoded = decodeURIComponent(fragment);
-        } catch { /* keep raw */ }
-        const wanted = new Set([decoded.toLowerCase(), slugify(decoded)]);
-
-        // The webview slugs RENDERED heading text; scanHeadings yields raw
-        // markdown. Reduce the inline constructs whose source bytes differ
-        // from their rendering (links/images keep only their text, code
-        // drops its backticks) so both sides produce the same slug.
-        const rendered = (raw: string): string =>
-            raw
-                .replace(/!\[([^\]]*)\]\([^)]*\)/g, "$1")
-                .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
-                .replace(/`([^`]*)`/g, "$1");
-
-        const counts = new Map<string, number>();
-        for (const h of scanHeadings(text)) {
-            const base = slugify(rendered(h.text));
-            if (!base) continue;
-            const count = counts.get(base) ?? 0;
-            counts.set(base, count + 1);
-            const slug = count === 0 ? base : `${base}-${count}`;
-            if (wanted.has(slug)) return h.line;
-        }
-        return undefined;
+        return findHeadingLine(text, fragment);
     }
 
     /**

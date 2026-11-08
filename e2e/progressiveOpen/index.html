@@ -37,7 +37,9 @@
   })();
   window.__i18n = { translations: {}, isMac: true, toolbar: { placements: {}, order: [] }, tocAutoHideThreshold: 999 };
   window.__posted = [];
-  const small = new URLSearchParams(location.search).get("small") === "1";
+  const params = new URLSearchParams(location.search);
+  const small = params.get("small") === "1";
+  const at = params.get("at") ? Number(params.get("at")) : undefined;
   const LINES = ["# Progressive document", "", "Opening paragraph.", ""];
   const SECTIONS = small ? 12 : 2600;
   for (let i = 1; i <= SECTIONS; i++) {
@@ -53,7 +55,7 @@
     postMessage: (msg) => {
       window.__posted.push(msg);
       if (msg.type === "ready")
-        window.postMessage({ type: "init", content: DOC, syncVersion: 1 }, "*");
+        window.postMessage({ type: "init", content: DOC, syncVersion: 1, scrollToLine: at }, "*");
     },
     getState: () => undefined, setState: () => {},
   });

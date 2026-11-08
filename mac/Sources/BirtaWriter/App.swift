@@ -373,8 +373,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding, 
         listenForWaitingShells()
     }
 
-    /// Bind the socket a `bwr --wait` connects to, and hand what arrives on
-    /// it to the windows.
+    /// Bind the socket a `bwr --wait` or a `bwr --at` connects to, and hand
+    /// what arrives on it to the windows.
     ///
     /// After the windows, because a wait names a document and the windows
     /// are what close one. `ControlSocket` is where the path and the wire
@@ -396,9 +396,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding, 
         }
         guard let support else { return }
         let listener = ControlListener(socket: ControlSocket.url(support: support, flavour: AppFlavor.current))
-        listener.onRequest = { [weak self] connection, request in
+        listener.onRequest = { [weak self, weak listener] connection, request in
             switch request {
             case let .wait(path): self?.windows.shellWaits(connection, on: path)
+            case let .reveal(path, line):
+                // Held before it is answered, so the open the command makes
+                // on hearing `noted` finds it.
+                self?.windows.shellReveals(path, line: line)
+                listener?.answer(.init(connection: connection, reply: .noted))
             }
         }
         listener.onDisconnect = { [weak self] connection in self?.windows.shellWentAway(connection) }

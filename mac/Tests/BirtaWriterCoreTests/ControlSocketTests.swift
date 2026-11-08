@@ -94,6 +94,56 @@ final class ControlSocketTests: XCTestCase {
         XCTAssertNil(ControlSocket.decodeReply(ControlSocket.encode(.wait(path: "/x"))), "a request is not a reply")
     }
 
+    func testARevealShouldBeOneJSONObjectWithANumberForItsLine() {
+        XCTAssertEqual(String(decoding: ControlSocket.encode(.reveal(path: "/a/b.md", line: 12)), as: UTF8.self),
+                       "{\"line\":12,\"reveal\":\"/a/b.md\"}\n")
+        XCTAssertEqual(String(decoding: ControlSocket.encode(.noted), as: UTF8.self), "{\"reply\":\"noted\"}\n")
+        let request = ControlSocket.Request.reveal(path: "/with space/x.md", line: 3)
+        XCTAssertEqual(ControlSocket.decodeRequest(ControlSocket.encode(request)), request)
+        XCTAssertEqual(ControlSocket.decodeReply(ControlSocket.encode(.noted)), .noted)
+        XCTAssertEqual(ControlSocket.exit(for: .noted, file: "x").status, 0)
+    }
+
+    /// A line the page could not land on is refused at the wire rather than
+    /// rounded or clamped somewhere further along.
+    func testARevealWithALineThatIsNotAWholeNumberAtLeastOneShouldBeRefused() {
+        for line in ["0", "-2", "2.5", "\"7\"", "null"] {
+            XCTAssertNil(ControlSocket.decodeRequest(Data("{\"reveal\":\"/a.md\",\"line\":\(line)}\n".utf8)), line)
+        }
+        XCTAssertNil(ControlSocket.decodeRequest(Data("{\"reveal\":\"/a.md\"}\n".utf8)))
+    }
+
+    // MARK: where an open lands
+
+    func testARevealShouldBeSpentByTheOpenOfItsFileAndOnlyOnce() {
+        var reveals = ControlSocket.Reveals()
+        let now = Date(timeIntervalSince1970: 1_600_000_000)
+        reveals.register(path: "/a/notes.md", line: 9, now: now)
+        XCTAssertNil(reveals.take("/a/other.md", now: now), "another file's open spends nothing")
+        XCTAssertEqual(reveals.take("/a/notes.md", now: now), 9)
+        XCTAssertNil(reveals.take("/a/notes.md", now: now), "spent by the first open")
+        XCTAssertTrue(reveals.isEmpty)
+    }
+
+    func testTheNewestRevealOfOneFileShouldWin() {
+        var reveals = ControlSocket.Reveals()
+        let now = Date(timeIntervalSince1970: 1_600_000_000)
+        reveals.register(path: "/a/notes.md", line: 9, now: now)
+        reveals.register(path: "/a/./notes.md", line: 20, now: now.addingTimeInterval(1))
+        XCTAssertEqual(reveals.take("/a/notes.md", now: now.addingTimeInterval(1)), 20)
+    }
+
+    /// A reveal whose open never came is not spent on a later, unrelated one.
+    func testARevealShouldLapseOnceItsLifetimeHasPassed() {
+        var reveals = ControlSocket.Reveals()
+        let now = Date(timeIntervalSince1970: 1_600_000_000)
+        reveals.register(path: "/a/notes.md", line: 9, now: now)
+        XCTAssertEqual(reveals.take("/a/notes.md", now: now.addingTimeInterval(ControlSocket.Reveals.lifetime)), 9,
+                       "held for the whole lifetime")
+        reveals.register(path: "/a/notes.md", line: 9, now: now)
+        XCTAssertNil(reveals.take("/a/notes.md", now: now.addingTimeInterval(ControlSocket.Reveals.lifetime + 1)))
+    }
+
     /// Zero for `closed` and nothing else. What git reads is zero or not, and
     /// every other answer names the file it was about.
     func testOnlyAClosedDocumentShouldExitZero() {
