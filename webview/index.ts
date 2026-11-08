@@ -278,6 +278,9 @@ function focusEditorIfIdle(view: EditorView): void {
  * switch). Needs the document only — no layout — so it can run before the
  * first paint has settled.
  */
+/** How many reveals `whenLineHeld` has been asked for: the newest is the one a waiting reveal must still be. */
+let revealsAsked = 0;
+
 function placeCaretAtLine(
     documentLine: number,
     column?: number,
@@ -1155,6 +1158,11 @@ const handlers = createMessageHandlers({
             }
         },
         whenLineHeld: (line, reveal) => {
+            // Each reveal supersedes every earlier one still waiting: two
+            // asked for while the tail streams (an open at a place, then a
+            // search hit) land on the second, and one that lands now
+            // cancels any still waiting.
+            const asked = ++revealsAsked;
             if (holdsBodyLine(toBodyLine(line))) {
                 reveal();
                 return;
@@ -1165,6 +1173,7 @@ const handlers = createMessageHandlers({
             // whole means nobody moved it, and the reveal goes ahead.
             const before = getEditorView()?.state.selection;
             whenDocumentWhole(() => {
+                if (asked !== revealsAsked) { return; }
                 const now = getEditorView()?.state.selection;
                 if (before && now && !now.eq(before)) { return; }
                 reveal();

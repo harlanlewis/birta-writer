@@ -349,4 +349,15 @@ final class CliInvocationTests: XCTestCase {
     func testHelpShouldWinOverAnUnfinishedAt() throws {
         XCTAssertEqual(try parse(["--help", "--at"]).action, .help)
     }
+
+    /// The file as an editor reads it: a byte-order mark is not text, and
+    /// kept it would hide the heading on line 1.
+    func testAtShouldResolveInAFileThatBeginsWithAByteOrderMark() {
+        let data = Data([0xEF, 0xBB, 0xBF] + Array("# Marked\n\nbody\n".utf8))
+        XCTAssertEqual(HeadingTarget.resolve(.heading("marked"), inFile: data), 1)
+        XCTAssertEqual(HeadingTarget.fileText(data), "# Marked\n\nbody\n")
+        let fronted = Data([0xEF, 0xBB, 0xBF] + Array("---\n# comment: x\n---\n# Real\n".utf8))
+        XCTAssertNil(HeadingTarget.resolve(.heading("comment-x"), inFile: fronted), "frontmatter is still skipped")
+        XCTAssertEqual(HeadingTarget.resolve(.heading("real"), inFile: fronted), 4)
+    }
 }

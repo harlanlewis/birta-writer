@@ -28,6 +28,15 @@ describe("parseAtTarget", () => {
         expect(parseAtTarget("#42")).toEqual({ kind: "heading", fragment: "42" });
         expect(parseAtTarget("L42a")).toEqual({ kind: "heading", fragment: "L42a" });
     });
+
+    it("a heading's own source line should name it, marker and space dropped", () => {
+        expect(parseAtTarget("## Install")).toEqual({ kind: "heading", fragment: "Install" });
+        expect(parseAtTarget("# Getting  Started ")).toEqual({ kind: "heading", fragment: "Getting  Started" });
+        expect(parseAtTarget("###### Six")).toEqual({ kind: "heading", fragment: "Six" });
+        expect(parseAtTarget("## 42")).toEqual({ kind: "heading", fragment: "42" });
+        expect(parseAtTarget("##double")).toEqual({ kind: "heading", fragment: "#double" });
+        expect(parseAtTarget("## ")).toEqual({ kind: "heading", fragment: "#" });
+    });
 });
 
 describe("findHeadingLine", () => {

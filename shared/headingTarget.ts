@@ -27,9 +27,12 @@ export type AtTarget =
 
 /**
  * Read a place-name. `42` and `L42` (either case) are a line; anything else
- * names a heading, by text or slug, and a leading `#` is dropped, so `#42`
- * is how a heading whose text is a number is reached. Null for a name that
- * names nothing: empty, a bare `#`, or line 0.
+ * names a heading, by text or slug. A heading's own source line names it
+ * too (`## Install`, pasted from the file), so a run of one to six `#`
+ * followed by a space or a tab is dropped with the space; otherwise one
+ * leading `#` is dropped, so `#42` is how a heading whose text is a number
+ * is reached. Null for a name that names nothing: empty, a bare `#`, or
+ * line 0.
  */
 export function parseAtTarget(word: string): AtTarget | null {
     const trimmed = word.trim();
@@ -38,7 +41,9 @@ export function parseAtTarget(word: string): AtTarget | null {
         const n = Number(line[1]);
         return n >= 1 && Number.isSafeInteger(n) ? { kind: "line", line: n } : null;
     }
-    const fragment = trimmed.startsWith("#") ? trimmed.slice(1) : trimmed;
+    const atx = /^#{1,6}[ \t]+/.exec(trimmed);
+    const fragment = atx ? trimmed.slice(atx[0].length).trim()
+        : trimmed.startsWith("#") ? trimmed.slice(1) : trimmed;
     return fragment.trim() === "" ? null : { kind: "heading", fragment };
 }
 

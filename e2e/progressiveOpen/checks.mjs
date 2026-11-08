@@ -120,6 +120,20 @@ export async function run({ page, check, baseUrl }) {
     const byMessage = await blockAtCaret();
     check("a scrollToLine message into the tail lands once the tail arrives", byMessage?.tag === "H2" && byMessage.text.endsWith("Section 2400"), JSON.stringify(byMessage));
 
+    // Two reveals asked for while the tail streams: the open's own place,
+    // then a message naming another. The newer one is where the reader goes.
+    await page.goto(`${baseUrl}/index.html?at=${8 * 2500 - 3}`);
+    await marked(page, "editor-painted");
+    await page.evaluate((line) => window.postMessage({ type: "scrollToLine", line }, "*"), 8 * 2300 - 3);
+    await marked(page, "stream-end");
+    await page.waitForFunction(() => {
+        const node = window.getSelection()?.anchorNode;
+        const el = node && (node.nodeType === 1 ? node : node.parentElement);
+        return el?.closest(".ProseMirror > *")?.textContent.endsWith("Section 2300");
+    }, null, { timeout: 10000 }).catch(() => {});
+    const newest = await blockAtCaret();
+    check("of two reveals waiting on the tail, the newer one lands", newest?.tag === "H2" && newest.text.endsWith("Section 2300"), JSON.stringify(newest));
+
     // A small document is whole at once, so its reveal is not held at all.
     const smallLine = 8 * 5 - 3;
     await page.goto(`${baseUrl}/index.html?small=1&at=${smallLine}`);

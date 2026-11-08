@@ -36,8 +36,9 @@ public enum HeadingTarget {
     // MARK: parseAtTarget
 
     /// `parseAtTarget`: `42` and `L42` (either case) are a line; anything else
-    /// names a heading, by text or slug, with one leading `#` dropped. Nil for
-    /// a name that names nothing: empty, a bare `#`, or line 0.
+    /// names a heading, by text or slug. A heading's source line (`## Install`)
+    /// has its marker and the space after it dropped; otherwise one leading
+    /// `#` is. Nil for a name that names nothing: empty, a bare `#`, or line 0.
     public static func parse(_ word: String) -> Target? {
         let trimmed = JSText.trim(JSText.units(word))
         var digits = trimmed[...]
@@ -51,7 +52,14 @@ public enum HeadingTarget {
             }
             return n >= 1 ? .line(Int(n)) : nil
         }
-        let fragment = trimmed.first == c("#") ? Array(trimmed.dropFirst()) : trimmed
+        // `/^#{1,6}[ \t]+/`: the marker, then the run of space after it.
+        let hashes = trimmed.prefix { $0 == c("#") }.count
+        let fragment: Units
+        if (1...6).contains(hashes), hashes < trimmed.count, isSpaceOrTab(trimmed[hashes]) {
+            fragment = JSText.trim(Array(trimmed[hashes...].drop(while: isSpaceOrTab)))
+        } else {
+            fragment = trimmed.first == c("#") ? Array(trimmed.dropFirst()) : trimmed
+        }
         return JSText.trim(fragment).isEmpty ? nil : .heading(JSText.string(fragment))
     }
 
@@ -64,6 +72,20 @@ public enum HeadingTarget {
         case let .heading(fragment): return headingLine(in: text, fragment: fragment)
         case let .line(line): return line <= lineCount(text) ? line : nil
         }
+    }
+
+    /// `resolve` over a file's bytes as an editor reads them: UTF-8, with a
+    /// leading byte-order mark dropped. VS Code hands its resolver text with
+    /// the mark already gone, and kept it would hide a heading on line 1 and
+    /// stop a frontmatter block from being recognised.
+    public static func resolve(_ target: Target, inFile data: Data) -> Int? {
+        resolve(target, in: fileText(data))
+    }
+
+    /// A file's bytes as the text both resolvers read: UTF-8, mark dropped.
+    public static func fileText(_ data: Data) -> String {
+        let text = String(decoding: data, as: UTF8.self)
+        return text.hasPrefix("\u{FEFF}") ? String(text.unicodeScalars.dropFirst()) : text
     }
 
     /// `documentLineCount`: a final newline ends the last line rather than

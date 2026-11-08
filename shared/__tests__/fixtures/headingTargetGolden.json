@@ -8770,6 +8770,30 @@
      "line": null
     }
    ]
+  },
+  {
+   "name": "EXTRA[20]",
+   "content": "﻿# Title after a byte-order mark\n",
+   "lineCount": 1,
+   "headings": [],
+   "cases": [
+    {
+     "fragment": "nowhere-at-all",
+     "line": null
+    },
+    {
+     "fragment": "",
+     "line": null
+    },
+    {
+     "fragment": "%zz",
+     "line": null
+    },
+    {
+     "fragment": "%20",
+     "line": null
+    }
+   ]
   }
  ],
  "slugs": [
@@ -10095,6 +10119,62 @@
   {
    "word": "9007199254740993",
    "target": null
+  },
+  {
+   "word": "# Getting Started",
+   "target": {
+    "kind": "heading",
+    "fragment": "Getting Started"
+   }
+  },
+  {
+   "word": "## Install ",
+   "target": {
+    "kind": "heading",
+    "fragment": "Install"
+   }
+  },
+  {
+   "word": "###### Six",
+   "target": {
+    "kind": "heading",
+    "fragment": "Six"
+   }
+  },
+  {
+   "word": "####### Seven",
+   "target": {
+    "kind": "heading",
+    "fragment": "###### Seven"
+   }
+  },
+  {
+   "word": "#\tTabbed",
+   "target": {
+    "kind": "heading",
+    "fragment": "Tabbed"
+   }
+  },
+  {
+   "word": "## 42",
+   "target": {
+    "kind": "heading",
+    "fragment": "42"
+   }
+  },
+  {
+   "word": "## ",
+   "target": {
+    "kind": "heading",
+    "fragment": "#"
+   }
+  },
+  {
+   "word": "# # Nested",
+   "target": {
+    "kind": "heading",
+    "fragment": "# Nested"
+   }
   }
  ]
 }

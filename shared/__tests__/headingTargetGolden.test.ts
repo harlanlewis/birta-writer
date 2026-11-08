@@ -71,6 +71,7 @@ const EXTRA: readonly string[] = [
     "",
     "no headings at all\n",
     "last line without newline",
+    "\uFEFF# Title after a byte-order mark\n",
 ];
 
 /** The place-names asked of each document, derived from its own headings plus misses. */
@@ -95,6 +96,7 @@ function fragmentsFor(content: string): string[] {
 const AT_WORDS: readonly string[] = [
     "1", "42", "L42", "l42", "0", "L0", "00", "007", "L", "#", "", " ", "  12  ", "#42", "42a", "L42a", "-3",
     "Getting Started", "#getting-started", "##double", "9007199254740993",
+    "# Getting Started", "## Install ", "###### Six", "####### Seven", "#\tTabbed", "## 42", "## ", "# # Nested",
 ];
 
 function generate(): unknown {

@@ -196,9 +196,17 @@ echo "--at, with no app to answer"
 # app for nothing, so it succeeds with no app at all.
 printf -- '---\ntitle: x\n---\n# Intro\n\n## Second Part\n\n## Foo\n\n## Foo\n' > at.md
 run at.md --at 'second part' < /dev/null
-expect_status 1 "$STATUS" "--at a heading, no app"
+# Nothing takes the line, which costs the place and never the open.
+expect_status 0 "$STATUS" "--at a heading, no app"
 expect_contains "$OUT" "reveal $WORK/at.md line 6" "--at a heading resolves to its line, frontmatter counted"
 expect_contains "$OUT" "not running" "--at with no app says so"
+expect_contains "$OUT" "without --at" "--at with no app says the file opens without it"
+expect_contains "$OUT" "open $WORK/at.md" "--at with no app still opens the file"
+run at.md --at '## Second Part' < /dev/null
+expect_contains "$OUT" "reveal $WORK/at.md line 6" "--at a heading's own source line resolves"
+printf '\357\273\277# Marked\n\nbody\n' > bom.md
+run bom.md --at marked < /dev/null
+expect_contains "$OUT" "reveal $WORK/bom.md line 1" "--at finds a heading behind a byte-order mark"
 run --at '#foo-1' at.md < /dev/null
 expect_contains "$OUT" "reveal $WORK/at.md line 10" "--at a suffixed slug is the second of two"
 run at.md --at=L3 < /dev/null
