@@ -127,6 +127,7 @@ export function createLineNumbers(host: LineNumbersHost): LineNumbersController 
     let observer: ReturnType<typeof observeVisibleWindow> | null = null;
     let observedView: EditorView | null = null;
     let reflow: ResizeObserver | null = null;
+    let siblings: MutationObserver | null = null;
     let visible: VisibleWindow | null = null;
     let frame: number | null = null;
     let idle: { cancel: () => void } | null = null;
@@ -154,6 +155,7 @@ export function createLineNumbers(host: LineNumbersHost): LineNumbersController 
         if (observer && observedView === view) { return view; }
         observer?.destroy();
         reflow?.disconnect();
+        siblings?.disconnect();
         observedView = view;
         observer = observeVisibleWindow(view, (next) => {
             visible = next;
@@ -167,8 +169,66 @@ export function createLineNumbers(host: LineNumbersHost): LineNumbersController 
             ? new ResizeObserver(() => { refresh(); })
             : null;
         reflow?.observe(view.dom);
+        observeAbove(view);
         observer.start();
         return view;
+    };
+
+    /**
+     * Watch what is laid out ABOVE the editor, because it moves every line
+     * without resizing the editor at all: the metadata panel opening or
+     * closing, a field added, its chips wrapping. The page scrolls the
+     * document and the body stays the viewport's size, so the only box that
+     * changes size is the one above, and the tops here are in document
+     * coordinates, so a number is only right if this hears about it.
+     *
+     * The editor's earlier siblings are observed rather than the panel by
+     * name, so anything else that comes to sit above it is covered too; a
+     * child-list observer on their parent (direct children only) re-observes
+     * when one is inserted, replaced or removed, which is how the panel
+     * arrives once a document has frontmatter.
+     */
+    const observeAbove = (view: EditorView): void => {
+        if (!reflow) { return; }
+        let column: Element = view.dom;
+        while (column.parentElement && column.parentElement !== document.body) { column = column.parentElement; }
+        const parent = column.parentElement;
+        if (!parent) { return; }
+        const above = new Set<Element>();
+        const watch = (): void => {
+            for (let el = column.previousElementSibling; el; el = el.previousElementSibling) {
+                if (!above.has(el)) {
+                    above.add(el);
+                    reflow?.observe(el);
+                }
+            }
+        };
+        watch();
+        if (typeof MutationObserver !== "function") { return; }
+        siblings = new MutationObserver((records) => {
+            // Only a change ABOVE the editor moves it. Popups, menus and
+            // toasts are appended to the same parent all the time, after the
+            // editor, and repainting for those would be work for nothing.
+            let moved = false;
+            for (const record of records) {
+                record.removedNodes.forEach((node) => {
+                    if (node instanceof Element && above.delete(node)) {
+                        reflow?.unobserve(node);
+                        moved = true;
+                    }
+                });
+                record.addedNodes.forEach((node) => {
+                    if (node instanceof Element && node.isConnected
+                        && (node.compareDocumentPosition(column) & Node.DOCUMENT_POSITION_FOLLOWING)) {
+                        moved = true;
+                    }
+                });
+            }
+            if (!moved) { return; }
+            watch();
+            refresh();
+        });
+        siblings.observe(parent, { childList: true });
     };
 
     /** Measure one entry into document coordinates, or null if it can't be. */
@@ -381,6 +441,8 @@ export function createLineNumbers(host: LineNumbersHost): LineNumbersController 
         observer = null;
         reflow?.disconnect();
         reflow = null;
+        siblings?.disconnect();
+        siblings = null;
         observedView = null;
         visible = null;
         layer?.remove();

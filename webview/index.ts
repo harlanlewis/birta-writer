@@ -1139,6 +1139,9 @@ const handlers = createMessageHandlers({
         },
         setLineMap: (lineMap) => {
             currentLineMap = lineMap;
+            // The gutter's numbers are read off the map, so a new one is a
+            // repaint, not something to wait for the next edit to bring.
+            lineNumbers.refresh();
         },
         getMarkdownSource,
         setMarkdownSource: (source) => {
@@ -1182,7 +1185,12 @@ const handlers = createMessageHandlers({
         getSwitchTarget,
         getSelectionContext,
         setLineOffset: (offset) => {
+            if (offset === currentLineOffset) { return; }
             currentLineOffset = offset;
+            // Every number the gutter paints is a body line plus this, so a
+            // frontmatter edit that adds or removes a line relabels all of
+            // them; the host sends the offset alone for exactly that edit.
+            lineNumbers.refresh();
         },
         initEditor,
         retryScroll,

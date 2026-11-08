@@ -6,6 +6,7 @@
 
 ### Fixed
 
+- With line numbers on (`birta.lineNumbers`), collapsing or expanding the metadata panel no longer leaves the numbers where the text used to be. Editing the metadata so it gains or loses a line also renumbers the gutter straight away, instead of on your next keystroke.
 - Opening a large document at a particular place now lands there: a search result, `code -g file:line`, a link to a heading in another file, or a backlink. Before, a place far enough down that the document was still loading when it opened put the caret and the view near the top instead. If you click or type while it loads, it stays where you put it.
 
 ---

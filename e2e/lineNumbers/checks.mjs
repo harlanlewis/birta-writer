@@ -420,4 +420,63 @@ export async function run({ page, check, baseUrl }) {
         beyond.length === 0,
         `sourceLines=${total} out of range: ${beyond.slice(0, 5).map((r) => r.line).join(", ")}`,
     );
+
+    await metadataPanel(page, check);
+}
+
+/**
+ * The metadata panel sits above the editor, so opening or closing it moves
+ * every line of the document by the panel's height while the editor's own
+ * box keeps its size. The gutter's tops are in document coordinates, so a
+ * number is right after the toggle only if the gutter heard about the move.
+ */
+async function metadataPanel(page, check) {
+    await page.goto(`${page.url().replace(/[^/]*$/, "")}frontmatter.html`);
+    await page.waitForSelector(".milkdown .ProseMirror");
+    await page.waitForSelector("#frontmatter-panel .fm-toggle-btn");
+    await settle(page);
+    const at = await page.evaluate(() => window.__at);
+    const gutterLineHeight = await page.evaluate(() => {
+        const el = document.querySelector(".line-number");
+        return el ? Number.parseFloat(getComputedStyle(el).lineHeight) : 0;
+    });
+    const beside = async (state) => {
+        const rows = await painted(page);
+        for (const [name, text] of [["title", "Gutter and metadata"], ["intro", "An opening paragraph."], ["head3", "Section 3"]]) {
+            const number = rows.find((r) => r.line === at[name]);
+            const row = await contentRow(page, text);
+            const numberCentre = number ? number.top + gutterLineHeight / 2 : NaN;
+            check(
+                `with the metadata panel ${state}, line ${at[name]} (${name}) is numbered beside its text`,
+                !!number && !!row && Math.abs(numberCentre - row.centre) <= 3,
+                row ? `number centre=${numberCentre.toFixed(1)} text centre=${row.centre.toFixed(1)}` : "content row not found",
+            );
+        }
+    };
+    const panelHeight = () => page.evaluate(() => document.getElementById("frontmatter-panel").getBoundingClientRect().height);
+
+    await beside("open");
+    const openHeight = await panelHeight();
+    await page.click("#frontmatter-panel .fm-toggle-btn");
+    await settle(page);
+    const closedHeight = await panelHeight();
+    check("collapsing the panel moves the document by more than a gutter line",
+        openHeight - closedHeight > gutterLineHeight * 2, `open=${openHeight} closed=${closedHeight}`);
+    await beside("collapsed");
+    await page.click("#frontmatter-panel .fm-toggle-btn");
+    await settle(page);
+    await beside("reopened");
+
+    // A metadata edit that adds a line: the host answers with the new
+    // frontmatter line count alone (`lineMapUpdate` with only `lineOffset`),
+    // which moves every document line number by one without touching the
+    // body. The gutter must relabel, not wait for the next keystroke.
+    const front = await page.evaluate(() => window.__frontLines);
+    await page.evaluate((offset) => window.postMessage({ type: "lineMapUpdate", lineOffset: offset }, "*"), front + 1);
+    await settle(page);
+    const relabelled = await painted(page);
+    const titleRow = await contentRow(page, "Gutter and metadata");
+    const nearest = relabelled.reduce((best, r) => (!best || Math.abs(r.top + gutterLineHeight / 2 - titleRow.centre) < Math.abs(best.top + gutterLineHeight / 2 - titleRow.centre) ? r : best), null);
+    check("a new frontmatter line count relabels the gutter without an edit",
+        nearest?.line === at.title + 1, `number beside the title=${nearest?.line}, wanted ${at.title + 1}`);
 }
