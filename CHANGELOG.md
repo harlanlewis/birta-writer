@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Opening a large document at a particular place now lands there: a search result, `code -g file:line`, a link to a heading in another file, or a backlink. Before, a place far enough down that the document was still loading when it opened put the caret and the view near the top instead. If you click or type while it loads, it stays where you put it.
+
 ---
 
 ## [2026.1103.0] - 2026, November 3

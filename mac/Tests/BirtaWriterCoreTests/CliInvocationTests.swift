@@ -277,4 +277,76 @@ final class CliInvocationTests: XCTestCase {
         XCTAssertTrue(next.deletingPathExtension().lastPathComponent
             .hasPrefix(taken.deletingPathExtension().lastPathComponent))
     }
+
+    // MARK: --at
+
+    func testAtWithAHeadingShouldCarryItBesideTheOneFile() throws {
+        let path = "\(cwd)/notes.md"
+        let request = try parse(["notes.md", "--at", "Getting Started"], tree: [path: .file])
+        XCTAssertEqual(request.action, .open([.existing(URL(fileURLWithPath: path))]))
+        XCTAssertEqual(request.reveal, .heading("Getting Started"))
+        XCTAssertFalse(request.waitsForClose)
+    }
+
+    /// Before or after the file, joined by `=` or not, and a number is a line.
+    func testAtShouldReadEverySpellingOfItsValue() throws {
+        let tree: [String: CliInvocation.PathKind] = ["\(cwd)/notes.md": .file]
+        XCTAssertEqual(try parse(["--at", "42", "notes.md"], tree: tree).reveal, .line(42))
+        XCTAssertEqual(try parse(["--at=L7", "notes.md"], tree: tree).reveal, .line(7))
+        XCTAssertEqual(try parse(["notes.md", "--at", "#foo-1"], tree: tree).reveal, .heading("foo-1"))
+        XCTAssertNil(try parse(["notes.md"], tree: tree).reveal)
+    }
+
+    /// The value is the next word whatever it looks like, so a heading that
+    /// starts with a hyphen is not taken for an option.
+    func testAtShouldTakeTheNextWordEvenWhenItLooksLikeAnOption() throws {
+        let tree: [String: CliInvocation.PathKind] = ["\(cwd)/notes.md": .file]
+        XCTAssertEqual(try parse(["--at", "-v", "notes.md"], tree: tree).reveal, .heading("-v"))
+        XCTAssertEqual(try parse(["--at", "--", "notes.md"], tree: tree).reveal, .heading("--"))
+    }
+
+    func testAtShouldComposeWithWait() throws {
+        let path = "\(cwd)/notes.md"
+        let request = try parse(["--wait", "--at", "3", "notes.md"], tree: [path: .file])
+        XCTAssertTrue(request.waitsForClose)
+        XCTAssertEqual(request.reveal, .line(3))
+    }
+
+    /// A file to create is placed too; it is empty, so only a line 1 lands,
+    /// and that is the command's to say once it has read it.
+    func testAtShouldBeAllowedOnAFileToCreate() throws {
+        let request = try parse(["new.md", "--at", "1"], tree: [cwd: .directory])
+        XCTAssertEqual(request.action, .open([.create(URL(fileURLWithPath: "\(cwd)/new.md"))]))
+        XCTAssertEqual(request.reveal, .line(1))
+    }
+
+    func testAtShouldBeRefusedWhereItCannotPlaceOneFile() {
+        let tree: [String: CliInvocation.PathKind] = [
+            "\(cwd)/a.md": .file, "\(cwd)/b.md": .file, "\(cwd)/notes": .directory,
+        ]
+        let refusals: [([String], CliInvocation.Failure)] = [
+            (["a.md", "--at"], .atWithoutTarget),
+            (["a.md", "--at", "0"], .atNamesNothing("0")),
+            (["a.md", "--at", "#"], .atNamesNothing("#")),
+            (["a.md", "--at="], .atNamesNothing("")),
+            (["--at", "x"], .atNeedsOneFile),
+            (["a.md", "b.md", "--at", "x"], .atNeedsOneFile),
+            (["-", "--at", "x"], .atNeedsOneFile),
+            (["notes", "--at", "x"], .atOnDirectory("\(cwd)/notes")),
+        ]
+        for (words, expected) in refusals {
+            XCTAssertThrowsError(try parse(words, tree: tree), "\(words)") { error in
+                XCTAssertEqual(error as? CliInvocation.Failure, expected, "\(words)")
+            }
+        }
+        // Each refusal names what was typed or the way out.
+        XCTAssertTrue(CliInvocation.Failure.atNamesNothing("0").message.contains("0"))
+        XCTAssertTrue(CliInvocation.Failure.atOnDirectory("/x/notes").message.contains("/x/notes"))
+    }
+
+    /// Help still answers with a malformed `--at` beside it, as it does any
+    /// other word.
+    func testHelpShouldWinOverAnUnfinishedAt() throws {
+        XCTAssertEqual(try parse(["--help", "--at"]).action, .help)
+    }
 }

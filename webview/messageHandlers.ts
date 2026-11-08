@@ -142,6 +142,13 @@ export interface EditorActions {
     placeCaretAtLine: (line: number, column?: number, anchor?: { line: number; column?: number }) => void;
     /** Scroll the block for a DOCUMENT line to the viewport centre. Needs layout. */
     scrollToDocumentLine: (line: number) => void;
+    /**
+     * Run a reveal of a DOCUMENT line once the model holds that line: now, or
+     * when a progressive open's last chunk lands. Dropped when the reader
+     * has moved the caret meanwhile, because the place they chose outranks
+     * the one the reveal was asked for.
+     */
+    whenLineHeld: (line: number, reveal: () => void) => void;
     /** The source position (document line, optional column) a mode switch carries out. */
     getSwitchTarget: () => { line: number; column?: number; anchorLine?: number; anchorColumn?: number } | undefined;
     /** The live selection context for a coding-agent bridge pull, or null when unmappable. */
@@ -250,7 +257,7 @@ export function createMessageHandlers(
 ): { [K in ToWebviewMessage["type"]]?: Handler<K> } {
     const { state, actions, topbarTb } = deps;
     const { getEditor, setEditor, setLineMap, getMarkdownSource, setMarkdownSource } = state;
-    const { placeCaretAtLine, scrollToDocumentLine, getSwitchTarget, getSelectionContext, setLineOffset, initEditor, retryScroll, announceFirstScreen, getEditorView, refreshToc, setTocPosition, setTocVisibility, setTocWidth, setNotesMarkers, setReviewGroupByType } = actions;
+    const { placeCaretAtLine, scrollToDocumentLine, whenLineHeld, getSwitchTarget, getSelectionContext, setLineOffset, initEditor, retryScroll, announceFirstScreen, getEditorView, refreshToc, setTocPosition, setTocVisibility, setTocWidth, setNotesMarkers, setReviewGroupByType } = actions;
 
     /**
      * Rebuild the embed decorations after a gate flip. A no-op before the editor
@@ -295,16 +302,21 @@ export function createMessageHandlers(
                 await initEditor(container, msg.content, msg.format);
                 window.focus();
                 if (msg.scrollToLine) {
-                    // The caret needs only the document, so it lands now; the scroll
-                    // waits for the first blocks to have a measurable height.
-                    placeCaretAtLine(
-                        msg.scrollToLine,
-                        msg.scrollToColumn,
-                        msg.scrollToAnchorLine !== undefined
-                            ? { line: msg.scrollToAnchorLine, column: msg.scrollToAnchorColumn }
-                            : undefined,
-                    );
-                    retryScroll(() => scrollToDocumentLine(msg.scrollToLine!));
+                    const line = msg.scrollToLine;
+                    // The caret needs only the document, so it lands as soon as the
+                    // model holds the line (at once, unless a progressive open has
+                    // it in the streamed tail); the scroll waits for the first
+                    // blocks to have a measurable height.
+                    whenLineHeld(line, () => {
+                        placeCaretAtLine(
+                            line,
+                            msg.scrollToColumn,
+                            msg.scrollToAnchorLine !== undefined
+                                ? { line: msg.scrollToAnchorLine, column: msg.scrollToAnchorColumn }
+                                : undefined,
+                        );
+                        retryScroll(() => scrollToDocumentLine(line));
+                    });
                 } else {
                     const saved = getWebviewState();
                     if (saved?.scrollY) {
@@ -389,14 +401,16 @@ export function createMessageHandlers(
                     // Arriving from the raw editor or a search hit: the caret
                     // moves too, so typing continues where the user landed
                     // rather than at the top of the document (MAR-23).
-                    placeCaretAtLine(
-                        msg.line,
-                        msg.column,
-                        msg.anchorLine !== undefined
-                            ? { line: msg.anchorLine, column: msg.anchorColumn }
-                            : undefined,
-                    );
-                    scrollToDocumentLine(msg.line);
+                    whenLineHeld(msg.line, () => {
+                        placeCaretAtLine(
+                            msg.line,
+                            msg.column,
+                            msg.anchorLine !== undefined
+                                ? { line: msg.anchorLine, column: msg.anchorColumn }
+                                : undefined,
+                        );
+                        scrollToDocumentLine(msg.line);
+                    });
                 } else if (scrollAttempts < 8) {
                     scrollAttempts++;
                     setTimeout(tryScrollNow, 250);

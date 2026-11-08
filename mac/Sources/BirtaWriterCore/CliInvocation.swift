@@ -72,6 +72,10 @@ public enum CliInvocation {
         case waitWithoutFile
         case waitOnDirectory(String)
         case standardInputWithFiles
+        case atWithoutTarget
+        case atNamesNothing(String)
+        case atNeedsOneFile
+        case atOnDirectory(String)
 
         /// What is printed on standard error. One sentence, naming the word
         /// that caused it and, where there is one, the way out.
@@ -89,6 +93,14 @@ public enum CliInvocation {
                 return "--wait waits for a file, and \(path) is a folder"
             case .standardInputWithFiles:
                 return "- reads standard input and cannot be given with files"
+            case .atWithoutTarget:
+                return "--at needs a heading or a line, as in --at 'Getting Started' or --at 42"
+            case let .atNamesNothing(word):
+                return "--at \(word.isEmpty ? "''" : word) names no heading and no line"
+            case .atNeedsOneFile:
+                return "--at places one file, so name exactly one"
+            case let .atOnDirectory(path):
+                return "--at places a file, and \(path) is a folder"
             }
         }
     }
@@ -101,10 +113,16 @@ public enum CliInvocation {
         /// told, and by which exit, is `ControlSocket`'s; what it changes
         /// here is the allowlist (`target(for:)`).
         public let waitsForClose: Bool
+        /// `--at`: where in the one file named the page should land. A place
+        /// name rather than a line, because the line depends on the file's
+        /// text, which the command reads only once it has decided to open it
+        /// (`HeadingTarget.resolve`); the app is handed the line.
+        public let reveal: HeadingTarget.Target?
 
-        public init(action: Action, waitsForClose: Bool = false) {
+        public init(action: Action, waitsForClose: Bool = false, reveal: HeadingTarget.Target? = nil) {
             self.action = action
             self.waitsForClose = waitsForClose
+            self.reveal = reveal
         }
     }
 
@@ -136,6 +154,12 @@ public enum CliInvocation {
     ///
     /// Options stop at `--`, so a file whose name begins with a hyphen is
     /// reachable as `bwr -- -weird.md` as well as `bwr ./-weird.md`.
+    ///
+    /// `--at <target>` (or `--at=<target>`) takes its value from the next
+    /// word whatever it looks like, so `--at -` and `--at --` are place
+    /// names rather than options; what a place name means is
+    /// `HeadingTarget.parse`'s. It places exactly one file, so it is refused
+    /// with none, with several, with a folder and with standard input.
     public static func parse(arguments: [String],
                              workingDirectory: String,
                              standardInputIsPiped: Bool,
@@ -144,12 +168,24 @@ public enum CliInvocation {
         var readsStandardInput = false
         var words: [String] = []
         var optionsEnded = false
+        var atWord: String?
+        var takesAtValue = false
         for argument in arguments {
+            if takesAtValue {
+                atWord = argument
+                takesAtValue = false
+                continue
+            }
             if optionsEnded {
                 words.append(argument)
                 continue
             }
+            if argument.hasPrefix("--at=") {
+                atWord = String(argument.dropFirst("--at=".count))
+                continue
+            }
             switch argument {
+            case "--at": takesAtValue = true
             case "--": optionsEnded = true
             case "-h", "--help": return Request(action: .help)
             case "-v", "--version": return Request(action: .version)
@@ -166,11 +202,18 @@ public enum CliInvocation {
             }
         }
 
+        if takesAtValue { throw Failure.atWithoutTarget }
         if readsStandardInput && !words.isEmpty { throw Failure.standardInputWithFiles }
+        let reveal = try atWord.map { word -> HeadingTarget.Target in
+            guard let target = HeadingTarget.parse(word) else { throw Failure.atNamesNothing(word) }
+            guard words.count == 1, !readsStandardInput else { throw Failure.atNeedsOneFile }
+            return target
+        }
 
         let targets = try words.map {
             try target(for: $0, workingDirectory: workingDirectory, waits: waits, kind: kind)
         }
+        if reveal != nil, case let .directory(url)? = targets.first { throw Failure.atOnDirectory(url.path) }
         if targets.isEmpty {
             if waits { throw Failure.waitWithoutFile }
             // Nothing named and nothing arriving means the shell wants the app
@@ -182,7 +225,7 @@ public enum CliInvocation {
             return Request(action: readsStandardInput || standardInputIsPiped
                            ? .readStandardInput : .summon)
         }
-        return Request(action: .open(targets), waitsForClose: waits)
+        return Request(action: .open(targets), waitsForClose: waits, reveal: reveal)
     }
 
     /// One word of the command line as something to open.

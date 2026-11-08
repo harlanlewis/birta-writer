@@ -12,6 +12,10 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ## [Unreleased]
 
+### Added
+
+- `bwr notes.md --at 'Getting Started'` opens a file in Birta Writer for Mac at a heading, with the caret there and the heading in view. Name the heading by its text in any case or by its anchor (`--at '#getting-started'`, `#foo-1` for the second of two), or give a line (`--at 42` or `--at L42`). The file opens wherever `bwr notes.md` would open it, including a window that already has it. A heading the file does not have opens the file anyway and says so. The heading is looked up in the file as saved, so one you have typed but not saved yet is not found.
+
 ---
 
 ## [2026.1103.0] - 2026, November 3

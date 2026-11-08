@@ -40,8 +40,10 @@ applyBootContentWidth();
 import {
     createEditor,
     getEditorView,
+    holdsBodyLine,
     registerSelectionChangeHandler,
     setLogTableSel,
+    whenDocumentWhole,
 } from "./editor";
 import type { EditorView } from "./pm";
 import { GapCursor, isGapCursorPosition, TextSelection } from "./pm";
@@ -1151,6 +1153,22 @@ const handlers = createMessageHandlers({
             if (scrollToSourceLine(view, currentLineMap, toBodyLine(line))) {
                 rememberScrollNow();
             }
+        },
+        whenLineHeld: (line, reveal) => {
+            if (holdsBodyLine(toBodyLine(line))) {
+                reveal();
+                return;
+            }
+            // The target is in a progressive open's streamed tail. The caret
+            // the reader has now is the one the stream carries chunk to
+            // chunk, so a selection that still equals it when the document is
+            // whole means nobody moved it, and the reveal goes ahead.
+            const before = getEditorView()?.state.selection;
+            whenDocumentWhole(() => {
+                const now = getEditorView()?.state.selection;
+                if (before && now && !now.eq(before)) { return; }
+                reveal();
+            });
         },
         getSwitchTarget,
         getSelectionContext,

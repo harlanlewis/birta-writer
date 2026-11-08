@@ -1047,6 +1047,11 @@ final class WindowSet {
         // registers the wait before the open so this end can tell that file
         // from a stray `Makefile`. `CliInvocation.target(for:)` is the other
         // half and says why the class is safe to admit.
+        // The line a `bwr --at` sent ahead of this open, spent here whether
+        // or not the file is admitted, so a refused open leaves nothing
+        // behind for a later one. Every arm below hands it to the page that
+        // ends up showing the file, as `openFromExplorer` does a backlink's.
+        let line = reveals.take(target.path, now: Date())
         guard DocumentTypes.accepts(target) || waits.isWaiting(on: target.path) else {
             summonAll()
             key?.flashStatus("Birta Writer does not open \(target.lastPathComponent).")
@@ -1069,7 +1074,7 @@ final class WindowSet {
         // file already open is fronted as any other.
         if waits.isWaiting(on: target.path), let host = key {
             if case .existing = routed {} else {
-                open(makeWindow(on: target, slot: nil, inGroupOf: host, explorerRoot: host.explorerRoot))
+                open(revealing(makeWindow(on: target, slot: nil, inGroupOf: host, explorerRoot: host.explorerRoot), line))
                 return
             }
         }
@@ -1078,13 +1083,16 @@ final class WindowSet {
             let open = windows[index]
             open.selectTab()
             open.show()
+            // No fresh page is coming for a file already on screen, so the
+            // page that has it is told directly.
+            if let line { open.reveal(line: line) }
         case let .tabIn(index):
             // A file under an open folder joins that folder's window as a
             // tab with the same root, so its row is selected in the explorer
             // by the tab's own load; it takes no app-wide slot, because a
             // file in somebody's project is not the app's document.
             let host = windows[index]
-            open(makeWindow(on: target, slot: nil, inGroupOf: host, explorerRoot: host.explorerRoot))
+            open(revealing(makeWindow(on: target, slot: nil, inGroupOf: host, explorerRoot: host.explorerRoot), line))
         case .vacantFront:
             guard let here = key else { return }
             // A file under this tab's own folder is a file of the folder, and
@@ -1103,9 +1111,9 @@ final class WindowSet {
             // window is one whose file went missing, and what was typed into
             // it since its last sync is what its recovered copy has to hold.
             if let root = here.explorerRoot, DirectoryListing.isInside(target, root: root) {
-                here.replaceFile(with: target, revealing: nil) { [weak self, weak here] url in
+                here.replaceFile(with: target, revealing: line) { [weak self, weak here] url in
                     guard let self, let here else { return }
-                    self.open(self.makeWindow(on: url, slot: nil, inGroupOf: here, explorerRoot: root))
+                    self.open(self.revealing(self.makeWindow(on: url, slot: nil, inGroupOf: here, explorerRoot: root), line))
                 }
                 return
             }
@@ -1114,9 +1122,9 @@ final class WindowSet {
             // reason: only one window may hold a slot, or two would both write
             // a rename back to one setting.
             releaseSlot(.document, except: here)
-            here.replaceFile(with: target, revealing: nil, slot: .document) { [weak self] url in
+            here.replaceFile(with: target, revealing: line, slot: .document) { [weak self] url in
                 guard let self else { return }
-                self.open(self.makeWindow(on: url, slot: .document), asSeparateWindow: true)
+                self.open(self.revealing(self.makeWindow(on: url, slot: .document), line), asSeparateWindow: true)
             }
         case let .tabBeside(index):
             // A loose file as a tab of the window in front, on the "Open
@@ -1124,14 +1132,22 @@ final class WindowSet {
             // (no root, so no explorer of its own), and it takes the
             // document slot exactly as a window of its own would.
             Prefs.documentURL = target
-            open(makeWindow(on: target, slot: .document, inGroupOf: windows[index]))
+            open(revealing(makeWindow(on: target, slot: .document, inGroupOf: windows[index]), line))
         case .newWindow:
             Prefs.documentURL = target
             // The setting asked for a window, so the system's Prefer tabs
             // preference is not given the chance to make it a tab; with no
             // window open the answer is a window either way.
-            open(makeWindow(on: target, slot: .document), asSeparateWindow: Prefs.openFilesIn == .window)
+            open(revealing(makeWindow(on: target, slot: .document), line), asSeparateWindow: Prefs.openFilesIn == .window)
         }
+    }
+
+    /// `coordinator`, told the line its first page opens on when there is
+    /// one. Asked before the window is opened, so the page it builds is cold
+    /// when asked and its first `init` carries the line.
+    private func revealing(_ coordinator: Coordinator, _ line: Int?) -> Coordinator {
+        if let line { coordinator.reveal(line: line) }
+        return coordinator
     }
 
     /// The open windows as `OpenRouting` reads them, in the set's order.
@@ -1361,6 +1377,16 @@ final class WindowSet {
     /// without one every answer is dropped and no wait ever ends, which is
     /// what a shell sees when the app could not bind its socket at launch.
     var answerShell: ((ControlSocket.Waits.Answer) -> Void)?
+
+    /// The lines `bwr --at` sent ahead of an open, by file; spent by
+    /// `openDocument`. `ControlSocket.Reveals` is the rule for how long one
+    /// is held and which of two wins.
+    private var reveals = ControlSocket.Reveals()
+
+    /// A shell is about to open `path` and wants it to land on `line`.
+    func shellReveals(_ path: String, line: Int) {
+        reveals.register(path: path, line: line, now: Date())
+    }
 
     /// A shell has asked to be told when the document at `path` is closed.
     func shellWaits(_ connection: ControlSocket.Waits.Connection, on path: String) {

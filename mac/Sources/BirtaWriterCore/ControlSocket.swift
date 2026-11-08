@@ -91,6 +91,11 @@ public enum ControlSocket {
     public enum Request: Equatable, Sendable {
         /// Block until the document at this absolute path is closed.
         case wait(path: String)
+        /// `bwr --at`: the next open of this absolute path lands on this
+        /// 1-based document line. Sent and answered (`noted`) BEFORE the
+        /// command opens the file, so the app holds the line by the time the
+        /// open arrives, whichever window `OpenRouting` hands the file to.
+        case reveal(path: String, line: Int)
     }
 
     /// What the app answers, once, and then closes the connection.
@@ -107,12 +112,16 @@ public enum ControlSocket {
         case quit
         /// The close's write did not reach the disk.
         case writeFailed(String)
+        /// A `reveal` is held for the open that follows it.
+        case noted
     }
 
     public static func encode(_ request: Request) -> Data {
         switch request {
         case let .wait(path):
             return line(["wait": path])
+        case let .reveal(path, revealLine):
+            return line(["reveal": path, "line": revealLine])
         }
     }
 
@@ -122,12 +131,20 @@ public enum ControlSocket {
         case .superseded: return line(["reply": "superseded"])
         case .quit: return line(["reply": "quit"])
         case let .writeFailed(reason): return line(["reply": "writeFailed", "reason": reason])
+        case .noted: return line(["reply": "noted"])
         }
     }
 
     public static func decodeRequest(_ line: Data) -> Request? {
-        guard let object = object(line), let path = object["wait"] as? String else { return nil }
-        return .wait(path: path)
+        guard let object = object(line) else { return nil }
+        if let path = object["wait"] as? String { return .wait(path: path) }
+        // A line is a whole number at least 1; JSON's numbers are doubles,
+        // so 2.5 and 0 are refused here rather than truncated on the page.
+        if let path = object["reveal"] as? String, let number = object["line"] as? NSNumber,
+           let revealLine = Int(exactly: number.doubleValue), revealLine >= 1 {
+            return .reveal(path: path, line: revealLine)
+        }
+        return nil
     }
 
     public static func decodeReply(_ line: Data) -> Reply? {
@@ -137,11 +154,12 @@ public enum ControlSocket {
         case "superseded": return .superseded
         case "quit": return .quit
         case "writeFailed": return .writeFailed(object["reason"] as? String ?? "")
+        case "noted": return .noted
         default: return nil
         }
     }
 
-    private static func line(_ object: [String: String]) -> Data {
+    private static func line(_ object: [String: Any]) -> Data {
         // Sorted keys and unescaped slashes, so the line is one spelling per
         // value and a path reads as a path, which is what lets a check assert
         // the bytes rather than parse them.
@@ -164,7 +182,7 @@ public enum ControlSocket {
     /// which are about the words typed rather than about what the app did.
     public static func exit(for reply: Reply, file: String) -> (status: Int32, message: String?) {
         switch reply {
-        case .closed:
+        case .closed, .noted:
             return (0, nil)
         case .superseded:
             return (1, "a second --wait on \(file) took over; this one did not finish")
@@ -270,6 +288,56 @@ public enum ControlSocket {
         /// to answer; the document stays open.
         public mutating func forget(_ connection: Connection) {
             entries.removeAll { $0.connection == connection }
+        }
+    }
+
+    // MARK: where an open lands
+
+    /// The lines `bwr --at` asked the next open of a file to land on.
+    ///
+    /// A value with no socket and no clock in it, like `Waits`: the app
+    /// registers a `reveal` when it arrives and takes it when the open it was
+    /// sent ahead of arrives (`WindowSet.openDocument`). One per file, the
+    /// newest winning, because two shells placing one file a moment apart
+    /// mean the second place.
+    ///
+    /// Each is held for `lifetime` only. The command sends it and opens the
+    /// file straight after, so a reveal still held long after is one whose
+    /// open never came (`open(1)` failed, or the file was refused), and
+    /// spending it on some later, unrelated open of the same file would move
+    /// a reader who asked for nothing. Files are compared by `identity(of:)`,
+    /// for the reason `Waits` gives.
+    public struct Reveals: Equatable, Sendable {
+        /// How long a reveal waits for its open: well past what an `open(1)`
+        /// to a running app takes, and the cold launch is already behind the
+        /// command by the time it sends one (`connectToApp`).
+        public static let lifetime: TimeInterval = 30
+
+        private struct Entry: Equatable {
+            let line: Int
+            let at: Date
+        }
+
+        private var entries: [String: Entry] = [:]
+
+        public init() {}
+
+        public var isEmpty: Bool { entries.isEmpty }
+
+        public mutating func register(path: String, line: Int, now: Date) {
+            prune(now)
+            entries[ControlSocket.identity(of: path)] = Entry(line: line, at: now)
+        }
+
+        /// The line the open of `path` lands on, spent by asking; nil when
+        /// none was asked for, or it waited past `lifetime`.
+        public mutating func take(_ path: String, now: Date) -> Int? {
+            prune(now)
+            return entries.removeValue(forKey: ControlSocket.identity(of: path))?.line
+        }
+
+        private mutating func prune(_ now: Date) {
+            entries = entries.filter { now.timeIntervalSince($0.value.at) <= Self.lifetime }
         }
     }
 

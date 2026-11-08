@@ -262,6 +262,53 @@ export function isSettled(): boolean {
     return _isSettled;
 }
 
+// How many whole body lines of the source the live model holds while a
+// progressive open streams: the newlines in the first chunk and every chunk
+// appended since, because the chunks concatenate to the whole text and a cut
+// falls only between blocks. Infinity once the document is whole.
+let _loadedBodyLines = Infinity;
+// What waits on the document being whole, run once by `settleWhole` and
+// dropped unrun by a re-init, whose document is not the one they were for.
+let _whenWhole: Array<() => void> = [];
+
+function countNewlines(text: string): number {
+    let n = 0;
+    for (let i = text.indexOf("\n"); i !== -1; i = text.indexOf("\n", i + 1)) n++;
+    return n;
+}
+
+/**
+ * Whether body line `line` (1-based, frontmatter excluded) is in the model
+ * yet. Always true outside a progressive open; during one, true only for the
+ * lines the chunks landed so far hold, which is what lets a reveal tell a
+ * target on the first screen (answer now) from one in the tail (wait).
+ */
+export function holdsBodyLine(line: number): boolean {
+    return line <= _loadedBodyLines;
+}
+
+/**
+ * Run `fn` once the document is whole: now when it already is, otherwise
+ * when a progressive open's last chunk lands (or an external sync replaces
+ * the stream with the whole file). Dropped, never run, when a re-init
+ * replaces the document first.
+ */
+export function whenDocumentWhole(fn: () => void): void {
+    if (_isSettled) {
+        fn();
+        return;
+    }
+    _whenWhole.push(fn);
+}
+
+function settleWhole(): void {
+    _isSettled = true;
+    _loadedBodyLines = Infinity;
+    const waiting = _whenWhole;
+    _whenWhole = [];
+    for (const fn of waiting) fn();
+}
+
 /**
  * One chunk of the document landing: parsed on its own, its heading ids
  * continuing the open's one assigner, appended at the end as a transaction
@@ -271,6 +318,7 @@ export function isSettled(): boolean {
  * caret sitting at the old end to the new one.
  */
 function appendChunk(editor: Editor, text: string, seed: HeadingIdSeed, pristine: ProseNode[]): void {
+    _loadedBodyLines += countNewlines(text);
     const view = editor.action((ctx) => getView(ctx));
     const parsed = editor.action((ctx) => ctx.get(parserCtx)(text)) as ProseNode | null;
     if (!parsed) throw new Error("progressive open: a chunk did not parse");
@@ -324,7 +372,7 @@ function finishOpen(editor: Editor, initialMarkdown: string, pristine: ProseNode
     scheduleProtection();
     mark("stream-end");
     measure("stream", "stream-start", "stream-end");
-    _isSettled = true;
+    settleWhole();
     if (_editedWhileStreaming) {
         _editedWhileStreaming = false;
         _docChangeCount++;
@@ -896,7 +944,7 @@ function _applyExternalNow(newMarkdown: string): boolean {
         _editedWhileStreaming = false;
         mark("stream-end");
         measure("stream", "stream-start", "stream-end");
-        _isSettled = true;
+        settleWhole();
     }
     // Re-baseline against the freshly applied content so the NEXT genuine user
     // edit diffs against the right bytes (and the debounced listener never
@@ -940,6 +988,8 @@ export async function createEditor(
     // serializing and posting a save; only real user input lifts it.
     _hasUserInteracted = false;
     _isSettled = false;
+    _whenWhole = [];
+    _loadedBodyLines = Infinity;
     _applyingExternal = false;
     // Disown the previous editor NOW, not when the new one lands: initEditor
     // has already destroyed it, so from here until create() completes the old
@@ -1331,6 +1381,7 @@ export async function createEditor(
         const pristine: ProseNode[] = [];
         editor.action((ctx) => getState(ctx).doc).forEach((block) => pristine.push(block));
         setProgressiveStreaming(true);
+        _loadedBodyLines = countNewlines(plan.first);
         const stream = streamChunks(plan.rest, (text) => appendChunk(editor, text, headingIds, pristine));
         _stream = stream;
         stream.done.then(
