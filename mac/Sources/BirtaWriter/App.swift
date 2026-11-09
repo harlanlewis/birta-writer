@@ -399,10 +399,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding, 
         listener.onRequest = { [weak self, weak listener] connection, request in
             switch request {
             case let .wait(path): self?.windows.shellWaits(connection, on: path)
-            case let .reveal(path, line):
+            case let .reveal(path, line, heading):
                 // Held before it is answered, so the open the command makes
                 // on hearing `noted` finds it.
-                self?.windows.shellReveals(path, line: line)
+                self?.windows.shellReveals(path, line: line, heading: heading)
                 listener?.answer(.init(connection: connection, reply: .noted))
             }
         }

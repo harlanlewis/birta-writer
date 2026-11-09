@@ -239,6 +239,40 @@ describe("progressive open", { timeout: budget(60_000) }, () => {
         expect(updates).toEqual([]);
     });
 
+    it("what waits on a document an external sync replaces mid-stream should never run", async () => {
+        const text = outline(SECTIONS);
+        editor = await createEditor(container, text, () => {});
+        expect(isSettled()).toBe(false);
+        let ran = 0;
+        whenDocumentWhole(() => { ran++; });
+        expect(syncExternalContent("# Replaced\n\nBy the file on disk.\n")).toBe(true);
+        expect(isSettled()).toBe(true);
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        expect(ran).toBe(0);
+    });
+
+    it("a waiter that throws when the last chunk lands should not cost the edit made while it streamed", async () => {
+        const text = outline(SECTIONS);
+        editor = await createEditor(container, text, (md) => { updates.push(md); });
+        document.dispatchEvent(new KeyboardEvent("keydown", { key: "x", bubbles: true }));
+        const v = view(editor);
+        const at = 1 + v.state.doc.child(0).nodeSize + "Opening paragraph.".length;
+        v.dispatch(v.state.tr.insertText(" edited", at));
+        const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+        let after = 0;
+        whenDocumentWhole(() => { throw new Error("a reveal against a line map that no longer fits"); });
+        whenDocumentWhole(() => { after++; });
+        await settled();
+        expect(errors).toHaveBeenCalledTimes(1);
+        expect(after).toBe(1);
+        errors.mockRestore();
+        for (let i = 0; i < 1000 && updates.length === 0; i++) {
+            await new Promise((resolve) => setTimeout(resolve, 5));
+        }
+        expect(updates).toHaveLength(1);
+        expect(updates[0]).toBe(text.replace("Opening paragraph.", "Opening paragraph. edited"));
+    }, budget(20_000));
+
     it("a collapsed callout in a later chunk should be folded once the stream completes", async () => {
         const lines = outline(SECTIONS).split("\n");
         lines.push("> [!note]- Folded by its syntax", "> Hidden body.", "");

@@ -7,9 +7,10 @@ import Foundation
 /// A port of `shared/headingTarget.ts`, with the two modules it stands on,
 /// `shared/headingScan.ts` and `shared/slug.ts`, because Swift cannot import
 /// them. The golden file `shared/__tests__/fixtures/headingTargetGolden.json`
-/// is what holds the two together: the TypeScript regenerates it on every run
-/// and `HeadingTargetGoldenTests` requires this file to answer the same, input
-/// for input. That is also why everything here walks UTF-16 code units with
+/// is what holds the two together: `headingTargetGolden.test.ts` fails when
+/// the TypeScript no longer answers what the file records (rewrite it with
+/// `BIRTA_WRITE_GOLDEN=1`), and `HeadingTargetGoldenTests` requires this file
+/// to answer the same, input for input. That is also why everything here walks UTF-16 code units with
 /// `JSText`'s classes rather than Swift `Character`s: the TypeScript is
 /// JavaScript string semantics, and a port that trimmed with
 /// `Character.isWhitespace` would agree on ASCII and disagree on the first

@@ -267,8 +267,9 @@ export function isSettled(): boolean {
 // appended since, because the chunks concatenate to the whole text and a cut
 // falls only between blocks. Infinity once the document is whole.
 let _loadedBodyLines = Infinity;
-// What waits on the document being whole, run once by `settleWhole` and
-// dropped unrun by a re-init, whose document is not the one they were for.
+// What waits on the document being whole: run once, last, when the stream's
+// final chunk lands, and dropped unrun by a re-init or an external sync,
+// whose document is not the one they were for.
 let _whenWhole: Array<() => void> = [];
 
 function countNewlines(text: string): number {
@@ -289,9 +290,9 @@ export function holdsBodyLine(line: number): boolean {
 
 /**
  * Run `fn` once the document is whole: now when it already is, otherwise
- * when a progressive open's last chunk lands (or an external sync replaces
- * the stream with the whole file). Dropped, never run, when a re-init
- * replaces the document first.
+ * when a progressive open's last chunk lands. Dropped, never run, when a
+ * re-init or an external sync replaces the document first, because a line
+ * resolved against the old text names nothing in the new one.
  */
 export function whenDocumentWhole(fn: () => void): void {
     if (_isSettled) {
@@ -301,12 +302,16 @@ export function whenDocumentWhole(fn: () => void): void {
     _whenWhole.push(fn);
 }
 
-function settleWhole(): void {
+/**
+ * Mark the document whole and hand back what was waiting on it, for the
+ * caller to run after its own bookkeeping or to drop.
+ */
+function settleWhole(): Array<() => void> {
     _isSettled = true;
     _loadedBodyLines = Infinity;
     const waiting = _whenWhole;
     _whenWhole = [];
-    for (const fn of waiting) fn();
+    return waiting;
 }
 
 /**
@@ -372,11 +377,16 @@ function finishOpen(editor: Editor, initialMarkdown: string, pristine: ProseNode
     scheduleProtection();
     mark("stream-end");
     measure("stream", "stream-start", "stream-end");
-    settleWhole();
+    const waiting = settleWhole();
     if (_editedWhileStreaming) {
         _editedWhileStreaming = false;
         _docChangeCount++;
         _scheduler.request();
+    }
+    // A reveal that fails costs its own caret move and nothing else: not the
+    // bookkeeping above, and not the waiters after it.
+    for (const fn of waiting) {
+        try { fn(); } catch (e) { console.error("[birta] a reveal waiting on the whole document failed", e); }
     }
 }
 
@@ -944,7 +954,9 @@ function _applyExternalNow(newMarkdown: string): boolean {
         _editedWhileStreaming = false;
         mark("stream-end");
         measure("stream", "stream-start", "stream-end");
-        settleWhole();
+        // Its waiters are dropped, not run: a reveal resolved its line
+        // against the text this apply has just replaced.
+        void settleWhole();
     }
     // Re-baseline against the freshly applied content so the NEXT genuine user
     // edit diffs against the right bytes (and the debounced listener never

@@ -349,6 +349,12 @@ final class Coordinator {
     /// passes the line to `openInPlace` instead, which holds it past the
     /// reload; asked here first, the line would go to the page the reload
     /// is replacing.
+    /// A `bwr --at` place landed in this window, which already shows its
+    /// file: `ControlSocket.Reveal` decides the line against this buffer.
+    func reveal(_ place: ControlSocket.Reveal) {
+        reveal(line: place.line(inBuffer: latest, edited: isEdited))
+    }
+
     func reveal(line: Int) {
         if state == .warm {
             host.send(.scrollToLine(line: line))

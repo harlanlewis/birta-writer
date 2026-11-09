@@ -104,10 +104,33 @@ final class ControlSocketTests: XCTestCase {
         XCTAssertEqual(ControlSocket.exit(for: .noted, file: "x").status, 0)
     }
 
+    func testARevealShouldCarryTheHeadingItWasResolvedFromAndOmitItForALine() {
+        let heading = ControlSocket.Request.reveal(path: "/a.md", line: 40, heading: "Install")
+        XCTAssertEqual(ControlSocket.decodeRequest(ControlSocket.encode(heading)), heading)
+        XCTAssertFalse(String(decoding: ControlSocket.encode(.reveal(path: "/a.md", line: 4)), as: UTF8.self)
+            .contains("heading"))
+        var reveals = ControlSocket.Reveals()
+        reveals.register(path: "/a.md", line: 40, heading: "Install", now: Date())
+        XCTAssertEqual(reveals.take("/a.md", now: Date()), ControlSocket.Reveal(line: 40, heading: "Install"))
+    }
+
+    /// The disk said line 3; the window has two unsaved lines above the
+    /// heading, so it is at line 5 there.
+    func testAnEditedBufferShouldFindTheHeadingAgainAndAnUneditedOneShouldTakeTheDisksLine() {
+        let disk = "# Notes\n\n## Install\n"
+        let buffer = "# Notes\n\nNew line.\n\n## Install\n"
+        let place = ControlSocket.Reveal(line: HeadingTarget.resolve(.heading("Install"), in: disk)!, heading: "Install")
+        XCTAssertEqual(place.line, 3)
+        XCTAssertEqual(place.line(inBuffer: buffer, edited: true), 5)
+        XCTAssertEqual(place.line(inBuffer: buffer, edited: false), 3, "a buffer in step with its file is not searched")
+        XCTAssertEqual(place.line(inBuffer: "# Notes\n", edited: true), 3, "a heading the buffer lost keeps the disk's line")
+        XCTAssertEqual(ControlSocket.Reveal(line: 7).line(inBuffer: buffer, edited: true), 7, "a line is a line")
+    }
+
     /// A line the page could not land on is refused at the wire rather than
     /// rounded or clamped somewhere further along.
     func testARevealWithALineThatIsNotAWholeNumberAtLeastOneShouldBeRefused() {
-        for line in ["0", "-2", "2.5", "\"7\"", "null"] {
+        for line in ["0", "-2", "2.5", "\"7\"", "null", "true", "false"] {
             XCTAssertNil(ControlSocket.decodeRequest(Data("{\"reveal\":\"/a.md\",\"line\":\(line)}\n".utf8)), line)
         }
         XCTAssertNil(ControlSocket.decodeRequest(Data("{\"reveal\":\"/a.md\"}\n".utf8)))
@@ -120,7 +143,7 @@ final class ControlSocketTests: XCTestCase {
         let now = Date(timeIntervalSince1970: 1_600_000_000)
         reveals.register(path: "/a/notes.md", line: 9, now: now)
         XCTAssertNil(reveals.take("/a/other.md", now: now), "another file's open spends nothing")
-        XCTAssertEqual(reveals.take("/a/notes.md", now: now), 9)
+        XCTAssertEqual(reveals.take("/a/notes.md", now: now)?.line, 9)
         XCTAssertNil(reveals.take("/a/notes.md", now: now), "spent by the first open")
         XCTAssertTrue(reveals.isEmpty)
     }
@@ -130,7 +153,7 @@ final class ControlSocketTests: XCTestCase {
         let now = Date(timeIntervalSince1970: 1_600_000_000)
         reveals.register(path: "/a/notes.md", line: 9, now: now)
         reveals.register(path: "/a/./notes.md", line: 20, now: now.addingTimeInterval(1))
-        XCTAssertEqual(reveals.take("/a/notes.md", now: now.addingTimeInterval(1)), 20)
+        XCTAssertEqual(reveals.take("/a/notes.md", now: now.addingTimeInterval(1))?.line, 20)
     }
 
     /// A reveal whose open never came is not spent on a later, unrelated one.
@@ -138,7 +161,7 @@ final class ControlSocketTests: XCTestCase {
         var reveals = ControlSocket.Reveals()
         let now = Date(timeIntervalSince1970: 1_600_000_000)
         reveals.register(path: "/a/notes.md", line: 9, now: now)
-        XCTAssertEqual(reveals.take("/a/notes.md", now: now.addingTimeInterval(ControlSocket.Reveals.lifetime)), 9,
+        XCTAssertEqual(reveals.take("/a/notes.md", now: now.addingTimeInterval(ControlSocket.Reveals.lifetime))?.line, 9,
                        "held for the whole lifetime")
         reveals.register(path: "/a/notes.md", line: 9, now: now)
         XCTAssertNil(reveals.take("/a/notes.md", now: now.addingTimeInterval(ControlSocket.Reveals.lifetime + 1)))
