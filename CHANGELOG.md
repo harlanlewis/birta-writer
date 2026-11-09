@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+---
+
+## [2026.1109.0] - 2026, November 9
+
 ### Fixed
 
 - With line numbers on (`birta.lineNumbers`), collapsing or expanding the metadata panel no longer leaves the numbers where the text used to be. Editing the metadata so it gains or loses a line also renumbers the gutter straight away, instead of on your next keystroke.
