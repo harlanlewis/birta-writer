@@ -95,7 +95,11 @@ public enum ControlSocket {
         /// 1-based document line. Sent and answered (`noted`) BEFORE the
         /// command opens the file, so the app holds the line by the time the
         /// open arrives, whichever window `OpenRouting` hands the file to.
-        case reveal(path: String, line: Int)
+        /// `heading` is the fragment the line was resolved from, when it was
+        /// a heading: a window already showing the file with unsaved edits
+        /// finds it again in its own buffer, where the disk's line may no
+        /// longer be the heading's.
+        case reveal(path: String, line: Int, heading: String? = nil)
     }
 
     /// What the app answers, once, and then closes the connection.
@@ -120,8 +124,10 @@ public enum ControlSocket {
         switch request {
         case let .wait(path):
             return line(["wait": path])
-        case let .reveal(path, revealLine):
-            return line(["reveal": path, "line": revealLine])
+        case let .reveal(path, revealLine, heading):
+            var fields: [String: Any] = ["reveal": path, "line": revealLine]
+            if let heading { fields["heading"] = heading }
+            return line(fields)
         }
     }
 
@@ -140,9 +146,12 @@ public enum ControlSocket {
         if let path = object["wait"] as? String { return .wait(path: path) }
         // A line is a whole number at least 1; JSON's numbers are doubles,
         // so 2.5 and 0 are refused here rather than truncated on the page.
+        // Foundation hands a JSON `true` back as an NSNumber of 1, so a
+        // boolean is refused by its type before its value is read.
         if let path = object["reveal"] as? String, let number = object["line"] as? NSNumber,
+           CFGetTypeID(number) != CFBooleanGetTypeID(),
            let revealLine = Int(exactly: number.doubleValue), revealLine >= 1 {
-            return .reveal(path: path, line: revealLine)
+            return .reveal(path: path, line: revealLine, heading: object["heading"] as? String)
         }
         return nil
     }
@@ -307,6 +316,27 @@ public enum ControlSocket {
     /// spending it on some later, unrelated open of the same file would move
     /// a reader who asked for nothing. Files are compared by `identity(of:)`,
     /// for the reason `Waits` gives.
+    /// One held place: the line resolved from the file on disk, and the
+    /// heading it was resolved from when it was one.
+    public struct Reveal: Equatable, Sendable {
+        public let line: Int
+        public let heading: String?
+
+        public init(line: Int, heading: String? = nil) {
+            self.line = line
+            self.heading = heading
+        }
+
+        /// The line to land on in a window already showing the file. A
+        /// buffer in step with the disk is where `line` was read, so it
+        /// stands; an edited one is searched for the heading again, and
+        /// `line` stands only when the heading is not in it.
+        public func line(inBuffer buffer: String, edited: Bool) -> Int {
+            guard edited, let heading else { return line }
+            return HeadingTarget.resolve(.heading(heading), in: buffer) ?? line
+        }
+    }
+
     public struct Reveals: Equatable, Sendable {
         /// How long a reveal waits for its open: well past what an `open(1)`
         /// to a running app takes, and the cold launch is already behind the
@@ -314,7 +344,7 @@ public enum ControlSocket {
         public static let lifetime: TimeInterval = 30
 
         private struct Entry: Equatable {
-            let line: Int
+            let reveal: Reveal
             let at: Date
         }
 
@@ -324,16 +354,16 @@ public enum ControlSocket {
 
         public var isEmpty: Bool { entries.isEmpty }
 
-        public mutating func register(path: String, line: Int, now: Date) {
+        public mutating func register(path: String, line: Int, heading: String? = nil, now: Date) {
             prune(now)
-            entries[ControlSocket.identity(of: path)] = Entry(line: line, at: now)
+            entries[ControlSocket.identity(of: path)] = Entry(reveal: Reveal(line: line, heading: heading), at: now)
         }
 
-        /// The line the open of `path` lands on, spent by asking; nil when
-        /// none was asked for, or it waited past `lifetime`.
-        public mutating func take(_ path: String, now: Date) -> Int? {
+        /// Where the open of `path` lands, spent by asking; nil when none
+        /// was asked for, or it waited past `lifetime`.
+        public mutating func take(_ path: String, now: Date) -> Reveal? {
             prune(now)
-            return entries.removeValue(forKey: ControlSocket.identity(of: path))?.line
+            return entries.removeValue(forKey: ControlSocket.identity(of: path))?.reveal
         }
 
         private mutating func prune(_ now: Date) {

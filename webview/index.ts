@@ -272,15 +272,15 @@ function focusEditorIfIdle(view: EditorView): void {
     view.focus();
 }
 
+/** How many reveals `whenLineHeld` has been asked for: the newest is the one a waiting reveal must still be. */
+let revealsAsked = 0;
+
 /**
  * Put the caret at a document line/column — or restore a whole selection when
  * `anchor` carries the other end (a raw-editor selection surviving the mode
  * switch). Needs the document only — no layout — so it can run before the
  * first paint has settled.
  */
-/** How many reveals `whenLineHeld` has been asked for: the newest is the one a waiting reveal must still be. */
-let revealsAsked = 0;
-
 function placeCaretAtLine(
     documentLine: number,
     column?: number,

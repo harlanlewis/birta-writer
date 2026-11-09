@@ -233,11 +233,10 @@ func tryConnectToApp(at socket: URL) -> Result<Int32, ConnectRefusal> {
 /// Hand the app the line `--at` resolved to, and say whether it took it.
 ///
 /// Never fatal. The file opening is what the caller asked for first, so an
-/// app that cannot take the line (no socket bound, or an app older than this
-/// command still running, which reads a `reveal` as a line it does not know
-/// and says nothing) costs the place and not the open: the reason goes to
+/// app that cannot take the line (no socket bound, or no `noted` back before
+/// the timeout) costs the place and not the open: the reason goes to
 /// standard error and the file opens as a plain `bwr <file>` would.
-func holdReveal(_ line: Int, for target: CliInvocation.Target) {
+func holdReveal(_ line: Int, heading: String?, for target: CliInvocation.Target) {
     let socket = ControlSocket.url(support: supportDirectory(), flavour: flavour)
     let fd: Int32
     switch tryConnectToApp(at: socket) {
@@ -251,11 +250,11 @@ func holdReveal(_ line: Int, for target: CliInvocation.Target) {
     // it, so silence is a refusal rather than a hang.
     var timeout = timeval(tv_sec: revealAnswerTimeout, tv_usec: 0)
     setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size))
-    guard ControlSocket.send(ControlSocket.encode(.reveal(path: target.url.path, line: line)), on: fd),
+    guard ControlSocket.send(ControlSocket.encode(.reveal(path: target.url.path, line: line, heading: heading)), on: fd),
           let answer = ControlSocket.readLine(on: fd),
           ControlSocket.decodeReply(answer) == .noted
     else {
-        fail("Birta Writer did not take --at (is the running copy older than this command?); "
+        fail("Birta Writer did not take --at; "
              + "opening \(target.url.lastPathComponent) without it")
         return
     }
@@ -439,7 +438,8 @@ case let .open(targets):
     if let place = request.reveal, let target = targets.first,
        let line = revealLine(for: place, in: target) {
         if dryRun { report("reveal \(target.url.path) line \(line)") }
-        holdReveal(line, for: target)
+        let heading: String? = if case let .heading(fragment) = place { fragment } else { nil }
+        holdReveal(line, heading: heading, for: target)
     }
     for target in targets {
         if dryRun {

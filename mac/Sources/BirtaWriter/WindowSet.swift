@@ -1051,7 +1051,8 @@ final class WindowSet {
         // or not the file is admitted, so a refused open leaves nothing
         // behind for a later one. Every arm below hands it to the page that
         // ends up showing the file, as `openFromExplorer` does a backlink's.
-        let line = reveals.take(target.path, now: Date())
+        let reveal = reveals.take(target.path, now: Date())
+        let line = reveal?.line
         guard DocumentTypes.accepts(target) || waits.isWaiting(on: target.path) else {
             summonAll()
             key?.flashStatus("Birta Writer does not open \(target.lastPathComponent).")
@@ -1084,8 +1085,10 @@ final class WindowSet {
             open.selectTab()
             open.show()
             // No fresh page is coming for a file already on screen, so the
-            // page that has it is told directly.
-            if let line { open.reveal(line: line) }
+            // page that has it is told directly. Its buffer may be ahead of
+            // the disk the line was read from, so a heading is found again
+            // in what the window holds.
+            if let reveal { open.reveal(reveal) }
         case let .tabIn(index):
             // A file under an open folder joins that folder's window as a
             // tab with the same root, so its row is selected in the explorer
@@ -1384,8 +1387,8 @@ final class WindowSet {
     private var reveals = ControlSocket.Reveals()
 
     /// A shell is about to open `path` and wants it to land on `line`.
-    func shellReveals(_ path: String, line: Int) {
-        reveals.register(path: path, line: line, now: Date())
+    func shellReveals(_ path: String, line: Int, heading: String?) {
+        reveals.register(path: path, line: line, heading: heading, now: Date())
     }
 
     /// A shell has asked to be told when the document at `path` is closed.
