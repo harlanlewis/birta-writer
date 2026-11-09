@@ -13,8 +13,9 @@ import Foundation
 /// The empty state is what Move to Trash leaves in a window on a loose file,
 /// once the buffer was written: the reader asked for the file to go, the Trash
 /// holds every byte, so there is nothing to recover and the window is simply
-/// empty. A folder window never reaches it, because trashing its file moves
-/// the tab to the folder's own choice of file instead.
+/// empty. New Window opens in it too, a window for a file or folder not
+/// chosen yet. A folder window never reaches it, because trashing its file
+/// moves the tab to the folder's own choice of file instead.
 ///
 /// Restore moves the file back out of the Trash, which returns every byte the
 /// file had, and leaves the buffer on screen untouched. So it is the whole

@@ -474,6 +474,23 @@ final class WindowSet {
         }
     }
 
+    /// Shift+Cmd+N: a window with no file in it, in the empty state (No File
+    /// Open, with Browse and Open Recent), for somebody who wants a window
+    /// before they know which file or folder it is for.
+    ///
+    /// Nothing is made on disk. The window is bound to a free name in the
+    /// notes folder and marked missing, so it can write nothing and counts as
+    /// vacant: a file opened from it, through Browse, Open Recent or Cmd+O,
+    /// takes it over (`openDocument`'s `vacantFront`), and a folder opened
+    /// from it replaces it (`openDirectory`). It takes no slot, because it
+    /// holds no note to be the app's current one.
+    func newEmptyWindow() {
+        let target = Coordinator.unusedNoteURL(in: Prefs.notesDirectory, alsoTaken: boundByAWindow())
+        let made = makeWindow(on: target, slot: nil)
+        made.openEmpty()
+        open(made, asSeparateWindow: true)
+    }
+
     /// Cmd+T, the tab bar's `+`, and the system's New Tab rows: a new note,
     /// as a tab beside the one in `spawn`'s window (MAR-393).
     ///
@@ -790,9 +807,23 @@ final class WindowSet {
         // could not open does not leave a row that will fail the same way
         // next time.
         Prefs.rememberRecent(root)
+        // A folder chosen from a window in the empty state is what that
+        // window was for, so the folder's window replaces it rather than
+        // opening beside a window with nothing in it. The empty window holds
+        // no text and can write nothing, so closing it costs nothing.
+        let emptied = atLaunch ? nil : key.flatMap { $0.isEmptyState ? $0 : nil }
         let made = makeWindow(on: file, slot: slot(for: file), explorerRoot: root)
         if choice.unwritten { made.awaitFirstText(openingOnOverview: false) }
         if !atLaunch { open(made) }
+        // Once the folder's window is up, so the screen never goes blank in
+        // between, and only while it is still empty: a file opened into it
+        // meanwhile made it a window somebody is using.
+        if let emptied {
+            made.whenFirstScreen { [weak self, weak emptied] in
+                guard let self, let emptied, emptied.isEmptyState else { return }
+                self.retire([emptied])
+            }
+        }
         return made
     }
 

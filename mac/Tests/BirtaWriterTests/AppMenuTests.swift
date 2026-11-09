@@ -297,7 +297,7 @@ final class AppMenuTests: XCTestCase {
 
     func testTheFileMenuShouldOpenRecentThroughASubmenuOfItsOwn() {
         let file = build(.file)
-        XCTAssertEqual(titles(of: file), ["New Note", "New Tab", "Open…", "Open Recent", "Go to File…", "Save", "Save a Copy As…",
+        XCTAssertEqual(titles(of: file), ["New Note", "New Tab", "New Window", "Open…", "Open Recent", "Go to File…", "Save", "Save a Copy As…",
                                         "Append to Note…",
                                         "-", "Reveal in Finder", "Copy Path", "Move to Trash…",
                                         "-", "Back to My Notes",
@@ -669,8 +669,16 @@ final class AppMenuTests: XCTestCase {
         // macOS File menu puts the pair, and above Save. Asserted on the built
         // menu rather than on the table, because the order a person reads is
         // the one `fill` produces.
-        XCTAssertEqual(Array(titles(of: build(.file))[0..<6]),
-                       ["New Note", "New Tab", "Open…", "Open Recent", "Go to File…", "Save"])
+        XCTAssertEqual(Array(titles(of: build(.file))[0..<7]),
+                       ["New Note", "New Tab", "New Window", "Open…", "Open Recent", "Go to File…", "Save"])
+    }
+
+    func testNewWindowShouldTakeShiftCommandNAndOpenTheEmptyWindow() {
+        let row = AppMenu.row(for: #selector(AppDelegate.menuNewWindow))
+        XCTAssertEqual(row?.title, "New Window")
+        XCTAssertEqual(row?.menu, .file)
+        XCTAssertEqual(row?.chord, "Mod-Shift-n")
+        XCTAssertEqual(row?.symbols, "⇧⌘N")
     }
 
     func testARowShouldBeReachableByItsSelectorAndPrintItsOwnChord() {
