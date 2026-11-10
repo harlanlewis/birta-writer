@@ -12,6 +12,10 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ## [Unreleased]
 
+---
+
+## [2026.1110.0] - 2026, November 10
+
 ### Added
 
 - File > New Window (Shift+Cmd+N) in Birta Writer for Mac opens a window with no file in it, showing No File Open with Browse… and Open Recent…. A file or folder you open from it takes the window over instead of opening beside it. The empty window creates no file of its own.
