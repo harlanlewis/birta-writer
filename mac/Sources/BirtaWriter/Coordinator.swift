@@ -571,10 +571,40 @@ final class Coordinator {
         }
     }
 
-    /// Set while this window shows the empty state Move to Trash leaves: it
+    /// Set while this window shows the empty state Move to Trash leaves, or
+    /// New Window opens in (`enterEmptyState`): it
     /// names no file and offers to open one. Cleared by any rebinding, which
     /// is what opening a file here does (`boundURL`'s `didSet`).
     private var holdsNoFile = false
+
+    /// Whether this window is showing that empty state now.
+    var isEmptyState: Bool { holdsNoFile }
+
+    /// Set before `start` by New Window: the window comes up in the empty
+    /// state rather than on a note (`WindowSet.newEmptyWindow`).
+    private var startsEmpty = false
+
+    /// Ask for the empty state from the first page on. Before `start`, which
+    /// watches the bound path and would otherwise clear the missing flag the
+    /// state stands on.
+    func openEmpty() { startsEmpty = true }
+
+    /// The empty state with no file behind it: New Window's.
+    ///
+    /// The window is bound to a free name in the notes folder that nothing has
+    /// written, marked missing, so `writeLatest` refuses every write and the
+    /// first read leaves the blank buffer alone (`adopt`). The flags go up in
+    /// the order `trashAndEmpty` sets them, so the screen draws as the empty
+    /// state rather than as a missing file's card.
+    func enterEmptyState() {
+        holdsNoFile = true
+        trashedAt = nil
+        noteMissing = true
+        latest = ""
+        isEdited = false
+        refreshTitle()
+        sendPathBar()
+    }
 
     /// One trash, its failure said in the status line. Whether it happened.
     @discardableResult
@@ -1579,6 +1609,10 @@ final class Coordinator {
         watcher.onDeleted = { [weak self] trashed in self?.noteDeletedOnDisk(trashedTo: trashed) }
         watcher.onChanged = { [weak self] in self?.noteChangedOnDisk() }
         startWatching()
+        if startsEmpty {
+            startsEmpty = false
+            enterEmptyState()
+        }
         contentView.onLayout = { [weak self] in
             MainActor.assumeIsolated {
                 self?.layoutTitlebarDrag()

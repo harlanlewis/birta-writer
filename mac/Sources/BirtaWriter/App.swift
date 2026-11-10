@@ -751,6 +751,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding, 
     @objc func copyEverything() { front?.copyEverything() }
     @objc func menuSaveNow() { front?.saveNow() }
     @objc func menuNewNote() { windows.newNote() }
+    @objc func menuNewWindow() { windows.newEmptyWindow() }
 
     /// Cmd+T: a tab beside the window in front, and a plain new window when
     /// nothing is in front to put a tab beside.

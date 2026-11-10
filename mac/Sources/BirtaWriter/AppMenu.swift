@@ -441,6 +441,12 @@ enum AppMenu {
         // tab too). The chord every tabbed macOS app gives it.
         .init(title: "New Tab", key: "t", modifiers: [.command],
               action: .app(#selector(AppDelegate.menuNewTab)), menu: .file),
+        // A window with no file in it, in the empty state, for a file or a
+        // folder not chosen yet. The chord VS Code gives its own New Window
+        // on a Mac, which opens empty in the same way.
+        .init(title: "New Window", key: "n", modifiers: [.command, .shift],
+              action: .app(#selector(AppDelegate.menuNewWindow)), menu: .file,
+              aliases: ["Empty Window"]),
         .init(title: "Open…", key: "o", modifiers: [.command],
               action: .app(#selector(AppDelegate.menuOpenDocument)), menu: .file),
         .init(title: "Open Recent", action: .recents, menu: .file),
