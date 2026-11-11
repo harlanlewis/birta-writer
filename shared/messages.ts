@@ -517,6 +517,19 @@ export type ToExtensionMessage =
     // own recents are its own) need not answer, and the overview then draws
     // no recent files section at all rather than an empty one.
     | { type: "requestFolderRecents" }
+    // ── The start view's ways to a document, to a host declaring `fileLauncher` ──
+    // A button of the start view (components/graph/folderOverview.ts) was
+    // pressed: make a new note, show the host's Open panel, or pop its Open
+    // Recent menu. `x` and `y` are where the menu goes, in viewport
+    // coordinates: the bottom-left corner of the row that asked.
+    | { type: "startAction"; action: "newNote" | "open" | "openRecentMenu"; x?: number; y?: number }
+    // Ask for the reader's recent files, app-wide, for the start view. The
+    // host answers `recentFiles`.
+    | { type: "requestRecentFiles" }
+    // A row of the start view's recent files was picked, by the path the host
+    // handed it in `recentFiles`. The host opens it as its own Open Recent
+    // does, and refuses a path its list did not hold.
+    | { type: "openRecentFile"; path: string }
     // ── A tooltip the page cannot draw, under `stripTooltip` ──
     // The chip belongs against its control, and for a control in the bar's
     // first row that is inside the strip the host paints over the page (the
@@ -1088,6 +1101,15 @@ export type ToWebviewMessage =
     // index walks, root-relative and POSIX-separated, most recent first.
     // Sent only when asked, so it is never stale by more than one opening.
     | { type: "folderRecents"; paths: string[] }
+    // The answer to `requestRecentFiles`: the reader's recent files and
+    // folders, most recent first, absolute paths. `name` is what the row says
+    // and `detail` where it is, both the host's to word.
+    | { type: "recentFiles"; files: { path: string; name: string; detail: string }[] }
+    // This window holds no file: show the start view over the page, pinned,
+    // until the window is given one (the Mac app's empty state, which New
+    // Window and moving the open note to the Trash leave). A page reload is
+    // what takes it down, since every way out of the state rebinds the window.
+    | { type: "showStartView" }
     // A host with a palette of its own asks what the page can run here; the
     // page answers with `paletteCommands` now and again after every later
     // change to the list. Ask once, after `init`.

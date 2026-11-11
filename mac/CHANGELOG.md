@@ -12,6 +12,11 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ## [Unreleased]
 
+### Changed
+
+- A Birta Writer for Mac window with no file in it, from New Window or from moving its note to the Trash, now shows the same view as Folder Overview, without the folder parts: New Note and Open… at the top, then your six most recent files and folders, then Open Recent… for the full menu. New Note starts the note in that window. The view stays up until you choose something.
+- Folder Overview in Birta Writer for Mac has the same New Note and Open… buttons and the same recent files list, under the folder's graph and its own files, now headed In this folder.
+
 ---
 
 ## [2026.1110.0] - 2026, November 10

@@ -7,13 +7,6 @@ final class MissingFileOfferTests: XCTestCase {
         MissingFileOffer(state).actions
     }
 
-    func testTheEmptyStateShouldOfferToOpenSomethingAndNothingElse() {
-        let offer = MissingFileOffer(.noFile)
-        XCTAssertEqual(offer.heading, "No File Open")
-        XCTAssertEqual(offer.body, "")
-        XCTAssertEqual(offer.actions, [.browse, .openRecent])
-    }
-
     /// The Trash holds every byte the file had, and Restore leaves the buffer
     /// on screen, so it is the whole answer whether or not the reader typed
     /// since: Save It Back beside it would be a second button for one outcome.
@@ -44,7 +37,6 @@ final class MissingFileOfferTests: XCTestCase {
     func testRestoreShouldNeedATrashedCopy() {
         for atRisk in [false, true] {
             XCTAssertFalse(actions(.gone(inTrash: false, textAtRisk: atRisk)).contains(.restore))
-            XCTAssertFalse(actions(.noFile).contains(.restore))
         }
     }
 
@@ -52,11 +44,10 @@ final class MissingFileOfferTests: XCTestCase {
     /// buffer away: Discard and Start New is not a button any more.
     func testEveryStateShouldOfferAWayElsewhereAndNoneADiscard() {
         let states: [MissingFileOffer.State] = [
-            .noFile,
             .gone(inTrash: true, textAtRisk: false), .gone(inTrash: true, textAtRisk: true),
             .gone(inTrash: false, textAtRisk: false), .gone(inTrash: false, textAtRisk: true),
         ]
-        XCTAssertEqual(states.count, 5)
+        XCTAssertEqual(states.count, 4)
         for state in states {
             let offer = MissingFileOffer(state)
             XCTAssertEqual(Array(offer.actions.suffix(2)), [.browse, .openRecent], "\(state)")

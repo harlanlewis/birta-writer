@@ -679,8 +679,18 @@ final class WebHost: NSObject, WKScriptMessageHandler, WKNavigationDelegate, WKU
         }
     }
 
+    /// The editor, unless the page is showing its pinned start view (a window
+    /// holding no file): the editor is under it then, read-only and out of
+    /// sight, so the keyboard goes to the view's first button instead, and is
+    /// left where it is when it is already inside the view.
     func focusEditor() {
-        webView.evaluateJavaScript("(function(){var e=document.querySelector('.ProseMirror'); if(e){e.focus();} return !!e;})()") { _, _ in }
+        webView.evaluateJavaScript("""
+            (function(){
+              var s=document.querySelector('.fs-surface--pinned');
+              if(s){ if(!s.contains(document.activeElement)){ var b=s.querySelector('.fo-action'); (b||s).focus(); } return true; }
+              var e=document.querySelector('.ProseMirror'); if(e){e.focus();} return !!e;
+            })()
+            """) { _, _ in }
     }
 
     // MARK: WKScriptMessageHandler

@@ -122,9 +122,23 @@ export function openFullscreenSurface(opts: {
      * fade. Write-back belongs here, not in an animationend handler.
      */
     onClose?: () => void;
+    /**
+     * A surface the reader cannot dismiss: no Close, and neither Escape nor a
+     * click on the ground puts the page back. For a surface that IS the
+     * window's state rather than a view over it (the start view of a window
+     * that holds no file), where dismissing it would leave a blank page that
+     * can hold nothing. `close()` still works, for its owner.
+     *
+     * It starts under the page's top bar rather than over it. A surface the
+     * reader can dismiss may take the whole viewport, because Escape gives
+     * the bar back; one they cannot would take the bar's controls with it for
+     * as long as the state lasts, the Settings gear among them, which on a
+     * panel with no Dock icon is the way to preferences.
+     */
+    pinned?: boolean;
 }): FullscreenSurface {
     const overlay = document.createElement("div");
-    overlay.className = `fs-surface fs-surface--${opts.ground}${opts.className ? ` ${opts.className}` : ""}`;
+    overlay.className = `fs-surface fs-surface--${opts.ground}${opts.pinned ? " fs-surface--pinned" : ""}${opts.className ? ` ${opts.className}` : ""}`;
     // The overlay takes focus on open so the editor behind it stops receiving
     // keystrokes (MAR-267). It is a surface, not a control — no focus ring.
     overlay.tabIndex = -1;
@@ -141,7 +155,7 @@ export function openFullscreenSurface(opts: {
     // being a direct child of the overlay. A surface whose content handles its
     // own drag (the diagram pane) calls preventDefault and never reaches here.
     content.addEventListener("mousedown", (e) => {
-        if (e.target === content) surface.close();
+        if (e.target === content && !opts.pinned) surface.close();
     });
 
     const title = document.createElement("div");
@@ -171,6 +185,7 @@ export function openFullscreenSurface(opts: {
     const closeGroup = document.createElement("div");
     closeGroup.className = "fs-actions__group fs-actions__group--close";
     closeGroup.appendChild(closeBtn);
+    closeGroup.hidden = opts.pinned === true;
     actions.appendChild(closeGroup);
 
     /**
@@ -247,6 +262,8 @@ export function openFullscreenSurface(opts: {
         },
     };
 
-    surface.dismissCleanup = bindLightboxDismiss(overlay, closeBtn, () => surface.close());
+    surface.dismissCleanup = opts.pinned
+        ? () => {}
+        : bindLightboxDismiss(overlay, closeBtn, () => surface.close());
     return surface;
 }

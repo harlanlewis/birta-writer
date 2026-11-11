@@ -49,6 +49,11 @@
   // written yet, so empty and not in the index, with the overview command
   // sent straight behind the init, as the app sends it on the first ready.
   const NEW_TAB = params.get("newTab") === "1";
+  // A host declaring `fileLauncher` (the Mac app): the start view's buttons
+  // and the reader's recent files. `empty=1` is a window holding no file,
+  // which the host says with `showStartView` straight behind the init.
+  const LAUNCHER = params.get("launcher") === "1" || params.get("empty") === "1";
+  const EMPTY = params.get("empty") === "1";
   window.__i18n = {
     translations: {},
     isMac: true,
@@ -56,10 +61,13 @@
     toolbar: { placements: {}, order: [] },
     tocVisibility: "hidden",
     proofread: { grammarCheck: false, spellCheck: false },
-    host: { capabilities: ["toc", "projectFiles", "folderIndex", "contentMeasure"], arrangements: [], shortcuts: [] },
+    host: {
+      capabilities: ["toc", "contentMeasure", ...(EMPTY ? [] : ["projectFiles", "folderIndex"]), ...(LAUNCHER ? ["fileLauncher"] : [])],
+      arrangements: [], shortcuts: [],
+    },
   };
   window.__posted = [];
-  const CONTENT = NEW_TAB ? "" : ["# Standup", "", "Body.", ""].join("\n");
+  const CONTENT = NEW_TAB || EMPTY ? "" : ["# Standup", "", "Body.", ""].join("\n");
 
   const SELF = "notes/standup.md";
   // What the host says this document is in the index: nothing, for a note
@@ -84,9 +92,14 @@
       if (msg.type === "ready") {
         window.postMessage({ type: "init", content: CONTENT, frontmatter: "", syncVersion: 1 }, "*");
         if (NEW_TAB) { window.postMessage({ type: "editorCommand", command: "showFolderOverview" }, "*"); }
+        if (EMPTY) { window.postMessage({ type: "showStartView" }, "*"); }
       }
       if (msg.type === "requestFolderIndex") {
         window.postMessage({ type: "folderIndex", index: window.__folderIndex, self: INDEXED_SELF }, "*");
+      }
+      if (msg.type === "requestRecentFiles" && LAUNCHER) {
+        const files = Array.from({ length: 9 }, (_, i) => ({ path: `/Users/r/notes/recent-${i + 1}.md`, name: `recent-${i + 1}.md`, detail: "~/notes" }));
+        window.postMessage({ type: "recentFiles", files }, "*");
       }
       if (msg.type === "requestFolderRecents" && RECENTS) {
         window.postMessage({ type: "folderRecents", paths: window.__recents }, "*");

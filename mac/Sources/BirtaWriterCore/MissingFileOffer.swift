@@ -1,21 +1,19 @@
 import Foundation
 
-/// What a window says, and which ways out it offers, when it holds no file it
-/// can write: the bound file went, or the reader threw it away.
+/// What a window says, and which ways out it offers, when the file it is on
+/// went while the window held it.
 ///
-/// Three states, and the buttons follow from one question each asks: is there
+/// Two states, and the buttons follow from one question each asks: is there
 /// anything on screen that exists nowhere else?
 ///
-///     no file          No File Open                [Browse…] [Open Recent…]
 ///     in the Trash     This file is in the Trash   [Restore] [Browse…] [Open Recent…]
 ///     gone             This file can't be found    [Save It Back] [Browse…] [Open Recent…]
 ///
-/// The empty state is what Move to Trash leaves in a window on a loose file,
-/// once the buffer was written: the reader asked for the file to go, the Trash
-/// holds every byte, so there is nothing to recover and the window is simply
-/// empty. New Window opens in it too, a window for a file or folder not
-/// chosen yet. A folder window never reaches it, because trashing its file
-/// moves the tab to the folder's own choice of file instead.
+/// A window holding no file at all (New Window, or Move to Trash once the
+/// buffer was written) is not drawn from here. Nothing on screen is at risk
+/// there, so it is the page's start view, the one empty state every window
+/// shows (webview/components/graph/folderOverview.ts); `leavingNeedsRecoveredCopy`
+/// still answers for it, through `isEmptyState`.
 ///
 /// Restore moves the file back out of the Trash, which returns every byte the
 /// file had, and leaves the buffer on screen untouched. So it is the whole
@@ -34,8 +32,6 @@ import Foundation
 /// beside the missing one first (`leavingNeedsRecoveredCopy`).
 public struct MissingFileOffer: Equatable, Sendable {
     public enum State: Equatable, Sendable {
-        /// The reader moved the file to the Trash and nothing was unwritten.
-        case noFile
         /// The file went while the window was on it.
         /// - Parameters:
         ///   - inTrash: a trashed copy is there right now to move back.
@@ -54,10 +50,6 @@ public struct MissingFileOffer: Equatable, Sendable {
     /// Empty for none.
     public let body: String
     public let actions: [Action]
-    /// Whether the words sit on a card over the document, or on the window's
-    /// own ground with nothing behind them. The card says the document behind
-    /// it is still there; the empty state has none.
-    public let isCard: Bool
 
     /// Whether a window LEAVING this state for another file has to write its
     /// buffer to a recovered copy first, because nothing else holds it.
@@ -78,23 +70,16 @@ public struct MissingFileOffer: Equatable, Sendable {
 
     public init(_ state: State) {
         switch state {
-        case .noFile:
-            heading = "No File Open"
-            body = ""
-            actions = [.browse, .openRecent]
-            isCard = false
         case let .gone(inTrash: true, textAtRisk):
             heading = "This file is in the Trash"
             body = textAtRisk ? Self.restoreKeepsSentence : ""
             actions = [.restore, .browse, .openRecent]
-            isCard = true
         case let .gone(inTrash: false, textAtRisk):
             heading = "This file can't be found"
             body = ["It may have been deleted or moved.", textAtRisk ? Self.atRiskSentence : ""]
                 .filter { !$0.isEmpty }
                 .joined(separator: " ")
             actions = textAtRisk ? [.saveItBack, .browse, .openRecent] : [.browse, .openRecent]
-            isCard = true
         }
     }
 }

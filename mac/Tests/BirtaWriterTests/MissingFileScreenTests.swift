@@ -67,7 +67,6 @@ final class MissingFileScreenTests: XCTestCase {
     /// nothing cannot pass.
     func testTheScreenShouldDrawEachOfferAsItIsWritten() {
         let states: [MissingFileOffer.State] = [
-            .noFile,
             .gone(inTrash: true, textAtRisk: false), .gone(inTrash: true, textAtRisk: true),
             .gone(inTrash: false, textAtRisk: false), .gone(inTrash: false, textAtRisk: true),
         ]
@@ -80,7 +79,7 @@ final class MissingFileScreenTests: XCTestCase {
             XCTAssertEqual(screen.buttons, offer.actions.map(\.rawValue), "\(state)")
             drawn += 1
         }
-        XCTAssertEqual(drawn, 5)
+        XCTAssertEqual(drawn, 4)
     }
 
     func testEachButtonShouldReportTheGestureItNames() {
@@ -102,22 +101,6 @@ final class MissingFileScreenTests: XCTestCase {
             }
         }
         XCTAssertEqual(calls, ["restore", "browse", "recent", "save", "browse", "recent"])
-    }
-
-    /// The empty state has no document behind it, so its words sit on the
-    /// window's ground: no card, and nothing for a card's lanes to protect.
-    /// The card states keep theirs, which is the other half of the pair.
-    func testTheEmptyStateShouldDrawNoCardAndTheOthersShould() {
-        XCTAssertEqual(shown(.noFile).stateForMeasurement.heading, "No File Open")
-        XCTAssertFalse(MissingFileOffer(.noFile).isCard)
-        XCTAssertTrue(MissingFileOffer(.gone(inTrash: true, textAtRisk: false)).isCard)
-        // Laid out centred, the empty state's words and buttons are on screen.
-        let screen = shown(.noFile)
-        for title in screen.stateForMeasurement.buttons {
-            let button = screen.buttonForMeasurement(titled: title)
-            let box = button.map { $0.convert($0.bounds, to: screen) } ?? .zero
-            XCTAssertTrue(screen.bounds.contains(box) && box.width > 0, "\(title) at \(box)")
-        }
     }
 
     func testAHiddenScreenShouldTakeNoClicksAtAll() {

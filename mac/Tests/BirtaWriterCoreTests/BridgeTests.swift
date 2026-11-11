@@ -383,6 +383,23 @@ final class BridgeTests: XCTestCase {
                        "an empty list is an answer, never an absent field")
     }
 
+    func testTheStartViewsMessagesShouldParseAndEncode() {
+        XCTAssertEqual(WebviewMessage.parse(#"{"type":"startAction","action":"newNote"}"#),
+                       .startAction(action: "newNote", x: nil, y: nil))
+        XCTAssertEqual(WebviewMessage.parse(#"{"type":"startAction","action":"openRecentMenu","x":12.5,"y":40}"#),
+                       .startAction(action: "openRecentMenu", x: 12.5, y: 40))
+        XCTAssertEqual(WebviewMessage.parse(#"{"type":"startAction"}"#), .other(type: "startAction"),
+                       "an action with no name is not a request")
+        XCTAssertEqual(WebviewMessage.parse(#"{"type":"requestRecentFiles"}"#), .requestRecentFiles)
+        XCTAssertEqual(WebviewMessage.parse(#"{"type":"openRecentFile","path":"/u/a.md"}"#),
+                       .openRecentFile(path: "/u/a.md"))
+        let sent = HostMessage.recentFiles([RecentFileRow(path: "/u/a.md", name: "a.md", detail: "~")]).jsonObject()
+        XCTAssertEqual(sent["type"] as? String, "recentFiles")
+        let files = sent["files"] as? [[String: String]]
+        XCTAssertEqual(files, [["path": "/u/a.md", "name": "a.md", "detail": "~"]])
+        XCTAssertEqual(HostMessage.showStartView.jsonObject()["type"] as? String, "showStartView")
+    }
+
     func testTheExplorersMemoriesShouldReachThePageOnTheOutlinePanelsChannels() {
         XCTAssertEqual(BootConfig(fileExplorerWidth: 280).tocRootStyle, ":root { --files-width: 280px; }")
         XCTAssertEqual(BootConfig(tocWidth: 320, fileExplorerWidth: 280).tocRootStyle,

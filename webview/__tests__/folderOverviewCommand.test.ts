@@ -19,7 +19,7 @@ import {
     resetFolderIndexForTests,
     syncFolderOverviewAvailability,
 } from "../links/folderIndex";
-import { _resetFolderOverviewForTests, showFolderOverview } from "../links/folderOverviewCommand";
+import { _resetFolderOverviewForTests, showFolderOverview, showStartView } from "../links/folderOverviewCommand";
 
 const node = (path: string, name = path.replace(/^.*\//, "").replace(/\.md$/, "")): FolderNode =>
     ({ path, name, type: null, tags: [], status: null, trust: null, staleAfter: null });
@@ -156,5 +156,46 @@ describe("a name holding a replacement pattern (finding 5)", () => {
         await showFolderOverview({ focusEditor: () => {} });
         receiveFolderIndex({ ...VAULT, rootName: "a$&b$'c" }, null);
         expect(document.querySelector(".fo-surface .fs-title")!.textContent).toBe("Folder: a$&b$'c");
+    });
+});
+
+describe("the start view, from the host's showStartView", () => {
+    const mac = (): void => {
+        (window as I18n).__i18n = {
+            translations: {}, isMac: true, folderGraph: true,
+            host: { capabilities: HOST_PROFILES.mac, arrangements: [], shortcuts: [] },
+        };
+    };
+
+    it("the message should open one pinned start view, and a second should not stack another", async () => {
+        mac();
+        const handlers = createMessageHandlers({ state: {}, actions: {}, topbarTb: null } as unknown as MessageHandlerDeps);
+        handlers.showStartView!({ type: "showStartView" }, document.createElement("div"));
+        await showStartView();
+        await showStartView();
+        expect(document.querySelectorAll(".fo-surface")).toHaveLength(1);
+        expect(document.querySelector(".fo-surface .fs-title")!.textContent).toBe("No File Open");
+        expect(posted().filter((m) => m.type === "requestRecentFiles")).toHaveLength(1);
+    });
+
+    it("its buttons and rows should reach the host as the launcher messages", async () => {
+        mac();
+        await showStartView();
+        const press = (el: Element): void => { el.dispatchEvent(new MouseEvent("mousedown", { bubbles: true })); };
+        const surface = document.querySelector(".fo-surface")!;
+        const [newNote, open] = [...surface.querySelectorAll(".fo-action")];
+        press(newNote!);
+        press(open!);
+        press(surface.querySelector(".fo-more")!);
+        const sent = posted().filter((m) => m.type === "startAction") as Array<Posted & { action: string; x?: number }>;
+        expect(sent.map((m) => m.action)).toEqual(["newNote", "open", "openRecentMenu"]);
+        expect(typeof sent[2]!.x).toBe("number");
+    });
+
+    it("a host with no launcher should draw no buttons: the view of a folder is as it was", async () => {
+        (window as I18n).__i18n = { translations: {}, isMac: false, folderGraph: true };
+        await showFolderOverview({ focusEditor: () => {} });
+        expect(document.querySelector(".fo-surface .fo-actions")).toBeNull();
+        expect(posted().map((m) => m.type)).not.toContain("requestRecentFiles");
     });
 });
