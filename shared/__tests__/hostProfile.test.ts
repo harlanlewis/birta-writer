@@ -111,13 +111,15 @@ describe("HOST_PROFILES", () => {
         // its window has a sidebar to dock the outline in and a frame the
         // reader can drag wider than a reading measure; it has a Settings
         // window of its own; and it can open a window on a directory and list
-        // it for the page's file explorer. It provides none of the others:
+        // it for the page's file explorer; and it makes notes, opens files
+        // and keeps a recent files list the start view can offer. It provides
+        // none of the others:
         // there is no text editor to switch to, no VS Code settings or
         // keybindings UI, no read-only owner, no editor font of its own, and
         // no agent, because `/ai` is the extension's alone.
         expect(HOST_PROFILES.mac).toEqual(
             ["spellAndGrammar", "imageUpload", "toc", "contentMeasure", "appPreferences",
-             "projectFiles", "folderIndex", "stripTooltip"]);
+             "projectFiles", "folderIndex", "stripTooltip", "fileLauncher"]);
     });
 
     it("every capability named on a command should be in ALL_HOST_CAPABILITIES", () => {

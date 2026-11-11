@@ -9,11 +9,10 @@ import BirtaWriterCore
 ///     [Restore]  [Browse…]  [Open Recent…]
 ///
 /// What it says and which buttons it offers are `MissingFileOffer`'s
-/// (BirtaWriterCore), where the three states and the rule behind each button
-/// are written down and tested with no window. This view draws an offer: a
-/// card over the document while the window still holds the file's text, and
-/// the same words on the window's own ground, with no card, for the empty
-/// state Move to Trash leaves behind.
+/// (BirtaWriterCore), where the states and the rule behind each button are
+/// written down and tested with no window. This view draws an offer, as a card
+/// over the document the window still holds. A window holding no file is not
+/// drawn here: that is the page's start view (`Coordinator.applyNoteMissingToPage`).
 ///
 /// A CARD in the middle of the window, rather than a strip along the bottom
 /// edge, and rather than the opaque full-bleed screen it was between them.
@@ -69,8 +68,6 @@ final class MissingFileScreen: NSView {
         [(.restore, restoreButton), (.saveItBack, saveButton), (.browse, browseButton), (.openRecent, recentButton)]
     }
     private var column: NSStackView?
-    /// Whether the words are on a card or on the window's own ground.
-    private var drawsCard = true
 
     /// Air between the card's edge and the words inside it.
     private static let padding: CGFloat = 28
@@ -126,7 +123,7 @@ final class MissingFileScreen: NSView {
     /// alone would leave the words floating on the document.
     override func draw(_ dirtyRect: NSRect) {
         let box = cardRect
-        guard drawsCard, !box.isEmpty else { return }
+        guard !box.isEmpty else { return }
         let path = NSBezierPath(roundedRect: box,
                                 xRadius: Self.cornerRadius, yRadius: Self.cornerRadius)
         NSGraphicsContext.saveGraphicsState()
@@ -276,7 +273,6 @@ final class MissingFileScreen: NSView {
         body.stringValue = offer.body
         body.isHidden = offer.body.isEmpty
         for (action, button) in buttons { button.isHidden = !offer.actions.contains(action) }
-        drawsCard = offer.isCard
         column?.needsLayout = true
         needsDisplay = true
     }

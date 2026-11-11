@@ -170,6 +170,12 @@ final class WindowSet {
             self?.trashFolder(folder, from: coordinator)
         }
         coordinator.onOpenDocumentPanel = { [weak self] in self?.openDocumentPanel() }
+        coordinator.onNewNoteHere = { [weak self, weak coordinator] in
+            guard let coordinator else { return }
+            self?.newNote(replacing: coordinator)
+        }
+        coordinator.onNewNote = { [weak self] in self?.newNote() }
+        coordinator.onOpenRecent = { [weak self] url in self?.openDocument(at: url) }
         coordinator.onFolderIndexRequest = { [weak self, weak coordinator] in
             guard let coordinator else { return }
             self?.folderIndexRequested(by: coordinator)
@@ -474,13 +480,13 @@ final class WindowSet {
         }
     }
 
-    /// Shift+Cmd+N: a window with no file in it, in the empty state (No File
-    /// Open, with Browse and Open Recent), for somebody who wants a window
-    /// before they know which file or folder it is for.
+    /// Shift+Cmd+N: a window with no file in it, in the empty state (the
+    /// page's start view: New Note, Open, the recent files), for somebody who
+    /// wants a window before they know which file or folder it is for.
     ///
     /// Nothing is made on disk. The window is bound to a free name in the
     /// notes folder and marked missing, so it can write nothing and counts as
-    /// vacant: a file opened from it, through Browse, Open Recent or Cmd+O,
+    /// vacant: a file opened from it, through Open, a recent file or Cmd+O,
     /// takes it over (`openDocument`'s `vacantFront`), and a folder opened
     /// from it replaces it (`openDirectory`). It takes no slot, because it
     /// holds no note to be the app's current one.
@@ -489,6 +495,30 @@ final class WindowSet {
         let made = makeWindow(on: target, slot: nil)
         made.openEmpty()
         open(made, asSeparateWindow: true)
+    }
+
+    /// The start view's New Note in a window holding no file: Cmd+N's note,
+    /// made where Cmd+N makes it and given the current-note slot as Cmd+N
+    /// gives it, but opened IN the empty window rather than beside it. The
+    /// window held nothing, so a new one would leave it behind empty.
+    ///
+    /// Through `replaceFile`, as a file opened from the empty window is
+    /// (`openDocument`'s `vacantFront`), so the takeover is the one every
+    /// other way out of the empty state already uses; when that takeover is
+    /// abandoned the note opens in a window of its own instead.
+    func newNote(replacing here: Coordinator) {
+        do {
+            let target = try Coordinator.makeNoteFile(alsoTaken: boundByAWindow())
+            Prefs.currentNoteURL = target
+            releaseSlot(.currentNote, except: here)
+            here.replaceFile(with: target, revealing: nil, slot: .currentNote) { [weak self] url in
+                guard let self else { return }
+                self.open(self.makeWindow(on: url, slot: .currentNote), asSeparateWindow: true)
+            }
+        } catch {
+            NSLog("Birta Writer: could not make a new note: \(error)")
+            here.flashStatus("Could not make a new note.")
+        }
     }
 
     /// Cmd+T, the tab bar's `+`, and the system's New Tab rows: a new note,

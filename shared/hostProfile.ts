@@ -221,7 +221,19 @@ export type HostCapability =
      * tabs. App-only for the reason the strip is: VS Code paints nothing over
      * the page.
      */
-    | "stripTooltip";
+    | "stripTooltip"
+    /**
+     * The host's own ways to a document: make a new note, show its Open
+     * panel, list the reader's recent files and open one, and pop its Open
+     * Recent menu (`startAction`, `requestRecentFiles`, `openRecentFile` in
+     * shared/messages.ts). What the start view's buttons and its recent files
+     * section run (components/graph/folderOverview.ts).
+     *
+     * App-only: VS Code has its own New, Open and Open Recent beside every
+     * editor, and its recent files are its own, so a second set drawn in the
+     * page would be a copy of the window around it.
+     */
+    | "fileLauncher";
 
 export const ALL_HOST_CAPABILITIES: readonly HostCapability[] = [
     "textEditor",
@@ -240,6 +252,7 @@ export const ALL_HOST_CAPABILITIES: readonly HostCapability[] = [
     "projectFiles",
     "folderIndex",
     "stripTooltip",
+    "fileLauncher",
 ];
 
 /**
@@ -259,7 +272,7 @@ export const ALL_HOST_CAPABILITIES: readonly HostCapability[] = [
  * feature". A member here MUST be declared by some other profile, or it
  * names nothing at all; `hostProfile.test.ts` checks both directions.
  */
-export const APP_ONLY_CAPABILITIES: readonly HostCapability[] = ["appPreferences", "projectFiles", "stripTooltip"];
+export const APP_ONLY_CAPABILITIES: readonly HostCapability[] = ["appPreferences", "projectFiles", "stripTooltip", "fileLauncher"];
 
 /**
  * The capabilities a host may withdraw or offer while the page is UP, handed
@@ -292,7 +305,7 @@ export const HOST_PROFILES = {
     // and the e2e mac page restate this list as a literal, because neither
     // Swift nor an HTML bootstrap can import it. They are not free to drift:
     // shared/__tests__/hostProfile.test.ts parses both and fails.
-    mac: ["spellAndGrammar", "imageUpload", "toc", "contentMeasure", "appPreferences", "projectFiles", "folderIndex", "stripTooltip"] as readonly HostCapability[],
+    mac: ["spellAndGrammar", "imageUpload", "toc", "contentMeasure", "appPreferences", "projectFiles", "folderIndex", "stripTooltip", "fileLauncher"] as readonly HostCapability[],
 } as const satisfies Record<string, readonly HostCapability[]>;
 
 /**

@@ -453,6 +453,22 @@ export function notifyRequestFolderRecents(): void {
     vscode.postMessage({ type: "requestFolderRecents" });
 }
 
+// ── The start view's ways to a document: a host declaring `fileLauncher` answers ──
+/** A start view button: a new note, the Open panel, or the Open Recent menu at a point. */
+export function notifyStartAction(action: "newNote" | "open" | "openRecentMenu", at?: { x: number; y: number }): void {
+    vscode.postMessage({ type: "startAction", action, ...(at ?? {}) });
+}
+
+/** Ask for the reader's recent files, app-wide (the start view). */
+export function notifyRequestRecentFiles(): void {
+    vscode.postMessage({ type: "requestRecentFiles" });
+}
+
+/** Open one of the recent files the host listed, by the path it gave. */
+export function notifyOpenRecentFile(path: string): void {
+    vscode.postMessage({ type: "openRecentFile", path });
+}
+
 /** A row was right-clicked; the host puts its own menu at the point. */
 export function notifyProjectFileMenu(path: string, kind: "dir" | "file", x: number, y: number): void {
     vscode.postMessage({ type: "projectFileMenu", path, kind, x, y });

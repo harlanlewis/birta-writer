@@ -42,7 +42,8 @@ import { notifySwitchToTextEditor, getWebviewState, setWebviewState, setBaseSync
 import type { EditorSelectionContext } from "../shared/agentContext";
 import { renderFrontmatterPanel, refreshFrontmatterEmptyState } from "./components/frontmatter";
 import { dispatchFmSuggestions } from "./components/frontmatter/suggestMenu";
-import { receiveFolderIndex, receiveFolderRecents, setFolderGraphEnabled, syncFolderOverviewAvailability } from "./links/folderIndex";
+import { receiveFolderIndex, receiveFolderRecents, receiveRecentFiles, setFolderGraphEnabled, syncFolderOverviewAvailability } from "./links/folderIndex";
+import { showStartView } from "./links/folderOverviewCommand";
 import { runEditorCommand } from "./editorCommands";
 import { refreshShortcutsHelpIfLoaded } from "./components/shortcutsHelp/loader";
 import { hostHas, setHostCapabilities } from "../shared/hostProfile";
@@ -678,6 +679,12 @@ export function createMessageHandlers(
         },
         folderRecents(msg) {
             receiveFolderRecents(msg.paths);
+        },
+        recentFiles(msg) {
+            receiveRecentFiles(msg.files);
+        },
+        showStartView() {
+            void showStartView();
         },
         proofreadConfig(msg) {
             const view = getEditorView();

@@ -20,15 +20,37 @@
  * The centre opens like any other dot. In the Graph tab the centre is the note
  * on screen and opens nothing; here the centre is the folder's hub, which is
  * usually some other note, and it is a note to go to.
+ *
+ * It is also the START VIEW, on a host that declares `fileLauncher`: the empty
+ * state of a window holding no file, and the same buttons and recent files in
+ * a folder's overview:
+ *
+ *     [New Note]  [Open…]
+ *     (a folder)   the graph, and the folder's own recent files
+ *     Recent       the reader's recent files, app-wide
+ *     Open Recent…
+ *
+ * A window with no folder draws the same view with no folder sections, pinned
+ * (`openStartView`): a Mac window holding no file, which New Window and moving
+ * the open note to the Trash leave. One view rather than one per kind of
+ * window, so the two offer the same ways out in the same places.
  */
 import { t } from "@/i18n";
 import {
     FOLDER_INDEX_CHANGED,
     FOLDER_RECENTS_CHANGED,
+    RECENT_FILES_CHANGED,
     readFolderIndex,
     type FolderIndexState,
+    type RecentFile,
 } from "@/links/folderIndex";
-import { notifyRequestFolderRecents } from "@/messaging";
+import { hostHas } from "../../../shared/hostProfile";
+import {
+    notifyOpenRecentFile,
+    notifyRequestFolderRecents,
+    notifyRequestRecentFiles,
+    notifyStartAction,
+} from "@/messaging";
 import { bindActivate } from "@/ui/dom";
 import { openFullscreenSurface } from "@/ui/fullscreenSurface";
 import { wireRoving } from "../sidePanel/keyboardNav";
@@ -40,11 +62,49 @@ import { ensureLocalGraphStyles } from "./styles";
 /** Most recent files the list shows. */
 export const OVERVIEW_RECENTS = 8;
 
+/** Most of the reader's recent files the start view lists before Open Recent…. */
+export const START_RECENTS = 6;
+
+/** The host's ways to a document, for the start view's buttons and rows. */
+export interface StartLauncher {
+    newNote: () => void;
+    open: () => void;
+    /** Open one of the recent files, by the path the host listed it under. */
+    openRecent: (path: string) => void;
+    /** Pop the host's Open Recent menu under `anchor`, in viewport coordinates. */
+    openRecentMenu: (anchor: DOMRect) => void;
+}
+
+/**
+ * The host's ways to a document, when it declares them (`fileLauncher`).
+ * Here, in the lazy chunk, rather than beside the command that asks for it,
+ * because nothing at launch needs it. The menu goes under the row that asked,
+ * at its bottom-left corner, which is where a pop-up menu from a control is
+ * placed on a Mac.
+ */
+export function hostLauncher(): StartLauncher | undefined {
+    if (!hostHas("fileLauncher")) { return undefined; }
+    return {
+        newNote: () => notifyStartAction("newNote"),
+        open: () => notifyStartAction("open"),
+        openRecent: (path) => notifyOpenRecentFile(path),
+        openRecentMenu: (anchor) => notifyStartAction("openRecentMenu", { x: anchor.left, y: anchor.bottom }),
+    };
+}
+
 export interface FolderOverviewHost {
     /** Open a note by its root-relative path. */
     openNote: (path: string) => void;
     /** Where Escape sends focus. */
     onEscape: () => void;
+    /**
+     * The host's ways to a document. Absent on a host that has none to give
+     * (no `fileLauncher`), which draws neither the buttons nor the reader's
+     * recent files.
+     */
+    launcher?: StartLauncher;
+    /** Whether the view is of a folder: false draws no graph and no folder list. */
+    folder?: boolean;
 }
 
 export interface FolderOverview {
@@ -56,7 +116,8 @@ export interface FolderOverview {
      * most recent first, or null from a host that keeps no recent files list,
      * which draws no section for them at all.
      */
-    render: (state: FolderIndexState | null, recents: readonly string[] | null) => void;
+    render: (state: FolderIndexState | null, recents: readonly string[] | null,
+             files?: readonly RecentFile[] | null) => void;
     /** Move keyboard focus onto the first recent file, else the graph. */
     focusFirst: () => void;
 }
@@ -65,6 +126,8 @@ export function createFolderOverview(host: FolderOverviewHost): FolderOverview {
     ensureLocalGraphStyles();
     const element = document.createElement("div");
     element.className = "fo";
+    const folder = host.folder !== false;
+    const launcher = host.launcher;
 
     const stage = createRingStage({ openNote: host.openNote, onEscape: host.onEscape, centreIsCurrent: false });
     const caption = document.createElement("div");
@@ -74,7 +137,9 @@ export function createFolderOverview(host: FolderOverviewHost): FolderOverview {
 
     const recentHead = document.createElement("div");
     recentHead.className = "ui-heading ui-menu-heading fo-heading";
-    recentHead.textContent = t("Recent files");
+    // Beside the reader's own recent files, the folder's list is named for
+    // where it is rather than for when.
+    recentHead.textContent = launcher ? t("In this folder") : t("Recent files");
     const recentList = document.createElement("div");
     recentList.className = "fo-recents";
     recentList.setAttribute("role", "group");
@@ -83,13 +148,49 @@ export function createFolderOverview(host: FolderOverviewHost): FolderOverview {
     recentEmpty.className = "fo-empty";
     recentEmpty.textContent = t("Nothing in this folder has been opened yet");
 
-    element.append(stage.element, caption, legend, recentHead, recentList, recentEmpty);
+    // The start view's: the two buttons above everything, and the reader's
+    // recent files, closed by Open Recent…, below everything.
+    const actions = document.createElement("div");
+    actions.className = "fo-actions";
+    const newButton = launchButton(t("New Note"), "ui-btn--primary", () => launcher?.newNote());
+    const openButton = launchButton(t("Open…"), "ui-btn--secondary", () => launcher?.open());
+    actions.append(newButton, openButton);
+    const filesHead = document.createElement("div");
+    filesHead.className = "ui-heading ui-menu-heading fo-heading";
+    filesHead.textContent = t("Recent");
+    const filesList = document.createElement("div");
+    filesList.className = "fo-recents fo-files";
+    filesList.setAttribute("role", "group");
+    filesList.setAttribute("aria-label", t("Recent"));
+    const moreRow = document.createElement("button");
+    moreRow.className = "ui-menu-row fg-row fo-more";
+    moreRow.tabIndex = -1;
+    moreRow.textContent = t("Open Recent…");
+    bindActivate(moreRow, () => launcher?.openRecentMenu(moreRow.getBoundingClientRect()));
+
+    if (launcher) { element.append(actions); }
+    if (folder) { element.append(stage.element, caption, legend, recentHead, recentList, recentEmpty); }
+    if (launcher) { element.append(filesHead, filesList); }
 
     const recentRoving = wireRoving({
         container: recentList,
         items: () => [...recentList.querySelectorAll<HTMLElement>(".fo-row")],
         onEscape: host.onEscape,
     });
+    const filesRoving = wireRoving({
+        container: filesList,
+        items: () => [...filesList.querySelectorAll<HTMLElement>(".fo-file, .fo-more")],
+        onEscape: host.onEscape,
+    });
+
+    function launchButton(label: string, kind: string, run: () => void): HTMLButtonElement {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = `ui-btn ${kind} fo-action`;
+        btn.textContent = label;
+        bindActivate(btn, run);
+        return btn;
+    }
 
     function drawGraph(state: FolderIndexState | null): void {
         stage.clear();
@@ -161,14 +262,49 @@ export function createFolderOverview(host: FolderOverviewHost): FolderOverview {
         recentRoving.refresh();
     }
 
+    /**
+     * The reader's recent files, at most `START_RECENTS`, then Open Recent…,
+     * which is drawn even before the list arrives and with nothing in it: it
+     * is the way to everything past the six, and to the host's own menu.
+     */
+    function drawFiles(files: readonly RecentFile[] | null): void {
+        const rows = (files ?? []).slice(0, START_RECENTS).map((file) => {
+            const btn = document.createElement("button");
+            btn.className = "ui-menu-row fg-row fo-file";
+            btn.tabIndex = -1;
+            btn.title = file.path;
+            btn.dataset["file"] = file.path;
+            const label = document.createElement("span");
+            label.className = "fg-row-label";
+            label.textContent = file.name;
+            btn.append(label);
+            if (file.detail) {
+                const detail = document.createElement("span");
+                detail.className = "fg-row-detail fo-row-where";
+                detail.textContent = file.detail;
+                btn.append(detail);
+            }
+            bindActivate(btn, () => launcher?.openRecent(file.path));
+            return btn;
+        });
+        filesList.replaceChildren(...rows, moreRow);
+        filesRoving.refresh();
+    }
+
     return {
         element,
-        render: (state, recents) => {
-            drawGraph(state);
-            drawRecents(state, recents);
+        render: (state, recents, files = null) => {
+            if (folder) {
+                drawGraph(state);
+                drawRecents(state, recents);
+            }
+            if (launcher) { drawFiles(files); }
         },
         focusFirst: () => {
-            if (recentList.hidden) { stage.focusFirst(); } else { recentRoving.focusFirst(); }
+            if (folder && !recentList.hidden) { recentRoving.focusFirst(); return; }
+            if (folder && !stage.element.hidden) { stage.focusFirst(); return; }
+            if (launcher) { newButton.focus(); return; }
+            stage.focusFirst();
         },
     };
 }
@@ -178,6 +314,13 @@ export interface FolderOverviewSurfaceHost {
     openNote: (path: string) => void;
     /** Where focus goes once the overview is dismissed without opening a note. */
     onDismiss: () => void;
+    /** The host's ways to a document; see `FolderOverviewHost.launcher`. */
+    launcher?: StartLauncher;
+    /**
+     * The start view of a window with no file: no folder sections, no way to
+     * dismiss it, and the title says the window holds nothing.
+     */
+    empty?: boolean;
 }
 
 export interface FolderOverviewHandle {
@@ -202,28 +345,52 @@ export function openFolderOverview(host: FolderOverviewSurfaceHost): FolderOverv
     // This opening's answer, null until it comes: a host that keeps no list
     // never answers, and the section is then never drawn.
     let recents: readonly string[] | null = null;
-    const titleFor = (state: FolderIndexState | null): string => state?.index
-        ? fill(t("Folder: {0}"), state.index.rootName)
-        : t("Folder");
+    // The reader's recent files, likewise this opening's answer.
+    let files: readonly RecentFile[] | null = null;
+    const empty = host.empty === true;
+    const titleFor = (state: FolderIndexState | null): string => empty
+        ? t("No File Open")
+        : state?.index
+            ? fill(t("Folder: {0}"), state.index.rootName)
+            : t("Folder");
     const surface = openFullscreenSurface({
         ground: "canvas",
         title: titleFor(readFolderIndex()),
         className: "fo-surface",
+        pinned: empty,
         onClose: () => {
             open = false;
             window.removeEventListener(FOLDER_INDEX_CHANGED, redraw);
             window.removeEventListener(FOLDER_RECENTS_CHANGED, onRecents);
+            window.removeEventListener(RECENT_FILES_CHANGED, onFiles);
             if (!openingNote) { host.onDismiss(); }
         },
     });
     surface.setCanvasColor("var(--vscode-editor-background)");
+    // A button that goes somewhere else leaves the view as a row does: a new
+    // note or an opened file is the next thing on screen, and the view would
+    // only be in its way. The Open panel and the Open Recent menu can be
+    // cancelled, so the view stays under them. Pinned, nothing closes it:
+    // the window is rebound, which reloads the page.
+    const leaving = (run: () => void) => () => {
+        if (!empty) { surface.close(); }
+        run();
+    };
+    const launcher: StartLauncher | undefined = host.launcher && {
+        newNote: leaving(host.launcher.newNote),
+        open: host.launcher.open,
+        openRecent: (path) => leaving(() => host.launcher!.openRecent(path))(),
+        openRecentMenu: host.launcher.openRecentMenu,
+    };
     const view = createFolderOverview({
         openNote: (path) => {
             openingNote = true;
             surface.close();
             host.openNote(path);
         },
-        onEscape: () => surface.close(),
+        onEscape: () => { if (!empty) { surface.close(); } },
+        ...(launcher ? { launcher } : {}),
+        folder: !empty,
     });
     surface.content.append(view.element);
 
@@ -242,14 +409,15 @@ export function openFolderOverview(host: FolderOverviewSurfaceHost): FolderOverv
         // found again by what it names rather than dropped to the body.
         const held = document.activeElement instanceof HTMLElement && view.element.contains(document.activeElement)
             ? document.activeElement : null;
-        const heldKey = held ? (held.dataset["path"] !== undefined ? `.fo-row` : `.lg-node`) : null;
-        const heldName = held?.dataset["path"] ?? held?.dataset["id"] ?? null;
-        view.render(state, recents);
+        // Each kind of row names itself by its own attribute; a control that
+        // is never rebuilt (a button, Open Recent…) keeps focus by itself.
+        const attr = held ? ["data-path", "data-id", "data-file"].find((a) => held.hasAttribute(a)) ?? null : null;
+        const heldName = attr ? held!.getAttribute(attr) : null;
+        view.render(state, recents, files);
         if (!touched) {
             view.focusFirst();
-        } else if (heldKey !== null && heldName !== null) {
-            const attr = heldKey === ".fo-row" ? "data-path" : "data-id";
-            const again = [...view.element.querySelectorAll<HTMLElement>(heldKey)]
+        } else if (attr !== null && heldName !== null) {
+            const again = [...view.element.querySelectorAll<HTMLElement>(`[${attr}]`)]
                 .find((el) => el.getAttribute(attr) === heldName);
             if (again) { again.focus(); } else { view.focusFirst(); }
         }
@@ -260,7 +428,13 @@ export function openFolderOverview(host: FolderOverviewSurfaceHost): FolderOverv
         redraw();
     }
     window.addEventListener(FOLDER_RECENTS_CHANGED, onRecents);
-    notifyRequestFolderRecents();
+    function onFiles(e: Event): void {
+        files = (e as CustomEvent<RecentFile[]>).detail;
+        redraw();
+    }
+    window.addEventListener(RECENT_FILES_CHANGED, onFiles);
+    if (!empty) { notifyRequestFolderRecents(); }
+    if (launcher) { notifyRequestRecentFiles(); }
     redraw();
     return {
         close: () => surface.close(),

@@ -20,7 +20,7 @@ import { createRingStage, fillLegend, RING_SIZE } from "./ringStage";
 import { ensureLocalGraphStyles } from "./styles";
 
 export { openFolderGraph } from "./folderView";
-export { createFolderOverview, openFolderOverview } from "./folderOverview";
+export { createFolderOverview, hostLauncher, openFolderOverview } from "./folderOverview";
 
 export interface LocalGraphHost {
     /** Open a note by its root-relative path. */

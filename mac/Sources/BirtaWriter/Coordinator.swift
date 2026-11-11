@@ -462,6 +462,71 @@ final class Coordinator {
     /// window is chosen when it is the vacant one in front.
     var onOpenDocumentPanel: (() -> Void)?
 
+    /// A new note made and opened in THIS window, for the start view's New
+    /// Note in a window holding no file (`WindowSet.newNote(replacing:)`).
+    var onNewNoteHere: (() -> Void)?
+
+    /// Cmd+N's note, for the start view's New Note in a window that holds a
+    /// note and has no folder to make one in.
+    var onNewNote: (() -> Void)?
+
+    /// One of the reader's recent files, opened as Open Recent opens it
+    /// (`WindowSet.openDocument`).
+    var onOpenRecent: ((URL) -> Void)?
+
+    /// What the start view lists of the reader's recent files: the rows the
+    /// Open Recent menu would draw, less the file this window is on, cut to
+    /// what the view shows. Where each is, home abbreviated, says which of two
+    /// files with one name a row is.
+    private func startViewRecents() -> [RecentFileRow] {
+        let here = boundURL.standardizedFileURL.path
+        return RecentFiles.rows(from: Prefs.recentDocuments)
+            .filter { $0.url.standardizedFileURL.path != here }
+            .prefix(Self.startViewRecentCount)
+            .map { row in
+                RecentFileRow(path: row.url.path, name: row.title,
+                              detail: (row.url.deletingLastPathComponent().path as NSString).abbreviatingWithTildeInPath)
+            }
+    }
+
+    /// The page's `START_RECENTS`: it cuts the list again, so a longer answer
+    /// costs only bytes, and a shorter one leaves rows empty.
+    static let startViewRecentCount = 6
+
+    /// A button of the start view.
+    ///
+    /// New Note goes where the window is: in a window holding no file it
+    /// becomes this window's note; in a new tab of a folder that nothing has
+    /// been written in yet the page has already put the view away over that
+    /// blank note, which IS the new note, so nothing more is made; in a folder
+    /// window it is a note in the folder, beside; anywhere else it is Cmd+N.
+    private func startAction(_ action: String, x: Double?, y: Double?) {
+        switch action {
+        case "newNote":
+            if holdsNoFile {
+                // Once per takeover. The pinned view stays up until the page
+                // reloads, so a second press meanwhile would make a second
+                // note and leave the first one empty in the notes folder.
+                guard !isBeingTakenOver else { break }
+                onNewNoteHere?()
+            } else if isVacant, awaitsFirstText {
+                break
+            } else if let explorerRoot {
+                onNewNoteInFolder?(explorerRoot)
+            } else {
+                onNewNote?()
+            }
+        case "open":
+            onOpenDocumentPanel?()
+        case "openRecentMenu":
+            let view = host.webView
+            let point = CaretAnchor.point(x: x ?? 0, y: y ?? 0, viewHeight: view.bounds.height, isFlipped: view.isFlipped)
+            (makeRecentsMenu?() ?? RecentsMenu()).popUp(positioning: nil, at: point, in: view)
+        default:
+            break
+        }
+    }
+
     /// A folder of this window's explorer is to go to the Trash, confirmed:
     /// `WindowSet.trashFolder`, because the tabs it moves on are every tab of
     /// this window's group that is on a file inside it, not this one alone.
@@ -542,8 +607,8 @@ final class Coordinator {
     }
 
     /// Move this loose-file window's own file to the Trash and leave the window
-    /// empty (`MissingFileOffer.State.noFile`): no document, "No File Open",
-    /// and Browse and Open Recent to go somewhere else.
+    /// empty: no document, and the page's start view to go somewhere else
+    /// (`applyNoteMissingToPage`).
     ///
     /// Settled first, as the folder path is, and for the same reason: a buffer
     /// still ahead of the file after the write (autosave off, or a write that
@@ -2823,6 +2888,16 @@ final class Coordinator {
         case .requestFolderIndex:
             folderIndexSubscribed = true
             onFolderIndexRequest?()
+        case let .startAction(action, x, y):
+            startAction(action, x: x, y: y)
+        case .requestRecentFiles:
+            host.send(.recentFiles(startViewRecents()))
+        case let .openRecentFile(path):
+            // Only a path the app's own list holds: the page names it, and a
+            // page is not trusted to name a file for the app to open.
+            let target = URL(fileURLWithPath: path).standardizedFileURL
+            guard Prefs.recentDocuments.contains(where: { $0.standardizedFileURL.path == target.path }) else { break }
+            onOpenRecent?(target)
         case .requestFolderRecents:
             // The Open Recent list, cut to this window's root. A window with
             // no root has no folder to list, and its page never asks.
@@ -4463,8 +4538,8 @@ final class Coordinator {
     /// holds the rest; with the file gone and nothing to restore, every byte on
     /// screen is the only copy.
     private var missingFileOffer: MissingFileOffer? {
-        guard noteMissing else { return nil }
-        if holdsNoFile { return MissingFileOffer(.noFile) }
+        // The empty state is drawn by the page (`applyNoteMissingToPage`).
+        guard noteMissing, !holdsNoFile else { return nil }
         let inTrash = trashedFileIsStillThere
         return MissingFileOffer(.gone(inTrash: inTrash,
                                       textAtRisk: inTrash ? hasUnwrittenBytes : !latest.isBlank))
@@ -4494,6 +4569,11 @@ final class Coordinator {
     private func applyNoteMissingToPage() {
         host.send(.setReadOnly(readOnly: noteMissing))
         host.setNoteMissing(noteMissing)
+        // The empty state is the page's start view, the same one a folder's
+        // overview is (components/graph/folderOverview.ts), pinned. Sent on
+        // every `ready` too, since this is called there: a remount comes back
+        // knowing nothing it was not sent.
+        if noteMissing && holdsNoFile { host.send(.showStartView) }
     }
 
     /// The area the card centres in: the DOCUMENT, and not the band above it.

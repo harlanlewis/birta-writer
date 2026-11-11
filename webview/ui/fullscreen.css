@@ -35,6 +35,16 @@
     --fs-band: 44px;
 }
 
+/* Pinned (`pinned` in fullscreenSurface.ts): under the page's top bar, which
+   stays the reader's while the surface cannot be dismissed. Below the bar in
+   the stack as well as on screen: the bar's menus hang below it inside its
+   own stacking context (`.editor-topbar`, 10002), so a surface above that
+   would draw over the gear's menu the moment it opened. */
+.fs-surface--pinned {
+    top: var(--editor-topbar-height, 40px);
+    z-index: 10001;
+}
+
 .fs-surface.lb-closing {
     animation: lb-close 0.15s ease forwards;
     pointer-events: none;

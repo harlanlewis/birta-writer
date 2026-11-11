@@ -1392,7 +1392,7 @@ enum Prefs {
             // mounts is never offered the explorer (MAR-457). `folderIndex`
             // goes with it: the index is of the window's root, and a window
             // on a loose file has none to index (MAR-480).
-            hostCapabilities: ["spellAndGrammar", "imageUpload", "toc", "contentMeasure", "appPreferences", "projectFiles", "folderIndex", "stripTooltip"]
+            hostCapabilities: ["spellAndGrammar", "imageUpload", "toc", "contentMeasure", "appPreferences", "projectFiles", "folderIndex", "stripTooltip", "fileLauncher"]
                 .filter { ($0 != "projectFiles" && $0 != "folderIndex") || explorerRoot != nil },
             viewStateJSON: viewState,
             hostShortcuts: AppMenu.shortcuts

@@ -13,6 +13,9 @@
  * lazy loader here does. A failure while OPENING is not swallowed: it rejects,
  * and the caller's `void` leaves it to the crash reporter's unhandled-rejection
  * handler (webview/crashReporter.ts), which is where a broken view belongs.
+ *
+ * `showStartView` is the same view as a window's empty state: pinned, with no
+ * folder sections, opened when the host says the window holds no file.
  */
 import { loadLocalGraph } from "../utils/localGraphLoader";
 import type { FolderOverviewHandle } from "../components/graph/folderOverview";
@@ -36,9 +39,11 @@ export function showFolderOverview(deps: FolderOverviewCommandDeps): Promise<voi
     if (opening) { return opening; }
     const run = (deps.load ?? loadLocalGraph)().then(
         (mod) => {
+            const launcher = mod.hostLauncher();
             current = mod.openFolderOverview({
                 openNote: (path) => openIndexedNote(readFolderIndex()?.self ?? null, path),
                 onDismiss: deps.focusEditor,
+                ...(launcher ? { launcher } : {}),
             });
         },
         () => { /* the chunk did not load: not cached, so the next run retries */ },
@@ -47,9 +52,40 @@ export function showFolderOverview(deps: FolderOverviewCommandDeps): Promise<voi
     return run;
 }
 
+/**
+ * The window holds no file: the start view, pinned, with no folder in it.
+ * Once per page, like the overview; a second call while it is up focuses it.
+ * A dismissible overview already up is closed first, because the window it was
+ * a view over no longer holds a file.
+ */
+export function showStartView(deps: Pick<FolderOverviewCommandDeps, "load"> = {}): Promise<void> {
+    if (startView?.isOpen()) {
+        startView.focus();
+        return Promise.resolve();
+    }
+    return (deps.load ?? loadLocalGraph)().then(
+        (mod) => {
+            if (startView?.isOpen()) { return; }
+            current?.close();
+            const launcher = mod.hostLauncher();
+            startView = mod.openFolderOverview({
+                openNote: () => {},
+                onDismiss: () => {},
+                empty: true,
+                ...(launcher ? { launcher } : {}),
+            });
+        },
+        () => { /* the chunk did not load: not cached, so the next run retries */ },
+    );
+}
+
+let startView: FolderOverviewHandle | null = null;
+
 /** Test seam: forget any overview, as a fresh page would. */
 export function _resetFolderOverviewForTests(): void {
     current?.close();
     current = null;
     opening = null;
+    startView?.close();
+    startView = null;
 }

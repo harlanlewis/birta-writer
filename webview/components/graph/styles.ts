@@ -251,6 +251,20 @@ export const LOCAL_GRAPH_CSS = `
     padding: var(--ui-space-1) var(--ui-space-2);
 }
 
+/* The start view's two ways to a document, above everything else. */
+.fo-actions {
+    display: flex;
+    justify-content: center;
+    gap: var(--ui-space-4);
+    margin-block-end: var(--ui-space-5);
+}
+
+/* Open Recent… closes the reader's list, in the list's own row shape and set
+   apart in the quieter ink, as the way past it rather than one more file. */
+.fo-more {
+    color: var(--vscode-descriptionForeground);
+}
+
 /* ── The whole-folder view (folderView.ts), on the fullscreen surface ── */
 
 /* The lists on the left, under the title's band, and the drawing on the

@@ -145,6 +145,15 @@ public enum WebviewMessage: Equatable {
     /// Ask which files under this window's root were opened most recently,
     /// for the folder overview (MAR-488). Answered once, with `folderRecents`.
     case requestFolderRecents
+    /// A button of the start view: a new note, the Open panel, or the Open
+    /// Recent menu, which goes at `x`, `y` (viewport coordinates).
+    case startAction(action: String, x: Double?, y: Double?)
+    /// Ask for the reader's recent files, app-wide, for the start view.
+    /// Answered once, with `recentFiles`.
+    case requestRecentFiles
+    /// A row of the start view's recent files, by the path `recentFiles`
+    /// gave it. The host refuses a path its own list does not hold.
+    case openRecentFile(path: String)
     /// A segment of the path bar was clicked, by the absolute path the host
     /// handed it in `pathBar`. The host shows that folder (or selects that
     /// file) in the Finder, and refuses a path its own bar did not draw.
@@ -321,6 +330,13 @@ public enum WebviewMessage: Equatable {
             return str("path").map { .openProjectFile(path: $0, newTab: bool("newTab") ?? false, line: int("line")) } ?? .other(type: type)
         case "requestFolderIndex": return .requestFolderIndex
         case "requestFolderRecents": return .requestFolderRecents
+        case "startAction":
+            guard let action = str("action") else { return .other(type: type) }
+            return .startAction(action: action,
+                                x: (dict["x"] as? NSNumber)?.doubleValue,
+                                y: (dict["y"] as? NSNumber)?.doubleValue)
+        case "requestRecentFiles": return .requestRecentFiles
+        case "openRecentFile": return str("path").map { .openRecentFile(path: $0) } ?? .other(type: type)
         case "revealPath": return str("path").map { .revealPath($0) } ?? .other(type: type)
         case "pathBarMenu":
             guard let raw = dict["segments"] as? [[String: Any]],
@@ -515,6 +531,12 @@ public enum HostMessage: Equatable {
     /// The answer to `requestFolderRecents`: files under the root,
     /// root-relative, most recent first (`DirectoryListing.recentPaths`).
     case folderRecents(paths: [String])
+    /// The answer to `requestRecentFiles`: the reader's recent files and
+    /// folders, most recent first, by absolute path, with what each row says
+    /// and where it is.
+    case recentFiles([RecentFileRow])
+    /// The window holds no file: the page shows its start view, pinned.
+    case showStartView
     /// The hidden-files setting moved, from this window's row or another's.
     case fileExplorerConfig(showHidden: Bool)
     /// The least the docked explorer may be, in CSS pixels: wide enough for
@@ -665,6 +687,11 @@ public enum HostMessage: Equatable {
             return ["type": "folderIndex", "index": index?.jsonObject ?? NSNull(), "self": selfPath ?? NSNull()]
         case let .folderRecents(paths):
             return ["type": "folderRecents", "paths": paths]
+        case let .recentFiles(rows):
+            return ["type": "recentFiles",
+                    "files": rows.map { ["path": $0.path, "name": $0.name, "detail": $0.detail] }]
+        case .showStartView:
+            return ["type": "showStartView"]
         case let .fileExplorerConfig(showHidden):
             return ["type": "fileExplorerConfig", "showHidden": showHidden]
         case let .fileExplorerFloor(width):
@@ -1118,5 +1145,18 @@ extension JSONEncoder {
         let e = JSONEncoder()
         e.outputFormatting = [.sortedKeys]
         return e
+    }
+}
+
+/// One row of the start view's recent files (`HostMessage.recentFiles`).
+public struct RecentFileRow: Equatable, Sendable {
+    public let path: String
+    public let name: String
+    public let detail: String
+
+    public init(path: String, name: String, detail: String) {
+        self.path = path
+        self.name = name
+        self.detail = detail
     }
 }

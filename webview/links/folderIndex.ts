@@ -32,6 +32,25 @@ export const FOLDER_INDEX_CHANGED = "birta:folder-index-changed";
  */
 export const FOLDER_RECENTS_CHANGED = "birta:folder-recents-changed";
 
+/**
+ * Dispatched on `window` whenever the host answers `requestRecentFiles`, the
+ * files as its `detail`. Kept by nobody, for the reason the folder's own
+ * recent files are not: the one reader asks on opening.
+ */
+export const RECENT_FILES_CHANGED = "birta:recent-files-changed";
+
+/** One of the reader's recent files, as the host words it. */
+export interface RecentFile {
+    path: string;
+    name: string;
+    detail: string;
+}
+
+/** The host's answer: the `recentFiles` message handler calls this. */
+export function receiveRecentFiles(files: RecentFile[]): void {
+    window.dispatchEvent(new CustomEvent(RECENT_FILES_CHANGED, { detail: files }));
+}
+
 /** The command that opens the folder overview (components/graph/folderOverview.ts). */
 export const FOLDER_OVERVIEW_COMMAND = "showFolderOverview";
 

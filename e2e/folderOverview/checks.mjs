@@ -203,5 +203,92 @@ export async function run({ page, check, baseUrl }) {
     check("the first keystrokes reach the host as the note's content", typed?.includes("First line") === true,
         JSON.stringify({ typed, typedWhy }));
 
+    // ── The start view: a host with a launcher ───────────────────────────
+    await page.goto(`${baseUrl}/index.html?launcher=1`);
+    await page.waitForSelector(".milkdown .ProseMirror", { timeout: 15000 });
+    await page.waitForTimeout(300);
+    await page.evaluate(() => window.__runCommand("showFolderOverview"));
+    await page.waitForFunction((sel) => document.querySelectorAll(`${sel} .fo-file`).length > 0, OVERVIEW, { timeout: 5000 });
+    const start = await page.evaluate((sel) => {
+        const s = document.querySelector(sel);
+        const box = (el) => { const r = el.getBoundingClientRect(); return { top: r.top, bottom: r.bottom, height: r.height }; };
+        const actions = [...s.querySelectorAll(".fo-action")];
+        return {
+            buttons: actions.map((b) => b.textContent),
+            buttonsAbove: actions.every((b) => box(b).bottom <= box(s.querySelector(".lg-stage")).top && box(b).height > 0),
+            buttonsOnScreen: actions.every((b) => box(b).top >= 0 && box(b).bottom <= innerHeight),
+            files: s.querySelectorAll(".fo-file").length,
+            last: s.querySelector(".fo-files").lastElementChild.textContent,
+            headings: [...s.querySelectorAll(".fo-heading")].map((h) => h.textContent),
+            folderRowOnScreen: (() => { const r = s.querySelector(".fo-row"); return !!r && box(r).bottom <= innerHeight; })(),
+        };
+    }, OVERVIEW);
+    check("with the buttons above it, the folder's own first file is still above the fold at a short height",
+        start.folderRowOnScreen, JSON.stringify(start));
+    check("over a folder the start view leads with New Note and Open… above the graph, on screen",
+        start.buttons.join("|") === "New Note|Open…" && start.buttonsAbove && start.buttonsOnScreen, JSON.stringify(start));
+    check("it lists six of the reader's recent files and closes the list with Open Recent…",
+        start.files === 6 && start.last === "Open Recent…" && start.headings.join("|") === "In this folder|Recent",
+        JSON.stringify(start));
+    await page.locator(`${OVERVIEW} .fo-more`).click();
+    const menuAsk = await page.evaluate(() => {
+        const m = window.__posted.filter((p) => p.type === "startAction").at(-1);
+        const r = document.querySelector(".fo-more")?.getBoundingClientRect();
+        return { m, left: r?.left, bottom: r?.bottom };
+    });
+    check("Open Recent… asks the host for its menu at the row's bottom-left corner",
+        menuAsk.m?.action === "openRecentMenu" && Math.abs(menuAsk.m.x - menuAsk.left) < 1 && Math.abs(menuAsk.m.y - menuAsk.bottom) < 1,
+        JSON.stringify(menuAsk));
+    await page.locator(`${OVERVIEW} .fo-action`, { hasText: "New Note" }).click();
+    const newClosed = await closed(page);
+    const newAsked = await page.evaluate(() => window.__posted.filter((p) => p.type === "startAction").at(-1)?.action);
+    check("New Note puts the overview away and asks the host for a note", newClosed.closed && newAsked === "newNote",
+        JSON.stringify({ newClosed, newAsked }));
+
+    // ── The start view as a window's empty state ─────────────────────────
+    await page.goto(`${baseUrl}/index.html?empty=1`);
+    await page.waitForFunction((sel) => document.querySelectorAll(`${sel} .fo-file`).length > 0, OVERVIEW, { timeout: 15000 });
+    const empty = await page.evaluate((sel) => {
+        const s = document.querySelector(sel);
+        return {
+            title: s.querySelector(".fs-title").textContent,
+            // The two class names the Mac app's focus script reads
+            // (`WebHost.focusEditor`): the pinned surface, and its first button.
+            hooks: s.classList.contains("fs-surface--pinned") && s.querySelector(".fo-action")?.textContent === "New Note",
+            graph: !!s.querySelector(".lg-stage"),
+            close: !s.querySelector(".fs-actions__group--close") || s.querySelector(".fs-actions__group--close").hidden,
+            focused: document.activeElement?.textContent ?? null,
+            asked: window.__posted.map((m) => m.type).filter((t) => t === "requestFolderRecents" || t === "requestRecentFiles"),
+        };
+    }, OVERVIEW);
+    check("a window holding no file shows the start view with no folder in it, focus on New Note",
+        empty.title === "No File Open" && empty.hooks && !empty.graph && empty.close && empty.focused === "New Note"
+        && empty.asked.join("|") === "requestRecentFiles", JSON.stringify(empty));
+    await page.keyboard.press("Escape");
+    await page.mouse.click(5, 300);
+    await page.waitForTimeout(400);
+    const stillUp = await page.evaluate((sel) => !!document.querySelector(sel) && !document.querySelector(sel).classList.contains("lb-closing"), OVERVIEW);
+    check("it is pinned: neither Escape nor a click on the ground puts it away", stillUp, String(stillUp));
+    const band = await page.evaluate((sel) => {
+        const bar = document.querySelector(".editor-topbar").getBoundingClientRect();
+        const top = document.querySelector(sel).getBoundingClientRect().top;
+        const hit = document.elementFromPoint(bar.left + bar.width / 2, bar.top + bar.height / 2);
+        // A menu the bar drops below itself, inside the bar's own stacking
+        // context, as the gear's menu is: it must draw over the start view.
+        const menu = document.createElement("div");
+        menu.style.cssText = "position:absolute;top:100%;left:0;width:120px;height:60px";
+        document.querySelector(".editor-topbar").append(menu);
+        const r = menu.getBoundingClientRect();
+        const menuHit = document.elementFromPoint(r.left + 10, r.top + 30) === menu;
+        menu.remove();
+        return { top, barBottom: bar.bottom, barTakesTheClick: !!hit?.closest(".editor-topbar"), menuHit };
+    }, OVERVIEW);
+    check("it starts under the top bar, so the bar's controls stay the reader's",
+        band.top >= band.barBottom - 1 && band.barTakesTheClick, JSON.stringify(band));
+    check("a menu the top bar drops below itself draws over the start view", band.menuHit, JSON.stringify(band));
+    await page.locator(`${OVERVIEW} .fo-file`).first().click();
+    const pick = await page.evaluate(() => window.__posted.filter((m) => m.type === "openRecentFile").at(-1)?.path ?? null);
+    check("a recent file asks the host to open it by the path it was given", pick === "/Users/r/notes/recent-1.md", String(pick));
+
     check("no page errors", errors.length === 0, JSON.stringify(errors));
 }

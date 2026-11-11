@@ -7,12 +7,19 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import type { FolderEdge, FolderIndex, FolderNode } from "../../shared/folderIndex";
 import { commandAvailable, idleCommandIds, setCommandsIdle } from "../../shared/commandAvailability";
 import { folderHub } from "../components/graph/folderGraph";
-import { createFolderOverview, openFolderOverview, OVERVIEW_RECENTS } from "../components/graph/folderOverview";
+import {
+    createFolderOverview,
+    openFolderOverview,
+    OVERVIEW_RECENTS,
+    START_RECENTS,
+    type StartLauncher,
+} from "../components/graph/folderOverview";
 import { createLocalGraphView } from "../components/graph";
 import {
     FOLDER_OVERVIEW_COMMAND,
     receiveFolderIndex,
     receiveFolderRecents,
+    receiveRecentFiles,
     resetFolderIndexForTests,
     setFolderGraphEnabled,
     syncFolderOverviewAvailability,
@@ -318,5 +325,124 @@ describe("the folder overview command's availability", () => {
         syncFolderOverviewAvailability();
         expect(commandAvailable(FOLDER_OVERVIEW_COMMAND)).toBe(false);
         expect(idleCommandIds()).toContain(FOLDER_OVERVIEW_COMMAND);
+    });
+});
+
+/** Eight of the reader's recent files, more than the start view lists. */
+const FILES = Array.from({ length: 8 }, (_, i) => ({ path: `/u/notes/n${i}.md`, name: `n${i}.md`, detail: "~/notes" }));
+
+const launcherSpy = () => ({
+    newNote: vi.fn(),
+    open: vi.fn(),
+    openRecent: vi.fn<(path: string) => void>(),
+    openRecentMenu: vi.fn<(anchor: DOMRect) => void>(),
+}) satisfies StartLauncher;
+
+const press = (el: Element): void => { el.dispatchEvent(new MouseEvent("mousedown", { bubbles: true })); };
+
+describe("the start view", () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        document.body.replaceChildren();
+        resetFolderIndexForTests();
+        (window as I18n).__i18n = { translations: {}, isMac: true, folderGraph: true };
+    });
+    afterEach(() => {
+        document.querySelectorAll(".fs-surface").forEach((el) => el.remove());
+        delete (window as I18n).__i18n;
+        resetFolderIndexForTests();
+    });
+
+    it("with no folder it should draw the two buttons and the recent files, and no folder section", () => {
+        const launcher = launcherSpy();
+        const view = createFolderOverview({ openNote: () => {}, onEscape: () => {}, launcher, folder: false });
+        document.body.append(view.element);
+        view.render(null, null, FILES);
+        expect([...view.element.querySelectorAll(".fo-action")].map((b) => b.textContent)).toEqual(["New Note", "Open…"]);
+        expect(view.element.querySelector(".lg-stage")).toBeNull();
+        expect(view.element.querySelector(".fo-caption")).toBeNull();
+        expect(rows(view.element)).toEqual([]);
+        const files = [...view.element.querySelectorAll<HTMLElement>(".fo-file")].map((b) => b.dataset["file"]);
+        expect(files).toEqual(FILES.slice(0, START_RECENTS).map((f) => f.path));
+        expect(START_RECENTS).toBe(6);
+    });
+
+    it("Open Recent… should close the list, drawn even before the files arrive", () => {
+        const view = createFolderOverview({ openNote: () => {}, onEscape: () => {}, launcher: launcherSpy(), folder: false });
+        view.render(null, null, null);
+        const list = view.element.querySelector(".fo-files")!;
+        expect([...list.children].map((c) => c.textContent)).toEqual(["Open Recent…"]);
+        view.render(null, null, FILES.slice(0, 2));
+        expect(list.lastElementChild!.textContent).toBe("Open Recent…");
+        expect(list.children).toHaveLength(3);
+    });
+
+    it("each control should run the launcher gesture it names", () => {
+        const launcher = launcherSpy();
+        const view = createFolderOverview({ openNote: () => {}, onEscape: () => {}, launcher, folder: false });
+        document.body.append(view.element);
+        view.render(null, null, FILES);
+        const [newNote, open] = [...view.element.querySelectorAll(".fo-action")];
+        press(newNote!);
+        press(open!);
+        press(view.element.querySelector('.fo-file[data-file="/u/notes/n2.md"]')!);
+        press(view.element.querySelector(".fo-more")!);
+        expect(launcher.newNote).toHaveBeenCalledTimes(1);
+        expect(launcher.open).toHaveBeenCalledTimes(1);
+        expect(launcher.openRecent).toHaveBeenCalledWith("/u/notes/n2.md");
+        expect(launcher.openRecentMenu).toHaveBeenCalledTimes(1);
+    });
+
+    it("in a folder it should put the buttons first, the folder's own list next, and the reader's last", () => {
+        const view = createFolderOverview({ openNote: () => {}, onEscape: () => {}, launcher: launcherSpy() });
+        view.render({ index: VAULT, self: null }, ["a.md"], FILES);
+        const children = [...view.element.children];
+        const at = (selector: string): number => children.indexOf(view.element.querySelector(selector)!);
+        expect(at(".fo-actions")).toBe(0);
+        expect(at(".lg-stage")).toBeGreaterThan(0);
+        expect(at(".fo-row")).toBe(-1); // a row is inside its list, not a child
+        expect(at(".fo-recents:not(.fo-files)")).toBeGreaterThan(at(".lg-stage"));
+        expect(at(".fo-files")).toBe(children.length - 1);
+        const headings = [...view.element.querySelectorAll(".fo-heading")].map((h) => h.textContent);
+        expect(headings).toEqual(["In this folder", "Recent"]);
+    });
+
+    it("without a launcher the overview should be as it was: no buttons, no reader's list", () => {
+        const view = createFolderOverview({ openNote: () => {}, onEscape: () => {} });
+        view.render({ index: VAULT, self: null }, ["a.md"], FILES);
+        expect(view.element.querySelector(".fo-actions")).toBeNull();
+        expect(view.element.querySelector(".fo-files")).toBeNull();
+        expect(view.element.querySelector(".fo-heading")!.textContent).toBe("Recent files");
+    });
+
+    it("pinned, as a window's empty state, it should ask only for the reader's files and refuse Escape", () => {
+        const onDismiss = vi.fn();
+        openFolderOverview({ openNote: () => {}, onDismiss, launcher: launcherSpy(), empty: true });
+        const types = posted().map((m) => m.type);
+        expect(types).toContain("requestRecentFiles");
+        expect(types).not.toContain("requestFolderRecents");
+        const surface = document.querySelector<HTMLElement>(".fo-surface")!;
+        expect(surface.querySelector(".fs-title")!.textContent).toBe("No File Open");
+        expect(surface.querySelector<HTMLElement>(".fs-actions__group--close")!.hidden).toBe(true);
+        document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+        expect(onDismiss).not.toHaveBeenCalled();
+        expect(surface.isConnected && !surface.classList.contains("lb-closing")).toBe(true);
+        receiveRecentFiles(FILES.slice(0, 1));
+        expect(surface.querySelectorAll(".fo-file")).toHaveLength(1);
+        expect(document.activeElement!.textContent).toBe("New Note");
+    });
+
+    it("New Note over a folder should put the overview away before the host acts; Open should leave it up", () => {
+        const launcher = launcherSpy();
+        const onDismiss = vi.fn();
+        openFolderOverview({ openNote: () => {}, onDismiss, launcher });
+        const surface = document.querySelector<HTMLElement>(".fo-surface")!;
+        press(surface.querySelectorAll(".fo-action")[1]!);
+        expect(launcher.open).toHaveBeenCalledTimes(1);
+        expect(surface.classList.contains("lb-closing")).toBe(false);
+        press(surface.querySelectorAll(".fo-action")[0]!);
+        expect(launcher.newNote).toHaveBeenCalledTimes(1);
+        expect(onDismiss).toHaveBeenCalledTimes(1);
+        expect(surface.classList.contains("lb-closing") || !surface.isConnected).toBe(true);
     });
 });
