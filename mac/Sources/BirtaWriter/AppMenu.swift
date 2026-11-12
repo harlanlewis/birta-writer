@@ -510,7 +510,8 @@ enum AppMenu {
         // Shift+Cmd+V, the chord the extension contributes for the same
         // command. Option+Shift+Cmd+V is the system's Paste and Match Style,
         // and is kept beside it so a hand that knows that chord gets the same
-        // paste: a WKWebView answers it with a rich paste otherwise.
+        // paste. In a native text field the row pastes into the field
+        // (`AppDelegate.nativeTextTarget`).
         .init(title: "Paste as Plain Text", key: "v", modifiers: [.command, .shift],
               action: .command("pasteAsPlainText"), menu: .edit, group: clipboardGroup,
               also: (key: "v", modifiers: [.command, .shift, .option]),

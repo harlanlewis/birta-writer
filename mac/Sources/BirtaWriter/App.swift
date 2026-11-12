@@ -996,7 +996,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding, 
     /// this size.
     @objc func menuRunEditorCommand(_ sender: NSMenuItem) {
         guard let command = sender.representedObject as? AppMenu.Command else { return }
+        if let field = Self.nativeTextTarget(for: command.id, firstResponder: NSApp.keyWindow?.firstResponder) {
+            field.pasteAsPlainText(nil)
+            return
+        }
         front?.runEditorCommand(command.id, arg: command.arg)
+    }
+
+    /// The native text view a clipboard row belongs to instead of the page.
+    ///
+    /// The menu takes a key equivalent before the field being typed in can,
+    /// so Shift+Cmd+V in the native find bar, a rename field, Settings or the
+    /// palette's search would otherwise paste into the note and summon its
+    /// window. A field being edited has its field editor, an `NSTextView`, as
+    /// first responder, and `NSTextView` answers Paste as Plain Text itself;
+    /// the page's own first responder is the web view, never one of these.
+    /// Only for the menu: a palette pick has already closed the palette, and
+    /// goes to the page by its own path.
+    static func nativeTextTarget(for command: String, firstResponder: NSResponder?) -> NSTextView? {
+        guard command == HostMessage.pasteAsPlainTextCommand,
+              let text = firstResponder as? NSTextView, text.isEditable
+        else { return nil }
+        return text
     }
 
     /// Open the destination a Help row carries, in the browser.

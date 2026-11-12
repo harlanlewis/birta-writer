@@ -98,6 +98,22 @@ final class AppMenuTests: XCTestCase {
         XCTAssertTrue(twin.allowsKeyEquivalentWhenHidden)
     }
 
+    /// Shift+Cmd+V typed into a native field pastes into that field, not into
+    /// the note behind it; anywhere else (the web view) it goes to the page.
+    func testPasteAsPlainTextShouldStayInANativeFieldBeingEdited() {
+        let field = NSTextView()
+        XCTAssertTrue(AppDelegate.nativeTextTarget(for: "pasteAsPlainText", firstResponder: field) === field)
+        XCTAssertNil(AppDelegate.nativeTextTarget(for: "pasteAsPlainText", firstResponder: NSView()),
+                     "a responder that is not a text view is the page's, or nobody's")
+        XCTAssertNil(AppDelegate.nativeTextTarget(for: "pasteAsPlainText", firstResponder: nil))
+        let label = NSTextView()
+        label.isEditable = false
+        XCTAssertNil(AppDelegate.nativeTextTarget(for: "pasteAsPlainText", firstResponder: label),
+                     "a text view nobody can type in is not where a paste goes")
+        XCTAssertNil(AppDelegate.nativeTextTarget(for: "toggleBold", firstResponder: field),
+                     "every other command row still goes to the page")
+    }
+
     /// The table's two sidebar chords sit side by side, one per panel.
     func testTheSidebarsShouldTakeOptionCommandCommaAndPeriod() throws {
         let view = build(.view)
