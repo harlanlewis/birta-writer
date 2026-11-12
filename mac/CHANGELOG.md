@@ -12,6 +12,10 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ## [Unreleased]
 
+### Added
+
+- Edit > Paste as Plain Text (Shift+Cmd+V) in Birta Writer for Mac pastes the clipboard's text literally, so `# Title` stays the characters you copied instead of becoming a heading. It sits under Paste, answers Option+Shift+Cmd+V (the system's Paste and Match Style) too, and is in the command palette and the keyboard shortcuts list. Picking it from the palette used to do nothing.
+
 ### Changed
 
 - A Birta Writer for Mac window with no file in it, from New Window or from moving its note to the Trash, now shows the same view as Folder Overview, without the folder parts: New Note and Open… at the top, then your six most recent files and folders, then Open Recent… for the full menu. New Note starts the note in that window. The view stays up until you choose something.

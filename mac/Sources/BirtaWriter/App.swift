@@ -573,11 +573,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding, 
         editMenu.addItem(withTitle: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x")
         editMenu.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
         editMenu.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
+        // Paste as Plain Text, under the Paste it is a variant of
+        // (`AppMenu.clipboardGroup` says why it is drawn here).
+        AppMenu.add(.edit, to: editMenu, target: self) { $0 == AppMenu.clipboardGroup }
         editMenu.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
         editMenu.addItem(.separator())
         // The extension binds these as VS Code keybindings; here the menu is
         // the binding, and each runs the same editor command in the page.
-        AppMenu.add(.edit, to: editMenu, target: self)
+        AppMenu.add(.edit, to: editMenu, target: self) { $0 != AppMenu.clipboardGroup }
         let editItem = NSMenuItem(); editItem.submenu = editMenu; main.addItem(editItem)
 
         // File, Edit, View, Format, Window, Help. The rule is that the menus

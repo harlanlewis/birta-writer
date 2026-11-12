@@ -628,4 +628,34 @@ final class BridgeTests: XCTestCase {
                        "an entry without a path is dropped, not guessed at")
         XCTAssertEqual(WebviewMessage.parse(#"{"type":"pathBarMenu","segments":[]}"#), .other(type: "pathBarMenu"))
     }
+
+    // MARK: Paste as Plain Text
+
+    /// The host reads the clipboard and the text travels as the command's
+    /// `args`, in the shape the extension sends and the page's
+    /// `pasteAsPlainText` reads (`{ text }`).
+    func testPasteAsPlainTextShouldCarryTheClipboardTextAsArgs() throws {
+        let message = try XCTUnwrap(HostMessage.running("pasteAsPlainText", clipboard: { "# Not a heading" }))
+        XCTAssertEqual(message.jsonString(),
+                       ##"{"args":{"text":"# Not a heading"},"command":"pasteAsPlainText","type":"editorCommand"}"##)
+    }
+
+    /// Nothing to paste sends nothing, so the caller neither summons a window
+    /// nor posts a command the page would refuse.
+    func testAnEmptyOrNonTextClipboardShouldSendNoPaste() {
+        XCTAssertNil(HostMessage.running("pasteAsPlainText", clipboard: { nil }))
+        XCTAssertNil(HostMessage.running("pasteAsPlainText", clipboard: { "" }))
+    }
+
+    /// Every other command goes out as it always did, and the clipboard is
+    /// not read for it: reading the pasteboard on every menu row is a cost
+    /// and, under a sandbox, a privacy prompt nobody asked for.
+    func testAnyOtherCommandShouldNotReadTheClipboard() {
+        var asked = 0
+        let message = HostMessage.running("toggleStyleOption", arg: "passive",
+                                          clipboard: { asked += 1; return "x" })
+        XCTAssertEqual(message?.jsonString(),
+                       #"{"args":"passive","command":"toggleStyleOption","type":"editorCommand"}"#)
+        XCTAssertEqual(asked, 0)
+    }
 }
