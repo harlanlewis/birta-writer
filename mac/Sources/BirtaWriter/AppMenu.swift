@@ -493,11 +493,30 @@ enum AppMenu {
 
     // MARK: edit
 
+    /// The Edit menu's group that sits among the system's clipboard rows,
+    /// directly under Paste, rather than below them with the app's own.
+    ///
+    /// Paste as Plain Text is a paste, and every macOS app that has one puts
+    /// it beside Paste; three rules down, after Find, it would read as an
+    /// editor feature rather than as the variant of a gesture everyone knows.
+    /// The row is still the table's, so the cheatsheet, the palette and the
+    /// chord parity guard all see it; only where it is drawn is App.swift's.
+    static let clipboardGroup = 0
+
     /// Find is a submenu, which is where macOS has put it since the Find bar
     /// existed: one row per direction on the Edit menu itself would put six
     /// rows about searching above the two that edit.
     private static let editRows: [Row] = [
-        .init(title: "Find", action: .submenu, menu: .edit, group: 0),
+        // Shift+Cmd+V, the chord the extension contributes for the same
+        // command. Option+Shift+Cmd+V is the system's Paste and Match Style,
+        // and is kept beside it so a hand that knows that chord gets the same
+        // paste. In a native text field the row pastes into the field
+        // (`AppDelegate.nativeTextTarget`).
+        .init(title: "Paste as Plain Text", key: "v", modifiers: [.command, .shift],
+              action: .command("pasteAsPlainText"), menu: .edit, group: clipboardGroup,
+              also: (key: "v", modifiers: [.command, .shift, .option]),
+              aliases: ["Paste and Match Style", "Paste without Formatting"]),
+        .init(title: "Find", action: .submenu, menu: .edit, group: 1),
         .init(title: "Find…", key: "f", modifiers: [.command],
               action: .command("openFind"), menu: .edit, submenu: "Find", group: 0),
         .init(title: "Find and Replace…", key: "f", modifiers: [.command, .option],
@@ -515,18 +534,18 @@ enum AppMenu {
         .init(title: "Go to Line…", key: "g", modifiers: [.control],
               action: .command("gotoLine"), menu: .edit, submenu: "Find", group: 2),
         .init(title: "Edit Block as Markdown", key: "/", modifiers: [.command],
-              action: .command("editBlockSource"), menu: .edit, group: 1),
+              action: .command("editBlockSource"), menu: .edit, group: 2),
         .init(title: "Delete Block", key: "k", modifiers: [.command, .shift],
-              action: .command("deleteBlock"), menu: .edit, group: 1),
+              action: .command("deleteBlock"), menu: .edit, group: 2),
         .init(title: "Join Lines", key: "j", modifiers: [.control],
-              action: .command("joinLines"), menu: .edit, group: 1),
+              action: .command("joinLines"), menu: .edit, group: 2),
         // The metadata panel: focus the block a document already has, or start
         // one where there is none. Keyless because the extension contributes no
         // chord for it either, and a row here rather than nothing because this
         // window has no command palette: without it the panel is reachable only
         // by having metadata already, which is not a way in.
         .init(title: "Edit Frontmatter",
-              action: .command("editFrontmatter"), menu: .edit, group: 2),
+              action: .command("editFrontmatter"), menu: .edit, group: 3),
     ]
 
     // MARK: format
@@ -986,9 +1005,14 @@ enum AppMenu {
     /// which is `Menu.takesSystemRows` and is where the reason lives. Anywhere
     /// else a trailing separator draws a line under nothing. `AppMenuTests`
     /// holds the rule, in both directions.
+    ///
+    /// `groups` draws only the top-level rows in those groups, for a menu
+    /// whose rows the app lays out in more than one place. The Edit menu is
+    /// the one: its `clipboardGroup` goes among the system's clipboard rows.
     @MainActor
-    static func add(_ menu: Menu, to nsMenu: NSMenu, target: AnyObject) {
-        fill(nsMenu, with: rows.filter { $0.menu == menu && $0.submenu == nil },
+    static func add(_ menu: Menu, to nsMenu: NSMenu, target: AnyObject,
+                    groups: ((Int) -> Bool)? = nil) {
+        fill(nsMenu, with: rows.filter { $0.menu == menu && $0.submenu == nil && groups?($0.group) ?? true },
              menu: menu, target: target)
         if menu.takesSystemRows {
             let rule = NSMenuItem.separator()

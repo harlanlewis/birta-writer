@@ -67,6 +67,53 @@ final class AppMenuTests: XCTestCase {
         }
     }
 
+    /// Paste as Plain Text in the BUILT Edit menu: directly under Paste, on
+    /// the extension's chord, with the system's Paste and Match Style chord
+    /// kept beside it, and routed to the one command router.
+    ///
+    /// Read off `mainMenu()` rather than `build(.edit)`, because the placement
+    /// is the claim and App.swift is what places it: the table alone would
+    /// pass with the row three rules down, after Find.
+    func testPasteAsPlainTextShouldSitUnderPasteOnShiftCommandV() throws {
+        let edit = try XCTUnwrap(AppDelegate().mainMenu().menu.items.first { $0.submenu?.title == "Edit" }?.submenu)
+        XCTAssertEqual(Array(titles(of: edit).prefix(7)),
+                       ["Undo", "Redo", "-", "Cut", "Copy", "Paste", "Paste as Plain Text"])
+        XCTAssertEqual(titles(of: edit)[7], "Select All")
+        XCTAssertEqual(titles(of: edit).filter { $0 == "Paste as Plain Text" }.count, 1,
+                       "drawn once: the rest of the table must not draw the clipboard group again")
+        let row = try XCTUnwrap(edit.items.first {
+            $0.title == "Paste as Plain Text" && $0.identifier?.rawValue.hasSuffix("#also") != true
+        })
+        XCTAssertEqual(row.keyEquivalent, "v")
+        XCTAssertEqual(row.keyEquivalentModifierMask, [.command, .shift])
+        XCTAssertEqual(row.action, #selector(AppDelegate.menuRunEditorCommand(_:)))
+        XCTAssertEqual((row.representedObject as? AppMenu.Command)?.id, HostMessage.pasteAsPlainTextCommand)
+        let twin = try XCTUnwrap(edit.items.first {
+            $0.identifier == AppMenu.rows.first { $0.title == "Paste as Plain Text" }?.alsoItemIdentifier
+        })
+        XCTAssertEqual(twin.keyEquivalent, "v")
+        XCTAssertEqual(twin.keyEquivalentModifierMask, [.command, .shift, .option])
+        XCTAssertEqual(twin.action, row.action)
+        XCTAssertTrue(twin.isHidden)
+        XCTAssertTrue(twin.allowsKeyEquivalentWhenHidden)
+    }
+
+    /// Shift+Cmd+V typed into a native field pastes into that field, not into
+    /// the note behind it; anywhere else (the web view) it goes to the page.
+    func testPasteAsPlainTextShouldStayInANativeFieldBeingEdited() {
+        let field = NSTextView()
+        XCTAssertTrue(AppDelegate.nativeTextTarget(for: "pasteAsPlainText", firstResponder: field) === field)
+        XCTAssertNil(AppDelegate.nativeTextTarget(for: "pasteAsPlainText", firstResponder: NSView()),
+                     "a responder that is not a text view is the page's, or nobody's")
+        XCTAssertNil(AppDelegate.nativeTextTarget(for: "pasteAsPlainText", firstResponder: nil))
+        let label = NSTextView()
+        label.isEditable = false
+        XCTAssertNil(AppDelegate.nativeTextTarget(for: "pasteAsPlainText", firstResponder: label),
+                     "a text view nobody can type in is not where a paste goes")
+        XCTAssertNil(AppDelegate.nativeTextTarget(for: "toggleBold", firstResponder: field),
+                     "every other command row still goes to the page")
+    }
+
     /// The table's two sidebar chords sit side by side, one per panel.
     func testTheSidebarsShouldTakeOptionCommandCommaAndPeriod() throws {
         let view = build(.view)

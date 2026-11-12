@@ -2222,4 +2222,57 @@ export async function run({ page, check, baseUrl }) {
     check("outline: the first heading brings the outline button back", await tocButtonShown());
     check("outline: …and tells the host to measure the bar's trailing controls again",
         grown.measures > measuresBefore, JSON.stringify({ measuresBefore, ...grown }));
+
+    // ── Paste as Plain Text, as the app delivers it ────────────────────
+    // The app reads the clipboard itself and sends the text as the command's
+    // `args` (HostMessage.pasteAsPlainText), because the page may not read the
+    // clipboard. Driven with that exact message, so a change to either half
+    // of the shape fails here: the text has to land literally, Markdown
+    // syntax and all, and the bare command the palette used to send must
+    // change nothing.
+    await mount("index.html");
+    const shape = () => page.evaluate(() => {
+        const pm = document.querySelector(".milkdown .ProseMirror");
+        return {
+            headings: pm.querySelectorAll("h1, h2, h3, h4, h5, h6").length,
+            items: pm.querySelectorAll("li").length,
+            paragraphs: [...pm.querySelectorAll("p")].map((p) => p.textContent),
+        };
+    });
+    // The caret goes on an empty paragraph made at the end, placed by a
+    // range for the reason the outline section gives, so the first pasted
+    // line cannot merge into a heading and pass as one by its node count.
+    await page.locator(".milkdown .ProseMirror p").last().click();
+    await page.evaluate(() => {
+        const ps = document.querySelectorAll(".milkdown .ProseMirror p");
+        const last = ps[ps.length - 1];
+        const range = document.createRange();
+        range.selectNodeContents(last);
+        range.collapse(false);
+        getSelection().removeAllRanges();
+        getSelection().addRange(range);
+    });
+    // ProseMirror reads a DOM selection on `selectionchange`, which fires
+    // after this task: an Enter pressed at once acts on the old selection.
+    await page.waitForTimeout(100);
+    await page.keyboard.press("Enter");
+    const beforePaste = await shape();
+    await page.evaluate(() => window.postMessage({ type: "editorCommand", command: "pasteAsPlainText" }, "*"));
+    await page.waitForTimeout(300);
+    const afterBare = await shape();
+    check("paste plain: the command with no text changes nothing",
+        JSON.stringify(afterBare) === JSON.stringify(beforePaste), JSON.stringify({ beforePaste, afterBare }));
+    await page.evaluate(() => window.postMessage({
+        type: "editorCommand", command: "pasteAsPlainText",
+        args: { text: "# Not a heading\n- not a list" },
+    }, "*"));
+    await page.waitForTimeout(300);
+    const pasted = await shape();
+    check("paste plain: the text lands as written, a `#` line included, where the caret was",
+        pasted.paragraphs.includes("# Not a heading"), JSON.stringify(pasted));
+    check("paste plain: and the `- ` line is text rather than a list item",
+        pasted.paragraphs.includes("- not a list"), JSON.stringify(pasted));
+    check("paste plain: no heading or list node was made",
+        pasted.headings === beforePaste.headings && pasted.items === beforePaste.items,
+        JSON.stringify({ beforePaste, pasted }));
 }

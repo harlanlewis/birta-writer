@@ -573,11 +573,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding, 
         editMenu.addItem(withTitle: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x")
         editMenu.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
         editMenu.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
+        // Paste as Plain Text, under the Paste it is a variant of
+        // (`AppMenu.clipboardGroup` says why it is drawn here).
+        AppMenu.add(.edit, to: editMenu, target: self) { $0 == AppMenu.clipboardGroup }
         editMenu.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
         editMenu.addItem(.separator())
         // The extension binds these as VS Code keybindings; here the menu is
         // the binding, and each runs the same editor command in the page.
-        AppMenu.add(.edit, to: editMenu, target: self)
+        AppMenu.add(.edit, to: editMenu, target: self) { $0 != AppMenu.clipboardGroup }
         let editItem = NSMenuItem(); editItem.submenu = editMenu; main.addItem(editItem)
 
         // File, Edit, View, Format, Window, Help. The rule is that the menus
@@ -993,7 +996,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate, RecentsMenuProviding, 
     /// this size.
     @objc func menuRunEditorCommand(_ sender: NSMenuItem) {
         guard let command = sender.representedObject as? AppMenu.Command else { return }
+        if let field = Self.nativeTextTarget(for: command.id, firstResponder: NSApp.keyWindow?.firstResponder) {
+            field.pasteAsPlainText(nil)
+            return
+        }
         front?.runEditorCommand(command.id, arg: command.arg)
+    }
+
+    /// The native text view a clipboard row belongs to instead of the page.
+    ///
+    /// The menu takes a key equivalent before the field being typed in can,
+    /// so Shift+Cmd+V in the native find bar, a rename field, Settings or the
+    /// palette's search would otherwise paste into the note and summon its
+    /// window. A field being edited has its field editor, an `NSTextView`, as
+    /// first responder, and `NSTextView` answers Paste as Plain Text itself;
+    /// the page's own first responder is the web view, never one of these.
+    /// Only for the menu: a palette pick has already closed the palette, and
+    /// goes to the page by its own path.
+    static func nativeTextTarget(for command: String, firstResponder: NSResponder?) -> NSTextView? {
+        guard command == HostMessage.pasteAsPlainTextCommand,
+              let text = firstResponder as? NSTextView, text.isEditable
+        else { return nil }
+        return text
     }
 
     /// Open the destination a Help row carries, in the browser.

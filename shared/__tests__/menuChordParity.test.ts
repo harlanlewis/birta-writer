@@ -142,11 +142,6 @@ const NOT_BOUND_IN_MAC: Record<string, string> = {
         "⌘. is the platform's Cancel. A main-menu key equivalent for it would " +
         "sit in front of every sheet this app puts up, and the block menu has " +
         "the gutter and the slash menu as its other ways in.",
-    pasteAsPlainText:
-        "The command takes the clipboard text as an ARGUMENT, supplied by the " +
-        "host (the webview never reads the clipboard). The Mac app's menu rows carry a " +
-        "command id and nothing else, so the row would be a no-op; in WebKit " +
-        "the page's own Shift+paste path already covers the gesture.",
 };
 
 describe("the comparable form both notations reduce to", () => {

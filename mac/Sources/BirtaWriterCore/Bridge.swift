@@ -495,6 +495,14 @@ public enum HostMessage: Equatable {
     /// there is none. `toggleStyleOption` is why: fourteen Style Options rows
     /// run it, each naming its own category.
     case editorCommand(String, arg: String? = nil)
+    /// Paste as Plain Text, carrying the text it pastes.
+    ///
+    /// The one editor command whose payload the page cannot fetch for itself:
+    /// a page may not read the system clipboard, so the host reads it and the
+    /// text travels as the command's `args`, which is the shape the extension
+    /// already sends (`src/extension.ts`). A separate case rather than a
+    /// widened `arg`, because every other command's argument is one string.
+    case pasteAsPlainText(text: String)
     /// The file explorer's half of the protocol, host to page (MAR-457).
     ///
     /// `projectRoot` is sent after `init` on every load: the folder this
@@ -712,7 +720,29 @@ public enum HostMessage: Equatable {
             // to a command that is not expecting one.
             if let arg { row["args"] = arg }
             return row
+        case let .pasteAsPlainText(text):
+            return ["type": "editorCommand", "command": HostMessage.pasteAsPlainTextCommand,
+                    "args": ["text": text]]
         }
+    }
+
+    /// The id `shared/editorCommands.ts` gives Paste as Plain Text.
+    public static let pasteAsPlainTextCommand = "pasteAsPlainText"
+
+    /// What running editor command `command` sends to the page, or nil when
+    /// there is nothing to send.
+    ///
+    /// Every route into a command (a menu row, its key equivalent, a palette
+    /// pick) comes through here, so Paste as Plain Text cannot be reachable
+    /// from one of them and arrive with no text from another. `clipboard` is
+    /// asked only for that command, and an empty clipboard sends nothing: the
+    /// page would refuse it anyway, and a summon for a paste that cannot
+    /// happen is a window brought forward for no reason.
+    public static func running(_ command: String, arg: String? = nil,
+                               clipboard: () -> String?) -> HostMessage? {
+        guard command == pasteAsPlainTextCommand else { return .editorCommand(command, arg: arg) }
+        guard let text = clipboard(), !text.isEmpty else { return nil }
+        return .pasteAsPlainText(text: text)
     }
 
     public func jsonString() -> String {

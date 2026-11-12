@@ -2254,7 +2254,13 @@ final class Coordinator {
                             // `#selector(NSText.paste(_:))` and friends name
                             // the standard editing actions; WKWebView answers
                             // them without declaring them itself.
-                            let selector: Selector? = switch heldKey.lowercased() {
+                            //
+                            // Only for the bare Command chords those selectors
+                            // are: ⇧⌘V is Paste as Plain Text, an app row, and
+                            // mapping it by its letter would deliver a rich
+                            // paste in its name.
+                            let bare = heldFlags.isDisjoint(with: [.shift, .option, .control])
+                            let selector: Selector? = switch bare ? heldKey.lowercased() : "" {
                             case "v": #selector(NSText.paste(_:))
                             case "c": #selector(NSText.copy(_:))
                             case "x": #selector(NSText.cut(_:))
@@ -5740,9 +5746,11 @@ final class Coordinator {
     /// Settings or About window, whose responder chain reaches this menu and
     /// not the panel's editor.
     func runEditorCommand(_ command: String, arg: String? = nil) {
-        guard state == .warm else { return }
+        guard state == .warm,
+              let message = HostMessage.running(command, arg: arg, clipboard: Self.clipboardText)
+        else { return }
         show()
-        host.send(.editorCommand(command, arg: arg))
+        host.send(message)
     }
 
     /// The same command, in a page that is already mounted, with the windows
@@ -5753,8 +5761,16 @@ final class Coordinator {
     /// one caller (`WindowSet.runEditorCommandEverywhere`), and there the
     /// summon above is what takes the window holding the button off screen.
     func runEditorCommandInPlace(_ command: String, arg: String? = nil) {
-        guard state == .warm else { return }
-        host.send(.editorCommand(command, arg: arg))
+        guard state == .warm,
+              let message = HostMessage.running(command, arg: arg, clipboard: Self.clipboardText)
+        else { return }
+        host.send(message)
+    }
+
+    /// The general pasteboard's plain-text flavour: what Paste as Plain Text
+    /// pastes, read by the host because the page may not read it.
+    private static func clipboardText() -> String? {
+        NSPasteboard.general.string(forType: .string)
     }
 
     static func suggestedFileName(for content: String) -> String {
