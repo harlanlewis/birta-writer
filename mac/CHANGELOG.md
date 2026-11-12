@@ -12,6 +12,10 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ## [Unreleased]
 
+---
+
+## [2026.1112.0] - 2026, November 12
+
 ### Added
 
 - Edit > Paste as Plain Text (Shift+Cmd+V) in Birta Writer for Mac pastes the clipboard's text literally, so `# Title` stays the characters you copied instead of becoming a heading. It sits under Paste, answers Option+Shift+Cmd+V (the system's Paste and Match Style) too, and is in the command palette and the keyboard shortcuts list. Picking it from the palette used to do nothing.

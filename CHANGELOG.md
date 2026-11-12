@@ -6,6 +6,12 @@
 
 ---
 
+## [2026.1112.0] - 2026, November 12
+
+_No user-visible changes; internal work only._
+
+---
+
 ## [2026.1110.0] - 2026, November 10
 
 _No user-visible changes; internal work only._
