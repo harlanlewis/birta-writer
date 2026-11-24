@@ -286,7 +286,7 @@ export function buildWebviewHtml(
     // It is here because the Mac app's policy had it and this one did not, so
     // the same panel drew a thumbnail on one surface and an empty box on the
     // other. The invariant that settles which way to fix that is AGENTS.md's:
-    // the app ships zero behaviour the extension lacks. Nothing anywhere
+    // the editor never differs by surface. Nothing anywhere
     // argued the extension should be without it; the grant was simply written
     // once, on the surface whose author happened to need it.
     const embedImgHosts = ` ${EMBED_CSP_IMG_HOSTS.join(" ")}`;

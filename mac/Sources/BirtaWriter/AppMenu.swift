@@ -25,8 +25,8 @@ import BirtaWriterCore
 /// ## Why the chords are the extension's
 ///
 /// A row that runs an editor command binds the chord the extension contributes
-/// for that same command in `package.json`. The app ships zero behavior Birta
-/// lacks, and the keyboard is behavior: a gesture that means "heading 1" in one
+/// for that same command in `package.json`. The editor never differs by
+/// surface, and the keyboard is behavior: a gesture that means "heading 1" in one
 /// surface and nothing (or something else) in the other is the same defect as a
 /// button that does two things. The extension is the source, because there the
 /// binding is a contribution a user can rebind and here the menu IS the

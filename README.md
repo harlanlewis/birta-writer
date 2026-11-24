@@ -1,4 +1,4 @@
-Birta Writer replaces VS Code's split-pane Markdown preview with a modern visual document editor where tables, diagrams, math autocompletions, and more are beautifully rendered. Broad support for content created by other apps, including Obsidian wikilinks, frontmatter, and rich interactive embeds for Figma, Loom, and more.
+Birta Writer is a modern visual Markdown editor for Mac and VS Code, where tables, diagrams, math autocompletions, and more are beautifully rendered. On the Mac it is a native app that opens your folders and files, from the Finder or the terminal, with a scratchpad a hotkey away. In VS Code it replaces the split-pane Markdown preview. Both run the same editor. Broad support for content created by other apps, including Obsidian wikilinks, frontmatter, and rich interactive embeds for Figma, Loom, and more.
 
 ![Birta Writer interface.](./images/hero.png)
 
@@ -11,7 +11,7 @@ Birta Writer strives to be your favorite place to write.
 
 ![Slash command menu](./images/slash-menu.png)
 
-It fully integrates with everything you'd expect of a VS Code extension, from a vast theme library to your own AI assistant in the sidebar. Pairs well with the [Claude Code extension](https://marketplace.visualstudio.com/items?itemName=anthropic.claude-code), so you can use your Claude subscription instead of API keys.
+In VS Code, it fully integrates with everything you'd expect of an extension, from a vast theme library to your own AI assistant in the sidebar. Pairs well with the [Claude Code extension](https://marketplace.visualstudio.com/items?itemName=anthropic.claude-code), so you can use your Claude subscription instead of API keys.
 
 ![Mermaid and PlantUML rendering](./images/diagrams.png)
 
@@ -29,9 +29,9 @@ While Birta Writer's core experience is calm and minimal by default, many powerf
 
 ![Math autocomplete](./images/math.png)
 
-Everything is deeply customizable through VS Code settings.
+Everything is deeply customizable, through VS Code settings or the Mac app's own Settings window.
 
-Birta Writer in VS Code is a drop-in replacement for any PKM vault (Personal Knowledge Management). It traverses local file links and supports YAML frontmatter metadata.
+Birta Writer is a drop-in replacement for any PKM vault (Personal Knowledge Management). In the Mac app, open the vault's folder as a window; in VS Code, turn on `birta.folderGraph` for backlinks and the graph. It traverses local file links and supports YAML frontmatter metadata.
 
 ![Offline proofreading and editor note highlights](./images/proofreading.png)
 
@@ -45,7 +45,9 @@ Birta Writer in VS Code is a drop-in replacement for any PKM vault (Personal Kno
 
 ## Getting started
 
-Install the extension from the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=BirtaLabs.birta-writer) or from [Open VSX](https://open-vsx.org/extension/BirtaLabs/birta-writer), and open any `.md` or `.markdown` file. The first time, you may need to switch from VS Code's editor to Birta Writer manually. After that, Markdown files open automatically. (You can change this behavior in VS Code Settings).
+Download Birta Writer for Mac from [birtalabs.com](https://birtalabs.com/download) (Apple silicon, macOS 14 or later), and open a Markdown file or a folder.
+
+For VS Code, install the extension from the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=BirtaLabs.birta-writer) or from [Open VSX](https://open-vsx.org/extension/BirtaLabs/birta-writer), and open any `.md` or `.markdown` file. The first time, you may need to switch from VS Code's editor to Birta Writer manually. After that, Markdown files open automatically. (You can change this behavior in VS Code Settings).
 
 ### Basic controls
 

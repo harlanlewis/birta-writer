@@ -1,6 +1,6 @@
 # Birta Writer
 
-Birta Writer replaces VS Code's split-pane Markdown preview with a modern visual document editor where tables, diagrams, math autocompletions, and more are beautifully rendered. Broad support for content created by other apps, including Obsidian wikilinks, frontmatter, and rich interactive embeds for Figma, Loom, and more.
+Birta Writer is a modern visual Markdown editor for Mac and VS Code, where tables, diagrams, math autocompletions, and more are beautifully rendered. In VS Code it replaces the split-pane Markdown preview; on the Mac it is a native app for your files and folders. Broad support for content created by other apps, including Obsidian wikilinks, frontmatter, and rich interactive embeds for Figma, Loom, and more.
 
 ## Why I use it
 
@@ -12,7 +12,9 @@ Birta Writer replaces VS Code's split-pane Markdown preview with a modern visual
 
 - Safely opens and edits any Markdown-like content. It does not lose your content, reformat what you did not touch, or change your file in ways you did not ask for, whether the syntax is one it renders or one it has never seen. Document fidelity is a first-class concern.
 
-- It sits within [VS Code](https://code.visualstudio.com) and its _vast_ (but optional!) catalog of themes and extensions. You're a keystroke away from editing files in the raw editor, or comparing changes in a diff view. Birta Writer is simple by design, but every aspect is customizable through VS Code's settings scopes at app, user, or project level.
+- On the Mac, it opens any folder as a window with a file explorer, tabs and a command palette, opens files from the Finder or the terminal (`bwr`, which also works as `$EDITOR`), and keeps a scratchpad a hotkey away.
+
+- In VS Code, it sits within [VS Code](https://code.visualstudio.com) and its _vast_ (but optional!) catalog of themes and extensions. You're a keystroke away from editing files in the raw editor, or comparing changes in a diff view. Birta Writer is simple by design, but every aspect is customizable through VS Code's settings scopes at app, user, or project level.
 
 - It helps me write better:
     - Offline proofreading of spelling, grammar, prose, and common "AI tells" in sentence construction, sentence rhythm, punctuation, and vocabulary; a lens on your own habits, never a verdict on who wrote the text, with a protect-list for the phrases that are yours.
