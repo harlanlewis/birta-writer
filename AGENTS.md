@@ -389,9 +389,9 @@ Keeping the backlog honest matters as much as filing it. Close the loop when wor
 
 ### Sequencing
 
-The `phase-*` labels are the roadmap spine, in order: `phase-0-fidelity` (round-trip trust, existential, comes first), `phase-1-performance` (speed the user can feel, reusing the slot vacated by the retired `phase-1-vscode-parity`, which shipped in 0.2.3), `phase-5-surfaces`, `phase-2-syntax`, `phase-3-interaction`, `phase-4-differentiators`. The numbers are names, not ranks: `phase-5-surfaces` sits third. Within a phase, order by `priority`, and pick the first High or Urgent down the spine.
+The `phase-*` labels are the roadmap spine, in order: `phase-0-fidelity` (round-trip trust, existential, comes first), `phase-1-performance` (speed the user can feel, reusing the slot vacated by the retired `phase-1-vscode-parity`, which shipped in 0.2.3), `phase-2-syntax`, `phase-3-interaction`, `phase-4-differentiators`, `phase-5-surfaces`. Within a phase, order by `priority`, and pick the first High or Urgent down the spine.
 
-`phase-5-surfaces` ranks third, after fidelity and performance (owner decision, 2026-11-23; it ranked last from 2026-11-01). Birta Writer for Mac leads the product and the extension is a full peer, so Mac work outranks new syntax, interaction and differentiator work, and never outranks round-trip trust or speed the user can feel, which serve both surfaces.
+`phase-5-surfaces` is the last phase of the spine and ranks like the others (owner decision, 2026-11-01). Birta Writer for Mac is committed scope rather than exploration, so its improvements are queued work, picked by the same first-High-or-Urgent-down-the-spine rule as every other phase.
 
 `#Bug` ranks by `priority` wherever it sits (owner decision, 2026-09-11). A shipped surface can be broken, and the `#Bug` label is what carries that, so an item that is really a defect gets the label rather than an argument.
 

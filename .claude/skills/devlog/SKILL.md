@@ -149,7 +149,7 @@ The cheap version of all of this: before saving, reread the description and ask 
 - `phase-2-syntax`: markdown syntax coverage
 - `phase-3-interaction`: interaction patterns that make the editor preferred
 - `phase-4-differentiators`: ambitious power-user differentiators
-- `phase-5-surfaces`: Birta Writer for Mac and any other surface; ranks third, after `phase-1-performance` (AGENTS.md, Sequencing)
+- `phase-5-surfaces`: Birta Writer for Mac and any other surface, last on the spine (AGENTS.md, Sequencing)
 
 Use existing labels only; do not create new ones without asking.
 
@@ -198,7 +198,7 @@ Triggered by "audit the backlog", "what's next", or a completeness review. Goal:
 1. `list_issues` (team: Birta Writer) across `backlog`, `unstarted`, and `started` states.
 2. Cross-check each against the CHANGELOG ("Unreleased" = shipped-but-untagged) and `git log`. Remember the two are complementary: the CHANGELOG lists shipped work (including untracked features), Linear lists planned work, so "not in Linear" never means "not shipped."
 3. For anything that looks shipped, verify in code (above) before acting, then close or re-scope.
-4. Report a prioritized "do next" using the `phase-*` spine (`phase-0-fidelity` first, because it's existential; then `1-performance`, `5-surfaces`, `2-syntax`, `3-interaction`, `4-differentiators`, per AGENTS.md's Sequencing), ordered by `priority` within a phase, and honoring dependency/`blockedBy` links.
+4. Report a prioritized "do next" using the `phase-*` spine (`phase-0-fidelity` first, because it's existential; then `1-performance`, `2-syntax`, `3-interaction`, `4-differentiators`, `5-surfaces`, per AGENTS.md's Sequencing), ordered by `priority` within a phase, and honoring dependency/`blockedBy` links.
 5. Summarize the net effect (X open → Y open, what closed, what re-scoped).
 
 ---
