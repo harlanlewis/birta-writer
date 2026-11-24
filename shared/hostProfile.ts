@@ -31,7 +31,7 @@
  * and never read the declaration, so the absent-means-VS-Code rule below has
  * exactly one home and no call site re-derives it.
  *
- * The contract: the Mac app ships zero behavior Birta lacks. Every surface runs the
+ * The contract: the editor never differs by surface. Every surface runs the
  * same editor from the same bundle, and what differs between them is only the
  * chrome that names something the HOST provides. A capability is therefore
  * always a host-side thing (a text editor to switch to, a settings UI, a
