@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Proofreading runs on a newer engine, and a few findings change underline. A lowercase `api`, `faq` or `html` is now marked as needing capitals rather than as a misspelling, and `frontmatter` is now a spelling finding, so adding it to your words silences it. A word already in `birta.spellCheck.userWords` stays quiet under either underline.
+
 ### Fixed
 
 - Editing a line that holds a template directive no longer breaks the directive in the saved file. Changing other text on the line used to write backslashes into it, so `{{ page.last_modified_at }}` was saved as `{{ page.last\_modified\_at }}` and a Hugo or Jekyll build no longer understood it. A directive now keeps its exact spelling as long as you leave its own text alone. If you edit inside the directive itself, it is still saved with those backslashes.

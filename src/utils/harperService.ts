@@ -60,6 +60,16 @@ function userWords(): Set<string> {
 /** Kinds where a flagged tech-like token (path, camelCase…) is noise, not prose. */
 const TOKEN_KINDS = new Set(["Spelling", "Typo", "Capitalization", "BoundaryError", "Word Choice"]);
 
+/**
+ * Kinds a `birta.userWords` entry silences, when the finding spans exactly
+ * that word. A word somebody added is one they spell that way on purpose, and
+ * harper files a lowercase word it knows in capitals (`api`, `html`) under
+ * Capitalization rather than Spelling, so a dictionary that answered Spelling
+ * alone would bring those words back. Matched case-insensitively, as the
+ * dictionary is stored.
+ */
+const DICTIONARY_KINDS = new Set(["Spelling", "Capitalization"]);
+
 export async function lintBlocks(blocks: LintBlock[]): Promise<LintBlockResult[]> {
     const linter = await getLinter();
     const dictionary = userWords();
@@ -79,7 +89,7 @@ export async function lintBlocks(blocks: LintBlock[]): Promise<LintBlockResult[]
             // with the placeholder instead of spaces. Drop them unconditionally.
             if (spanText.includes(INLINE_PLACEHOLDER)) { continue; }
             if (TOKEN_KINDS.has(kind) && isTechSpan(block.text, span.start, span.end)) { continue; }
-            if (kind === "Spelling" && dictionary.has(spanText.toLowerCase())) { continue; }
+            if (DICTIONARY_KINDS.has(kind) && dictionary.has(spanText.toLowerCase())) { continue; }
             lints.push({
                 start: span.start,
                 end: span.end,

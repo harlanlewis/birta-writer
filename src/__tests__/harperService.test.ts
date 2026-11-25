@@ -7,6 +7,7 @@
  * exercise the filtering in lintBlocks.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import * as vscode from "vscode";
 import { INLINE_PLACEHOLDER } from "../../shared/proofreadFilter";
 
 type RawLint = {
@@ -81,5 +82,50 @@ describe("lintBlocks filtering", () => {
 
         expect(result.lints).toHaveLength(1);
         expect(result.lints[0].kind).toBe("Spelling");
+    });
+});
+
+describe("lintBlocks user dictionary", () => {
+    beforeEach(() => {
+        nextLints = [];
+        vi.clearAllMocks();
+        vi.mocked(vscode.workspace.getConfiguration).mockReturnValue({
+            get: vi.fn((key: string, defaultValue?: unknown) => (key === "spellCheck.userWords" ? ["API", "frontmatter"] : defaultValue)),
+            inspect: vi.fn(() => undefined),
+            update: vi.fn(async () => undefined),
+        } as unknown as ReturnType<typeof vscode.workspace.getConfiguration>);
+    });
+
+    it("a dictionary word flagged as Capitalization should be dropped", async () => {
+        // harper 3 files a lowercase "api" under Capitalization, not Spelling.
+        nextLints = [rawLint(9, 12, "Capitalization", "This word should be capitalized.")];
+
+        const [result] = await lintBlocks([{ key: 0, text: "Call the api now." }]);
+
+        expect(result.lints).toHaveLength(0);
+    });
+
+    it("a dictionary word flagged as Spelling should be dropped", async () => {
+        nextLints = [rawLint(14, 25, "Spelling", "Did you mean “front matter”?")];
+
+        const [result] = await lintBlocks([{ key: 0, text: "Put it in the frontmatter." }]);
+
+        expect(result.lints).toHaveLength(0);
+    });
+
+    it("a Capitalization finding on a word outside the dictionary should survive", async () => {
+        nextLints = [rawLint(9, 13, "Capitalization", "This word should be capitalized.")];
+
+        const [result] = await lintBlocks([{ key: 0, text: "Edit the html now." }]);
+
+        expect(result.lints).toHaveLength(1);
+    });
+
+    it("a grammar finding on a dictionary word should survive", async () => {
+        nextLints = [rawLint(9, 12, "Grammar", "Something else is wrong here.")];
+
+        const [result] = await lintBlocks([{ key: 0, text: "Call the api now." }]);
+
+        expect(result.lints).toHaveLength(1);
     });
 });
