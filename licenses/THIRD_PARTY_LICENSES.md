@@ -1302,7 +1302,7 @@ SOFTWARE.
 
 </details>
 
-### @milkdown/core@7.22.1
+### @milkdown/core@7.23.0
 
 - License: MIT
 - Source: https://github.com/Milkdown/milkdown
@@ -1336,7 +1336,7 @@ SOFTWARE.
 
 </details>
 
-### @milkdown/ctx@7.22.1
+### @milkdown/ctx@7.23.0
 
 - License: MIT
 - Source: https://github.com/Milkdown/milkdown
@@ -1370,7 +1370,7 @@ SOFTWARE.
 
 </details>
 
-### @milkdown/exception@7.22.1
+### @milkdown/exception@7.23.0
 
 - License: MIT
 - Source: https://github.com/Milkdown/milkdown
@@ -1404,7 +1404,7 @@ SOFTWARE.
 
 </details>
 
-### @milkdown/plugin-diff@7.22.1
+### @milkdown/plugin-diff@7.23.0
 
 - License: MIT
 - Source: https://github.com/Milkdown/milkdown
@@ -1438,7 +1438,7 @@ SOFTWARE.
 
 </details>
 
-### @milkdown/plugin-prism@7.22.1
+### @milkdown/plugin-prism@7.23.0
 
 - License: MIT
 - Source: https://github.com/Milkdown/milkdown
@@ -1472,7 +1472,7 @@ SOFTWARE.
 
 </details>
 
-### @milkdown/preset-commonmark@7.22.1
+### @milkdown/preset-commonmark@7.23.0
 
 - License: MIT
 - Source: https://github.com/Milkdown/milkdown
@@ -1506,7 +1506,7 @@ SOFTWARE.
 
 </details>
 
-### @milkdown/preset-gfm@7.22.1
+### @milkdown/preset-gfm@7.23.0
 
 - License: MIT
 - Source: https://github.com/Milkdown/milkdown
@@ -1540,7 +1540,7 @@ SOFTWARE.
 
 </details>
 
-### @milkdown/prose@7.22.1
+### @milkdown/prose@7.23.0
 
 - License: MIT
 - Source: https://github.com/Milkdown/milkdown
@@ -1574,7 +1574,7 @@ SOFTWARE.
 
 </details>
 
-### @milkdown/transformer@7.22.1
+### @milkdown/transformer@7.23.0
 
 - License: MIT
 - Source: https://github.com/Milkdown/milkdown
@@ -1608,7 +1608,7 @@ SOFTWARE.
 
 </details>
 
-### @milkdown/utils@7.22.1
+### @milkdown/utils@7.23.0
 
 - License: MIT
 - Source: https://github.com/Milkdown/milkdown

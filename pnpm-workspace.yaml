@@ -17,7 +17,7 @@ overrides:
     "minimatch@>=10 <11.0.1": ^11.0.1
 
 patchedDependencies:
-    "@milkdown/transformer@7.22.1": patches/@milkdown__transformer@7.22.1.patch
+    "@milkdown/transformer@7.23.0": patches/@milkdown__transformer@7.23.0.patch
 
 # Every dependency that ships an install script is named, because an
 # undeclared one fails the install. Both are denied, which is how every

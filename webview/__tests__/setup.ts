@@ -4,13 +4,13 @@
  */
 import { vi, afterAll } from "vitest";
 
-// ── Milkdown's ctx Timer leaks a 3s timeout per editor (MAR-298) ────────────
+// ── Milkdown's ctx Timer leaks a 3s timeout per unsettled timing (MAR-298) ──
 //
 // `Editor.create()` starts a `Timer` per plugin timing, and each one arms a
-// `setTimeout(…, 3000)` that NOTHING ever clears — not resolving the timer, not
-// `editor.destroy()`:
-//
-//     #waitTimeout = (ifTimeout) => { setTimeout(() => ifTimeout(), 3000) }
+// `setTimeout(…, 3000)`. A timer that settles clears it; one that never
+// settles does not, and `editor.destroy()` does not either. That is every
+// timing after the throw when `Editor.create()` fails part way, as a fatal
+// MDX parse does (timerLeakGuard.test.ts holds both halves).
 //
 // When it fires it calls the BARE GLOBAL `removeEventListener`. If this file's
 // jsdom environment has been torn down by then, that identifier no longer
@@ -39,7 +39,7 @@ import { vi, afterAll } from "vitest";
 // `clearTimeout` is wrapped too, so a cancelled timer leaves the set. Without
 // that the set only ever grew — retaining every cancelled timer's closure for
 // the file's lifetime, and, worse, making `timerLeakGuard.test.ts` unable to
-// notice if Milkdown ever started clearing its own timeouts.
+// notice if Milkdown started clearing an unsettled timer's timeout too.
 //
 // `vi.useFakeTimers()` swaps these wrappers out for its own and
 // `useRealTimers()` puts them back, so the two compose; a fake-timer test
