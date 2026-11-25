@@ -127,6 +127,29 @@ export async function run({ page, check, baseUrl }) {
         `dots=${geo.dots.length}`);
     check("focus lands on the first recent file", geo.active === "notes/standup.md", String(geo.active));
 
+    // ── Subjects: a row draws its subject, and pressing it again goes back ──
+    const subjects = await page.evaluate((sel) => [...document.querySelectorAll(`${sel} .fo-subject`)]
+        .map((r) => ({ id: r.dataset.subject, label: r.querySelector(".fg-row-label").textContent })), OVERVIEW);
+    check("the folder's subjects are listed, the hub's group among them", subjects.length >= 1 && subjects.some((s) => s.id === "index.md"),
+        JSON.stringify(subjects));
+    await page.locator(`${OVERVIEW} .fo-subject[data-subject="index.md"]`).click();
+    const drawnSubject = await page.evaluate((sel) => {
+        const s = document.querySelector(sel);
+        return {
+            centre: s.querySelector(".lg-node--self")?.dataset.id,
+            nodes: s.querySelectorAll(".lg-node").length,
+            pressed: s.querySelector('.fo-subject[data-subject="index.md"]').getAttribute("aria-pressed"),
+            caption: s.querySelector(".fo-caption").textContent,
+            stillOpen: !!document.querySelector(sel),
+        };
+    }, OVERVIEW);
+    check("pressing a subject draws it around its core in the square, and the overview stays open",
+        drawnSubject.centre === "index.md" && drawnSubject.pressed === "true" && drawnSubject.nodes > 4 && drawnSubject.stillOpen
+        && /notes, around/.test(drawnSubject.caption), JSON.stringify(drawnSubject));
+    await page.locator(`${OVERVIEW} .fo-subject[data-subject="index.md"]`).click();
+    const backToWork = await page.evaluate((sel) => document.querySelector(sel).querySelector(".lg-node--self")?.dataset.id, OVERVIEW);
+    check("pressing it again goes back to the drawing of the reader's work", backToWork === "notes/standup.md", String(backToWork));
+
     // ── Escape ───────────────────────────────────────────────────────────
     await page.keyboard.press("Escape");
     const escaped = await closed(page);
@@ -242,7 +265,7 @@ export async function run({ page, check, baseUrl }) {
             buttonsOnScreen: actions.every((b) => box(b).top >= 0 && box(b).bottom <= innerHeight),
             files: s.querySelectorAll(".fo-file").length,
             last: s.querySelector(".fo-files").lastElementChild.textContent,
-            headings: [...s.querySelectorAll(".fo-heading")].map((h) => h.textContent),
+            headings: [...s.querySelectorAll(".fo-heading")].filter((h) => !h.hidden).map((h) => h.textContent),
             folderRowOnScreen: (() => { const r = s.querySelector(".fo-row"); return !!r && box(r).bottom <= innerHeight; })(),
         };
     }, OVERVIEW);
@@ -250,8 +273,14 @@ export async function run({ page, check, baseUrl }) {
         start.folderRowOnScreen, JSON.stringify(start));
     check("over a folder the start view leads with New Note and Open… above the lists, on screen, as padded buttons",
         start.buttons.join("|") === "New Note|Open…" && start.buttonsAbove && start.buttonsOnScreen && start.buttonsPadded, JSON.stringify(start));
+    const named = await page.evaluate((sel) => ({
+        names: [...document.querySelectorAll(`${sel} .fo-subject .fg-row-label`)].map((l) => l.textContent),
+        credit: (() => { const c = document.querySelector(`${sel} .fo-credit`); return !!c && !c.hidden && c.getBoundingClientRect().height > 0; })(),
+    }), OVERVIEW);
+    check("on a host that names subjects, the rows carry the host's names and say a model gave them",
+        named.names.length > 0 && named.names.every((n) => n.startsWith("Named: ")) && named.credit, JSON.stringify(named));
     check("it lists six of the reader's recent files and closes the list with Open Recent…",
-        start.files === 6 && start.last === "Open Recent…" && start.headings.join("|") === "In this folder|Recent",
+        start.files === 6 && start.last === "Open Recent…" && start.headings.join("|") === "In this folder|Recent|Subjects",
         JSON.stringify(start));
     await page.locator(`${OVERVIEW} .fo-more`).click();
     const menuAsk = await page.evaluate(() => {

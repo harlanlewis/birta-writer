@@ -2903,6 +2903,13 @@ final class Coordinator {
             startAction(action, x: x, y: y)
         case .requestRecentFiles:
             host.send(.recentFiles(startViewRecents()))
+        case let .requestSubjectNames(requestId, subjects):
+            // Off the main actor's critical path: the model takes a moment
+            // per subject, and the page draws its own names meanwhile.
+            Task { [weak self] in
+                let names = await OnDeviceSubjectNamer.names(for: subjects)
+                self?.host.send(.subjectNames(requestId: requestId, names: names))
+            }
         case let .openRecentFile(path):
             // Only a path the app's own list holds: the page names it, and a
             // page is not trusted to name a file for the app to open.

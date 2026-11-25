@@ -21,6 +21,7 @@
 import { t } from "@/i18n";
 import { bindActivate } from "@/ui/dom";
 import { wireRoving } from "../sidePanel/keyboardNav";
+import { DORMANT_BELOW } from "./folderSignals";
 import { hueOf, type GraphNode, type LocalGraph } from "./localGraph";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
@@ -30,13 +31,14 @@ export const RING_SIZE = 100;
 const ARROW = 1.3;
 
 /**
- * `template` with every `{0}` replaced by `value`, as written. Never
- * `String.replace` with a string: it reads `$&`, `$'` and the rest in the
- * replacement as patterns, and a note's name or a folder's is the reader's
- * own text, which may hold them.
+ * `template` with every `{n}` replaced by the nth value, as written. One pass
+ * with a replacer FUNCTION, for two reasons: a replacement STRING reads `$&`,
+ * `$'` and the rest as patterns, and a note's name or a folder's is the
+ * reader's own text, which may hold them; and one placeholder at a time
+ * would substitute into a value already placed, should a name hold `{1}`.
  */
-export function fill(template: string, value: string): string {
-    return template.split("{0}").join(value);
+export function fill(template: string, ...values: string[]): string {
+    return template.replace(/\{(\d+)\}/g, (placeholder, i: string) => values[Number(i)] ?? placeholder);
 }
 
 export interface RingStageHost {
@@ -114,6 +116,9 @@ export function createRingStage(host: RingStageHost): RingStage {
             node.ring === 0 ? "lg-node--self" : "",
             node.ring === 0 && !current ? "lg-node--opens" : "",
             node.dangling ? "lg-node--dangling" : "",
+            // Known and low: a note nothing has touched in a long while. An
+            // unknown activity draws as it always has, since it claims nothing.
+            typeof node.activity === "number" && node.activity < DORMANT_BELOW ? "lg-node--dormant" : "",
             hue !== null ? `lg-hue-${hue}` : "",
         ].filter(Boolean).join(" ");
         btn.style.left = `${node.x}%`;

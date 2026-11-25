@@ -400,6 +400,20 @@ final class BridgeTests: XCTestCase {
         XCTAssertEqual(HostMessage.showStartView.jsonObject()["type"] as? String, "showStartView")
     }
 
+    func testTheSubjectNamesPairShouldParseAndEncode() {
+        let raw = #"{"type":"requestSubjectNames","requestId":3,"subjects":[{"id":"a.md","notes":["A","B"],"tags":["x"]},{"notes":["no id"]}]}"#
+        XCTAssertEqual(WebviewMessage.parse(raw),
+                       .requestSubjectNames(requestId: 3, subjects: [SubjectNames.Request(id: "a.md", notes: ["A", "B"], tags: ["x"])]),
+                       "a subject with no id is dropped, the rest kept")
+        XCTAssertEqual(WebviewMessage.parse(#"{"type":"requestSubjectNames","subjects":[]}"#), .other(type: "requestSubjectNames"),
+                       "a request with no id cannot be answered")
+        let sent = HostMessage.subjectNames(requestId: 3, names: ["a.md": "Hiring"]).jsonObject()
+        XCTAssertEqual(sent["type"] as? String, "subjectNames")
+        XCTAssertEqual(sent["requestId"] as? Int, 3)
+        XCTAssertEqual(sent["names"] as? [String: String], ["a.md": "Hiring"])
+        XCTAssertTrue(JSONSerialization.isValidJSONObject(sent))
+    }
+
     func testTheExplorersMemoriesShouldReachThePageOnTheOutlinePanelsChannels() {
         XCTAssertEqual(BootConfig(fileExplorerWidth: 280).tocRootStyle, ":root { --files-width: 280px; }")
         XCTAssertEqual(BootConfig(tocWidth: 320, fileExplorerWidth: 280).tocRootStyle,

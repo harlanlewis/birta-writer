@@ -530,6 +530,12 @@ export type ToExtensionMessage =
     // handed it in `recentFiles`. The host opens it as its own Open Recent
     // does, and refuses a path its list did not hold.
     | { type: "openRecentFile"; path: string }
+    // ── Names for a folder's subjects, to a host declaring `subjectNames` ──
+    // The overview's subjects (components/graph/folderSignals.ts), each by
+    // its id with its notes' names and the tags they carry most: what a model
+    // on the host's machine names it from. Never note text. The host answers
+    // `subjectNames` with the same `requestId`, once.
+    | { type: "requestSubjectNames"; requestId: number; subjects: { id: string; notes: string[]; tags: string[] }[] }
     // ── A tooltip the page cannot draw, under `stripTooltip` ──
     // The chip belongs against its control, and for a control in the bar's
     // first row that is inside the strip the host paints over the page (the
@@ -1105,6 +1111,10 @@ export type ToWebviewMessage =
     // folders, most recent first, absolute paths. `name` is what the row says
     // and `detail` where it is, both the host's to word.
     | { type: "recentFiles"; files: { path: string; name: string; detail: string }[] }
+    // The answer to `requestSubjectNames`: a name per subject id, for those
+    // the host could name, and nothing for the rest. An empty map is an
+    // answer, from a host whose model is off or absent.
+    | { type: "subjectNames"; requestId: number; names: Record<string, string> }
     // This window holds no file: show the start view over the page, pinned,
     // until the window is given one (the Mac app's empty state, which New
     // Window and moving the open note to the Trash leave). A page reload is

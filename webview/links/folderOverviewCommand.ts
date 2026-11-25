@@ -40,10 +40,12 @@ export function showFolderOverview(deps: FolderOverviewCommandDeps): Promise<voi
     const run = (deps.load ?? loadLocalGraph)().then(
         (mod) => {
             const launcher = mod.hostLauncher();
+            const nameSubjects = mod.hostSubjectNamer();
             current = mod.openFolderOverview({
                 openNote: (path) => openIndexedNote(readFolderIndex()?.self ?? null, path),
                 onDismiss: deps.focusEditor,
                 ...(launcher ? { launcher } : {}),
+                ...(nameSubjects ? { nameSubjects } : {}),
             });
         },
         () => { /* the chunk did not load: not cached, so the next run retries */ },

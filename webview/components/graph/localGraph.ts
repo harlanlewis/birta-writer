@@ -34,6 +34,12 @@ export interface GraphNode {
     dangling: boolean;
     /** References touching the note anywhere in the index, both directions. */
     degree: number;
+    /**
+     * How alive the note is, 0 to 1 (`activityOf` in ./folderSignals.ts), or
+     * null when unknown. Absent on a drawing that does not weigh activity,
+     * which is every one but the folder overview's.
+     */
+    activity?: number | null;
     x: number;
     y: number;
 }
@@ -205,4 +211,53 @@ export function hueOf(types: readonly string[], type: string | null): number | n
     if (type === null) { return null; }
     const i = types.indexOf(type);
     return i >= 0 && i < TYPE_HUES ? i : null;
+}
+
+/**
+ * A subject (./folderSignals.ts `FolderSubject`) as a ring drawing: its core
+ * at the centre, the notes linked to the core on the first ring, and the
+ * rest of the subject, the notes leaning in from elsewhere included, on the
+ * second, each capped as a note's own rings are. Lines are every reference
+ * between two drawn notes; a reference out of the subject is not drawn, since
+ * the drawing is OF the subject.
+ */
+export function buildSubjectGraph(index: FolderIndex, core: string, notes: readonly string[]): LocalGraph | null {
+    const nodesByPath = new Map(index.nodes.map((n) => [n.path, n]));
+    if (!nodesByPath.has(core)) { return null; }
+    const inSubject = new Set([core, ...notes.filter((n) => nodesByPath.has(n))]);
+    const degree = new Map<string, number>();
+    const touchesCore = new Set<string>();
+    for (const e of index.edges) {
+        degree.set(e.from, (degree.get(e.from) ?? 0) + 1);
+        if (e.to === null || e.to === e.from) { continue; }
+        degree.set(e.to, (degree.get(e.to) ?? 0) + 1);
+        if (e.from === core) { touchesCore.add(e.to); }
+        if (e.to === core) { touchesCore.add(e.from); }
+    }
+    const name = (id: string): string => nodesByPath.get(id)!.name;
+    const order = byDegreeThenName(degree, name);
+    const rest = [...inSubject].filter((n) => n !== core);
+    const ring1All = rest.filter((n) => touchesCore.has(n)).sort(order);
+    const ring1 = ring1All.slice(0, RING_CAPACITY[1]);
+    const ring2All = rest.filter((n) => !touchesCore.has(n)).sort(order);
+    const ring2 = ring1.length > 0 ? ring2All.slice(0, RING_CAPACITY[2]) : [];
+    const omitted = ring1All.length - ring1.length + ring2All.length - ring2.length;
+    const drawn = new Set([core, ...ring1, ...ring2]);
+    const typeOf = (id: string): string | null => nodesByPath.get(id)?.type ?? null;
+    const types = [...new Set([...drawn].map(typeOf).filter((t): t is string => t !== null))].sort();
+    const nodes: GraphNode[] = [
+        { id: core, ring: 0 as const },
+        ...ring1.map((id) => ({ id, ring: 1 as const })),
+        ...ring2.map((id) => ({ id, ring: 2 as const })),
+    ].map(({ id, ring }) => ({ id, label: name(id), ring, type: typeOf(id), dangling: false, degree: degree.get(id) ?? 0, x: 0, y: 0 }));
+    const lines: GraphLine[] = [];
+    const seen = new Set<string>();
+    for (const e of index.edges) {
+        if (e.to === null || e.to === e.from || !drawn.has(e.from) || !drawn.has(e.to)) { continue; }
+        const key = `${e.from}\u0000${e.to}`;
+        if (seen.has(key)) { continue; }
+        seen.add(key);
+        lines.push({ from: e.from, to: e.to });
+    }
+    return { nodes, lines, omitted, types };
 }

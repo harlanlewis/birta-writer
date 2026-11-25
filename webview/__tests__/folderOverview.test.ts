@@ -75,7 +75,7 @@ describe("createFolderOverview", () => {
     });
 
     function mount() {
-        const view = createFolderOverview({ openNote, onEscape: () => {} });
+        const view = createFolderOverview({ defer: (run) => run(), openNote, onEscape: () => {} });
         document.body.append(view.element);
         return view;
     }
@@ -166,7 +166,7 @@ describe("createFolderOverview", () => {
         // lone.md links to nothing, so the next recent note is the centre.
         view.render({ index: VAULT, self: null }, ["lone.md", "sub/far.md", "hub.md"]);
         expect(view.element.querySelector<HTMLElement>(".lg-node--self")!.dataset["id"]).toBe("sub/far.md");
-        expect(view.element.querySelector(".fo-caption")!.textContent).toContain("the note you opened here most recently");
+        expect(view.element.querySelector(".fo-caption")!.textContent).toContain("where you have been working");
     });
 
     it("recent notes none of which links should draw nothing rather than fall back to the hub", () => {
@@ -180,6 +180,80 @@ describe("createFolderOverview", () => {
         const view = mount();
         view.render({ index: VAULT, self: null }, null);
         expect(view.element.querySelector<HTMLElement>(".lg-node--self")!.dataset["id"]).toBe("hub.md");
+    });
+
+    it("with no recent files, the most recently written linked note should be the centre, not the hub", () => {
+        const now = Date.UTC(2026, 10, 24);
+        const dated: FolderIndex = { ...VAULT, nodes: VAULT.nodes.map((n) => ({ ...n, modified: n.path === "d.md" ? now - 86_400_000 : now - 400 * 86_400_000 })) };
+        const view = createFolderOverview({ defer: (run) => run(), openNote, onEscape: () => {}, now: () => now });
+        document.body.append(view.element);
+        view.render({ index: dated, self: null }, null);
+        expect(view.element.querySelector<HTMLElement>(".lg-node--self")!.dataset["id"]).toBe("d.md");
+        // hub.md, a.md and the rest were last written over a year ago: faded.
+        expect(view.element.querySelector('.lg-node[data-id="a.md"]')!.classList.contains("lg-node--dormant")).toBe(true);
+        expect(view.element.querySelector('.lg-node[data-id="d.md"]')!.classList.contains("lg-node--dormant")).toBe(false);
+        expect(view.element.querySelector(".fo-caption")!.textContent).toContain("Faded dots");
+    });
+
+    it("a subject row should draw its subject in the square and press again to go back", () => {
+        const view = mount();
+        view.render({ index: VAULT, self: null }, ["sub/far.md"]);
+        const row = view.element.querySelector<HTMLElement>(".fo-subject")!;
+        expect(row).not.toBeNull();
+        const before = view.element.querySelector<HTMLElement>(".lg-node--self")!.dataset["id"];
+        row.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+        const pressed = view.element.querySelector<HTMLElement>(".fo-subject")!;
+        expect(pressed.getAttribute("aria-pressed")).toBe("true");
+        expect(view.element.querySelector(".fo-caption")!.textContent).toMatch(/notes, around/);
+        pressed.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+        expect(view.element.querySelector<HTMLElement>(".fo-subject")!.getAttribute("aria-pressed")).toBe("false");
+        expect(view.element.querySelector<HTMLElement>(".lg-node--self")!.dataset["id"]).toBe(before);
+    });
+
+    it("subjects should be found after the view is drawn, not while it is drawn", () => {
+        const pending: Array<() => void> = [];
+        const view = createFolderOverview({ openNote, onEscape: () => {}, defer: (run) => pending.push(run) });
+        document.body.append(view.element);
+        view.render({ index: VAULT, self: null }, ["sub/far.md"]);
+        expect(view.element.querySelector(".lg-node--self")).not.toBeNull();
+        expect(view.element.querySelectorAll(".fo-subject")).toHaveLength(0);
+        expect(view.element.querySelector<HTMLElement>(".fo-subjects")!.hidden).toBe(true);
+        expect(pending).toHaveLength(1);
+        pending.shift()!();
+        expect(view.element.querySelectorAll(".fo-subject").length).toBeGreaterThan(0);
+    });
+
+    it("a host's names should replace the subjects' own, and a failing namer should leave them", async () => {
+        const names = vi.fn(async (subjects: readonly { id: string }[]) => new Map(subjects.map((s) => [s.id, "Named by host"])));
+        const view = createFolderOverview({ defer: (run) => run(), openNote, onEscape: () => {}, nameSubjects: names });
+        document.body.append(view.element);
+        view.render({ index: VAULT, self: null }, []);
+        await Promise.resolve(); await Promise.resolve();
+        expect(view.element.querySelector(".fo-subject .fg-row-label")!.textContent).toBe("Named by host");
+        // A model's names say whose they are; the notes' own need no credit.
+        expect(view.element.querySelector<HTMLElement>(".fo-credit")!.hidden).toBe(false);
+        view.render({ index: VAULT, self: null }, []);
+        expect(names).toHaveBeenCalledTimes(1);
+
+        const failing = createFolderOverview({ defer: (run) => run(), openNote, onEscape: () => {}, nameSubjects: () => Promise.reject(new Error("no model")) });
+        document.body.append(failing.element);
+        failing.render({ index: VAULT, self: null }, []);
+        await Promise.resolve(); await Promise.resolve();
+        expect(failing.element.querySelector(".fo-subject .fg-row-label")!.textContent).not.toBe("");
+        expect(failing.element.querySelector<HTMLElement>(".fo-credit")!.hidden).toBe(true);
+    });
+
+    it("a fading note should be listed with its age and open on a press", () => {
+        const now = Date.UTC(2026, 10, 24);
+        const old = now - 200 * 86_400_000;
+        const dated: FolderIndex = { ...VAULT, nodes: VAULT.nodes.map((n) => ({ ...n, modified: old })) };
+        const view = createFolderOverview({ defer: (run) => run(), openNote, onEscape: () => {}, now: () => now });
+        document.body.append(view.element);
+        view.render({ index: dated, self: null }, []);
+        const row = view.element.querySelector<HTMLElement>('.fo-fading[data-fading="hub.md"]')!;
+        expect(row.querySelector(".fg-row-detail")!.textContent).toBe("4 links, written 7 months ago");
+        row.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+        expect(openNote).toHaveBeenCalledWith("hub.md");
     });
 
     it("a centre that is the note on screen should be drawn current and open nothing", () => {
@@ -234,7 +308,7 @@ describe("the Graph tab on the shared ring stage", () => {
 
 describe("createFolderOverview with a host that keeps no recent files", () => {
     it("null recents should draw no recent files section at all, heading included", () => {
-        const view = createFolderOverview({ openNote: () => {}, onEscape: () => {} });
+        const view = createFolderOverview({ defer: (run) => run(), openNote: () => {}, onEscape: () => {} });
         document.body.replaceChildren(view.element);
         view.render({ index: VAULT, self: null }, ["a.md"]);
         view.render({ index: VAULT, self: null }, null);
@@ -403,7 +477,7 @@ describe("the start view", () => {
 
     it("with no folder it should draw the two buttons and the recent files, and no folder section", () => {
         const launcher = launcherSpy();
-        const view = createFolderOverview({ openNote: () => {}, onEscape: () => {}, launcher, folder: false });
+        const view = createFolderOverview({ defer: (run) => run(), openNote: () => {}, onEscape: () => {}, launcher, folder: false });
         document.body.append(view.element);
         view.render(null, null, FILES);
         expect([...view.element.querySelectorAll(".fo-action")].map((b) => b.textContent)).toEqual(["New Note", "Open…"]);
@@ -416,7 +490,7 @@ describe("the start view", () => {
     });
 
     it("Open Recent… should close the list, drawn even before the files arrive", () => {
-        const view = createFolderOverview({ openNote: () => {}, onEscape: () => {}, launcher: launcherSpy(), folder: false });
+        const view = createFolderOverview({ defer: (run) => run(), openNote: () => {}, onEscape: () => {}, launcher: launcherSpy(), folder: false });
         view.render(null, null, null);
         const list = view.element.querySelector(".fo-files")!;
         expect([...list.children].map((c) => c.textContent)).toEqual(["Open Recent…"]);
@@ -427,7 +501,7 @@ describe("the start view", () => {
 
     it("each control should run the launcher gesture it names", () => {
         const launcher = launcherSpy();
-        const view = createFolderOverview({ openNote: () => {}, onEscape: () => {}, launcher, folder: false });
+        const view = createFolderOverview({ defer: (run) => run(), openNote: () => {}, onEscape: () => {}, launcher, folder: false });
         document.body.append(view.element);
         view.render(null, null, FILES);
         const [newNote, open] = [...view.element.querySelectorAll(".fo-action")];
@@ -442,7 +516,7 @@ describe("the start view", () => {
     });
 
     it("in a folder it should put the name and buttons first, the two lists next, and the drawing last", () => {
-        const view = createFolderOverview({ openNote: () => {}, onEscape: () => {}, launcher: launcherSpy() });
+        const view = createFolderOverview({ defer: (run) => run(), openNote: () => {}, onEscape: () => {}, launcher: launcherSpy() });
         view.render({ index: VAULT, self: null }, ["a.md"], FILES);
         const children = [...view.element.children];
         const at = (selector: string): number => children.indexOf(view.element.querySelector(selector)!);
@@ -452,12 +526,12 @@ describe("the start view", () => {
         expect(at(".fo-recents:not(.fo-files)")).toBeGreaterThan(at(".fo-actions"));
         expect(at(".fo-files")).toBeGreaterThan(at(".fo-recents:not(.fo-files)"));
         expect(at(".lg-stage")).toBeGreaterThan(at(".fo-files"));
-        const headings = [...view.element.querySelectorAll(".fo-heading")].map((h) => h.textContent);
-        expect(headings).toEqual(["In this folder", "Recent"]);
+        const headings = [...view.element.querySelectorAll<HTMLElement>(".fo-heading")].filter((h) => !h.hidden).map((h) => h.textContent);
+        expect(headings).toEqual(["In this folder", "Recent", "Subjects"]);
     });
 
     it("without a launcher the overview should be as it was: no buttons, no reader's list", () => {
-        const view = createFolderOverview({ openNote: () => {}, onEscape: () => {} });
+        const view = createFolderOverview({ defer: (run) => run(), openNote: () => {}, onEscape: () => {} });
         view.render({ index: VAULT, self: null }, ["a.md"], FILES);
         expect(view.element.querySelector(".fo-actions")).toBeNull();
         expect(view.element.querySelector(".fo-files")).toBeNull();
