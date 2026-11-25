@@ -13,10 +13,19 @@ import * as vscode from "vscode";
 import { readBirtaSetting } from "../config";
 import type { HarperLint, LintBlock, LintBlockResult } from "../../shared/messages";
 import { INLINE_PLACEHOLDER, isTechSpan } from "../../shared/proofreadFilter";
+import type { LintOptions } from "harper.js" with { "resolution-mode": "import" };
+
+/**
+ * The markup harper parses a block as, typed from harper's own declaration so
+ * a value it does not know fails the build rather than falling back to
+ * markdown at runtime with a console warning per call. Whether the webview's
+ * extracted text should be linted as `"plaintext"` instead is MAR-508.
+ */
+const LINT_LANGUAGE: NonNullable<LintOptions["language"]> = "markdown";
 
 type HarperLinter = {
     setup(): Promise<void>;
-    lint(text: string, options?: { language?: string }): Promise<HarperRawLint[]>;
+    lint(text: string, options?: Pick<LintOptions, "language">): Promise<HarperRawLint[]>;
 };
 
 type HarperRawLint = {
@@ -92,7 +101,7 @@ export async function lintBlocks(blocks: LintBlock[]): Promise<LintBlockResult[]
     const results: LintBlockResult[] = [];
 
     for (const block of blocks) {
-        const raw = await linter.lint(block.text, { language: "plain" });
+        const raw = await linter.lint(block.text, { language: LINT_LANGUAGE });
         const lints: HarperLint[] = [];
         for (const lint of raw) {
             const span = lint.span();
