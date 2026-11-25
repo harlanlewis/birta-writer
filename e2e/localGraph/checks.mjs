@@ -73,13 +73,15 @@ export async function run({ page, check, baseUrl }) {
         const nodes = [...document.querySelectorAll(".lg-node")].map((n) => ({
             id: n.dataset.id,
             ring1: !n.classList.contains("lg-node--self") && !!n.querySelector(".lg-label"),
-            dot: r(n.querySelector(".lg-dot")),
+            // The note's own box, centred on its layout point, whether it is
+            // drawn as its name or, with no room, as a dot.
+            dot: r(n),
             label: n.querySelector(".lg-label") ? { ...r(n.querySelector(".lg-label")), text: n.querySelector(".lg-label").textContent } : null,
             named: !!n.getAttribute("aria-label"),
         }));
         // Where each line ends, in page pixels, against the dots it joins.
         const svg = document.querySelector(".lg-lines").getBoundingClientRect();
-        const dotOf = (id) => r(document.querySelector(`.lg-node[data-id="${CSS.escape(id)}"] .lg-dot`));
+        const dotOf = (id) => r(document.querySelector(`.lg-node[data-id="${CSS.escape(id)}"]`));
         const misses = [...document.querySelectorAll(".lg-line")].flatMap((l) => {
             const px = (v, axis) => (axis === "x" ? svg.left + (v / 100) * svg.width : svg.top + (v / 100) * svg.height);
             // The curve's own first and last points, from the engine's
@@ -105,8 +107,11 @@ export async function run({ page, check, baseUrl }) {
         geo.nodes.length === 14 && geo.lines === 13, `nodes=${geo.nodes.length} lines=${geo.lines}`);
     const outside = geo.nodes.filter((n) => n.dot.left < geo.stage.left - 1 || n.dot.right > geo.stage.right + 1
         || n.dot.top < geo.stage.top - 1 || n.dot.bottom > geo.stage.bottom + 1).map((n) => n.id);
-    check("every node's dot lies inside the stage", outside.length === 0, JSON.stringify(outside));
-    check("every line ends at the centre of the dots it joins", geo.misses.length === 0, JSON.stringify(geo.misses));
+    check("every note lies inside the stage", outside.length === 0, JSON.stringify(outside));
+    check("every line ends at the centre of the notes it joins", geo.misses.length === 0, JSON.stringify(geo.misses));
+    const compact = geo.nodes.filter((n) => !n.label || n.label.width === 0).length;
+    check("a note is drawn as its name, and as a dot only where its name has no room",
+        geo.nodes.filter((n) => n.label && n.label.width > 0).length > 0 && compact < geo.nodes.length, `compact=${compact} of ${geo.nodes.length}`);
     const drawnLabels = geo.nodes.filter((n) => n.label && n.label.width > 0);
     const labelClash = overlaps(drawnLabels.map((n) => n.label));
     check("no two drawn labels overlap at the drawer's width", labelClash.length === 0, JSON.stringify(labelClash));
@@ -137,7 +142,7 @@ export async function run({ page, check, baseUrl }) {
             count: nodes.length,
             ids: nodes.map((n) => n.dataset.id),
             outside: nodes.filter((n) => {
-                const d = n.querySelector(".lg-dot").getBoundingClientRect();
+                const d = n.getBoundingClientRect();
                 return d.left < stage.left - 1 || d.right > stage.right + 1 || d.top < stage.top - 1 || d.bottom > stage.bottom + 1;
             }).map((n) => n.dataset.id),
         };

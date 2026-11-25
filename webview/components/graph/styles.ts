@@ -32,6 +32,8 @@ export const LOCAL_GRAPH_CSS = `
     width: 100%;
     aspect-ratio: 1;
     margin-block: var(--ui-space-2);
+    /* What a name's width is measured against (\`.lg-label\`). */
+    container-type: inline-size;
 }
 
 .lg-lines {
@@ -74,14 +76,20 @@ export const LOCAL_GRAPH_CSS = `
     pointer-events: auto;
 }
 
-/* The button's box is the dot (plus a margin to hit), centred on the layout
-   point, so a line meets the dot and not the middle of dot and label. The
-   label hangs below it, outside the box. */
+/* A note IS its name: a small chip on the paper, centred on the layout point,
+   so lines run under it to the word itself. The name is what a reader reads,
+   so it is the mark, and what the dot used to carry moves onto it: how
+   connected a note is is the name's size and weight (\`lg-size-*\`), its type
+   an underline in the type's hue, its dormancy faded ink. Where the drawing
+   has no room for a name (ringStage.ts \`declutterLabels\`), the note falls
+   back to a dot, compact, and is named on hover and focus. */
 .lg-node {
     position: absolute;
     transform: translate(-50%, -50%);
     display: flex;
-    padding: 3px;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
     border: none;
     border-radius: var(--ui-radius-s);
     background: none;
@@ -96,7 +104,32 @@ export const LOCAL_GRAPH_CSS = `
     cursor: default;
 }
 
+/* Up to two lines, at a width a title of a few words fits in, and never more
+   than a share of the drawing, so a narrow sidebar's drawing keeps room for
+   its neighbours; past two lines it is cut, and the whole name is the hover
+   and the accessible name. */
+.lg-label {
+    display: block;
+    max-width: min(11em, 30cqw);
+    padding: 1px var(--ui-space-2);
+    border-radius: var(--ui-radius-s);
+    background: var(--vscode-editor-background);
+    text-align: center;
+    color: var(--vscode-foreground);
+}
+
+.lg-label-text {
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
 .lg-dot {
+    display: none;
     width: 8px;
     height: 8px;
     border-radius: var(--ui-radius-pill);
@@ -105,14 +138,27 @@ export const LOCAL_GRAPH_CSS = `
     box-sizing: border-box;
 }
 
-/* A note nothing has touched in a long while (folderSignals.ts, activity
-   under DORMANT_BELOW): the same dot, faded, so a drawing of a folder shows
-   which of its corners are still in use without a second mark to learn.
-   Hover and focus bring it back to full ink, since then it is being looked at. */
-.lg-node--dormant:not(:hover, :focus-visible) :is(.lg-dot, .lg-label) {
-    opacity: 0.4;
+/* Connectedness, on the name. */
+.lg-size-2 .lg-label { font-weight: 500; }
+.lg-size-3 .lg-label { font-size: var(--ui-fs-s); font-weight: 500; }
+.lg-size-4 .lg-label { font-size: var(--ui-fs-s); font-weight: 600; }
+
+.lg-node--self .lg-label {
+    font-size: var(--ui-fs-m);
+    font-weight: 600;
+    box-shadow: inset 0 -2px 0 var(--vscode-focusBorder);
 }
 
+/* Type, as an underline in its hue: the name stays in the theme's ink, where
+   it reads, and the colour is a mark under it. */
+.lg-hue-0 .lg-label { box-shadow: inset 0 -2px 0 var(--vscode-charts-blue); }
+.lg-hue-1 .lg-label { box-shadow: inset 0 -2px 0 var(--vscode-charts-purple); }
+.lg-hue-2 .lg-label { box-shadow: inset 0 -2px 0 var(--vscode-charts-green); }
+.lg-hue-3 .lg-label { box-shadow: inset 0 -2px 0 var(--vscode-charts-orange); }
+.lg-hue-4 .lg-label { box-shadow: inset 0 -2px 0 var(--vscode-charts-yellow); }
+.lg-hue-5 .lg-label { box-shadow: inset 0 -2px 0 var(--vscode-charts-red); }
+
+/* The dot, for a compact note and for the legend's swatches. */
 .lg-size-2 .lg-dot { width: 10px; height: 10px; }
 .lg-size-3 .lg-dot { width: 12px; height: 12px; }
 .lg-size-4 .lg-dot { width: 14px; height: 14px; }
@@ -135,39 +181,21 @@ export const LOCAL_GRAPH_CSS = `
     background: var(--vscode-focusBorder);
 }
 
-/* Up to two lines, centred under the dot, at a width a title of a few
-   words fits in; past two lines it is cut, and the whole name is the
-   node's hover and its accessible name. */
-.lg-label {
-    position: absolute;
-    top: 100%;
-    left: 50%;
-    transform: translateX(-50%);
-    width: max-content;
-    max-width: 11em;
-    overflow: hidden;
-    display: -webkit-box;
-    -webkit-box-orient: vertical;
-    -webkit-line-clamp: 2;
-    line-clamp: 2;
-    white-space: normal;
-    overflow-wrap: anywhere;
-    text-align: center;
-    color: var(--vscode-foreground);
+.lg-legend .lg-dot {
+    display: inline-block;
 }
 
-.lg-node--dangling .lg-label {
-    color: var(--vscode-descriptionForeground);
-    font-style: italic;
+/* No room for the name: a dot, and the name on hover and focus, above the
+   rest on the floating-chrome ground so it reads over the lines. */
+.lg-node--compact {
+    padding: 3px;
 }
 
-.lg-node--self .lg-label {
-    font-weight: 600;
+.lg-node--compact .lg-dot {
+    display: block;
 }
 
-/* A label the drawing had no room for: named on hover and focus, above the
-   rest, on the ground every floating chrome paints so it reads over the lines. */
-.lg-label--crowded {
+.lg-node--compact .lg-label {
     display: none;
 }
 
@@ -176,12 +204,27 @@ export const LOCAL_GRAPH_CSS = `
     z-index: 1;
 }
 
-.lg-node:hover .lg-label--crowded,
-.lg-node:focus-visible .lg-label--crowded {
+.lg-node--compact:is(:hover, :focus-visible) .lg-label {
     display: block;
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    width: max-content;
     background: var(--ui-card-bg);
-    border-radius: var(--ui-radius-s);
-    padding-inline: var(--ui-space-1);
+}
+
+.lg-node--dangling .lg-label {
+    color: var(--vscode-descriptionForeground);
+    font-style: italic;
+}
+
+/* A note nothing has touched in a long while (folderSignals.ts, activity
+   under DORMANT_BELOW): its name, faded, so a drawing of a folder shows which
+   of its corners are still in use without a second mark to learn. Hover and
+   focus bring it back to full ink, since then it is being looked at. */
+.lg-node--dormant:not(:hover, :focus-visible) :is(.lg-dot, .lg-label-text) {
+    opacity: 0.45;
 }
 
 .lg-node:hover .lg-label,
@@ -214,13 +257,16 @@ export const LOCAL_GRAPH_CSS = `
     gap: var(--ui-space-1);
 }
 
+/* The swatch is the mark a type makes on a name: a short underline. */
 .lg-legend-item .lg-dot {
-    width: 8px;
-    height: 8px;
+    width: 12px;
+    height: 3px;
+    border: none;
+    border-radius: var(--ui-radius-s);
 }
 
 /* A centre that is a note to go to (the folder overview's hub) rather than
-   the note on screen: it opens, so it reads as a link like every other dot. */
+   the note on screen: it opens, so it reads as a link like every other name. */
 .lg-node--self.lg-node--opens {
     cursor: pointer;
 }

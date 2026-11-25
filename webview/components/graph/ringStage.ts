@@ -173,17 +173,19 @@ export function createRingStage(host: RingStageHost): RingStage {
         btn.style.top = `${node.y}%`;
         btn.tabIndex = -1;
         btn.dataset["id"] = node.id;
+        // The name is the mark; the dot is what a note falls back to where
+        // the drawing has no room for its name (`declutterLabels`).
         const dot = document.createElement("span");
         dot.className = "lg-dot";
-        btn.append(dot);
-        // The outer ring is where the crowding is, so its names are on hover
-        // and in the accessible name rather than on the drawing.
-        if (node.ring < 2) {
-            const label = document.createElement("span");
-            label.className = "lg-label";
-            label.textContent = node.label;
-            btn.append(label);
-        }
+        // The chip and the words in it are two boxes so the words can fade
+        // (dormant) while the chip stays opaque over the lines behind it.
+        const label = document.createElement("span");
+        label.className = "lg-label";
+        const words = document.createElement("span");
+        words.className = "lg-label-text";
+        words.textContent = node.label;
+        label.append(words);
+        btn.append(dot, label);
         const described = node.dangling
             ? fill(t("{0} (not a note in this folder)"), node.label)
             : node.type !== null ? `${node.label} (${node.type})` : node.label;
@@ -200,32 +202,36 @@ export function createRingStage(host: RingStageHost): RingStage {
     }
 
     /**
-     * Hide every label the drawing has no room for, so none overlaps another
-     * label or covers another node's dot, at whatever width the square has.
-     * Measured rather than predicted: a label's width is the font's, and a
-     * layout tuned to one width collides at the next. Labels are kept in the
-     * order the nodes come in (the centre, then the most connected first), and
-     * a hidden one is named on hover and focus instead. With no layout (a test
-     * with no engine) every rect is empty and every label stays.
+     * Fall back to a dot for every note whose name the drawing has no room
+     * for, so no two names overlap and none runs out of the square, at
+     * whatever width the square has. Measured rather than predicted: a name's
+     * width is the font's, and a layout tuned to one width collides at the
+     * next. Names are kept in the order the nodes come in (the centre, then
+     * the first ring, most connected first, then the outer ring), so a name
+     * that gives way is always the less central one. A compact note is named
+     * on hover and focus. With no layout (a test with no engine) every rect
+     * is empty and every name stays.
      */
     function declutterLabels(): void {
         const buttons = [...stage.querySelectorAll<HTMLElement>(".lg-node")];
-        const dots = new Map(buttons.map((b) => [b, b.querySelector(".lg-dot")!.getBoundingClientRect()]));
+        buttons.forEach((b) => b.classList.remove("lg-node--compact"));
         const box = stage.getBoundingClientRect();
         const kept: DOMRect[] = [];
         const hits = (a: DOMRect, b: DOMRect): boolean =>
             a.left < b.right - 1 && b.left < a.right - 1 && a.top < b.bottom - 1 && b.top < a.bottom - 1;
-        for (const btn of buttons) {
-            const label = btn.querySelector<HTMLElement>(".lg-label");
-            if (!label) { continue; }
-            label.classList.remove("lg-label--crowded");
-            const r = label.getBoundingClientRect();
-            if (r.width === 0) { continue; }
+        // Measured all at once, before any note gives way, so one note going
+        // compact cannot change what the next is measured against.
+        const rects = buttons.map((b) => b.querySelector<HTMLElement>(".lg-label")!.getBoundingClientRect());
+        buttons.forEach((btn, i) => {
+            const r = rects[i]!;
+            if (r.width === 0) { return; }
+            // A note waiting in the outer tier is not on the drawing, and
+            // claims no room until it is.
+            if (btn.classList.contains("lg-node--tier")) { btn.classList.add("lg-node--compact"); return; }
             const clash = kept.some((k) => hits(k, r))
-                || buttons.some((other) => other !== btn && hits(dots.get(other)!, r))
-                || r.left < box.left - 1 || r.right > box.right + 1;
-            if (clash) { label.classList.add("lg-label--crowded"); } else { kept.push(r); }
-        }
+                || r.left < box.left - 1 || r.right > box.right + 1 || r.top < box.top - 1 || r.bottom > box.bottom + 1;
+            if (clash) { btn.classList.add("lg-node--compact"); } else { kept.push(r); }
+        });
     }
 
     function draw(laid: LocalGraph, current?: boolean): void {
