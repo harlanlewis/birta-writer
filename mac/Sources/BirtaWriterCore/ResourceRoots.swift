@@ -32,8 +32,9 @@ public struct ResourceRoots: Sendable {
         self.project = project
     }
 
-    /// Same roots, pointed at a different document.
-    public func rebound(toDocument document: URL?, project: URL? = nil) -> ResourceRoots {
+    /// Same roots, pointed at a different document. The project root is kept:
+    /// it is what the window is opened on, and a new file does not change it.
+    public func rebound(toDocument document: URL?) -> ResourceRoots {
         ResourceRoots(bundle: bundle, document: document, project: project)
     }
 

@@ -1288,7 +1288,7 @@ final class Coordinator {
             // state names its new file, not the app.
             holdsNoFile = false
             host.schemeHandler.roots =
-                host.schemeHandler.roots.rebound(toDocument: boundURL.deletingLastPathComponent(), project: explorerRoot)
+                host.schemeHandler.roots.rebound(toDocument: boundURL.deletingLastPathComponent())
             refreshTitle()
             // Both files join the recents list: the one being left and the one
             // arriving, oldest first.

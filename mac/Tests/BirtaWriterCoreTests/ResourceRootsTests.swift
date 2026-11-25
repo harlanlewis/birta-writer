@@ -104,4 +104,14 @@ final class ResourceRootsTests: XCTestCase {
 
         XCTAssertEqual(try Data(contentsOf: XCTUnwrap(rooted.resolve("/Attachments/a.png"))), Data("beside".utf8))
     }
+
+    func testReboundKeepsTheProjectRoot() throws {
+        let note = docDir.appendingPathComponent("post")
+        try FileManager.default.createDirectory(at: note, withIntermediateDirectories: true)
+        let rooted = ResourceRoots(bundle: bundle, document: docDir, project: docDir)
+
+        let moved = rooted.rebound(toDocument: note)
+        XCTAssertEqual(moved.project, docDir)
+        XCTAssertEqual(moved.resolve("/Attachments/a.png")?.lastPathComponent, "a.png", "root-relative images survive a rebind")
+    }
 }
