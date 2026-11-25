@@ -277,6 +277,11 @@ export function layoutRings(graph: LocalGraph, size: number): LocalGraph {
             angle.set(id, angle.get(p)! + (ids.length === 1 ? 0 : (j / (ids.length - 1) - 0.5) * span));
         });
     }
+    // An outer note with no line to any first-ring note (a subject member
+    // tied by a shared tag alone) hangs from nobody: spread round the ring
+    // rather than all placed at one angle on top of each other.
+    const orphans = graph.nodes.filter((n) => n.ring === 2 && !parentOf.has(n.id)).map((n) => n.id).sort();
+    orphans.forEach((id, i) => { angle.set(id, -Math.PI / 2 + ((i + 0.5) / orphans.length) * 2 * Math.PI); });
 
     // Radii: within its ring's band, nearer the more bound.
     const boundTo = (n: GraphNode): number => n.ring === 1 ? tie(n.id, centre) : tie(n.id, parentOf.get(n.id) ?? "");

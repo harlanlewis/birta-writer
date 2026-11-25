@@ -73,16 +73,25 @@ final class NoteSimilarityTests: XCTestCase {
             var v = [Float](repeating: 0, count: 6)
             v[axes[name]!] = 1
             v[axes[name]! + 1] = name.hasSuffix("1") ? 0.1 : 0
-            return v
+            return NoteSimilarity.Embedding(space: "m", language: "en", vector: v)
         })
-        let first = indexer.build()
+        // Reading the folder never waits on the model: the index comes back
+        // with no vectors made, and the pairs follow.
+        let read = indexer.build()
+        XCTAssertEqual(embedded, 0)
+        XCTAssertEqual(read.similar, [])
+        let first = try XCTUnwrap(indexer.completeSimilarity())
         XCTAssertEqual(Set(first.similar.map { "\($0.a)+\($0.b)" }), ["a1.md+a2.md", "b1.md+b2.md", "c1.md+c2.md"])
         XCTAssertEqual(embedded, 6)
+        XCTAssertNil(indexer.completeSimilarity(), "nothing left to make, nothing to re-send")
+        // A rebuild with nothing changed keeps the vectors, and the pairs, at once.
+        XCTAssertEqual(indexer.build().similar, first.similar)
         let json = first.jsonObject
         let wire = try XCTUnwrap(json["similar"] as? [[String: Any]])
         XCTAssertEqual(wire.first?["a"] as? String, "a1.md")
         XCTAssertTrue(JSONSerialization.isValidJSONObject(json))
         _ = indexer.build()
+        XCTAssertNil(indexer.completeSimilarity())
         XCTAssertEqual(embedded, 6, "an unchanged note is not embedded again")
     }
 
@@ -90,7 +99,8 @@ final class NoteSimilarityTests: XCTestCase {
     /// pair, and no note should pair with one on an unrelated subject, once
     /// centred against a few others. Skipped on a Mac without the model.
     func testTheSystemEmbeddingShouldPutTwoNotesOnOneSubjectCloserThanToAnUnrelatedOne() throws {
-        guard let embed = NoteSimilarity.systemEmbedder() else { throw XCTSkip("no English contextual embedding installed on this Mac") }
+        let embed = NoteSimilarity.systemEmbedder()
+        guard embed("A note about the voice assistant") != nil else { throw XCTSkip("no English contextual embedding installed on this Mac") }
         let texts = [
             "voice1.md": "Transcription overeager acting as agent. The voice transcriber took actions instead of writing down what I said.",
             "voice2.md": "Voice recording feedback on agentic actions. The assistant should confirm before doing anything.",
@@ -102,11 +112,138 @@ final class NoteSimilarityTests: XCTestCase {
         // body's words.
         var vectors: [String: [Float]] = [:]
         for (path, text) in texts {
-            vectors[path] = try XCTUnwrap(embed(NoteSimilarity.excerpt(title: String(path.dropLast(3)), text: text)))
+            vectors[path] = try XCTUnwrap(embed(NoteSimilarity.excerpt(title: String(path.dropLast(3)), text: text))).vector
         }
         let pairs = NoteSimilarity.pairs(vectors)
         XCTAssertTrue(pairs.contains { $0.a == "voice1.md" && $0.b == "voice2.md" }, "\(pairs)")
         XCTAssertTrue(pairs.allSatisfy { $0.a.hasPrefix("voice") && $0.b.hasPrefix("voice") },
                       "only the two voice notes are alike: \(pairs)")
+    }
+
+    /// Two models' spaces, each with a pair of its own: notes are paired
+    /// within a space and never across, whatever their vectors say; and a
+    /// space of two notes, which centring leaves opposite, pairs nothing.
+    func testNotesShouldBeComparedOnlyWithinOneModelsSpace() {
+        func e(_ space: String, _ v: [Float]) -> NoteSimilarity.Embedding { .init(space: space, language: "x", vector: v) }
+        let embeddings: [String: NoteSimilarity.Embedding] = [
+            "a1.md": e("A", [1, 0, 0, 0]), "a2.md": e("A", [0.9, 0.1, 0, 0]), "a3.md": e("A", [0, 0, 1, 0]),
+            "b1.md": e("B", [1, 0, 0, 0]), "b2.md": e("B", [0.95, 0.05, 0, 0]), "b3.md": e("B", [0, 0, 0, 1]),
+            "c1.md": e("C", [1, 0]), "c2.md": e("C", [0.9, 0.1]),
+        ]
+        let pairs = NoteSimilarity.pairs(grouped: embeddings)
+        XCTAssertTrue(pairs.contains { $0.a == "a1.md" && $0.b == "a2.md" })
+        XCTAssertTrue(pairs.contains { $0.a == "b1.md" && $0.b == "b2.md" })
+        XCTAssertFalse(pairs.contains { $0.a.prefix(1) != $0.b.prefix(1) }, "\(pairs)")
+        XCTAssertFalse(pairs.contains { $0.a.hasPrefix("c") }, "a space of two is not compared: \(pairs)")
+    }
+
+    /// A note whose language was guessed differently but read by the same
+    /// model stays among its neighbours.
+    func testALanguageGuessShouldNotSplitNotesOneModelRead() {
+        func e(_ lang: String, _ v: [Float]) -> NoteSimilarity.Embedding { .init(space: "Latin", language: lang, vector: v) }
+        let pairs = NoteSimilarity.pairs(grouped: [
+            "x1.md": e("en", [1, 0, 0, 0]), "x2.md": e("nl", [0.9, 0.1, 0, 0]),
+            "y1.md": e("en", [0, 0, 1, 0]), "y2.md": e("en", [0, 0.05, 0.95, 0]),
+        ])
+        XCTAssertTrue(pairs.contains { $0.a == "x1.md" && $0.b == "x2.md" }, "\(pairs)")
+    }
+
+    /// A save that changes no link keeps the note's old vector until a new
+    /// one is made, so the pairs, and the index, do not change in between;
+    /// and a note that cannot be embedded is asked once per version, not on
+    /// every build.
+    func testASaveShouldKeepThePairsAndAFailedEmbeddingShouldNotBeRetried() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let axes = ["a1": 0, "a2": 0, "b1": 2, "b2": 2, "c1": 4, "c2": 4]
+        for (name, _) in axes { try "# \(name)\n".write(to: root.appendingPathComponent("\(name).md"), atomically: true, encoding: .utf8) }
+        try "# zz\n".write(to: root.appendingPathComponent("zz.md"), atomically: true, encoding: .utf8)
+        var asked: [String: Int] = [:]
+        let indexer = FolderIndexer(root: root, embed: { text in
+            let name = String(text.prefix(2))
+            asked[name, default: 0] += 1
+            guard var axis = axes[name] else { return nil } // zz cannot be embedded
+            // a1 rewritten to be about what the b notes are about.
+            if text.contains("moved") { axis = 2 }
+            var v = [Float](repeating: 0, count: 6)
+            v[axis] = 1
+            v[axis + 1] = name.hasSuffix("1") ? 0.1 : 0
+            return NoteSimilarity.Embedding(space: "m", language: "en", vector: v)
+        })
+        _ = indexer.build()
+        let first = try XCTUnwrap(indexer.completeSimilarity())
+        XCTAssertEqual(asked["zz"], 1)
+        // A save that leaves a1 about the same thing: the pairs hold, before
+        // the new vector and after it, and nothing is re-sent.
+        try "# a1\n\nmore\n".write(to: root.appendingPathComponent("a1.md"), atomically: true, encoding: .utf8)
+        let saved = indexer.build()
+        XCTAssertEqual(saved.similar, first.similar, "the old vector stands in until the new one is made")
+        XCTAssertNil(indexer.completeSimilarity(), "re-embedded, same pairs: nothing to re-send")
+        XCTAssertEqual(asked["a1"], 2)
+        XCTAssertEqual(asked["zz"], 1, "a note that could not be embedded is not asked again while unchanged")
+        // A save that changes what a1 is about: its new pairs must arrive.
+        try "# a1\n\nmoved to the other subject\n".write(to: root.appendingPathComponent("a1.md"), atomically: true, encoding: .utf8)
+        _ = indexer.build()
+        let moved = try XCTUnwrap(indexer.completeSimilarity(), "a note whose meaning moved must re-send its pairs")
+        XCTAssertFalse(moved.similar.contains { $0.a == "a1.md" && $0.b == "a2.md" }, "\(moved.similar)")
+        XCTAssertTrue(moved.similar.contains { [$0.a, $0.b].contains("a1.md") && [$0.a, $0.b].contains { $0.hasPrefix("b") } }, "\(moved.similar)")
+    }
+
+    /// The real model, for a language other than English where this Mac has
+    /// it: French notes get vectors, tagged French.
+    func testTheSystemEmbeddingShouldReadANoteInItsOwnLanguage() throws {
+        let embed = NoteSimilarity.systemEmbedder()
+        guard let french = embed("L'assistant vocal doit confirmer avant d'agir en mon nom, et demander la permission") else {
+            throw XCTSkip("no French contextual embedding installed on this Mac")
+        }
+        XCTAssertEqual(french.language, "fr")
+        XCTAssertNil(embed(""), "an empty text has no language and no vector")
+    }
+
+    /// A few notes in a minority language, about nothing in common, in a
+    /// space a majority language dominates: centred on the space's mean they
+    /// would share their language's offset and pair for it; centred on their
+    /// own language's they do not.
+    func testAMinorityLanguageShouldNotPairForTheLanguageAlone() {
+        var embeddings: [String: NoteSimilarity.Embedding] = [:]
+        // Eight English notes, each about its own thing.
+        for i in 0..<8 {
+            var v = [Float](repeating: 0, count: 16); v[i] = 1
+            embeddings["en\(i).md"] = .init(space: "Latin", language: "en", vector: v)
+        }
+        // Three French notes, each about its own thing, sharing a large language offset.
+        for i in 0..<3 {
+            var v = [Float](repeating: 0, count: 16); v[8 + i] = 1; v[15] = 3
+            embeddings["fr\(i).md"] = .init(space: "Latin", language: "fr", vector: v)
+        }
+        let pairs = NoteSimilarity.pairs(grouped: embeddings)
+        XCTAssertFalse(pairs.contains { $0.a.hasPrefix("fr") && $0.b.hasPrefix("fr") }, "\(pairs)")
+    }
+
+    /// The same claim against the real model, where this Mac has it: three
+    /// unrelated French notes in a folder of unrelated English ones.
+    func testTheSystemEmbeddingShouldNotPairNotesForSharingAMinorityLanguage() throws {
+        let embed = NoteSimilarity.systemEmbedder()
+        let texts = [
+            "e1.md": "Quarterly budget review for the marketing team and the spend we plan for next year",
+            "e2.md": "How to repot a fiddle leaf fig without hurting the roots in the spring",
+            "e3.md": "Notes from the parent teacher conference about reading level and homework",
+            "e4.md": "Ideas for the weekend hiking trip along the coast with the dog",
+            "e5.md": "Debugging the memory leak in the background sync worker after the last release",
+            "e6.md": "Recipe for a slow cooked bean stew with smoked paprika and kale",
+            "f1.md": "Le rendez-vous chez le dentiste est déplacé à jeudi prochain dans l'après-midi",
+            "f2.md": "La liste des livres à lire cet été pour le club de lecture du quartier",
+            "f3.md": "Les résultats du match de rugby de samedi et le classement du championnat",
+        ]
+        var embeddings: [String: NoteSimilarity.Embedding] = [:]
+        for (path, text) in texts {
+            guard let e = embed(NoteSimilarity.excerpt(title: String(path.dropLast(3)), text: text)) else {
+                throw XCTSkip("no contextual embedding installed for \(path)'s language on this Mac")
+            }
+            embeddings[path] = e
+        }
+        let pairs = NoteSimilarity.pairs(grouped: embeddings)
+        XCTAssertFalse(pairs.contains { $0.a.hasPrefix("f") && $0.b.hasPrefix("f") }, "\(pairs)")
     }
 }

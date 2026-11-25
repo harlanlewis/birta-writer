@@ -260,10 +260,13 @@ describe("the tier on screen", () => {
         hub.dispatchEvent(new MouseEvent("mouseenter"));
         expect(open()).toBe(kids.length - TIER_SHOWN);
         expect([...stage.element.querySelectorAll(".lg-line--tier")].every((l) => l.classList.contains("lg-tier-open"))).toBe(true);
-        // Moving onto one of the opened notes keeps its arc open.
+        // Leaving the parent for the space on the way to its notes keeps the
+        // arc open: only another note, or leaving the drawing, closes it.
+        hub.dispatchEvent(new MouseEvent("mouseleave"));
+        expect(open()).toBe(kids.length - TIER_SHOWN);
         waiting()[0]!.dispatchEvent(new MouseEvent("mouseenter"));
         expect(open()).toBe(kids.length - TIER_SHOWN);
-        waiting()[0]!.dispatchEvent(new MouseEvent("mouseleave"));
+        stage.element.dispatchEvent(new MouseEvent("mouseleave"));
         expect(open()).toBe(0);
         stage.element.remove();
     });
@@ -283,16 +286,15 @@ describe("the tier on screen", () => {
         // An outer note: the centre to its parent, and its parent to it.
         hover("kid.md", true);
         expect(lit()).toEqual(["a.md>kid.md", "self.md>a.md"]);
-        hover("kid.md", false);
+        stage.element.dispatchEvent(new MouseEvent("mouseleave"));
         // A first-ring note: back to the centre and out to its child, and not
         // its tie to its neighbour b, which sitting beside it already says.
         hover("a.md", true);
         expect(lit()).toEqual(["a.md>kid.md", "self.md>a.md"]);
-        hover("a.md", false);
         // The centre: its whole first ring.
         hover("self.md", true);
         expect(lit()).toEqual(["self.md>a.md", "self.md>b.md"]);
-        hover("self.md", false);
+        stage.element.dispatchEvent(new MouseEvent("mouseleave"));
         expect(lit()).toEqual([]);
         stage.element.remove();
     });
@@ -347,6 +349,84 @@ describe("notes alike in content", () => {
         expect(stage.element.querySelector(".lg-line")!.classList.contains("lg-line--alike")).toBe(true);
         const n = stage.element.querySelector<HTMLElement>('.lg-node[data-id="alike.md"]')!;
         expect(n.classList.contains("lg-node--alike")).toBe(true);
-        expect(n.getAttribute("aria-label")).toBe("alike (alike in content, not linked)");
+        expect(n.getAttribute("aria-label")).toBe("alike (not linked; the on-device model finds it alike in content)");
+    });
+});
+
+describe("the review's fixes", () => {
+    it("the arrow keys should walk from a first-ring note into the notes that hang from it", () => {
+        const idx = index(["self.md", "a.md", "b.md", "a1.md", "a2.md", "b1.md"].map((p) => node(p)),
+            [edge("self.md", "a.md"), edge("self.md", "b.md"), edge("a.md", "a1.md"), edge("a.md", "a2.md"), edge("b.md", "b1.md")]);
+        const stage = createRingStage({ openNote: () => {}, onEscape: () => {}, centreIsCurrent: true });
+        stage.draw(layoutRings(buildLocalGraph(idx, "self.md", 2)!, 100));
+        const order = [...stage.element.querySelectorAll<HTMLElement>(".lg-node")].map((n) => n.dataset["id"]);
+        expect(order[0]).toBe("self.md");
+        // Its two notes come straight after it, in the order they sit round the ring.
+        const at = order.indexOf("a.md");
+        expect(new Set(order.slice(at + 1, at + 3))).toEqual(new Set(["a1.md", "a2.md"]));
+        expect(order.indexOf("b1.md")).toBe(order.indexOf("b.md") + 1);
+    });
+
+    it("outer notes that hang from no first-ring note should be spread round the ring, not stacked", () => {
+        const g = layoutRings({
+            nodes: [
+                { id: "c.md", label: "c", ring: 0, type: null, dangling: false, degree: 1, x: 0, y: 0 },
+                { id: "r.md", label: "r", ring: 1, type: null, dangling: false, degree: 1, x: 0, y: 0 },
+                ...["o1", "o2", "o3"].map((o) => ({ id: `${o}.md`, label: o, ring: 2 as const, type: null, dangling: false, degree: 0, x: 0, y: 0 })),
+            ],
+            lines: [{ from: "c.md", to: "r.md", weight: 1 }],
+            omitted: 0, types: [],
+        }, 100); // budget-ok: the layout square's size, not a timeout
+        const at = new Set(g.nodes.filter((n) => n.ring === 2).map((n) => `${n.x.toFixed(1)},${n.y.toFixed(1)}`));
+        expect(at.size).toBe(3);
+    });
+});
+
+describe("the second review's fixes", () => {
+    it("a first-ring name should keep its room when an outer name would overlap it, whatever the keyboard's walk", () => {
+        // a hangs a1 in its arc; in the keyboard's walk a1 comes before b.
+        // Give the labels rects where only a1's and b's overlap: the one
+        // that claims first keeps its name, so b must, being first-ring.
+        const idx = index(["self.md", "a.md", "b.md", "a1.md"].map((p) => node(p)),
+            [edge("self.md", "a.md"), edge("self.md", "b.md"), edge("a.md", "a1.md")]);
+        const rects: Record<string, [number, number]> = { "self.md": [0, 0], "a.md": [100, 0], "b.md": [200, 0], "a1.md": [205, 0] };
+        const real = Element.prototype.getBoundingClientRect;
+        Element.prototype.getBoundingClientRect = function (this: Element) {
+            if (this.classList.contains("lg-stage")) { return new DOMRect(-1000, -1000, 4000, 4000); }
+            if (this.classList.contains("lg-label")) {
+                const at = rects[(this.closest(".lg-node") as HTMLElement).dataset["id"]!]!;
+                return new DOMRect(at[0], at[1], 40, 12);
+            }
+            return real.call(this);
+        };
+        try {
+            const stage = createRingStage({ openNote: () => {}, onEscape: () => {}, centreIsCurrent: true });
+            document.body.append(stage.element);
+            stage.draw(layoutRings(buildLocalGraph(idx, "self.md", 2)!, 100));
+            const order = [...stage.element.querySelectorAll<HTMLElement>(".lg-node")].map((n) => n.dataset["id"]);
+            // The precondition that makes this test able to fail: the walk puts a1 before b.
+            expect(order.indexOf("a1.md")).toBeLessThan(order.indexOf("b.md"));
+            const compact = (id: string) => stage.element.querySelector<HTMLElement>(`.lg-node[data-id="${id}"]`)!.classList.contains("lg-node--compact");
+            expect(compact("b.md")).toBe(false);
+            expect(compact("a1.md")).toBe(true);
+            stage.element.remove();
+        } finally {
+            Element.prototype.getBoundingClientRect = real;
+        }
+    });
+
+    it("the pointer leaving the drawing should leave the focused note lit, not the last one pointed at", () => {
+        const idx = index(["self.md", "a.md", "b.md"].map((p) => node(p)), [edge("self.md", "a.md"), edge("self.md", "b.md")]);
+        const stage = createRingStage({ openNote: () => {}, onEscape: () => {}, centreIsCurrent: true });
+        document.body.append(stage.element);
+        stage.draw(layoutRings(buildLocalGraph(idx, "self.md", 1)!, 100));
+        const a = stage.element.querySelector<HTMLElement>('.lg-node[data-id="a.md"]')!;
+        const b = stage.element.querySelector<HTMLElement>('.lg-node[data-id="b.md"]')!;
+        a.focus();
+        b.dispatchEvent(new MouseEvent("mouseenter"));
+        stage.element.dispatchEvent(new MouseEvent("mouseleave"));
+        const lit = [...stage.element.querySelectorAll<SVGElement>(".lg-line.lg-lit")].map((l) => l.dataset["to"]);
+        expect(lit).toEqual(["a.md"]);
+        stage.element.remove();
     });
 });

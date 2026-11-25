@@ -2,8 +2,8 @@
  * components/graph/folderOverview.ts
  *
  * The folder as a whole (MAR-488): the files the reader has been working in
- * here, and under them a drawing of the notes around the one they opened most
- * recently. A row or a dot opens its note. It is opened on demand, by the
+ * here, the folder's subjects, a drawing of the notes around where they have
+ * been working, and what has gone quiet. A row or a name opens its note. It is opened on demand, by the
  * `showFolderOverview` command, and never by itself: opening a folder still
  * opens a note.
  *
@@ -17,14 +17,16 @@
  * back into what they were doing; the drawing is a way to wander from there,
  * and drawn first it pushed the lists below the fold of any short window.
  *
- * The drawing centres on the most recently opened note here that links to
- * anything (`overviewCentre`), not on the folder's most connected note. A
- * hub is a fact about the folder's history, and in a vault of any age it is
- * one cluster of old notes that has nothing to do with today's work; the
- * recent list is the one signal of what today's work is. Only a host that
- * keeps no recent files list, or one with nothing opened here yet, falls back
- * to the hub, because it is then the only centre there is. The centre opens
- * like any other dot, unless it is the note already on screen.
+ * The drawing centres on the most active note here that has a tie to draw
+ * (`overviewCentre`, activity being ./folderSignals.ts `activityOf`: written,
+ * opened, and relied on by notes that are), not on the folder's most
+ * connected note. A hub is a fact about the folder's history, and in a vault
+ * of any age it is one cluster of old notes that has nothing to do with
+ * today's work. Only when nothing about the folder's use is known (no dates,
+ * no recent files) is the hub the centre. When the most active note is
+ * itself dormant, the caption says the folder has gone quiet rather than
+ * calling it current work. The centre opens like any other name, unless it
+ * is the note already on screen.
  *
  * It is also the START VIEW, on a host that declares `fileLauncher`: the empty
  * state of a window holding no file, and the same buttons and recent files in
@@ -107,10 +109,10 @@ export function overviewCentre(index: FolderIndex, recents: readonly string[] | 
         return graph && graph.nodes.length >= 2 ? graph : null;
     };
     const rank = new Map([...new Set(recents ?? [])].map((p, i) => [p, i]));
-    // Only a note something references, that references anything, or that
-    // the host found alike to another, can be drawn: tried in order of activity, the first is drawable, where trying
-    // the most active notes whatever their links could reach a cut-off
-    // before reaching a note that links (a month of daily notes, say).
+    // Only a note with a tie can be drawn: one something references, that
+    // references anything, or that the host found alike to another. Tried
+    // in order of activity among those alone, so a month of unlinked daily
+    // notes cannot stand between the centre and the first note that links.
     const linked = new Set<string>();
     for (const e of index.edges) {
         if (e.to === e.from) { continue; }
@@ -133,6 +135,22 @@ export function overviewCentre(index: FolderIndex, recents: readonly string[] | 
     const hub = folderHub(index);
     const graph = hub !== null ? drawable(hub) : null;
     return graph ? { graph, reason: "hub" } : null;
+}
+
+/**
+ * What the caption calls an activity-chosen centre, true in each of three
+ * cases. The centre is live: it is where the reader has been working. The
+ * centre is dormant and so is the whole folder: nothing here has been
+ * touched in months. The centre is dormant but some note is not (a fresh
+ * note with no ties, which cannot be drawn around): the centre is only the
+ * liveliest note that has ties, and saying more would be false either way.
+ */
+export function activeCaption(activity: ReadonlyMap<string, number | null>, centre: string): string {
+    if ((activity.get(centre) ?? 0) >= DORMANT_BELOW) { return t("Around {0}, where you have been working"); }
+    const livest = Math.max(0, ...[...activity.values()].map((a) => a ?? 0));
+    return livest < DORMANT_BELOW
+        ? t("Around {0}, the note touched most recently; nothing here has been touched in months")
+        : t("Around {0}, the liveliest note that links to others");
 }
 
 /** A host that can name subjects better than their shared words can (`subjectNames`). */
@@ -351,13 +369,6 @@ export function createFolderOverview(host: FolderOverviewHost): FolderOverview {
     subjectsList.className = "fo-recents fo-subjects";
     subjectsList.setAttribute("role", "group");
     subjectsList.setAttribute("aria-label", t("Subjects"));
-    // Who named them, whenever a host's model did (AI_ASSISTANCE's rule that
-    // an advisory says who is speaking): a name the notes give needs no
-    // credit, and one a model gave must not pass for the notes' own.
-    const subjectsCredit = document.createElement("div");
-    subjectsCredit.className = "fo-empty fo-credit";
-    subjectsCredit.textContent = t("Named by the on-device model, from note names and tags");
-    subjectsCredit.hidden = true;
     const fadingHead = document.createElement("div");
     fadingHead.className = "ui-heading ui-menu-heading fo-heading";
     fadingHead.textContent = t("Fading");
@@ -370,7 +381,7 @@ export function createFolderOverview(host: FolderOverviewHost): FolderOverview {
     if (launcher) { element.append(actions); }
     if (folder) { element.append(recentHead, recentList, recentEmpty); }
     if (launcher) { element.append(filesHead, filesList); }
-    if (folder) { element.append(subjectsHead, subjectsList, subjectsCredit, stage.element, caption, legend, fadingHead, fadingList); }
+    if (folder) { element.append(subjectsHead, subjectsList, stage.element, caption, legend, fadingHead, fadingList); }
 
     const recentRoving = wireRoving({
         container: recentList,
@@ -516,7 +527,7 @@ export function createFolderOverview(host: FolderOverviewHost): FolderOverview {
         const notes = [centre.reason === "subject"
             ? fill(t("{0}: {1} notes, around {2}"), subjectName(subject!), String(subject!.members.length), laid.nodes[0]!.label)
             : fill(centre.reason === "active"
-                ? t("Around {0}, where you have been working")
+                ? activeCaption(activity, laid.nodes[0]!.id)
                 : t("Centred on {0}, the most connected note here"), laid.nodes[0]!.label)];
         if (laid.omitted > 0) {
             notes.push(fill(t("{0} more not shown"), String(laid.omitted)));
@@ -528,7 +539,7 @@ export function createFolderOverview(host: FolderOverviewHost): FolderOverview {
             notes.push(t("This folder has more notes than its index reads"));
         }
         if (laid.nodes.some((n) => n.alike)) {
-            notes.push(t("Dashed names are alike in content but not linked"));
+            notes.push(t("Dashed names are not linked; the on-device model finds them alike in content"));
         }
         // Lines are drawn only for the note pointed at (ringStage.ts), so say
         // how to see them.
@@ -563,9 +574,15 @@ export function createFolderOverview(host: FolderOverviewHost): FolderOverview {
             const detail = document.createElement("span");
             detail.className = "fg-row-detail";
             const dormant = subject.activity !== null && subject.activity < DORMANT_BELOW;
-            detail.textContent = dormant
+            // Who named it, on the row whose name it is (AI_ASSISTANCE's rule
+            // that an advisory says who is speaking): a name the notes give
+            // needs no credit, and one a model gave must not pass for theirs.
+            const byModel = hostNames.has(nameKey(subject));
+            const counted = dormant
                 ? fill(t("{0} notes, quiet"), String(subject.members.length))
                 : fill(t("{0} notes"), String(subject.members.length));
+            detail.textContent = byModel ? fill(t("{0}, named by the on-device model"), counted) : counted;
+            if (byModel) { btn.classList.add("fo-subject--model-named"); }
             btn.title = subject.members.slice(0, 6).join("\n");
             btn.append(label, detail);
             bindActivate(btn, () => {
@@ -576,7 +593,6 @@ export function createFolderOverview(host: FolderOverviewHost): FolderOverview {
             return btn;
         });
         subjectsList.replaceChildren(...rows);
-        subjectsCredit.hidden = !subjects.some((subject) => hostNames.has(nameKey(subject)));
         subjectsRoving.refresh();
         if (held !== null) {
             rows.find((row) => row.dataset["subject"] === held)?.focus();

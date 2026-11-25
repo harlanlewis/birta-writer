@@ -86,6 +86,17 @@
     edges: [...RING.map(([p]) => edge(p, HUB)), ...FAR.map(([p, , via]) => edge(via, p)), edge(SELF, "topics/topic-1.md")],
   };
   window.__recents = ["notes/standup.md", "deep/detail-2.md", "topics/topic-5.md", "loose.txt"];
+  // `?tier=1`: one first-ring note with five outer notes, more than its arc
+  // shows at rest, for reaching a waiting note with a real pointer.
+  if (params.get("tier") === "1") {
+    const kids = Array.from({ length: 5 }, (_, i) => [`arc/kid-${i + 1}.md`, `Kid ${i + 1}`]);
+    window.__folderIndex = {
+      rootName: "vault", truncated: false,
+      nodes: [note("now.md", "Now"), note("hub.md", "Hub"), ...kids.map(([p, n]) => note(p, n))],
+      edges: [edge("now.md", "hub.md"), ...kids.map(([p]) => edge("hub.md", p))],
+    };
+    window.__recents = ["now.md"];
+  }
   window.acquireVsCodeApi = () => ({
     postMessage: (msg) => {
       window.__posted.push(msg);

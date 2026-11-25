@@ -284,7 +284,8 @@ export async function run({ page, check, baseUrl }) {
         start.buttons.join("|") === "New Note|Open…" && start.buttonsAbove && start.buttonsOnScreen && start.buttonsPadded, JSON.stringify(start));
     const named = await page.evaluate((sel) => ({
         names: [...document.querySelectorAll(`${sel} .fo-subject .fg-row-label`)].map((l) => l.textContent),
-        credit: (() => { const c = document.querySelector(`${sel} .fo-credit`); return !!c && !c.hidden && c.getBoundingClientRect().height > 0; })(),
+        credit: [...document.querySelectorAll(`${sel} .fo-subject`)].every((r) => r.classList.contains("fo-subject--model-named")
+            && /named by the on-device model$/.test(r.querySelector(".fg-row-detail").textContent)),
     }), OVERVIEW);
     check("on a host that names subjects, the rows carry the host's names and say a model gave them",
         named.names.length > 0 && named.names.every((n) => n.startsWith("Named: ")) && named.credit, JSON.stringify(named));
@@ -354,6 +355,31 @@ export async function run({ page, check, baseUrl }) {
     await page.locator(`${OVERVIEW} .fo-file`).first().click();
     const pick = await page.evaluate(() => window.__posted.filter((m) => m.type === "openRecentFile").at(-1)?.path ?? null);
     check("a recent file asks the host to open it by the path it was given", pick === "/Users/r/notes/recent-1.md", String(pick));
+
+    // ── A waiting outer note, reached with a real pointer ────────────────
+    // The arc a note opens must stay open while the pointer crosses the
+    // empty space to one of its notes, or no pointer can ever reach them.
+    await page.goto(`${baseUrl}/index.html?tier=1`);
+    await page.waitForSelector(".milkdown .ProseMirror", { timeout: 15000 });
+    await page.waitForTimeout(300);
+    await openOverview(page, { rows: true });
+    const waitingId = await page.evaluate((sel) => document.querySelector(`${sel} .lg-node--tier`)?.dataset.id ?? null, OVERVIEW);
+    const parentBox = await page.locator(`${OVERVIEW} .lg-node[data-id="hub.md"]`).boundingBox();
+    const childBox = waitingId ? await page.locator(`${OVERVIEW} .lg-node[data-id="${waitingId}"]`).boundingBox() : null;
+    let reached = { waitingId, opened: false, posted: null };
+    if (parentBox && childBox) {
+        await page.mouse.move(parentBox.x + parentBox.width / 2, parentBox.y + parentBox.height / 2, { steps: 4 });
+        await page.waitForTimeout(250);
+        await page.mouse.move(childBox.x + childBox.width / 2, childBox.y + childBox.height / 2, { steps: 12 });
+        await page.waitForTimeout(250);
+        reached.opened = await page.evaluate(({ sel, id }) => document.querySelector(`${sel} .lg-node[data-id="${id}"]`).classList.contains("lg-tier-open"), { sel: OVERVIEW, id: waitingId });
+        await page.mouse.down();
+        await page.mouse.up();
+        await page.waitForTimeout(200);
+        reached.posted = await page.evaluate(() => window.__posted.filter((m) => m.type === "openProjectFile").map((m) => m.path).at(-1) ?? null);
+    }
+    check("a note waiting in an arc can be reached and opened with a real pointer from the note it hangs from",
+        waitingId !== null && reached.opened && reached.posted === waitingId, JSON.stringify(reached));
 
     check("no page errors", errors.length === 0, JSON.stringify(errors));
 }
