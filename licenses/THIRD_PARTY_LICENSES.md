@@ -4411,7 +4411,7 @@ SOFTWARE.
 
 </details>
 
-### katex@0.18.11
+### katex@0.19.1
 
 - License: MIT
 - Source: https://katex.org

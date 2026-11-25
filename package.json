@@ -2857,7 +2857,7 @@
         "@milkdown/utils": "7.22.1",
         "dompurify": "^3.4.17",
         "harper.js": "^2.10.0",
-        "katex": "^0.18.11",
+        "katex": "^0.19.1",
         "mathjs": "^15.2.0",
         "mermaid": "^12.2.0",
         "refractor": "^5.0.0",

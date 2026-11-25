@@ -9,8 +9,8 @@ packages:
 overrides:
     # One KaTeX in the tree, which katexSingleVersion.test.ts requires since
     # 0.18 prefixed its CSS classes. micromark-extension-math still asks for
-    # ^0.16. Retires when it asks for ^0.18.
-    katex: ^0.18.11
+    # ^0.16 and mermaid for ^0.18. Retires when both ask for ^0.19.
+    katex: ^0.19.1
     # GHSA-g3hv-75wg-m249 (below 11.0.1, no fixed 10.x). mocha 12 and vsce ask
     # for ^10. Scoped to 10.x on purpose: 9.x has no fixed release, and glob 10
     # matches nothing under minimatch 11. Retires when both ask for ^11.
