@@ -1398,10 +1398,12 @@ function carrySavedTableCells(saved: string, serial: string): string {
 // one, so a wrong restore costs canonical bytes, never content; that gate is
 // what this rule leans on, and it must not be bypassed for it.
 //
-// A directive whose text the user changed has no saved counterpart and keeps
-// the serializer's escapes. Dropping them would be a guess the merge cannot
-// check from bytes: an html block's line is spelled exactly as typed, and the
-// same backslash there is the user's.
+// Only a line the merge pairs in place with one saved line reaches this hook,
+// so a join or a split, which arrives as a run of deletions and insertions,
+// keeps the serializer's escapes (MAR-507). So does a directive whose text the
+// user changed, which has no saved counterpart. Dropping its escapes would be
+// a guess the merge cannot check from bytes: an html block's line is spelled
+// exactly as typed, and the same backslash there is the user's.
 const MARKDOWN_ESCAPE_RE = /\\([!-/:-@[-`{-~])/g;
 const unescapeMarkdown = (span: string): string => span.replace(MARKDOWN_ESCAPE_RE, "$1");
 
