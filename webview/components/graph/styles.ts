@@ -50,12 +50,7 @@ export const LOCAL_GRAPH_CSS = `
     fill: none;
 }
 
-.lg-arrow {
-    fill: var(--vscode-editorWidget-border);
-}
-
-.lg-stage--lit .lg-line,
-.lg-stage--lit .lg-arrow {
+.lg-stage--lit .lg-line {
     opacity: 0.25;
 }
 
@@ -64,9 +59,19 @@ export const LOCAL_GRAPH_CSS = `
     stroke: var(--vscode-focusBorder);
 }
 
-.lg-stage--lit .lg-arrow.lg-lit {
+/* The outer tier waiting for its parent (ringStage.ts \`tierFor\`): drawn,
+   so it can fade in where it belongs, and out of the way until then. */
+.lg-node--tier,
+.lg-line--tier {
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.15s ease;
+}
+
+.lg-node--tier.lg-tier-open,
+.lg-stage--lit .lg-line--tier.lg-tier-open {
     opacity: 1;
-    fill: var(--vscode-focusBorder);
+    pointer-events: auto;
 }
 
 /* The button's box is the dot (plus a margin to hit), centred on the layout
@@ -130,15 +135,24 @@ export const LOCAL_GRAPH_CSS = `
     background: var(--vscode-focusBorder);
 }
 
+/* Up to two lines, centred under the dot, at a width a title of a few
+   words fits in; past two lines it is cut, and the whole name is the
+   node's hover and its accessible name. */
 .lg-label {
     position: absolute;
     top: 100%;
     left: 50%;
     transform: translateX(-50%);
-    max-width: 7.5em;
+    width: max-content;
+    max-width: 11em;
     overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    text-align: center;
     color: var(--vscode-foreground);
 }
 

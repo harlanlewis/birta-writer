@@ -15,20 +15,32 @@
  * percentages, so nothing here is measured and the drawing is the same in a
  * docked drawer, the flyout, the overview and a test with no layout at all.
  *
- * Direction is a small arrowhead at each line's midpoint, where it cannot be
- * hidden under a dot of any size.
+ * Lines carry no direction: who is near whom is the picture, and which note
+ * names which is the Backlinks tab's to say. Two notes that name each other
+ * are one line. Each line bows a little to one side (`curveThrough`), the
+ * side and the bow fixed by the pair, so the drawing reads as grown rather
+ * than ruled and is the same every time.
+ *
+ * The outer ring is a TIER, shown selectively: each first-ring note shows
+ * its `TIER_SHOWN` liveliest second-ring notes, and the rest of its arc, the
+ * dormant ones among them, comes out while it is hovered or focused, lines
+ * and all (`tierFor`). The ring that crowds a drawing is the one that says
+ * least, so it says it on request.
  */
 import { t } from "@/i18n";
 import { bindActivate } from "@/ui/dom";
 import { wireRoving } from "../sidePanel/keyboardNav";
 import { DORMANT_BELOW } from "./folderSignals";
-import { hueOf, type GraphNode, type LocalGraph } from "./localGraph";
+import { hueOf, nudge, type GraphNode, type LocalGraph } from "./localGraph";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 /** The layout square: the SVG's viewBox and the buttons' percentages. */
 export const RING_SIZE = 100;
-/** Half the length of a midpoint arrowhead, in layout units. */
-const ARROW = 1.3;
+/** How far a line bows from straight, as a fraction of its length, at most. */
+const BOW = 0.16;
+
+/** Second-ring notes each first-ring note shows before it is hovered or focused. */
+export const TIER_SHOWN = 2;
 
 /**
  * `template` with every `{n}` replaced by the nth value, as written. One pass
@@ -73,19 +85,47 @@ function sizeStep(degree: number): number {
     return degree >= 12 ? 4 : degree >= 6 ? 3 : degree >= 2 ? 2 : 1;
 }
 
-function arrowPoints(ax: number, ay: number, bx: number, by: number): string | null {
-    const dx = bx - ax;
-    const dy = by - ay;
-    const len = Math.hypot(dx, dy);
-    if (len < ARROW * 4) { return null; }
-    const ux = dx / len;
-    const uy = dy / len;
-    const mx = (ax + bx) / 2;
-    const my = (ay + by) / 2;
-    const tip = [mx + ux * ARROW, my + uy * ARROW];
-    const left = [mx - ux * ARROW - uy * ARROW * 0.8, my - uy * ARROW + ux * ARROW * 0.8];
-    const right = [mx - ux * ARROW + uy * ARROW * 0.8, my - uy * ARROW - ux * ARROW * 0.8];
-    return [tip, left, right].map((p) => p.map((v) => v.toFixed(2)).join(",")).join(" ");
+/**
+ * A path from a to b bowed to one side: a quadratic curve through a control
+ * point off the midpoint, perpendicular to the line, by up to `BOW` of its
+ * length. Which side and how far are `nudge`s of the pair, ordered, so the
+ * same two notes bow the same way whichever is named first.
+ */
+export function curveThrough(a: { id: string; x: number; y: number }, b: { id: string; x: number; y: number }): string {
+    const [p, q] = a.id < b.id ? [a, b] : [b, a];
+    const dx = q.x - p.x;
+    const dy = q.y - p.y;
+    const key = `${p.id}\u0000${q.id}`;
+    const bow = (nudge(key, 3) < 0.5 ? -1 : 1) * BOW * (0.4 + 0.6 * nudge(key, 4));
+    const cx = (p.x + q.x) / 2 - dy * bow;
+    const cy = (p.y + q.y) / 2 + dx * bow;
+    const f = (v: number): string => v.toFixed(2);
+    return `M${f(p.x)},${f(p.y)} Q${f(cx)},${f(cy)} ${f(q.x)},${f(q.y)}`;
+}
+
+/**
+ * Which second-ring notes wait for their parent: past the `TIER_SHOWN`
+ * liveliest of each first-ring note's arc (activity, then how connected, then
+ * name), and any dormant one. A drawing with no activity at all (the Graph
+ * tab) ranks by how connected alone.
+ */
+export function tierFor(laid: LocalGraph): Set<string> {
+    const byParent = new Map<string, GraphNode[]>();
+    for (const n of laid.nodes) {
+        if (n.ring !== 2 || n.parent === undefined) { continue; }
+        if (!byParent.has(n.parent)) { byParent.set(n.parent, []); }
+        byParent.get(n.parent)!.push(n);
+    }
+    const waiting = new Set<string>();
+    for (const children of byParent.values()) {
+        children
+            .sort((a, b) => (b.activity ?? -1) - (a.activity ?? -1) || b.degree - a.degree || a.label.localeCompare(b.label))
+            .forEach((n, i) => {
+                const dormant = typeof n.activity === "number" && n.activity < DORMANT_BELOW;
+                if (i >= TIER_SHOWN || dormant) { waiting.add(n.id); }
+            });
+    }
+    return waiting;
 }
 
 export function createRingStage(host: RingStageHost): RingStage {
@@ -93,7 +133,8 @@ export function createRingStage(host: RingStageHost): RingStage {
     stage.className = "lg-stage";
     const nodeRoving = wireRoving({
         container: stage,
-        items: () => [...stage.querySelectorAll<HTMLElement>(".lg-node:not(:disabled)")],
+        // A waiting tier note is reachable once its parent has opened it.
+        items: () => [...stage.querySelectorAll<HTMLElement>(".lg-node:not(:disabled):not(.lg-node--tier:not(.lg-tier-open))")],
         onEscape: host.onEscape,
     });
 
@@ -101,6 +142,13 @@ export function createRingStage(host: RingStageHost): RingStage {
         stage.classList.toggle("lg-stage--lit", id !== null);
         for (const el of stage.querySelectorAll<SVGElement>("[data-from]")) {
             el.classList.toggle("lg-lit", id !== null && (el.dataset["from"] === id || el.dataset["to"] === id));
+        }
+        // The tier a node opens: its own arc, or, for a tier note, the arc it
+        // is in, so moving from a parent onto one of its notes keeps it open.
+        const node = id === null ? null : [...stage.querySelectorAll<HTMLElement>(".lg-node")].find((n) => n.dataset["id"] === id) ?? null;
+        const open = node?.dataset["parent"] ?? id;
+        for (const el of stage.querySelectorAll<HTMLElement | SVGElement>("[data-tier]")) {
+            el.classList.toggle("lg-tier-open", open !== null && el.dataset["tier"] === open);
         }
     }
 
@@ -183,33 +231,41 @@ export function createRingStage(host: RingStageHost): RingStage {
     function draw(laid: LocalGraph, current?: boolean): void {
         centreIsCurrent = current ?? host.centreIsCurrent;
         const at = new Map(laid.nodes.map((n) => [n.id, n]));
+        const waiting = tierFor(laid);
         const svg = document.createElementNS(SVG_NS, "svg");
         svg.setAttribute("class", "lg-lines");
         svg.setAttribute("viewBox", `0 0 ${RING_SIZE} ${RING_SIZE}`);
         svg.setAttribute("aria-hidden", "true");
+        const drawn = new Set<string>();
         for (const line of laid.lines) {
             const a = at.get(line.from)!;
             const b = at.get(line.to)!;
-            const el = document.createElementNS(SVG_NS, "line");
+            // One line a pair: a note naming the other back is the same tie.
+            const pair = a.id < b.id ? `${a.id}\u0000${b.id}` : `${b.id}\u0000${a.id}`;
+            if (drawn.has(pair)) { continue; }
+            drawn.add(pair);
+            const el = document.createElementNS(SVG_NS, "path");
             el.setAttribute("class", "lg-line");
-            el.setAttribute("x1", a.x.toFixed(2));
-            el.setAttribute("y1", a.y.toFixed(2));
-            el.setAttribute("x2", b.x.toFixed(2));
-            el.setAttribute("y2", b.y.toFixed(2));
+            el.setAttribute("d", curveThrough(a, b));
             el.dataset["from"] = line.from;
             el.dataset["to"] = line.to;
-            svg.append(el);
-            const points = arrowPoints(a.x, a.y, b.x, b.y);
-            if (points) {
-                const arrow = document.createElementNS(SVG_NS, "polygon");
-                arrow.setAttribute("class", "lg-arrow");
-                arrow.setAttribute("points", points);
-                arrow.dataset["from"] = line.from;
-                arrow.dataset["to"] = line.to;
-                svg.append(arrow);
+            // A line to a waiting note waits with it, and opens with its tier.
+            const tierNote = waiting.has(a.id) ? a : waiting.has(b.id) ? b : null;
+            if (tierNote?.parent !== undefined) {
+                el.classList.add("lg-line--tier");
+                el.dataset["tier"] = tierNote.parent;
             }
+            svg.append(el);
         }
-        stage.replaceChildren(svg, ...laid.nodes.map((n) => nodeButton(n, laid)));
+        stage.replaceChildren(svg, ...laid.nodes.map((n) => {
+            const btn = nodeButton(n, laid);
+            if (n.parent !== undefined) { btn.dataset["parent"] = n.parent; }
+            if (waiting.has(n.id) && n.parent !== undefined) {
+                btn.classList.add("lg-node--tier");
+                btn.dataset["tier"] = n.parent;
+            }
+            return btn;
+        }));
         declutterLabels();
         nodeRoving.refresh();
     }
