@@ -54,11 +54,12 @@ describe("lintBlocks filtering", () => {
 
     // harper falls back to markdown, with a console warning per call, on a
     // language it does not know. The type refuses an unknown value; this pins
-    // which known one is sent (MAR-508).
-    it("each block should be linted with the markdown language named explicitly", async () => {
+    // which known one is sent: plain text, because the Markdown is already
+    // gone from what the webview sends (MAR-508).
+    it("each block should be linted as plain text", async () => {
         await lintBlocks([{ key: 0, text: "One block." }, { key: 1, text: "Another block." }]);
 
-        expect(lintOptions).toEqual([{ language: "markdown" }, { language: "markdown" }]);
+        expect(lintOptions).toEqual([{ language: "plaintext" }, { language: "plaintext" }]);
     });
 
     it("a grammar lint landing on a masked (placeholder) span should be dropped", async () => {
