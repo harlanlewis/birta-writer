@@ -61,6 +61,9 @@ describe("no hardcoded keybindings (modifier-chord scan)", () => {
     const MODIFIER_ALLOWLIST: Record<string, string> = {
         "webview/keyboardShortcuts.ts":
             "the workbench key-leak guard itself (claims typing-level ProseMirror combos)",
+        "webview/plugins/caretSuggest.ts":
+            "binds nothing: a bare Enter may accept an advisory suggestion, and any modifier makes it decline, " +
+            "so Shift-Enter and Mod-Enter reach their own (rebindable) keymaps untouched",
         "webview/utils/inputUndo.ts":
             "local undo/redo inside overlay inputs — VS Code intercepts Cmd+Z before native inputs see it",
         "webview/components/findBar/index.ts":
