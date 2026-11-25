@@ -17,7 +17,11 @@
  *   arithmetic and the answer is plain digits either way. The `=>` spec
  *   deliberately does not — see the note on `calcArrowSpec`, which is the whole
  *   argument. `autoActivate` pre-selects the lone result so Tab confirms
- *   it (Enter deliberately stays a newline), and accepting at a stale answer
+ *   it, and so does Return where it answers the offer: right after the `=` or
+ *   `=>` the writer just typed, at the end of the line (`asksAtCaret`, and the
+ *   controller's own gates in caretSuggest.ts). Anywhere else Return keeps its
+ *   newline, and Escape first gives a newline without the answer. Accepting
+ *   at a stale answer
  *   REPLACES the old number (staleResultLengthAfter). The `=` fetch is
  *   synchronous; the `=>` fetch awaits the lazy unit engine.
  * - Auto-insert mode is a plain input rule: when the `=` is typed to
@@ -68,6 +72,31 @@ function alwaysInsertLabel(): string {
 
 // ── Advisory mode (caret suggestion) ─────────────────────────────────────────
 
+/**
+ * The confirm key a result row shows. Return, because that is the key a
+ * writer reaches for; Tab works too, and always, including in the cases
+ * `asksAtCaret` refuses Return.
+ */
+const ACCEPT_HINT = "↵";
+
+/**
+ * Whether Return at the caret is the answer to the offer: the text right
+ * before the caret ends in the trigger the writer just typed (`=` or `=>`),
+ * and nothing but whitespace follows it in the block. That refuses the
+ * leading form (`=5+7` has no finishing keystroke, and its offer shows while
+ * digits are still being typed) and an equation whose answer is already
+ * there (Return beside `2+3= 7` must split the line, not replace the 7).
+ */
+function asksAtCaret(trigger: RegExp) {
+    return (state: EditorState): boolean => {
+        const $caret = state.selection.$from;
+        const block = $caret.parent;
+        const before = block.textBetween(0, $caret.parentOffset, undefined, "￼");
+        const after = block.textBetween($caret.parentOffset, block.content.size, undefined, "￼");
+        return trigger.test(before) && /^\s*$/.test(after);
+    };
+}
+
 const calcSuggestKey = new PluginKey("MD_CALC_SUGGEST");
 
 const calcSuggestSpec: CaretSuggestSpec = {
@@ -107,7 +136,7 @@ const calcSuggestSpec: CaretSuggestSpec = {
         // menu never shows once auto-insert is on), so no "off" state needed.
         return createSuggestMenuFromRows(
             [
-                { text: result, title: `${match.query} = ${result}`, hint: "Tab" },
+                { text: result, title: `${match.query} = ${result}`, hint: ACCEPT_HINT },
                 {
                     text: alwaysInsertLabel(),
                     title: t("Insert the answer the moment you type = (birta.calc.autoInsert)"),
@@ -140,11 +169,10 @@ const calcSuggestSpec: CaretSuggestSpec = {
         applyCalcResult(view, match.start, match.caret, picked);
     },
 
-    // The lone advisory result is pre-selected so Tab confirms it without an
-    // arrow key. Enter deliberately keeps its newline meaning (the pre-highlight
-    // must not capture the user's first Enter) — see caretSuggest.ts's
-    // autoActivate handling.
+    // The lone advisory result is pre-selected so Return or Tab confirms it
+    // without an arrow key (see the module header for when Return may).
     autoActivate: true,
+    enterAccepts: asksAtCaret(/=[ \t]*$/),
     // `` `3+7=` `` computes: see the module header.
     allowInlineCode: true,
 };
@@ -283,7 +311,7 @@ function readingRows(query: string, scope?: Map<string, number>): ArrowRow[] {
 
 /**
  * The `=>` advisory suggestion: typing `<expr> =>` offers the computed value,
- * confirmed with Tab (Enter stays a newline, like the `=` path). The expression
+ * confirmed with Return or Tab, like the `=` path. The expression
  * may reference variables defined anywhere in the document and use offline unit
  * conversions (`3 km in mi =>`). Detection is block-local (the expression ends
  * at the caret); only variable RESOLUTION needs the whole document, done in
@@ -327,7 +355,7 @@ const calcArrowSpec: CaretSuggestSpec = {
         if (rows[0].reading === undefined) {
             const { result } = rows[0];
             return createSuggestMenuFromRows(
-                [{ text: result, title: `${match.query} => ${result}`, hint: "Tab" }],
+                [{ text: result, title: `${match.query} => ${result}`, hint: ACCEPT_HINT }],
                 anchor,
                 onPick,
             );
@@ -336,8 +364,8 @@ const calcArrowSpec: CaretSuggestSpec = {
         // chosen) and its answer sits in the hint slot, so the two numbers are
         // side by side. The pick value is the reading's name — `pick` recomputes
         // from it, and a name can never collide with a formatted number. The
-        // hint slot is spent on the answer, so the footer — not a per-row
-        // "Tab" — is what says how to confirm.
+        // hint slot is spent on the answer, so the footer, not a per-row key
+        // hint, is what says how to confirm.
         return createSuggestMenuFromRows(
             rows.map(({ result, reading }) => ({
                 text: reading!,
@@ -350,7 +378,7 @@ const calcArrowSpec: CaretSuggestSpec = {
                 // Named from the ROW, never a hardcoded `log`: a second entry
                 // in the engine's ambiguity table must not leave this sentence
                 // explaining a name that isn't on screen.
-                footer: t("{0} reads two ways here — Tab writes your choice into the equation itself")
+                footer: t("{0} reads two ways here — Return or Tab writes your choice into the equation itself")
                     .replace("{0}", rows[0].name ?? ""),
             },
         );
@@ -370,9 +398,10 @@ const calcArrowSpec: CaretSuggestSpec = {
         applyArrowResult(view, match.start, match.caret, picked);
     },
 
-    // Pre-select the lone advisory result so Tab confirms it; Enter keeps its
-    // newline meaning (see caretSuggest.ts autoActivate handling).
+    // Pre-select the lone advisory result so Return or Tab confirms it (the
+    // module header has the reasoning for Return).
     autoActivate: true,
+    enterAccepts: asksAtCaret(/=>[ \t]*$/),
     // Deliberately NOT allowInlineCode, unlike the `=` path above. An accepted
     // `=>` answer is a MAINTAINED artifact: the refresh engine keeps it true
     // and calcStale cues it when it can't — and both read blockCalcText, which

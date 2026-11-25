@@ -135,6 +135,19 @@ export async function run({ page, check, baseUrl }) {
     check("Tab answers past the paren, leaving it in place",
         (await paragraphTexts(page)).includes("the formula (3+7= 10"));
 
+    // ── Calc: Return confirms as Tab does, and does not split the line ──
+    await page.keyboard.press("Enter");
+    await page.keyboard.type("4+5=", { delay: 25 });
+    menu = await page.waitForSelector(".fm-suggest-menu", { timeout: 3000 }).catch(() => null);
+    check("'4+5=' offers 9", !!menu && (await menu.textContent()).includes("9"));
+    const linesBeforeReturn = (await paragraphTexts(page)).split("|").length;
+    await page.keyboard.press("Enter");
+    await page.waitForTimeout(300);
+    const afterReturn = (await paragraphTexts(page)).split("|");
+    check("Return confirms '4+5= 9' and adds no line",
+        afterReturn.includes("4+5= 9") && afterReturn.length === linesBeforeReturn,
+        JSON.stringify(afterReturn.slice(-3)));
+
     // ── Calc: auto-insert guards at runtime ──
     await page.evaluate(() => { window.__i18n.calcAutoInsert = true; });
     await page.keyboard.press("Enter");

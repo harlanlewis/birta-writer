@@ -422,7 +422,7 @@ export function activate(context: vscode.ExtensionContext) {
         "calc.autoInsert",
         "calcAutoInsert",
         "Birta: calc auto-insert on — typing = inserts the result immediately",
-        "Birta: calc auto-insert off — results are offered as suggestions (Tab accepts)",
+        "Birta: calc auto-insert off — results are offered as suggestions (Return or Tab accepts)",
     );
     registerGateToggle(
         "birta.togglePasteUnfurl",

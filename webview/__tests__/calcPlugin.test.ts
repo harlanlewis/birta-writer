@@ -1,7 +1,7 @@
 /**
  * Inline-calc plugin tests, driving the REAL Milkdown editor: the advisory
- * `=` and `=>` caret suggestions and their Tab confirmation (Return stays a
- * newline), the opt-in auto-insert input rule, and the enabled gating. The
+ * `=` and `=>` caret suggestions and their Return or Tab confirmation, the
+ * opt-in auto-insert input rule, and the enabled gating. The
  * pure engine is covered in calc.test.ts; the refresh/cascade/withdrawal
  * engine in calcRefresh.test.ts.
  */
@@ -114,26 +114,104 @@ describe("advisory inline calc", () => {
         expect(v.state.doc.textContent).toBe("x 2+3= 5");
     });
 
-    it("Enter after the menu appears should keep its newline meaning (not insert)", async () => {
+    it("Enter while the answer is offered should insert it, and not split the block", async () => {
         typeText(v, " 6*7=");
         await vi.advanceTimersByTimeAsync(250);
         expect(optionTexts()).toEqual(["42"]);
 
-        // Enter must NOT be captured by the pre-highlighted calc row: a
-        // suggestion applies only on explicit consent (Tab), so the first Enter
-        // proceeds to ProseMirror as a real newline. The result is never
-        // inserted, the menu closes so it can't outlive the block, and the
-        // paragraph splits (a new block appears) — proof Enter kept its meaning.
         const blocksBefore = v.state.doc.childCount;
-        const ev = new KeyboardEvent("keydown", {
-            key: "Enter",
-            bubbles: true,
-            cancelable: true,
-        });
+        const ev = new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true });
         v.dom.dispatchEvent(ev);
 
-        expect(v.state.doc.textContent).toBe("x 6*7=");
+        expect(v.state.doc.textContent).toBe("x 6*7= 42");
+        expect(ev.defaultPrevented).toBe(true);
+        expect(v.state.doc.childCount).toBe(blocksBefore);
+    });
+
+    it("Escape and then Enter should give a newline without the answer", async () => {
+        typeText(v, " 6*7=");
+        await vi.advanceTimersByTimeAsync(250);
+        expect(optionTexts()).toEqual(["42"]);
+
+        v.dom.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
         expect(optionTexts()).toEqual([]);
+        const blocksBefore = v.state.doc.childCount;
+        v.dom.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+
+        // No answer, and the block split: Enter reached ProseMirror as a newline.
+        expect(v.state.doc.textContent).toBe("x 6*7=");
+        expect(v.state.doc.childCount).toBe(blocksBefore + 1);
+    });
+
+    // Return takes the answer only where it answers the offer. Each case below
+    // is one way Return reaches an open calc menu without that being so, and
+    // each must split the line and leave the text alone.
+    const pressEnter = (init: KeyboardEventInit = {}): void => {
+        v.dom.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true, ...init }));
+    };
+
+    it("Enter pressed before the offer appears should still take the answer", async () => {
+        // `=` then Return in quick succession: inside the debounce, with no
+        // menu drawn yet, the line must not split under an answer about to appear.
+        typeText(v, " 6*7=");
+        pressEnter();
+
+        expect(v.state.doc.textContent).toBe("x 6*7= 42");
+        expect(v.state.doc.childCount).toBe(1);
+    });
+
+    it("Shift+Enter with an answer on offer should not take it", async () => {
+        typeText(v, " 6*7=");
+        await vi.advanceTimersByTimeAsync(250);
+        expect(optionTexts()).toEqual(["42"]);
+
+        pressEnter({ shiftKey: true });
+
+        expect(v.state.doc.textContent).not.toContain("42");
+        expect(optionTexts()).toEqual([]);
+    });
+
+    it("Enter on an offer raised by moving the caret onto an old line should split it", async () => {
+        await editor.destroy();
+        editor = await makeEditor("Budget check: 120+80=\n");
+        v = view(editor);
+        placeCursorAtEnd(v); // a selection change only: nothing typed
+        await vi.advanceTimersByTimeAsync(250);
+        expect(optionTexts()).toEqual(["200"]);
+
+        const blocksBefore = v.state.doc.childCount;
+        pressEnter();
+
+        expect(v.state.doc.textContent).toBe("Budget check: 120+80=");
+        expect(v.state.doc.childCount).toBe(blocksBefore + 1);
+    });
+
+    it("Enter where a number already follows the = should split the line, not replace it", async () => {
+        await editor.destroy();
+        editor = await makeEditor("2+3 7\n");
+        v = view(editor);
+        // Type the `=` between the expression and the writer's own 7.
+        v.dispatch(v.state.tr.setSelection(TextSelection.create(v.state.doc, 4)));
+        typeText(v, "=");
+        await vi.advanceTimersByTimeAsync(250);
+        expect(optionTexts()).toEqual(["5"]);
+
+        const blocksBefore = v.state.doc.childCount;
+        pressEnter();
+
+        expect(v.state.doc.textContent).toBe("2+3= 7");
+        expect(v.state.doc.childCount).toBe(blocksBefore + 1);
+    });
+
+    it("Enter after the leading form should split the line, not answer it", async () => {
+        typeText(v, " enter =10/2");
+        await vi.advanceTimersByTimeAsync(250);
+        expect(optionTexts()).toEqual(["5"]);
+
+        const blocksBefore = v.state.doc.childCount;
+        pressEnter();
+
+        expect(v.state.doc.textContent).toBe("x enter =10/2");
         expect(v.state.doc.childCount).toBe(blocksBefore + 1);
     });
 
@@ -157,14 +235,14 @@ describe("advisory inline calc", () => {
         expect(v.state.doc.textContent).toBe("x 12=5+7");
     });
 
-    it("the result row should carry a Tab confirm hint", async () => {
+    it("the result row should carry a Return confirm hint", async () => {
         typeText(v, " 2+3=");
         await vi.advanceTimersByTimeAsync(250);
 
         const hint = document.querySelector(
             ".fm-suggest-menu .fm-suggest-item .fm-suggest-item__hint",
         );
-        expect(hint?.textContent).toBe("Tab");
+        expect(hint?.textContent).toBe("↵");
     });
 
     it("the 'Always insert result' action row should enable auto-insert AND answer the current ask", async () => {
@@ -433,6 +511,33 @@ describe("`=>` living calculations (variables + units)", () => {
         typeText(v, " 2+3 =>");
         await vi.advanceTimersByTimeAsync(250);
         v.dom.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", bubbles: true }));
+
+        expect(v.state.doc.textContent).toBe("x 2+3 => 5");
+    });
+
+    it("Enter on an answer the expression has since outgrown should not write it", async () => {
+        editor = await makeArrowEditor("x\n");
+        v = view(editor);
+        placeCursorAtEnd(v);
+        typeText(v, " 2+3 =>");
+        await vi.advanceTimersByTimeAsync(250);
+        expect(optionTexts()).toEqual(["5"]);
+
+        // Edit the expression, caret still after the `=>`: the `=>` fetch is
+        // asynchronous, so the menu on screen still offers the old 5.
+        v.dispatch(v.state.tr.insertText("1", 3));
+        v.dom.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+
+        expect(v.state.doc.textContent).not.toContain("=> 5");
+    });
+
+    it("Enter should write the result after the =>, as Tab does", async () => {
+        editor = await makeArrowEditor("x\n");
+        v = view(editor);
+        placeCursorAtEnd(v);
+        typeText(v, " 2+3 =>");
+        await vi.advanceTimersByTimeAsync(250);
+        v.dom.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
 
         expect(v.state.doc.textContent).toBe("x 2+3 => 5");
     });

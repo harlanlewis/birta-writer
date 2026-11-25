@@ -66,9 +66,10 @@ const listMergeSuggestSpec: CaretSuggestSpec = {
         }
     },
 
-    // Single advisory row, pre-selected: Tab confirms without an arrow key;
-    // Enter deliberately keeps its newline meaning (caretSuggest's
-    // autoActivate contract, shared with calc).
+    // Single advisory row, pre-selected: Tab confirms without an arrow key.
+    // No `enterAccepts`, unlike calc: this offer appears wherever the caret
+    // rests in the lower list's first item, so Enter there is somebody
+    // starting a new item, and it must keep its newline meaning.
     autoActivate: true,
 
     // A structural trigger can coincide with any text-construct menu (typing

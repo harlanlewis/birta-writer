@@ -6,6 +6,7 @@
 
 ### Changed
 
+- The answer an inline calculation offers can now be taken with Return as well as Tab, when you have just typed the `=` or `=>` at the end of the line. After `=` that holds even if you press Return before the answer appears; after `=>`, wait for it. Anywhere else Return still starts a new line: on an old equation you clicked back into, after the leading form `=5+7`, beside a number already after the `=`, and with Shift or Command held. To start a new line without the answer, press Escape first. The offer to merge two adjacent lists still takes Tab only, because Return there is usually a new list item.
 - Proofreading runs on a newer engine, and a few findings change underline. A lowercase `api`, `faq` or `html` is now marked as needing capitals rather than as a misspelling, and `frontmatter` is now a spelling finding, so adding it to your words silences it. A word in `birta.spellCheck.userWords` stays quiet under either underline when it is written the way you added it; an entry in capitals, such as `GitHub`, does not hide a lowercase `github`.
 
 ### Fixed
