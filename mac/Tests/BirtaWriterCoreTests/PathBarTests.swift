@@ -80,4 +80,18 @@ final class PathBarTests: XCTestCase {
         XCTAssertEqual(PathBar.location(of: URL(fileURLWithPath: "/Users/ada/Code/site"), home: home, displayName: name),
                        "ada \u{203A} Code \u{203A} site")
     }
+
+    /// A folder can BE the root a path starts at, which a file never is: the
+    /// Where menu's walk starts at a note's folder and a recent row names a
+    /// file's folder. Each reads as that root alone, not as the next branch's
+    /// walk through `Mobile Documents`, `Library` and `Users`.
+    func testAFolderThatIsARootShouldReadAsThatRootAlone() {
+        XCTAssertEqual(segments("/Users/ada/Library/Mobile Documents/com~apple~CloudDocs").map(\.name), ["iCloud Drive"])
+        XCTAssertEqual(segments("/Users/ada/Library/Mobile Documents/iCloud~md~obsidian").map(\.name), ["iCloud Drive", "Obsidian"])
+        let home = segments("/Users/ada")
+        XCTAssertEqual(home.map(\.name), ["ada"])
+        XCTAssertEqual(home.first?.kind, .home)
+        XCTAssertEqual(PathBar.location(of: URL(fileURLWithPath: "/Users/ada/Library/Mobile Documents/com~apple~CloudDocs"),
+                                        home: self.home, displayName: name), "iCloud Drive")
+    }
 }

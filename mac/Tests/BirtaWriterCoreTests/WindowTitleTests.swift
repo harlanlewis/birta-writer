@@ -156,6 +156,14 @@ final class WindowTitleTests: XCTestCase {
         XCTAssertTrue(r[0].url.hasDirectoryPath)
     }
 
+    /// A note at the top of iCloud Drive: the Where menu starts at the iCloud
+    /// Drive folder itself, and lists it once.
+    func testTheWhereMenuForANoteAtTheTopOfICloudDriveShouldListICloudDriveAlone() {
+        let r = rows(URL(fileURLWithPath: "/Users/x/Library/Mobile Documents/com~apple~CloudDocs/", isDirectory: true))
+        XCTAssertEqual(r.map(\.name), ["iCloud Drive"])
+        XCTAssertEqual(r.map(\.url.path), ["/Users/x/Library/Mobile Documents/com~apple~CloudDocs"])
+    }
+
     /// `deletingLastPathComponent` leaves `..` behind on an unstandardized
     /// path; the rows are standardized, so the walk names real folders.
     func testARelativelySpelledPathShouldBeStandardizedBeforeWalking() {

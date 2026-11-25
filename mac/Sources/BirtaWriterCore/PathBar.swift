@@ -80,7 +80,11 @@ public enum PathBar {
         var out: [PathSegment] = []
         var index: Int
         let mobile = homeParts + components(mobileDocuments)
-        if parts.starts(with: mobile), parts.count > mobile.count + 1 {
+        // `>=`/`>` against the root itself, not one below it: a FOLDER can
+        // be the root (the Where menu's walk starts at a note's folder, and a
+        // recent row names a file's folder), and it then reads as that root
+        // alone rather than falling through to the next branch's.
+        if parts.starts(with: mobile), parts.count > mobile.count {
             let containerIndex = mobile.count
             let cloudPath = join(mobile + [cloudDocs])
             out.append(PathSegment(name: cloudTitle, path: cloudPath, kind: .cloud))
@@ -99,7 +103,7 @@ public enum PathBar {
                                        path: containerPath, kind: .folder))
                 index = containerEnd
             }
-        } else if parts.starts(with: homeParts), parts.count > homeParts.count, !homeParts.isEmpty {
+        } else if parts.starts(with: homeParts), parts.count >= homeParts.count, !homeParts.isEmpty {
             out.append(PathSegment(name: displayName(join(homeParts)), path: join(homeParts), kind: .home))
             index = homeParts.count
         } else {
