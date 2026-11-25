@@ -21,12 +21,14 @@ import type { LintOptions } from "harper.js" with { "resolution-mode": "import" 
  * markdown at runtime with a console warning per call.
  *
  * Plain text, because a block arrives as the webview's extracted text
- * (`blockPlainText`), with the Markdown already gone. Read as Markdown, a
- * paragraph that happens to begin `1.`, `#` or `>` would be linted as
- * structure it does not have. On the text the webview actually sends, the
- * two modes flag the same things but for a literal `[TODO]` (MAR-508).
+ * (`blockPlainText`), with the Markdown already gone, so any syntax harper
+ * could find in it is the writer's literal characters. Read as Markdown, a
+ * paragraph that begins with a literal `#` is taken for a heading and held to
+ * title case (`harperLanguage.test.ts`). Plain text has the converse quirk,
+ * reading a literal `1.` as the end of a sentence; MAR-508 weighed the two
+ * over the corpus.
  */
-const LINT_LANGUAGE: NonNullable<LintOptions["language"]> = "plaintext";
+export const LINT_LANGUAGE: NonNullable<LintOptions["language"]> = "plaintext";
 
 type HarperLinter = {
     setup(): Promise<void>;
@@ -54,7 +56,7 @@ async function createLinter(): Promise<HarperLinter> {
     return linter;
 }
 
-/** Lazily create the linter (~380ms setup + ~300MB resident; only when used). */
+/** Lazily create the linter: its setup is slow and it stays large in memory, so only when used. */
 function getLinter(): Promise<HarperLinter> {
     if (!linterPromise) {
         linterPromise = createLinter().catch((err) => {
