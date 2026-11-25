@@ -3,6 +3,7 @@
  * round-trip tests so both exercise the exact same serializer behavior.
  */
 import { remarkStringifyOptionsCtx, type Editor } from "@milkdown/core";
+import { findDirectives } from "./utils/templateDirectives";
 import { commonmark, remarkPreserveEmptyLinePlugin } from "@milkdown/preset-commonmark";
 import { gfm } from "@milkdown/preset-gfm";
 import { calloutsPlugin } from "./plugins/callouts";
@@ -38,6 +39,7 @@ import {
     sourceStyleReplacedPlugins,
 } from "./plugins/sourceStyle";
 import { tableBreakReplacedPlugins, tableBreaksPlugin } from "./plugins/tableBreaks";
+import { directiveAutolinksPlugin } from "./plugins/directiveAutolinks";
 import { footnoteHtmlBlockRemark } from "./plugins/footnotes";
 import { unescapeAutolinkBackslashes, unescapeOrgCookies } from "./utils/minimalDiff";
 
@@ -210,6 +212,8 @@ export const pureCommonmark = [
     ...mathPlugin,
     ...sourceStylePlugin,
     ...tableBreaksPlugin,
+    // Keeps a template directive one text run when it holds a bare URL (MAR-507).
+    ...directiveAutolinksPlugin,
     // Replaces the stock star-emphasis input rule filtered out above.
     mathAwareEmphasisStarInputRule,
     // Replaces the stock bullet/ordered list input rules filtered out above.
@@ -976,17 +980,84 @@ function emitsDashRule(node: FlowNode, state: unknown): boolean {
  * So the trailing whitespace is still written as it is, in exactly the case
  * Milkdown's handler singled out, and the text before it is escaped as any
  * other text is, with that whitespace as its following context.
+ *
+ * Under `serializeVerbatim`, template directives are written as they read
+ * (MAR-507), and only the text around them is escaped, each run with the
+ * directive beside it as its context. Whether a directive written this way
+ * reparses as the same text is not decided here: the save path reparses what
+ * it is about to write, and where that does not reopen as the document it
+ * saves an ordinary serialize instead (`mergeVerified`).
  */
 function serializeText(
     node: { value: string },
     _parent: unknown,
     state: { safe(value: string, config: object): string },
-    info: { after?: string },
+    info: { before?: string; after?: string },
 ): string {
-    const trailing = /^([^*_\\]*?)(\s+)$/.exec(node.value);
-    if (!trailing) return state.safe(node.value, { ...info, encode: [] });
+    const spans = directivesVerbatim ? findDirectives(node.value) : [];
+    if (spans.length === 0) return escapeRun(node.value, state, info);
+    let out = "";
+    let at = 0;
+    for (const span of spans) {
+        if (span.from > at) {
+            out += escapeRun(node.value.slice(at, span.from), state, {
+                ...info,
+                before: at === 0 ? info.before : node.value.charAt(at - 1),
+                after: node.value.charAt(span.from),
+            });
+        }
+        const verbatim = node.value.slice(span.from, span.to);
+        if (!wroteVerbatim && state.safe(verbatim, { ...info, encode: [] }) !== verbatim) wroteVerbatim = true;
+        out += verbatim;
+        at = span.to;
+    }
+    if (at < node.value.length) {
+        out += escapeRun(node.value.slice(at), state, { ...info, before: node.value.charAt(at - 1) });
+    }
+    return out;
+}
+
+function escapeRun(
+    value: string,
+    state: { safe(value: string, config: object): string },
+    info: { before?: string; after?: string },
+): string {
+    const trailing = /^([^*_\\]*?)(\s+)$/.exec(value);
+    if (!trailing) return state.safe(value, { ...info, encode: [] });
     const [, body, space] = trailing;
     return state.safe(body, { ...info, after: space + (info.after ?? ""), encode: [] }) + space;
+}
+
+/**
+ * On only inside `serializeVerbatim`. Every other serialize (source-peek,
+ * Copy as Markdown, Turn into, the reparse-hazard check) gets the strict
+ * spelling, because none of them reparses its output before using it. Both
+ * flags are module state on purpose: the serializer is synchronous, so a flag
+ * set around one call describes exactly that call.
+ */
+let directivesVerbatim = false;
+/** Set when a directive was written with a character its strict spelling escapes. */
+let wroteVerbatim = false;
+
+/**
+ * Serialize with template directives written as they read, and report
+ * whether any of them differs from its strict spelling (MAR-507). Only the
+ * save path calls this, because only it verifies what it writes: when
+ * `verbatim` is true it must reparse the bytes, and where they do not reopen
+ * as the document, save an ordinary serialize instead (`mergeVerified`'s
+ * `strict`). Also the baseline the save path's round-trip protection is taken
+ * against, so the two compare like with like.
+ */
+export function serializeVerbatim(serialize: () => string): { text: string; verbatim: boolean } {
+    directivesVerbatim = true;
+    wroteVerbatim = false;
+    try {
+        const text = serialize();
+        return { text, verbatim: wroteVerbatim };
+    } finally {
+        directivesVerbatim = false;
+        wroteVerbatim = false;
+    }
 }
 
 /**

@@ -31,6 +31,7 @@
  * a document in it keeps the main-thread path, which the page decides.
  */
 import { markdownParse } from "../format/markdown/parse";
+import { serializeVerbatim } from "../serialization";
 import { createHeadlessParser, type HeadlessParser } from "../utils/headlessParser";
 import { markdownProfile } from "../utils/minimalDiff";
 import { mergeVerified } from "../utils/verifiedMerge";
@@ -57,13 +58,15 @@ async function handle(request: VerifyRequest): Promise<void> {
         }
         const live = p.schema.nodeFromJSON(request.doc);
         let reparses = 0;
+        const serialized = serializeVerbatim(() => p.serialize(live));
         const { text, canonical } = mergeVerified(
             request.saved,
-            p.serialize(live),
+            serialized.text,
             markdownProfile,
             request.protection,
             live,
             (candidate) => { reparses++; return p.parse(candidate); },
+            serialized.verbatim ? () => p.serialize(live) : undefined,
         );
         scope.postMessage({ type: "merged", id: request.id, text, canonical, reparses });
     } catch (e) {

@@ -1383,10 +1383,11 @@ function carrySavedTableCells(saved: string, serial: string): string {
 }
 
 // Keep the SAVED bytes of every template directive whose text the edit left
-// alone (MAR-505). The serializer escapes inside a directive as it does in any
-// phrasing (`last_modified` becomes `last\_modified`, `{{</*` becomes
-// `{{\</\*`), and a template engine reads those backslashes literally, so
-// without this an edit anywhere on the line breaks the directive in the file.
+// alone (MAR-505). The save path's serializer writes a directive as it reads
+// (MAR-507, `serializeVerbatim`), which is already the saved spelling for most
+// files; this carries the rest, the escapes a file spells that the serializer
+// does not (`{{ a\_b }}`, `{{ a\.b }}`), and the escaped spelling the save
+// path falls back to when a verbatim directive would not reopen.
 //
 // A directive is paired by its UNESCAPED text, the text the parser gives both
 // spellings, and each saved span is used at most once, in order. That is an
@@ -1399,11 +1400,8 @@ function carrySavedTableCells(saved: string, serial: string): string {
 // what this rule leans on, and it must not be bypassed for it.
 //
 // Only a line the merge pairs in place with one saved line reaches this hook,
-// so a join or a split, which arrives as a run of deletions and insertions,
-// keeps the serializer's escapes (MAR-507). So does a directive whose text the
-// user changed, which has no saved counterpart. Dropping its escapes would be
-// a guess the merge cannot check from bytes: an html block's line is spelled
-// exactly as typed, and the same backslash there is the user's.
+// and a directive whose text the user changed has no saved counterpart; both
+// are the serializer's to spell, which is why it writes directives verbatim.
 const MARKDOWN_ESCAPE_RE = /\\([!-/:-@[-`{-~])/g;
 const unescapeMarkdown = (span: string): string => span.replace(MARKDOWN_ESCAPE_RE, "$1");
 

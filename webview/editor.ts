@@ -33,6 +33,7 @@ import { refractor, ensureGrammars } from "./highlighter";
 import { applyExternalSync } from "./externalSync";
 import { countWork, instrumentTransactions, mark, measure } from "./perf";
 import { createSyncScheduler } from "./syncScheduler";
+import { serializeVerbatim } from "./serialization";
 import { isReadOnly } from "./readOnly";
 import { requestIdle } from "./utils/idle";
 import {
@@ -187,7 +188,11 @@ function getProtection(): RoundTripProtection | null {
     if (snap && snap.editor === _editor) {
         mark("rtp-start");
         try {
-            const serialized = snap.editor.action((ctx) => ctx.get(serializerCtx)(snap.doc));
+            // The save path's spelling (`serializeVerbatim`), so protection
+            // compares the file against the text a save would merge.
+            const serialized = serializeVerbatim(() =>
+                snap.editor.action((ctx) => ctx.get(serializerCtx)(snap.doc) as string),
+            ).text;
             _protection = computeRoundTripProtection(
                 snap.baseline,
                 serialized,
@@ -537,8 +542,10 @@ function offThreadOracle(): VerifyOracle | null {
  * and a worker that quietly stops loading moves `mainReparses` and
  * `mainSerializes` off their ceiling of zero.
  */
-function mergeForSave(editor: Editor, markdown: string): { text: string; canonical: boolean } {
+function mergeForSave(editor: Editor): { text: string; canonical: boolean } {
     let reparses = 0;
+    let serializes = 1;
+    const { text: markdown, verbatim } = serializeVerbatim(() => editor.action(getMarkdown()));
     const result = mergeVerified(
         _savedMarkdown,
         markdown,
@@ -549,8 +556,14 @@ function mergeForSave(editor: Editor, markdown: string): { text: string; canonic
             reparses++;
             return editor.action((ctx) => ctx.get(parserCtx)(text)) as ProseNode | null;
         },
+        verbatim
+            ? () => {
+                  serializes++;
+                  return editor.action(getMarkdown());
+              }
+            : undefined,
     );
-    countWork("merge", { passes: 1, reparses, mainReparses: reparses, mainSerializes: 1 });
+    countWork("merge", { passes: 1, reparses, mainReparses: reparses, mainSerializes: serializes });
     return result;
 }
 
@@ -626,7 +639,7 @@ function syncNow(): void {
     }
     if (!oracle || _savedMarkdown.length < _offThreadMinChars) {
         ++_serialSeq;
-        commitSync(mergeForSave(editor, editor.action(getMarkdown())));
+        commitSync(mergeForSave(editor));
         return;
     }
     const doc = editor.action((ctx) => getState(ctx).doc);
@@ -636,7 +649,7 @@ function syncNow(): void {
         (result) => settleSync(flight, result),
         // The oracle retired itself (utils/verifyOracle.ts). The same
         // decision, made here, if the answer is still wanted.
-        () => settleSync(flight, isCurrent(flight) ? mergeForSave(editor, editor.action(getMarkdown())) : null),
+        () => settleSync(flight, isCurrent(flight) ? mergeForSave(editor) : null),
     );
 }
 
@@ -732,7 +745,7 @@ export function flushPendingEdit(id: string): string {
     // older than the bytes about to reach the file, and is dropped when it
     // lands (see `_serialSeq`).
     ++_serialSeq;
-    const { text, canonical } = mergeForSave(_editor, _editor.action(getMarkdown()));
+    const { text, canonical } = mergeForSave(_editor);
     _flushCandidate = { id, text, canonical, docChangeCount: _docChangeCount };
     return text;
 }
@@ -978,7 +991,7 @@ function _applyExternalNow(newMarkdown: string): boolean {
     _protectionSnapshot = null;
     _protection = computeRoundTripProtection(
         newMarkdown,
-        _editor.action(getMarkdown()),
+        serializeVerbatim(() => _editor!.action(getMarkdown())).text,
         format.formatProfile,
     );
     return true;

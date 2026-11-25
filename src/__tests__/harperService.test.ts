@@ -28,11 +28,16 @@ function rawLint(start: number, end: number, kind: string, message: string, fixe
 
 // The lints the fake linter returns for a given block text; set per test.
 let nextLints: RawLint[] = [];
+// The options each lint() call was given, in call order.
+let lintOptions: unknown[] = [];
 
 vi.mock("harper.js", () => ({
     LocalLinter: class {
         async setup(): Promise<void> {}
-        async lint(): Promise<RawLint[]> { return nextLints; }
+        async lint(_text: string, options?: unknown): Promise<RawLint[]> {
+            lintOptions.push(options);
+            return nextLints;
+        }
     },
     createBinaryModuleFromUrl: () => ({}),
 }));
@@ -43,7 +48,17 @@ import { lintBlocks } from "../utils/harperService";
 describe("lintBlocks filtering", () => {
     beforeEach(() => {
         nextLints = [];
+        lintOptions = [];
         vi.clearAllMocks();
+    });
+
+    // harper falls back to markdown, with a console warning per call, on a
+    // language it does not know. The type refuses an unknown value; this pins
+    // which known one is sent (MAR-508).
+    it("each block should be linted with the markdown language named explicitly", async () => {
+        await lintBlocks([{ key: 0, text: "One block." }, { key: 1, text: "Another block." }]);
+
+        expect(lintOptions).toEqual([{ language: "markdown" }, { language: "markdown" }]);
     });
 
     it("a grammar lint landing on a masked (placeholder) span should be dropped", async () => {
