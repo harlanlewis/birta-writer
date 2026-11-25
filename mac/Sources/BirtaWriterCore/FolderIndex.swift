@@ -254,7 +254,12 @@ public final class FolderIndexer: @unchecked Sendable {
         var size: Int?
     }
 
-    private var readings: [String: (stamp: Stamp, reading: NoteLinks.Reading?, excerpt: String?, vector: NoteSimilarity.Embedding?)] = [:]
+    /// Per note: its reading, what it is embedded from, its vector, and
+    /// whether that vector was made for THIS stamp (`tried`). A note written
+    /// since keeps the vector of what it was until a new one is made, so a
+    /// save that changes no link changes no pair either and sends nothing; a
+    /// note that could not be embedded is not asked again until it changes.
+    private var readings: [String: (stamp: Stamp, reading: NoteLinks.Reading?, excerpt: String?, vector: NoteSimilarity.Embedding?, tried: Bool)] = [:]
     /// The last index `build` returned, so `completeSimilarity` can hand the
     /// same index back with its pairs filled in.
     private var lastIndex: FolderIndex?
@@ -326,7 +331,7 @@ public final class FolderIndexer: @unchecked Sendable {
         let (kept, truncated) = notes.finish()
         let files = fileSelection.finish().kept.map(\.path)
 
-        var fresh: [String: (stamp: Stamp, reading: NoteLinks.Reading?, excerpt: String?, vector: NoteSimilarity.Embedding?)] = [:]
+        var fresh: [String: (stamp: Stamp, reading: NoteLinks.Reading?, excerpt: String?, vector: NoteSimilarity.Embedding?, tried: Bool)] = [:]
         var current: [String: NoteLinks.Reading] = [:]
         lastReadCount = 0
         for (path, stamp) in kept {
@@ -344,7 +349,8 @@ public final class FolderIndexer: @unchecked Sendable {
                     let stem = String(base.dropLast(NoteLinkResolver.extname(base).count))
                     return NoteSimilarity.excerpt(title: reading?.meta.title ?? stem, text: body)
                 }
-                fresh[path] = (stamp, reading, excerpt, nil)
+                // The vector of what the note was, kept until a new one is made.
+                fresh[path] = (stamp, reading, excerpt, readings[path]?.vector, false)
             }
             if let reading = fresh[path]?.reading { current[path] = reading }
         }
@@ -396,9 +402,13 @@ public final class FolderIndexer: @unchecked Sendable {
     public func completeSimilarity() -> FolderIndex? {
         guard let embed, var index = lastIndex else { return nil }
         var made = 0
-        for (path, entry) in readings where entry.vector == nil {
-            guard let excerpt = entry.excerpt, let vector = embed(excerpt) else { continue }
-            readings[path] = (entry.stamp, entry.reading, entry.excerpt, vector)
+        for (path, entry) in readings where !entry.tried {
+            // Once per stamp, whatever the answer: a note in a language whose
+            // model is not installed, or that will not embed, is not asked
+            // again on every build. A failure drops the old vector, which
+            // was of text the note no longer holds.
+            let vector = entry.excerpt.flatMap(embed)
+            readings[path] = (entry.stamp, entry.reading, entry.excerpt, vector, true)
             made += 1
         }
         let pairs = similarPairs()

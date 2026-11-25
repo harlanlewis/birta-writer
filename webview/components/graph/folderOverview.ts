@@ -137,6 +137,22 @@ export function overviewCentre(index: FolderIndex, recents: readonly string[] | 
     return graph ? { graph, reason: "hub" } : null;
 }
 
+/**
+ * What the caption calls an activity-chosen centre, true in each of three
+ * cases. The centre is live: it is where the reader has been working. The
+ * centre is dormant and so is the whole folder: nothing here has been
+ * touched in months. The centre is dormant but some note is not (a fresh
+ * note with no ties, which cannot be drawn around): the centre is only the
+ * liveliest note that has ties, and saying more would be false either way.
+ */
+export function activeCaption(activity: ReadonlyMap<string, number | null>, centre: string): string {
+    if ((activity.get(centre) ?? 0) >= DORMANT_BELOW) { return t("Around {0}, where you have been working"); }
+    const livest = Math.max(0, ...[...activity.values()].map((a) => a ?? 0));
+    return livest < DORMANT_BELOW
+        ? t("Around {0}, the note touched most recently; nothing here has been touched in months")
+        : t("Around {0}, the liveliest note that links to others");
+}
+
 /** A host that can name subjects better than their shared words can (`subjectNames`). */
 export type SubjectNamer = (subjects: readonly FolderSubject[], index: FolderIndex) => Promise<ReadonlyMap<string, string>>;
 
@@ -511,11 +527,7 @@ export function createFolderOverview(host: FolderOverviewHost): FolderOverview {
         const notes = [centre.reason === "subject"
             ? fill(t("{0}: {1} notes, around {2}"), subjectName(subject!), String(subject!.members.length), laid.nodes[0]!.label)
             : fill(centre.reason === "active"
-                // The most active note is still dormant when the whole folder
-                // is: say so rather than call it current work.
-                ? (activity.get(laid.nodes[0]!.id) ?? 0) < DORMANT_BELOW
-                    ? t("Around {0}, the note touched most recently; nothing here has been touched in months")
-                    : t("Around {0}, where you have been working")
+                ? activeCaption(activity, laid.nodes[0]!.id)
                 : t("Centred on {0}, the most connected note here"), laid.nodes[0]!.label)];
         if (laid.omitted > 0) {
             notes.push(fill(t("{0} more not shown"), String(laid.omitted)));

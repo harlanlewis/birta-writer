@@ -381,3 +381,52 @@ describe("the review's fixes", () => {
         expect(at.size).toBe(3);
     });
 });
+
+describe("the second review's fixes", () => {
+    it("a first-ring name should keep its room when an outer name would overlap it, whatever the keyboard's walk", () => {
+        // a hangs a1 in its arc; in the keyboard's walk a1 comes before b.
+        // Give the labels rects where only a1's and b's overlap: the one
+        // that claims first keeps its name, so b must, being first-ring.
+        const idx = index(["self.md", "a.md", "b.md", "a1.md"].map((p) => node(p)),
+            [edge("self.md", "a.md"), edge("self.md", "b.md"), edge("a.md", "a1.md")]);
+        const rects: Record<string, [number, number]> = { "self.md": [0, 0], "a.md": [100, 0], "b.md": [200, 0], "a1.md": [205, 0] };
+        const real = Element.prototype.getBoundingClientRect;
+        Element.prototype.getBoundingClientRect = function (this: Element) {
+            if (this.classList.contains("lg-stage")) { return new DOMRect(-1000, -1000, 4000, 4000); }
+            if (this.classList.contains("lg-label")) {
+                const at = rects[(this.closest(".lg-node") as HTMLElement).dataset["id"]!]!;
+                return new DOMRect(at[0], at[1], 40, 12);
+            }
+            return real.call(this);
+        };
+        try {
+            const stage = createRingStage({ openNote: () => {}, onEscape: () => {}, centreIsCurrent: true });
+            document.body.append(stage.element);
+            stage.draw(layoutRings(buildLocalGraph(idx, "self.md", 2)!, 100));
+            const order = [...stage.element.querySelectorAll<HTMLElement>(".lg-node")].map((n) => n.dataset["id"]);
+            // The precondition that makes this test able to fail: the walk puts a1 before b.
+            expect(order.indexOf("a1.md")).toBeLessThan(order.indexOf("b.md"));
+            const compact = (id: string) => stage.element.querySelector<HTMLElement>(`.lg-node[data-id="${id}"]`)!.classList.contains("lg-node--compact");
+            expect(compact("b.md")).toBe(false);
+            expect(compact("a1.md")).toBe(true);
+            stage.element.remove();
+        } finally {
+            Element.prototype.getBoundingClientRect = real;
+        }
+    });
+
+    it("the pointer leaving the drawing should leave the focused note lit, not the last one pointed at", () => {
+        const idx = index(["self.md", "a.md", "b.md"].map((p) => node(p)), [edge("self.md", "a.md"), edge("self.md", "b.md")]);
+        const stage = createRingStage({ openNote: () => {}, onEscape: () => {}, centreIsCurrent: true });
+        document.body.append(stage.element);
+        stage.draw(layoutRings(buildLocalGraph(idx, "self.md", 1)!, 100));
+        const a = stage.element.querySelector<HTMLElement>('.lg-node[data-id="a.md"]')!;
+        const b = stage.element.querySelector<HTMLElement>('.lg-node[data-id="b.md"]')!;
+        a.focus();
+        b.dispatchEvent(new MouseEvent("mouseenter"));
+        stage.element.dispatchEvent(new MouseEvent("mouseleave"));
+        const lit = [...stage.element.querySelectorAll<SVGElement>(".lg-line.lg-lit")].map((l) => l.dataset["to"]);
+        expect(lit).toEqual(["a.md"]);
+        stage.element.remove();
+    });
+});

@@ -18,10 +18,13 @@ import NaturalLanguage
 /// is a note's title and the opening of its body (`excerpt`), never more, so
 /// a vector says what a note is about rather than everything in it.
 ///
-/// Notes are compared only with notes in the same language (`Embedding`'s
-/// `language`, `pairs(grouped:)`): the model places two notes saying the same
-/// thing in two languages no nearer each other than two unrelated notes, so a
-/// comparison across languages would only add noise.
+/// Notes are compared only with notes read by the same model (`Embedding`'s
+/// `space`, `pairs(grouped:)`), since two models' vectors share no space at
+/// all. Within one model, notes in two languages are compared too: the model
+/// places one meaning in two languages no nearer each other than unrelated
+/// notes, so a pair across languages does not form, and grouping by the
+/// model rather than by the detected language is what keeps a short note
+/// whose language was guessed wrong among its real neighbours.
 ///
 /// Not the older `NLEmbedding.sentenceEmbedding`, which is quicker and
 /// always present: on notes it was tried against, it called unrelated
@@ -51,13 +54,15 @@ public enum NoteSimilarity {
     /// How much of a note's body, in characters, joins its title.
     public static let excerptLength = 400
 
-    /// A note's vector, and the language it was read in: only notes of one
-    /// language are compared.
+    /// A note's vector, the model whose space it is in (only notes of one
+    /// space are compared), and the language it was read as.
     public struct Embedding: Equatable, Sendable {
+        public let space: String
         public let language: String
         public let vector: [Float]
 
-        public init(language: String, vector: [Float]) {
+        public init(space: String, language: String, vector: [Float]) {
+            self.space = space
             self.language = language
             self.vector = vector
         }
@@ -122,16 +127,20 @@ public enum NoteSimilarity {
                 count += 1
                 return true
             }
-            return count > 0 ? Embedding(language: language.rawValue, vector: sum.map { $0 / count }) : nil
+            return count > 0 ? Embedding(space: loaded.modelIdentifier, language: language.rawValue, vector: sum.map { $0 / count }) : nil
         }
     }
 
-    /// The pairs among `embeddings` (by note path), each language compared
-    /// on its own (`pairs`), merged and sorted by path.
+    /// The fewest notes in one space worth comparing: centring two notes
+    /// leaves them exact opposites, so two can never be alike.
+    public static let minimumGroup = 3
+
+    /// The pairs among `embeddings` (by note path), each model's space
+    /// compared on its own (`pairs`), merged and sorted by path.
     public static func pairs(grouped embeddings: [String: Embedding]) -> [Pair] {
-        var byLanguage: [String: [String: [Float]]] = [:]
-        for (path, e) in embeddings { byLanguage[e.language, default: [:]][path] = e.vector }
-        return byLanguage.values.flatMap { pairs($0) }
+        var bySpace: [String: [String: [Float]]] = [:]
+        for (path, e) in embeddings { bySpace[e.space, default: [:]][path] = e.vector }
+        return bySpace.values.filter { $0.count >= minimumGroup }.flatMap { pairs($0) }
             .sorted { $0.a != $1.a ? $0.a < $1.a : $0.b < $1.b }
     }
 

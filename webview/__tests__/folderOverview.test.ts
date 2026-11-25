@@ -12,6 +12,7 @@ import {
     createFolderOverview,
     openFolderOverview,
     OVERVIEW_RECENTS,
+    activeCaption,
     overviewCentre,
     resetSubjectNamesForTests,
     sinceWritten,
@@ -675,6 +676,17 @@ describe("a folder gone quiet", () => {
         expect(caption).toContain("nothing here has been touched in months");
         expect(caption).not.toContain("where you have been working");
         view.element.remove();
+    });
+});
+
+describe("activeCaption", () => {
+    it("each of the three cases should get the caption that is true of it", () => {
+        expect(activeCaption(new Map([["c", 0.9]]), "c")).toContain("where you have been working");
+        expect(activeCaption(new Map([["c", 0.05], ["old", 0.01]]), "c")).toContain("nothing here has been touched in months");
+        // A fresh note with no ties is live while the centre is not: neither
+        // "where you have been working" nor "nothing touched in months".
+        const mixed = activeCaption(new Map([["c", 0.05], ["fresh", 1]]), "c");
+        expect(mixed).toContain("the liveliest note that links to others");
     });
 });
 

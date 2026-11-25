@@ -131,8 +131,12 @@ export function tierFor(laid: LocalGraph): Set<string> {
 export function createRingStage(host: RingStageHost): RingStage {
     const stage = document.createElement("div");
     stage.className = "lg-stage";
+    // The pointer gone, what stays lit is the note with keyboard focus, if
+    // any: the last one pointed at was the pointer's, and it has left.
     stage.addEventListener("mouseleave", () => {
-        if (!stage.contains(document.activeElement)) { lightFor(null); }
+        const focused = document.activeElement instanceof HTMLElement && stage.contains(document.activeElement)
+            ? document.activeElement.dataset["id"] ?? null : null;
+        lightFor(focused);
     });
     const nodeRoving = wireRoving({
         container: stage,
@@ -183,6 +187,8 @@ export function createRingStage(host: RingStageHost): RingStage {
     }
 
     let centreIsCurrent = host.centreIsCurrent;
+    /** The drawn notes in the order their names claim room (`laid.nodes`). */
+    let priority: string[] = [];
 
     function nodeButton(node: GraphNode, graph: LocalGraph): HTMLButtonElement {
         const btn = document.createElement("button");
@@ -252,7 +258,11 @@ export function createRingStage(host: RingStageHost): RingStage {
      * is empty and every name stays.
      */
     function declutterLabels(): void {
-        const buttons = [...stage.querySelectorAll<HTMLElement>(".lg-node")];
+        // In the drawing's own order of importance, not the DOM's, which is
+        // the keyboard's walk (each first-ring note followed by its arc): an
+        // outer note must never take room a first-ring name needed.
+        const byId = new Map([...stage.querySelectorAll<HTMLElement>(".lg-node")].map((b) => [b.dataset["id"]!, b]));
+        const buttons = priority.map((id) => byId.get(id)).filter((b): b is HTMLElement => b !== undefined);
         buttons.forEach((b) => b.classList.remove("lg-node--compact"));
         const box = stage.getBoundingClientRect();
         const kept: DOMRect[] = [];
@@ -327,6 +337,7 @@ export function createRingStage(host: RingStageHost): RingStage {
             }
             return btn;
         }));
+        priority = laid.nodes.map((n) => n.id);
         declutterLabels();
         nodeRoving.refresh();
     }
