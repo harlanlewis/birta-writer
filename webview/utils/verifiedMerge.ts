@@ -136,7 +136,7 @@ export function mergeVerified(
     parse: ParseMarkdown,
     /**
      * The serializer's strict spelling, when `serialized` wrote something
-     * verbatim that it would otherwise escape (MAR-507, `serializeTracked`).
+     * verbatim that it would otherwise escape (MAR-507, `serializeVerbatim`).
      * Its presence means the serializer's own text is no longer trusted
      * unverified, and it is the candidate when that text does not reopen.
      */
@@ -173,6 +173,10 @@ export function mergeVerified(
         if (again.merged !== again.fallback && reopensAs(liveFp, again.fallback, parse)) {
             return again.result(again.fallback);
         }
+        // Nothing reopens clean: the document was broken before this save.
+        // Its merge is still written, but in the strict spelling, so a
+        // directive's text never reaches disk unescaped unverified.
+        return again.result(again.merged);
     }
     // Only the merge's OWN damage is ours to overrule: if the serializer is
     // dirty too, the document was already broken and writing canonical bytes

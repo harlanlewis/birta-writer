@@ -14,7 +14,7 @@ import { contentGuardPlugin } from "../plugins/contentGuard";
 import { diffFingerprints, fingerprintDoc, formatFingerprintDiff } from "../plugins/fingerprints";
 import { markdownProfile, computeRoundTripProtection, applyMinimalChanges } from "../utils/minimalDiff";
 import { mergeVerified } from "../utils/verifiedMerge";
-import { serializeStrict, serializeTracked } from "../serialization";
+import { serializeVerbatim } from "../serialization";
 import { editorView, makeCorpusEditor } from "./helpers/moveFuzz";
 
 vi.mock("../editing/rangeIndicator", () => ({
@@ -69,12 +69,13 @@ async function saveAfter(
 }> {
     const editor = await makeCorpusEditor(saved, [contentGuardPlugin]);
     editors.push(editor);
-    const protection = computeRoundTripProtection(saved, editor.action(getMarkdown()));
+    // Composed exactly as `mergeForSave` and `getProtection` (editor.ts) and
+    // the sync worker do: the save path serializes verbatim, everything else strict.
+    const protection = computeRoundTripProtection(saved, serializeVerbatim(() => editor.action(getMarkdown())).text);
     edit(editor);
     const live = editorView(editor).state.doc;
-    // Composed exactly as `mergeForSave` (editor.ts) and the sync worker do.
-    const { text: serialized, verbatim } = serializeTracked(() => editor.action(getMarkdown()));
-    const strict = serializeStrict(() => editor.action(getMarkdown()));
+    const { text: serialized, verbatim } = serializeVerbatim(() => editor.action(getMarkdown()));
+    const strict = editor.action(getMarkdown());
     const { text, canonical } = mergeVerified(
         saved,
         serialized,
@@ -256,6 +257,64 @@ describe("template directives the serializer writes itself (MAR-507)", () => {
         expect(out.merged).toContain("See {{ b[0] }} here.");
         expect(out.text).toContain("See {{ b\\[0] }} here.");
         expect(out.clean).toBe(true);
+    });
+
+    it("a directive holding a URL should keep its bytes when the line is edited around it", async () => {
+        // GFM reads the bare URL as a link, so the directive's text arrives
+        // split across a link mark and reaches neither the verbatim write nor
+        // the restore whole. Editing beside it must still not touch it.
+        const saved = page('Edit me {{ "https://example.com/a_b" | x }} here.');
+        const out = await saveAfter(saved, retype("Edit me", "Edited me"));
+        expect(out.text).toBe(page('Edited me {{ "https://example.com/a_b" | x }} here.'));
+    });
+
+    it("a URL edited inside a directive should be saved as it reads", async () => {
+        const saved = page('Edit me {{ "https://example.com/a_b" | x }} here.');
+        const out = await saveAfter(saved, retype("a_b", "c_d"));
+        expect(out.text).toBe(page('Edit me {{ "https://example.com/c_d" | x }} here.'));
+        expect(out.clean).toBe(true);
+    });
+
+    it("a link written as a link inside a directive should stay a link", async () => {
+        // Only a bare address is unwrapped; brackets somebody typed are syntax.
+        const saved = page("Edit me {{ [x](https://example.com) }} here.");
+        const out = await saveAfter(saved, retype("Edit me", "Edited me"));
+        expect(out.text).toBe(page("Edited me {{ [x](https://example.com) }} here."));
+        expect(out.clean).toBe(true);
+    });
+
+    it("a serialize outside the save path should keep the strict spelling", async () => {
+        // Source-peek, Copy as Markdown, Turn into and the reparse-hazard
+        // check use what they serialize without reparsing it first, so they
+        // get the spelling that always reopens as the text it came from.
+        const editor = await makeCorpusEditor(page("See {{ page.a_b }} here."), [contentGuardPlugin]);
+        editors.push(editor);
+        expect(editor.action(getMarkdown())).toContain("{{ page.a\\_b }}");
+        expect(serializeVerbatim(() => editor.action(getMarkdown())).text).toContain("{{ page.a_b }}");
+    });
+
+    it("a document already failing to round-trip should still save directives in the strict spelling", async () => {
+        // A parser that never gives the document back stands in for a file
+        // already broken some other way: no candidate reopens clean, and the
+        // verbatim spelling must not be what reaches disk then.
+        const saved = page("Edit me {{ a\\<b }} here.");
+        const editor = await makeCorpusEditor(saved, [contentGuardPlugin]);
+        editors.push(editor);
+        retype("a<b", "c<d")(editor);
+        const { text: serialized, verbatim } = serializeVerbatim(() => editor.action(getMarkdown()));
+        expect(verbatim).toBe(true);
+        const elsewhere = parseWith(editor)("# Something else\n")!;
+        const out = mergeVerified(
+            saved,
+            serialized,
+            markdownProfile,
+            null,
+            editorView(editor).state.doc,
+            () => elsewhere,
+            () => editor.action(getMarkdown()),
+        );
+        expect(out.text).toContain("{{ c\\<d }}");
+        expect(out.text).not.toContain("{{ c<d }}");
     });
 
     it("a directive with nothing to escape should not mark the serialize as verbatim", async () => {

@@ -33,7 +33,7 @@ import { refractor, ensureGrammars } from "./highlighter";
 import { applyExternalSync } from "./externalSync";
 import { countWork, instrumentTransactions, mark, measure } from "./perf";
 import { createSyncScheduler } from "./syncScheduler";
-import { serializeStrict, serializeTracked } from "./serialization";
+import { serializeVerbatim } from "./serialization";
 import { isReadOnly } from "./readOnly";
 import { requestIdle } from "./utils/idle";
 import {
@@ -188,7 +188,11 @@ function getProtection(): RoundTripProtection | null {
     if (snap && snap.editor === _editor) {
         mark("rtp-start");
         try {
-            const serialized = snap.editor.action((ctx) => ctx.get(serializerCtx)(snap.doc));
+            // The save path's spelling (`serializeVerbatim`), so protection
+            // compares the file against the text a save would merge.
+            const serialized = serializeVerbatim(() =>
+                snap.editor.action((ctx) => ctx.get(serializerCtx)(snap.doc) as string),
+            ).text;
             _protection = computeRoundTripProtection(
                 snap.baseline,
                 serialized,
@@ -540,7 +544,8 @@ function offThreadOracle(): VerifyOracle | null {
  */
 function mergeForSave(editor: Editor): { text: string; canonical: boolean } {
     let reparses = 0;
-    const { text: markdown, verbatim } = serializeTracked(() => editor.action(getMarkdown()));
+    let serializes = 1;
+    const { text: markdown, verbatim } = serializeVerbatim(() => editor.action(getMarkdown()));
     const result = mergeVerified(
         _savedMarkdown,
         markdown,
@@ -551,9 +556,14 @@ function mergeForSave(editor: Editor): { text: string; canonical: boolean } {
             reparses++;
             return editor.action((ctx) => ctx.get(parserCtx)(text)) as ProseNode | null;
         },
-        verbatim ? () => serializeStrict(() => editor.action(getMarkdown())) : undefined,
+        verbatim
+            ? () => {
+                  serializes++;
+                  return editor.action(getMarkdown());
+              }
+            : undefined,
     );
-    countWork("merge", { passes: 1, reparses, mainReparses: reparses, mainSerializes: 1 });
+    countWork("merge", { passes: 1, reparses, mainReparses: reparses, mainSerializes: serializes });
     return result;
 }
 
@@ -981,7 +991,7 @@ function _applyExternalNow(newMarkdown: string): boolean {
     _protectionSnapshot = null;
     _protection = computeRoundTripProtection(
         newMarkdown,
-        _editor.action(getMarkdown()),
+        serializeVerbatim(() => _editor!.action(getMarkdown())).text,
         format.formatProfile,
     );
     return true;

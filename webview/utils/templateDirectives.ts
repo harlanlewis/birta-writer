@@ -30,8 +30,12 @@
  * its middle as a tag: the atom contributes its raw bytes, and a match may run
  * through it but never start or end inside it.
  *
- * This reads the document's TEXT, not its bytes, and never changes either:
- * fidelity is the serializer's, and nothing here reaches it.
+ * This reads text and changes nothing. `findDirectives` is also the grammar
+ * three byte-level decisions use: which spans the save path's serializer
+ * writes verbatim (serialization.ts), which saved spans an edited line keeps
+ * (`carrySavedDirectives` in utils/minimalDiff.ts), and where a bare URL stays
+ * text at parse time (plugins/directiveAutolinks.ts). A change to the grammar
+ * is a change to all three.
  */
 import type { Node as ProseNode } from "../pm";
 
