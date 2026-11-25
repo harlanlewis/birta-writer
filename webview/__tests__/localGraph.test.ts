@@ -5,7 +5,7 @@
  */
 import { describe, it, expect } from "vitest";
 import type { FolderEdge, FolderIndex, FolderNode } from "../../shared/folderIndex";
-import { buildLocalGraph, hueOf, layoutRings, nudge, RING_CAPACITY, RING_WOBBLE, TYPE_HUES } from "../components/graph/localGraph";
+import { BAND, buildLocalGraph, GAP, hueOf, layoutRings, nudge, RING_CAPACITY, TYPE_HUES } from "../components/graph/localGraph";
 import { createRingStage, curveThrough, TIER_SHOWN, tierFor } from "../components/graph/ringStage";
 
 const node = (path: string, type: string | null = null): FolderNode =>
@@ -50,12 +50,12 @@ describe("buildLocalGraph", () => {
     it("a note named in both directions should be drawn once, with a line each way", () => {
         const g = buildLocalGraph(index([node("self.md"), node("a.md")], [edge("self.md", "a.md"), edge("a.md", "self.md"), edge("a.md", "self.md")]), "self.md", 1)!;
         expect(ring(g, 1)).toEqual(["a.md"]);
-        expect(g.lines).toEqual([{ from: "self.md", to: "a.md" }, { from: "a.md", to: "self.md" }]);
+        expect(g.lines.map(({ from, to }) => ({ from, to }))).toEqual([{ from: "self.md", to: "a.md" }, { from: "a.md", to: "self.md" }]);
     });
 
     it("lines should keep their direction and join only drawn notes", () => {
         const g = buildLocalGraph(SMALL, "self.md", 1)!;
-        expect(g.lines).toEqual([
+        expect(g.lines.map(({ from, to }) => ({ from, to }))).toEqual([
             { from: "a.md", to: "self.md" },
             { from: "self.md", to: "b.md" },
             { from: "self.md", to: "dangling:Missing" },
@@ -90,20 +90,72 @@ describe("buildLocalGraph", () => {
     });
 });
 
+describe("a line's weight", () => {
+    it("a note naming another three times should be one line of weight three", () => {
+        const idx = index([node("self.md"), node("a.md")], [edge("self.md", "a.md"), edge("self.md", "a.md"), edge("self.md", "a.md")]);
+        expect(buildLocalGraph(idx, "self.md", 1)!.lines).toEqual([{ from: "self.md", to: "a.md", weight: 3 }]);
+    });
+});
+
 describe("layoutRings", () => {
     const dist = (x: number, y: number) => Math.hypot(x - 50, y - 50);
 
-    it("this note should sit at the centre and each ring within its wobble of its own radius", () => {
+    it("this note should sit at the centre, and every second-ring note further out than any first-ring one", () => {
         const g = layoutRings(buildLocalGraph(SMALL, "self.md", 2)!, 100);
         const self = g.nodes.find((n) => n.ring === 0)!;
         expect([self.x, self.y]).toEqual([50, 50]);
         const r1 = g.nodes.filter((n) => n.ring === 1).map((n) => dist(n.x, n.y));
         const r2 = g.nodes.filter((n) => n.ring === 2).map((n) => dist(n.x, n.y));
-        // Off a perfect circle, on purpose (`nudge`), but never past the band.
-        const mid1 = (Math.max(...r1) + Math.min(...r1)) / 2;
-        for (const r of r1) { expect(Math.abs(r - mid1) / mid1).toBeLessThanOrEqual(2 * RING_WOBBLE); }
-        expect(new Set(r1.map((r) => r.toFixed(3))).size).toBeGreaterThan(1);
         expect(Math.min(...r2)).toBeGreaterThan(Math.max(...r1));
+    });
+
+    it("a note bound to the centre by more references should sit nearer it, within its ring's band", () => {
+        const idx = index([node("self.md"), node("close.md"), node("far.md")],
+            [edge("self.md", "close.md"), edge("close.md", "self.md"), edge("close.md", "self.md"), edge("self.md", "far.md")]);
+        const g = layoutRings(buildLocalGraph(idx, "self.md", 1)!, 100);
+        const at = (id: string) => { const n = g.nodes.find((m) => m.id === id)!; return dist(n.x, n.y); };
+        expect(at("close.md")).toBeLessThan(at("far.md"));
+        const r1 = 100 * 0.34;
+        expect(at("close.md")).toBeCloseTo(r1 * (1 - BAND), 4);
+        expect(at("far.md")).toBeLessThanOrEqual(r1 * (1 + BAND) + 1e-9);
+    });
+
+    it("related first-ring notes should sit side by side, with a wider gap before an unrelated run", () => {
+        // a-b-c refer to each other in a chain; x and y refer to each other; z to nothing.
+        const ids = ["a", "b", "c", "x", "y", "z"];
+        const idx = index([node("self.md"), ...ids.map((i) => node(`${i}.md`))], [
+            ...ids.map((i) => edge("self.md", `${i}.md`)),
+            edge("a.md", "b.md"), edge("b.md", "c.md"), edge("x.md", "y.md"),
+        ]);
+        const g = layoutRings(buildLocalGraph(idx, "self.md", 1)!, 100);
+        const order = g.nodes.filter((n) => n.ring === 1)
+            .map((n) => ({ id: n.id, a: (Math.atan2(n.y - 50, n.x - 50) + Math.PI * 2.5) % (Math.PI * 2) }))
+            .sort((p, q) => p.a - q.a);
+        const pos = (id: string) => order.findIndex((o) => o.id === id);
+        expect(Math.abs(pos("a.md") - pos("b.md"))).toBe(1);
+        expect(Math.abs(pos("b.md") - pos("c.md"))).toBe(1);
+        expect(Math.abs(pos("x.md") - pos("y.md"))).toBe(1);
+        const step = (i: number) => ((order[(i + 1) % order.length]!.a - order[i]!.a) + Math.PI * 2) % (Math.PI * 2);
+        // Between related neighbours the step is one unit; into an unrelated run it is GAP units.
+        const within = step(Math.min(pos("a.md"), pos("b.md")));
+        const across = step(order.length - 1 === pos("z.md") ? pos("z.md") : pos("c.md"));
+        expect(across / within).toBeCloseTo(GAP, 4);
+    });
+
+    it("a ring where no two notes are related should be evenly spaced, claiming no grouping", () => {
+        const idx = index([node("self.md"), ...["p", "q", "r", "s"].map((i) => node(`${i}.md`))], ["p", "q", "r", "s"].map((i) => edge("self.md", `${i}.md`)));
+        const g = layoutRings(buildLocalGraph(idx, "self.md", 1)!, 100);
+        const angles = g.nodes.filter((n) => n.ring === 1).map((n) => Math.atan2(n.y - 50, n.x - 50)).sort((a, b) => a - b);
+        const steps = angles.map((a, i) => ((angles[(i + 1) % angles.length]! - a) + Math.PI * 2) % (Math.PI * 2));
+        for (const st of steps) { expect(st).toBeCloseTo(Math.PI / 2, 6); }
+    });
+
+    it("a second-ring note should hang from the first-ring note it is most bound to", () => {
+        const idx = index([node("self.md"), node("a.md"), node("b.md"), node("kid.md")], [
+            edge("self.md", "a.md"), edge("self.md", "b.md"), edge("a.md", "kid.md"), edge("kid.md", "b.md"), edge("b.md", "kid.md"),
+        ]);
+        const g = layoutRings(buildLocalGraph(idx, "self.md", 2)!, 100);
+        expect(g.nodes.find((n) => n.id === "kid.md")!.parent).toBe("b.md");
     });
 
     it("a second-ring note should know the first-ring note it hangs from", () => {

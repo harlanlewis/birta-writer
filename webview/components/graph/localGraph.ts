@@ -18,10 +18,9 @@
  * tab beside this is exactly the second half; the drawing does not show it
  * (./ringStage.ts), which keeps the picture to who is near whom.
  *
- * The rings are not drawn as perfect circles. Each note is nudged off its
- * ring and along it by an amount fixed by its own path (`nudge`), so the
- * picture reads as grown rather than plotted, and the same folder is still
- * drawn the same way every time.
+ * The rings are not drawn as perfect circles, and the reason is meaning, not
+ * ornament: where a note sits says how bound it is and what it is related
+ * to (`layoutRings`).
  */
 import type { FolderEdge, FolderIndex } from "../../../shared/folderIndex";
 
@@ -55,6 +54,8 @@ export interface GraphNode {
 export interface GraphLine {
     from: string;
     to: string;
+    /** How many references `from` makes to `to`: what a tie's strength is counted in (`layoutRings`). */
+    weight: number;
 }
 
 export interface LocalGraph {
@@ -146,80 +147,149 @@ export function buildLocalGraph(index: FolderIndex, self: string, depth: GraphDe
     }));
 
     const lines: GraphLine[] = [];
-    const lineSeen = new Set<string>();
+    const lineSeen = new Map<string, GraphLine>();
     for (const e of index.edges) {
         // Only this note's dangling targets are drawn, so the membership test
         // is what keeps every other note's dangling reference off the drawing.
         const to = e.to ?? DANGLING + e.target;
         if (e.from === to || !drawn.has(e.from) || !drawn.has(to)) { continue; }
         const key = `${e.from}\u0000${to}`;
-        if (lineSeen.has(key)) { continue; }
-        lineSeen.add(key);
-        lines.push({ from: e.from, to });
+        const known = lineSeen.get(key);
+        if (known) { known.weight++; continue; }
+        const line = { from: e.from, to, weight: 1 };
+        lineSeen.set(key, line);
+        lines.push(line);
     }
     return { nodes, lines, omitted, types };
 }
 
 /**
- * Place the nodes on rings around the centre of a `size` square: this note in
- * the middle, its neighbours evenly round the first ring in name order (so the
- * same neighbours are always drawn in the same places, whatever order the
- * index lists them in), and each second-ring note in the arc of the
- * first-ring note it hangs from.
+ * Place the nodes on rings around the centre of a `size` square, where
+ * DISTANCE MEANS SOMETHING, because nearness is the one cue a reader takes
+ * in before reading a single label: two dots close together read as
+ * belonging together, and a gap reads as a boundary. So nothing here is
+ * placed at random, and two things are encoded in where a note sits.
+ *
+ * - How far from the centre: how bound the note is to the note it hangs
+ *   from, counted in references both ways (`ties`). The most bound sits
+ *   `BAND` inside its ring, the least bound `BAND` outside, so a note linked
+ *   both ways and often sits nearer than one named once. The rings stay
+ *   apart: a second-ring note is always further out than any first-ring one.
+ * - Who is beside whom round the ring: first-ring notes that refer to each
+ *   other are placed next to each other (`ringOrder`), and a run of related
+ *   notes is set apart from the next by a wider gap (`GAP`), so groups read
+ *   as arcs with space between them. Where no two of them are related, the
+ *   ring is evenly spaced, so no grouping is claimed that is not there.
+ *
+ * Each second-ring note hangs from the first-ring note it is most bound to,
+ * in that note's arc. The same graph is placed the same way every time,
+ * whatever order the index lists it in.
  */
 export function layoutRings(graph: LocalGraph, size: number): LocalGraph {
     const c = size / 2;
     const hasRing2 = graph.nodes.some((n) => n.ring === 2);
     const r1 = size * (hasRing2 ? 0.26 : 0.34);
     const r2 = size * 0.43;
-    const ring1 = graph.nodes.filter((n) => n.ring === 1).sort((a, b) => a.label.localeCompare(b.label) || a.id.localeCompare(b.id));
-    const angle = new Map<string, number>();
-    const step = ring1.length > 0 ? (2 * Math.PI) / ring1.length : 0;
-    // Each slides along its own share of the ring, less than half of it, so
-    // the order round the ring holds; its second-ring notes follow it.
-    ring1.forEach((n, i) => { angle.set(n.id, -Math.PI / 2 + i * step + (nudge(n.id, 1) - 0.5) * 2 * ARC_WOBBLE * step); });
+    const tie = ties(graph);
+    const centre = graph.nodes.find((n) => n.ring === 0)?.id ?? "";
+    const ring1 = ringOrder(graph.nodes.filter((n) => n.ring === 1), centre, tie);
 
-    // A second-ring note hangs from the first-ring neighbour that comes first
-    // round the ring, and shares that neighbour's arc with its siblings.
+    // Angles: a unit between related neighbours, `GAP` units between
+    // unrelated ones, the whole ring shared out in proportion. A ring with
+    // no related pair, or no unrelated one, is evenly spaced.
+    const angle = new Map<string, number>();
+    const share = new Map<string, number>();
+    const gaps = ring1.map((n, i) => (ring1.length > 1 && tie(n.id, ring1[(i + 1) % ring1.length]!.id) > 0 ? 1 : GAP));
+    const grouped = gaps.includes(1) && gaps.includes(GAP);
+    const units = grouped ? gaps.reduce((a, b) => a + b, 0) : ring1.length;
+    let at = -Math.PI / 2;
+    ring1.forEach((n, i) => {
+        angle.set(n.id, at);
+        const advance = ((grouped ? gaps[i]! : 1) / units) * 2 * Math.PI;
+        share.set(n.id, advance);
+        at += advance;
+    });
+
+    // A second-ring note hangs from the first-ring note it is most bound to;
+    // a tie goes to the one that comes first round the ring.
     const parentOf = new Map<string, string>();
-    for (const line of graph.lines) {
-        for (const [a, b] of [[line.from, line.to], [line.to, line.from]] as const) {
-            if (!angle.has(a)) { continue; }
-            const child = graph.nodes.find((n) => n.id === b && n.ring === 2);
-            if (!child) { continue; }
-            const current = parentOf.get(b);
-            if (current === undefined || angle.get(a)! < angle.get(current)!) { parentOf.set(b, a); }
-        }
-    }
-    const children = new Map<string, string[]>();
     for (const n of graph.nodes) {
         if (n.ring !== 2) { continue; }
-        const p = parentOf.get(n.id);
-        if (p === undefined) { continue; }
+        let best: string | undefined;
+        for (const p of ring1) {
+            const t = tie(n.id, p.id);
+            if (t > 0 && (best === undefined || t > tie(n.id, best))) { best = p.id; }
+        }
+        if (best !== undefined) { parentOf.set(n.id, best); }
+    }
+    const children = new Map<string, string[]>();
+    for (const [child, p] of parentOf) {
         if (!children.has(p)) { children.set(p, []); }
-        children.get(p)!.push(n.id);
+        children.get(p)!.push(child);
     }
     for (const [p, ids] of children) {
         ids.sort();
-        const span = Math.min(step || 2 * Math.PI, Math.PI / 2) * 0.8;
+        const span = Math.min(share.get(p) || 2 * Math.PI, Math.PI / 2) * 0.8;
         ids.forEach((id, j) => {
             angle.set(id, angle.get(p)! + (ids.length === 1 ? 0 : (j / (ids.length - 1) - 0.5) * span));
         });
     }
 
+    // Radii: within its ring's band, nearer the more bound.
+    const boundTo = (n: GraphNode): number => n.ring === 1 ? tie(n.id, centre) : tie(n.id, parentOf.get(n.id) ?? "");
+    const most = new Map<number, number>([1, 2].map((r) => [r, Math.max(1, ...graph.nodes.filter((n) => n.ring === r).map(boundTo))]));
     const nodes = graph.nodes.map((n) => {
         if (n.ring === 0) { return { ...n, x: c, y: c }; }
         const a = angle.get(n.id) ?? 0;
-        const r = (n.ring === 1 ? r1 : r2) * (1 + (nudge(n.id, 2) - 0.5) * 2 * RING_WOBBLE);
+        const strength = boundTo(n) / most.get(n.ring)!;
+        const r = (n.ring === 1 ? r1 : r2) * (1 + BAND - 2 * BAND * strength);
         const parent = n.ring === 2 ? parentOf.get(n.id) : undefined;
         return { ...n, x: c + r * Math.cos(a), y: c + r * Math.sin(a), ...(parent !== undefined ? { parent } : {}) };
     });
     return { ...graph, nodes };
 }
 
+/** How far either side of its ring a note may sit by how bound it is, as a fraction of the ring's radius. */
+export const BAND = 0.14;
+
+/** The angle between two unrelated first-ring neighbours, against 1 for two related ones. */
+export const GAP = 1.8;
+
+/** The strength of the tie between two drawn notes: references both ways, each counted. */
+export function ties(graph: LocalGraph): (a: string, b: string) => number {
+    const w = new Map<string, number>();
+    const key = (a: string, b: string): string => (a < b ? `${a}\u0000${b}` : `${b}\u0000${a}`);
+    for (const line of graph.lines) { w.set(key(line.from, line.to), (w.get(key(line.from, line.to)) ?? 0) + line.weight); }
+    return (a, b) => w.get(key(a, b)) ?? 0;
+}
+
+/**
+ * The first ring in the order it is drawn round: start from the note most
+ * bound to the centre, then repeatedly take the unplaced note most bound to
+ * the last one placed, so related notes sit side by side; when the last one
+ * is related to none left, start the next run from the note most bound to
+ * the centre among the rest. Ties go by name, then path, so the order is
+ * the same however the index lists the notes.
+ */
+export function ringOrder(ring1: readonly GraphNode[], centre: string, tie: (a: string, b: string) => number): GraphNode[] {
+    const rest = [...ring1].sort((a, b) => a.label.localeCompare(b.label) || a.id.localeCompare(b.id));
+    const out: GraphNode[] = [];
+    const strongest = (to: string): GraphNode => rest.reduce((best, n) => (tie(to, n.id) > tie(to, best.id) ? n : best), rest[0]!);
+    while (rest.length > 0) {
+        const last = out[out.length - 1];
+        const next = last ? strongest(last.id) : undefined;
+        const pick = next && last && tie(last.id, next.id) > 0 ? next : strongest(centre);
+        out.push(pick);
+        rest.splice(rest.indexOf(pick), 1);
+    }
+    return out;
+}
+
 /**
  * A number in [0, 1) fixed by `id` and `salt`: FNV-1a over the UTF-16 units.
- * What makes a nudge the same on every drawing and every host.
+ * For choices that carry no meaning and must still be the same every time,
+ * such as which way a line bows (./ringStage.ts); never for where a note
+ * sits, which a reader takes as meaning.
  */
 export function nudge(id: string, salt: number): number {
     let h = 0x811c9dc5 ^ salt;
@@ -229,12 +299,6 @@ export function nudge(id: string, salt: number): number {
     }
     return (h >>> 0) / 0x1_0000_0000;
 }
-
-/** How far a note may sit off its ring, as a fraction of the ring's radius, either way. */
-export const RING_WOBBLE = 0.07;
-
-/** How far a first-ring note may slide along its ring, as a fraction of its share of the ring, either way. */
-const ARC_WOBBLE = 0.2;
 
 /** The hue slot a node's type draws in: 0 to TYPE_HUES - 1, or null for none. */
 export function hueOf(types: readonly string[], type: string | null): number | null {
@@ -285,13 +349,15 @@ export function buildSubjectGraph(index: FolderIndex, core: string, notes: reado
         ...ring2.map((id) => ({ id, ring: 2 as const })),
     ].map(({ id, ring }) => ({ id, label: name(id), ring, type: typeOf(id), dangling: false, degree: degree.get(id) ?? 0, x: 0, y: 0 }));
     const lines: GraphLine[] = [];
-    const seen = new Set<string>();
+    const seen = new Map<string, GraphLine>();
     for (const e of index.edges) {
         if (e.to === null || e.to === e.from || !drawn.has(e.from) || !drawn.has(e.to)) { continue; }
         const key = `${e.from}\u0000${e.to}`;
-        if (seen.has(key)) { continue; }
-        seen.add(key);
-        lines.push({ from: e.from, to: e.to });
+        const known = seen.get(key);
+        if (known) { known.weight++; continue; }
+        const line = { from: e.from, to: e.to, weight: 1 };
+        seen.set(key, line);
+        lines.push(line);
     }
     return { nodes, lines, omitted, types };
 }
