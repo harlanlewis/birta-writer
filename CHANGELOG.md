@@ -4,6 +4,11 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Editing a line that holds a template directive no longer breaks the directive in the saved file. Changing other text on the line used to write backslashes into it, so `{{ page.last_modified_at }}` was saved as `{{ page.last\_modified\_at }}` and a Hugo or Jekyll build no longer understood it. A directive now keeps its exact spelling as long as you leave its own text alone. If you edit inside the directive itself, it is still saved with those backslashes.
+- A Full Width image in a fixed-width page keeps its block handle clickable. The image reached left over the handle beside it, so clicking there selected the image instead of opening the block menu; the wider the window, the more of the handle it covered. The handle now moves out to the image's new edge, as a Full Width code block's already did.
+
 ---
 
 ## [2026.1125.0] - 2026, November 25
