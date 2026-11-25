@@ -12,6 +12,10 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ## [Unreleased]
 
+---
+
+## [2026.1125.0] - 2026, November 25
+
 ### Added
 
 - Birta Writer for Mac finds notes in a folder that are alike in what they say even when neither links the other, using the language models macOS installs, on the Mac, with nothing sent anywhere. Each note's title and the opening of its text are read in the note's own language, and compared with notes read by the same model, which covers many languages that share an alphabet; a likeness forms between notes about the same thing, not between notes that merely share a language. A language whose model macOS has not installed is not compared, and Birta Writer for Mac never downloads one. In the note graph, up to four such notes sit on the first ring with a dashed outline and a dashed line, further out than any linked note, and the graph says the on-device model found them alike; they also help group Folder Overview's subjects. Likeness never counts as one note relying on another, so it changes neither what is active nor what is fading. A folder's links and backlinks arrive first, and the likenesses follow once its notes have been read.

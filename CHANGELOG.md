@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+---
+
+## [2026.1125.0] - 2026, November 25
+
 ### Added
 
 - Template directives that site generators and docs tools put in Markdown are drawn as source, in a muted monospace face, so they no longer read as part of the sentence around them. That covers Hugo and Quarto shortcodes (`{{< shots >}}`, `{{% notice %}}`), Liquid, Jekyll, Eleventy and Jinja tags and output (`{% include note.html %}`, `{{ page.title }}`), and Mustache and Handlebars. A directive written on its own line now keeps that line instead of running into the text or images beside it, so a paired shortcode reads as the start and end of what it wraps. Drawing them changes nothing in the file, and inline code and code blocks are left alone.
