@@ -32,9 +32,9 @@ export async function run({ page, check, baseUrl }) {
         });
 
     // A full-width block breaks out LEFT of the column, which is where its
-    // own gutter marker sits. The marker has to stay the thing a click there
-    // reaches (MAR-506): the image and the embed paint above static content,
-    // and how far they reach under the marker grows with the window.
+    // own gutter marker sits. The marker has to move out with it (MAR-506):
+    // left behind, it is painted over by the image or stranded inside the
+    // embed's frame, further the wider the window.
     const markerOnTop = (selector) =>
         page.evaluate((sel) => {
             const block = document.querySelector(sel)?.closest(".ProseMirror > *");
@@ -42,8 +42,9 @@ export async function run({ page, check, baseUrl }) {
             if (!marker) return { ok: false, detail: `no marker for ${sel}` };
             const r = marker.getBoundingClientRect();
             const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
-            const ok = Boolean(hit && marker.contains(hit));
             const host = document.querySelector(sel).getBoundingClientRect();
+            // On top, and in the margin beside the block rather than inside it.
+            const ok = Boolean(hit && marker.contains(hit)) && r.right <= host.left + 1;
             return {
                 ok,
                 detail: `marker=[${r.left.toFixed(0)},${r.right.toFixed(0)}] block.left=${host.left.toFixed(0)} hit=${hit?.tagName}.${hit?.className?.baseVal ?? hit?.className}`,

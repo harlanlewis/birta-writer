@@ -119,6 +119,17 @@ describe("template directives on an edited line (MAR-505)", () => {
         expect(out.clean).toBe(true);
     });
 
+    it("a directive escape the serializer drops should be kept", async () => {
+        // `\.` is an escape the serializer has no need to write, so the
+        // serializer's span carries no backslash and differs only by losing it.
+        const directive = "{{ a\\.b }}";
+        const saved = page(`Edit me ${directive} here.`);
+        const out = await saveAfter(saved, retype("Edit me", "Edited me"));
+        expect(out.serialized).toContain("{{ a.b }}");
+        expect(out.text).toBe(page(`Edited me ${directive} here.`));
+        expect(out.clean).toBe(true);
+    });
+
     it("two directives with the same text should each get their own saved bytes", async () => {
         const saved = page("Edit me {{ x_y }} and {{ x\\_y }}.");
         const out = await saveAfter(saved, retype("Edit me", "Edited me"));

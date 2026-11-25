@@ -1169,13 +1169,17 @@ body:not(.editor-width-auto) {
         margin-left: var(--bw-breakout-ml);
     }
 
-    /* A standalone image's gutter belongs to its PARAGRAPH, which stays the
-       column, while the wrapper inside it breaks out; the wrapper is
-       positioned, so it paints over the marker left at the column's edge,
-       further the wider the pane (MAR-506). The gutter takes the same shift
-       the wrapper does. A code block and a table carry their gutter inside
-       the box that breaks out, so theirs follows already. */
-    .ProseMirror > p.img-block:has(> .image-wrapper.bw-full) .heading-fold-gutter--block {
+    /* A standalone image's or an embed's gutter belongs to its PARAGRAPH,
+       which stays the column, while the box inside it breaks out. The image
+       wrapper is positioned, so it paints over the marker left at the
+       column's edge, further the wider the pane (MAR-506); the embed card
+       leaves it stranded inside its frame. The gutter takes the same shift
+       the box does. A code block and a table carry their gutter inside the
+       box that breaks out, so theirs follows already. */
+    :is(
+        .ProseMirror > p.img-block:has(> .image-wrapper.bw-full),
+        .ProseMirror > p.embed-host:has(> .embed-card-host.bw-full)
+    ) .heading-fold-gutter--block {
         left: calc(var(--gutter-left, var(--gutter-column)) + var(--bw-breakout-ml));
     }
 }

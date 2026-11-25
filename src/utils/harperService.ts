@@ -51,24 +51,40 @@ function getLinter(): Promise<HarperLinter> {
     return linterPromise;
 }
 
-function userWords(): Set<string> {
+/** The user's words: lowercased for spelling, and as written for case. */
+function userWords(): { folded: Set<string>; asWritten: Set<string> } {
     // Through the config seam (src/config.ts) like every other birta.* read.
     const words = readBirtaSetting("userWords");
-    return new Set(words.map((w) => w.toLowerCase()));
+    return { folded: new Set(words.map((w) => w.toLowerCase())), asWritten: new Set(words) };
 }
 
 /** Kinds where a flagged tech-like token (path, camelCase…) is noise, not prose. */
 const TOKEN_KINDS = new Set(["Spelling", "Typo", "Capitalization", "BoundaryError", "Word Choice"]);
 
 /**
- * Kinds a `birta.userWords` entry silences, when the finding spans exactly
- * that word. A word somebody added is one they spell that way on purpose, and
- * harper files a lowercase word it knows in capitals (`api`, `html`) under
- * Capitalization rather than Spelling, so a dictionary that answered Spelling
- * alone would bring those words back. Matched case-insensitively, as the
- * dictionary is stored.
+ * Does a `birta.spellCheck.userWords` entry silence this finding? A word
+ * somebody added is one they spell that way on purpose.
+ *
+ * Spelling is answered case-insensitively, as the dictionary always has been.
+ * Capitalization is a finding about case alone, so it is silenced only where
+ * the span is written exactly as the entry is: harper files a lowercase word
+ * it knows in capitals (`api`, `html`) there rather than under Spelling, and
+ * an entry `api` means the writer wants it lowercase, while an entry spelled
+ * with capitals says nothing in favour of the lowercase form. A suggestion
+ * that only capitalizes the first letter is the sentence-start rule, which no
+ * entry overrules.
  */
-const DICTIONARY_KINDS = new Set(["Spelling", "Capitalization"]);
+function silencedByDictionary(
+    kind: string,
+    spanText: string,
+    suggestions: string[],
+    dictionary: { folded: Set<string>; asWritten: Set<string> },
+): boolean {
+    if (kind === "Spelling") return dictionary.folded.has(spanText.toLowerCase());
+    if (kind !== "Capitalization" || !dictionary.asWritten.has(spanText)) return false;
+    const sentenceStart = spanText.charAt(0).toUpperCase() + spanText.slice(1);
+    return !suggestions.includes(sentenceStart);
+}
 
 export async function lintBlocks(blocks: LintBlock[]): Promise<LintBlockResult[]> {
     const linter = await getLinter();
@@ -89,13 +105,14 @@ export async function lintBlocks(blocks: LintBlock[]): Promise<LintBlockResult[]
             // with the placeholder instead of spaces. Drop them unconditionally.
             if (spanText.includes(INLINE_PLACEHOLDER)) { continue; }
             if (TOKEN_KINDS.has(kind) && isTechSpan(block.text, span.start, span.end)) { continue; }
-            if (DICTIONARY_KINDS.has(kind) && dictionary.has(spanText.toLowerCase())) { continue; }
+            const suggestions = lint.suggestions().map((s) => s.get_replacement_text());
+            if (silencedByDictionary(kind, spanText, suggestions, dictionary)) { continue; }
             lints.push({
                 start: span.start,
                 end: span.end,
                 kind,
                 message: lint.message(),
-                suggestions: lint.suggestions().map((s) => s.get_replacement_text()).slice(0, 5),
+                suggestions: suggestions.slice(0, 5),
             });
         }
         results.push({ key: block.key, lints });

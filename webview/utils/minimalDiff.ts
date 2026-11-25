@@ -1425,7 +1425,7 @@ function lineDirectives(line: string): Array<{ from: number; to: number; text: s
 }
 
 function carrySavedDirectives(saved: string, serial: string, structural: boolean): string {
-    if (!structural || saved.indexOf("{") < 0 || serial.indexOf("\\") < 0) return serial;
+    if (!structural || saved.indexOf("{") < 0 || serial.indexOf("{") < 0) return serial;
     const savedSpans = lineDirectives(saved).map((span) => ({
         bytes: span.text,
         key: unescapeMarkdown(span.text),
@@ -1435,12 +1435,14 @@ function carrySavedDirectives(saved: string, serial: string, structural: boolean
     let out = "";
     let at = 0;
     for (const span of lineDirectives(serial)) {
-        if (span.text.indexOf("\\") < 0) continue;
         const key = unescapeMarkdown(span.text);
         const match = savedSpans.find((s) => !s.used && s.key === key);
         if (!match) continue;
         match.used = true;
-        out += serial.slice(at, span.from) + match.bytes;
+        // Either side may carry an escape the other lacks: the serializer
+        // adds `\_`, and drops a saved `\.` it does not need.
+        if (match.bytes === span.text) continue;
+        out +=serial.slice(at, span.from) + match.bytes;
         at = span.to;
     }
     return at === 0 ? serial : out + serial.slice(at);

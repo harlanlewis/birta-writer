@@ -87,10 +87,9 @@ describe("invisible top-level paragraphs serialize to nothing (MAR-360)", () => 
         // down and the stock spelling ("") survives.
         expect(editor.action(getMarkdown())).toBe("");
 
-        // Still all-invisible with two: stock spelling again, which Milkdown
-        // 7.23 spells "" (7.22 spelled it "\n\n"; both reparse to the empty
-        // document), and above all no childless-root crash in remark's root
-        // handler.
+        // Still all-invisible with two: the stock spelling again, "", which
+        // reparses to the empty document, and above all no childless-root
+        // crash in remark's root handler.
         const v = view(editor);
         v.dispatch(v.state.tr.insert(0, v.state.schema.nodes.paragraph.createChecked(null)));
         expect(editor.action(getMarkdown())).toBe("");
