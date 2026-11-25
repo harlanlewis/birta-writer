@@ -110,7 +110,10 @@ export interface VerifiedMerge {
  * COST is one extra parse of the merged bytes, and a second one only when the
  * first came back dirty. It rides the sync path (typing pause, max-wait, save),
  * which already pays an O(document) serialize and merge, and never the
- * keystroke path.
+ * keystroke path. A document whose serialize wrote a template directive
+ * verbatim pays the first parse even when the merge is the serializer's own
+ * text, and a strict re-serialize with up to two more parses only when both
+ * candidates come back dirty.
  *
  * THIS WAS GATED ON "the merge relocated content" — a block move — and that
  * gate was wrong, which is worth recording because the reasoning behind it is
@@ -131,6 +134,13 @@ export function mergeVerified(
     protection: RoundTripProtection | null,
     live: ProseNode,
     parse: ParseMarkdown,
+    /**
+     * The serializer's strict spelling, when `serialized` wrote something
+     * verbatim that it would otherwise escape (MAR-507, `serializeTracked`).
+     * Its presence means the serializer's own text is no longer trusted
+     * unverified, and it is the candidate when that text does not reopen.
+     */
+    strict?: () => string,
 ): VerifiedMerge {
     const { merged, fallback, result } = candidates(saved, serialized, profile, protection);
     // The merge already chose the serializer's text (an internal self-check
@@ -138,8 +148,9 @@ export function mergeVerified(
     // the same bytes, so every branch below would return them; this only saves
     // the parse. It still reports `canonical`: the engine's own fallback leaves
     // exactly the baseline this one does, and it is not the rare road — the
-    // self-check fires without consulting this function at all.
-    if (merged === fallback) {
+    // self-check fires without consulting this function at all. A serializer
+    // that wrote verbatim is the exception: its text is a claim to check.
+    if (merged === fallback && !strict) {
         return result(merged);
     }
     // Fingerprinted once and shared: both checks compare against the same live
@@ -148,11 +159,26 @@ export function mergeVerified(
     if (reopensAs(liveFp, merged, parse)) {
         return result(merged);
     }
-    // The merged bytes are dirty. Only the merge's OWN damage is ours to
-    // overrule: if the serializer is dirty too, the document was already
-    // broken and writing canonical bytes would not fix it, while discarding
-    // the file's spelling on every save certainly would hurt.
-    return result(reopensAs(liveFp, fallback, parse) ? fallback : merged);
+    if (merged !== fallback && reopensAs(liveFp, fallback, parse)) {
+        return result(fallback);
+    }
+    // Both candidates are dirty. Where the serializer wrote verbatim, that may
+    // be the cause, and the strict spelling is the same decision made again
+    // over text that cannot fail for that reason.
+    if (strict) {
+        const again = candidates(saved, strict(), profile, protection);
+        if (reopensAs(liveFp, again.merged, parse)) {
+            return again.result(again.merged);
+        }
+        if (again.merged !== again.fallback && reopensAs(liveFp, again.fallback, parse)) {
+            return again.result(again.fallback);
+        }
+    }
+    // Only the merge's OWN damage is ours to overrule: if the serializer is
+    // dirty too, the document was already broken and writing canonical bytes
+    // would not fix it, while discarding the file's spelling on every save
+    // certainly would hurt.
+    return result(merged);
 }
 
 /** The two texts every save chooses between, and the `canonical` verdict for either. */

@@ -14,6 +14,7 @@ import { contentGuardPlugin } from "../plugins/contentGuard";
 import { diffFingerprints, fingerprintDoc, formatFingerprintDiff } from "../plugins/fingerprints";
 import { markdownProfile, computeRoundTripProtection, applyMinimalChanges } from "../utils/minimalDiff";
 import { mergeVerified } from "../utils/verifiedMerge";
+import { serializeStrict, serializeTracked } from "../serialization";
 import { editorView, makeCorpusEditor } from "./helpers/moveFuzz";
 
 vi.mock("../editing/rangeIndicator", () => ({
@@ -57,13 +58,23 @@ function findText(doc: ProseNode, needle: string): number {
 async function saveAfter(
     saved: string,
     edit: (editor: Editor) => void,
-): Promise<{ text: string; canonical: boolean; serialized: string; merged: string; clean: boolean }> {
+): Promise<{
+    text: string;
+    canonical: boolean;
+    serialized: string;
+    strict: string;
+    verbatim: boolean;
+    merged: string;
+    clean: boolean;
+}> {
     const editor = await makeCorpusEditor(saved, [contentGuardPlugin]);
     editors.push(editor);
     const protection = computeRoundTripProtection(saved, editor.action(getMarkdown()));
     edit(editor);
     const live = editorView(editor).state.doc;
-    const serialized = editor.action(getMarkdown());
+    // Composed exactly as `mergeForSave` (editor.ts) and the sync worker do.
+    const { text: serialized, verbatim } = serializeTracked(() => editor.action(getMarkdown()));
+    const strict = serializeStrict(() => editor.action(getMarkdown()));
     const { text, canonical } = mergeVerified(
         saved,
         serialized,
@@ -71,6 +82,7 @@ async function saveAfter(
         protection,
         live,
         parseWith(editor),
+        verbatim ? () => strict : undefined,
     );
     // The merge before the reparse judged it, to tell a refused restore from
     // one that never happened.
@@ -79,7 +91,7 @@ async function saveAfter(
     const clean =
         formatFingerprintDiff(diffFingerprints(fingerprintDoc(live), fingerprintDoc(reopened))) ===
         "lost: (none); gained: (none)";
-    return { text, canonical, serialized, merged, clean };
+    return { text, canonical, serialized, strict, verbatim, merged, clean };
 }
 
 /** Retype `from` as `to` in the live document. */
@@ -103,11 +115,10 @@ describe("template directives on an edited line (MAR-505)", () => {
         it(`editing beside ${directive} should save the directive byte for byte`, async () => {
             const saved = page(`Edit me ${directive} here.`);
             const out = await saveAfter(saved, retype("Edit me", "Edited me"));
-            // The case is real: the serializer alone escapes this directive.
-            expect(out.serialized).not.toContain(directive);
+            // The case is real: the strict spelling escapes this directive.
+            expect(out.strict).not.toContain(directive);
             expect(out.text).toBe(page(`Edited me ${directive} here.`));
             expect(out.clean).toBe(true);
-            expect(out.canonical).toBe(false);
         });
     }
 
@@ -137,19 +148,12 @@ describe("template directives on an edited line (MAR-505)", () => {
         expect(out.clean).toBe(true);
     });
 
-    it("a directive whose text the user changed should take the serializer's spelling", async () => {
-        const saved = page("Edit me {{ page.last_modified_at }}.");
-        const out = await saveAfter(saved, retype("last_modified_at", "first_modified_at"));
-        expect(out.text).toBe(page("Edit me {{ page.first\\_modified\\_at }}."));
-        expect(out.clean).toBe(true);
-    });
-
-    it("a restore the reparse refuses should fall back to the serializer's text", async () => {
+    it("a restore the reparse refuses should fall back to the strict spelling", async () => {
         // `{{ *x* }}` holds an emphasis. Replacing the emphasized `x` with the
-        // plain text `*x*` gives a directive whose unescaped text equals the
-        // saved span's, so the saved bytes pair with it; writing them back
-        // would turn the user's asterisks into emphasis again, and only the
-        // reparse can see that.
+        // plain text `*x*` gives a directive the serializer writes verbatim as
+        // `{{ *x* }}`, and the saved span pairs with it too; either way the
+        // user's asterisks would reopen as emphasis, and only the reparse can
+        // see that.
         const saved = page("Edit me {{ *x* }} here.");
         const out = await saveAfter(saved, (editor) => {
             const v = editorView(editor);
@@ -161,7 +165,8 @@ describe("template directives on an edited line (MAR-505)", () => {
             const edit = findText(tr.doc, "Edit me");
             v.dispatch(tr.insertText("Edited me", edit, edit + "Edit me".length));
         });
-        // The restore really was made, and refused by the reparse.
+        // The verbatim bytes really were the candidate, and refused by the reparse.
+        expect(out.verbatim).toBe(true);
         expect(out.merged).toContain("Edited me {{ *x* }} here.");
         expect(out.canonical).toBe(true);
         expect(out.clean).toBe(true);
@@ -183,5 +188,81 @@ describe("template directives on an edited line (MAR-505)", () => {
         const out = await saveAfter(saved, retype("Edit me {{ a_b }}", "Edited me"));
         expect(out.merged).toBe(page("Edited me `{{ a\\_b }}`."));
         expect(out.clean).toBe(true);
+    });
+});
+
+describe("template directives the serializer writes itself (MAR-507)", () => {
+    it("a directive whose text the user changed should be saved as it reads", async () => {
+        const saved = page("Edit me {{ page.last_modified_at }}.");
+        const out = await saveAfter(saved, retype("last_modified_at", "first_modified_at"));
+        expect(out.verbatim).toBe(true);
+        expect(out.strict).toContain("first\\_modified\\_at");
+        expect(out.text).toBe(page("Edit me {{ page.first_modified_at }}."));
+        expect(out.clean).toBe(true);
+    });
+
+    it("joining a directive's paragraph into the one above should keep the directive", async () => {
+        const saved = "# Page\n\nPara one.\n\n{{ page.last_modified_at }} here.\n\nTail.\n";
+        const out = await saveAfter(saved, (editor) => {
+            const v = editorView(editor);
+            v.dispatch(v.state.tr.join(v.state.doc.resolve(0).posAtIndex(2)));
+        });
+        expect(out.text).toBe("# Page\n\nPara one.{{ page.last_modified_at }} here.\n\nTail.\n");
+        expect(out.clean).toBe(true);
+    });
+
+    it("splitting a directive's line should keep the directive", async () => {
+        const saved = page("Before {{ page.last_modified_at }} after.");
+        const out = await saveAfter(saved, (editor) => {
+            const v = editorView(editor);
+            // Enter where the space was: the space goes, the line breaks there.
+            const at = findText(v.state.doc, " after.");
+            v.dispatch(v.state.tr.delete(at, at + 1).split(at));
+        });
+        expect(out.text).toBe("# Page\n\nBefore {{ page.last_modified_at }}\n\nafter.\n\nAnother paragraph.\n");
+        expect(out.clean).toBe(true);
+    });
+
+    it("a directive typed into a new paragraph should be saved as it reads", async () => {
+        const saved = page("Edit me.");
+        const out = await saveAfter(saved, (editor) => {
+            const v = editorView(editor);
+            const end = findText(v.state.doc, "Edit me.") + "Edit me.".length;
+            const tr = v.state.tr.split(end);
+            v.dispatch(tr.insertText("{% include_relative notes/a_b.md %}", tr.mapping.map(end) + 1));
+        });
+        expect(out.text).toContain("\n\n{% include_relative notes/a_b.md %}\n\n");
+        expect(out.clean).toBe(true);
+    });
+
+    it("a directive that would reopen as a link should be saved escaped", async () => {
+        // `[0]` written verbatim meets the document's own `[0]:` definition and
+        // reopens as a link, which no reading of the directive alone can see.
+        const saved = "# Page\n\nEdit me {{ a\\[0] }} here.\n\n[0]: https://example.com\n";
+        const out = await saveAfter(saved, retype("Edit me", "Edited me"));
+        expect(out.verbatim).toBe(true);
+        expect(out.serialized).toContain("{{ a[0] }}");
+        expect(out.text).toContain("Edited me {{ a\\[0] }} here.");
+        expect(out.clean).toBe(true);
+    });
+
+    it("an edited directive that would reopen as a link should be saved escaped", async () => {
+        // The edited directive has no saved partner, so the merge is the
+        // serializer's own text, which a verbatim serialize must not let
+        // through unparsed.
+        const saved = "# Page\n\nSee {{ a\\[0] }} here.\n\n[0]: https://example.com\n";
+        const out = await saveAfter(saved, retype("a[0]", "b[0]"));
+        expect(out.verbatim).toBe(true);
+        expect(out.merged).toContain("See {{ b[0] }} here.");
+        expect(out.text).toContain("See {{ b\\[0] }} here.");
+        expect(out.clean).toBe(true);
+    });
+
+    it("a directive with nothing to escape should not mark the serialize as verbatim", async () => {
+        // Nothing for the save path to verify, so it keeps its single-parse road.
+        const saved = page("Edit me {{ page.title }} here.");
+        const out = await saveAfter(saved, retype("Edit me", "Edited me"));
+        expect(out.verbatim).toBe(false);
+        expect(out.text).toBe(page("Edited me {{ page.title }} here."));
     });
 });

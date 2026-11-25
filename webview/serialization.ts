@@ -3,6 +3,7 @@
  * round-trip tests so both exercise the exact same serializer behavior.
  */
 import { remarkStringifyOptionsCtx, type Editor } from "@milkdown/core";
+import { findDirectives } from "./utils/templateDirectives";
 import { commonmark, remarkPreserveEmptyLinePlugin } from "@milkdown/preset-commonmark";
 import { gfm } from "@milkdown/preset-gfm";
 import { calloutsPlugin } from "./plugins/callouts";
@@ -976,17 +977,90 @@ function emitsDashRule(node: FlowNode, state: unknown): boolean {
  * So the trailing whitespace is still written as it is, in exactly the case
  * Milkdown's handler singled out, and the text before it is escaped as any
  * other text is, with that whitespace as its following context.
+ *
+ * Template directives are written as they read (MAR-507), and only the text
+ * around them is escaped, each run with the directive beside it as its
+ * context. Whether a directive written this way reparses as the same text is
+ * not decided here: the save path reparses what it is about to write, and
+ * where that does not reopen as the document it saves `serializeStrict`'s
+ * output instead (`serializeTracked`, `mergeVerified`).
  */
 function serializeText(
     node: { value: string },
     _parent: unknown,
     state: { safe(value: string, config: object): string },
-    info: { after?: string },
+    info: { before?: string; after?: string },
 ): string {
-    const trailing = /^([^*_\\]*?)(\s+)$/.exec(node.value);
-    if (!trailing) return state.safe(node.value, { ...info, encode: [] });
+    const spans = directivesVerbatim ? findDirectives(node.value) : [];
+    if (spans.length === 0) return escapeRun(node.value, state, info);
+    let out = "";
+    let at = 0;
+    for (const span of spans) {
+        if (span.from > at) {
+            out += escapeRun(node.value.slice(at, span.from), state, {
+                ...info,
+                before: at === 0 ? info.before : node.value.charAt(at - 1),
+                after: node.value.charAt(span.from),
+            });
+        }
+        const verbatim = node.value.slice(span.from, span.to);
+        if (!wroteVerbatim && state.safe(verbatim, { ...info, encode: [] }) !== verbatim) wroteVerbatim = true;
+        out += verbatim;
+        at = span.to;
+    }
+    if (at < node.value.length) {
+        out += escapeRun(node.value.slice(at), state, { ...info, before: node.value.charAt(at - 1) });
+    }
+    return out;
+}
+
+function escapeRun(
+    value: string,
+    state: { safe(value: string, config: object): string },
+    info: { before?: string; after?: string },
+): string {
+    const trailing = /^([^*_\\]*?)(\s+)$/.exec(value);
+    if (!trailing) return state.safe(value, { ...info, encode: [] });
     const [, body, space] = trailing;
     return state.safe(body, { ...info, after: space + (info.after ?? ""), encode: [] }) + space;
+}
+
+/**
+ * Off only inside `serializeStrict`. Both flags are module state on purpose:
+ * the serializer is synchronous, so a flag set around one call describes
+ * exactly that call.
+ */
+let directivesVerbatim = true;
+/** Set when a directive was written with a character its strict spelling escapes. */
+let wroteVerbatim = false;
+
+/**
+ * Run a serialize and report whether it wrote any directive verbatim where
+ * the strict spelling would differ. Only then can the text fail to reopen as
+ * the document for a reason of this file's making, so only then does the save
+ * path need `serializeStrict` as a second candidate.
+ */
+export function serializeTracked(serialize: () => string): { text: string; verbatim: boolean } {
+    wroteVerbatim = false;
+    const text = serialize();
+    const verbatim = wroteVerbatim;
+    wroteVerbatim = false;
+    return { text, verbatim };
+}
+
+/**
+ * Serialize with every template directive escaped as ordinary text, the
+ * spelling that always reparses as the text it came from: the save path's
+ * fallback when a directive written verbatim does not (MAR-507).
+ */
+export function serializeStrict<T>(serialize: () => T): T {
+    const previous = directivesVerbatim;
+    directivesVerbatim = false;
+    try {
+        return serialize();
+    } finally {
+        directivesVerbatim = previous;
+    }
 }
 
 /**

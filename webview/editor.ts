@@ -33,6 +33,7 @@ import { refractor, ensureGrammars } from "./highlighter";
 import { applyExternalSync } from "./externalSync";
 import { countWork, instrumentTransactions, mark, measure } from "./perf";
 import { createSyncScheduler } from "./syncScheduler";
+import { serializeStrict, serializeTracked } from "./serialization";
 import { isReadOnly } from "./readOnly";
 import { requestIdle } from "./utils/idle";
 import {
@@ -537,8 +538,9 @@ function offThreadOracle(): VerifyOracle | null {
  * and a worker that quietly stops loading moves `mainReparses` and
  * `mainSerializes` off their ceiling of zero.
  */
-function mergeForSave(editor: Editor, markdown: string): { text: string; canonical: boolean } {
+function mergeForSave(editor: Editor): { text: string; canonical: boolean } {
     let reparses = 0;
+    const { text: markdown, verbatim } = serializeTracked(() => editor.action(getMarkdown()));
     const result = mergeVerified(
         _savedMarkdown,
         markdown,
@@ -549,6 +551,7 @@ function mergeForSave(editor: Editor, markdown: string): { text: string; canonic
             reparses++;
             return editor.action((ctx) => ctx.get(parserCtx)(text)) as ProseNode | null;
         },
+        verbatim ? () => serializeStrict(() => editor.action(getMarkdown())) : undefined,
     );
     countWork("merge", { passes: 1, reparses, mainReparses: reparses, mainSerializes: 1 });
     return result;
@@ -626,7 +629,7 @@ function syncNow(): void {
     }
     if (!oracle || _savedMarkdown.length < _offThreadMinChars) {
         ++_serialSeq;
-        commitSync(mergeForSave(editor, editor.action(getMarkdown())));
+        commitSync(mergeForSave(editor));
         return;
     }
     const doc = editor.action((ctx) => getState(ctx).doc);
@@ -636,7 +639,7 @@ function syncNow(): void {
         (result) => settleSync(flight, result),
         // The oracle retired itself (utils/verifyOracle.ts). The same
         // decision, made here, if the answer is still wanted.
-        () => settleSync(flight, isCurrent(flight) ? mergeForSave(editor, editor.action(getMarkdown())) : null),
+        () => settleSync(flight, isCurrent(flight) ? mergeForSave(editor) : null),
     );
 }
 
@@ -732,7 +735,7 @@ export function flushPendingEdit(id: string): string {
     // older than the bytes about to reach the file, and is dropped when it
     // lands (see `_serialSeq`).
     ++_serialSeq;
-    const { text, canonical } = mergeForSave(_editor, _editor.action(getMarkdown()));
+    const { text, canonical } = mergeForSave(_editor);
     _flushCandidate = { id, text, canonical, docChangeCount: _docChangeCount };
     return text;
 }
