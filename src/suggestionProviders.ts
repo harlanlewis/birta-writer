@@ -24,6 +24,7 @@
  * is a 500-file read and a keystroke must not cost it, any more than a photo
  * landing in the workspace may.
  */
+import { IMAGE_EXTENSIONS } from "../shared/imageExtensions";
 import * as path from "path";
 import * as vscode from "vscode";
 import { DOCUMENT_EXTENSIONS } from "../shared/documentExtensions";
@@ -67,7 +68,6 @@ export interface SuggestionHost {
 }
 
 const IGNORED_ENTRIES = new Set(["node_modules", ".git", "dist", ".DS_Store", "out", ".vscode-test"]);
-const IMAGE_EXTS = new Set([".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".bmp", ".tiff", ".ico"]);
 
 export class SuggestionProviders {
     // Workspace-wide frontmatter list-value scan, cached for a short TTL so
@@ -204,7 +204,7 @@ export class SuggestionProviders {
                 let webviewUri: string | undefined;
                 if (type === vscode.FileType.File) {
                     const ext = path.extname(name).toLowerCase();
-                    if (IMAGE_EXTS.has(ext)) {
+                    if (IMAGE_EXTENSIONS.has(ext)) {
                         const absFilePath = path.join(absDir, name);
                         webviewUri = panel.webview.asWebviewUri(vscode.Uri.file(absFilePath)).toString();
                         // Register the mapping so the save can convert it back to a relative path

@@ -41,7 +41,7 @@ The request-and-reply pairs every host takes part in, one in each direction; the
 
 | Request | Reply | What it is |
 | --- | --- | --- |
-| `ready`, from the editor | `init { content, syncVersion }`, from the host | The document, once. `syncVersion` is the host's version number for these bytes; start at 1 |
+| `ready`, from the editor | `init { content, syncVersion, documentBase? }`, from the host | The document, once. `syncVersion` is the host's version number for these bytes; start at 1. `documentBase { url, scope }` is for a host that serves the document's folder rather than rewriting its image paths: a relative image path is resolved against `url` (the folder's URL, ending in `/`), an `@/` path against `scope`, and one that climbs out of `scope` is drawn as missing. A host that rewrites paths, as VS Code does, sends none |
 | `flushSave { id }`, from the host | `flushResult { id, content, seq, baseSyncVersion }`, from the editor | The freshest bytes, serialized now, ahead of any pending `update`. Send the request before persisting on the user's command and persist what comes back |
 | `requestPaletteCommands`, from the host | `paletteCommands { commands }`, from the editor | The editor's commands as the host's own palette can list them, gated the way the gear and the slash menu gate them. Answered on request, and once a host has asked, sent again unasked whenever the publishing targets change; a host that never asks is never told |
 
@@ -62,6 +62,7 @@ What a host sends, when it wants to:
 | `externalUpdate { content, syncVersion }` | Replaces the document with the host's bytes, keeping the caret where a diff can keep it. `syncVersion` must be higher than the last; the editor echoes it as `baseSyncVersion` on every later `update`, so the host can drop an update serialized against bytes it has since replaced |
 | `setReadOnly { readOnly }` | Locks or unlocks every way the document can change (`webview/readOnly.ts`, three layers). `__i18n.readOnly` seeds the same mode at boot |
 | `scrollToLine { line, column? }` | Places the caret at a source line |
+| `documentBase { base }` | The document's folder moved while the page stayed (a move, Save As): the same value `init` carries, and every image already drawn is loaded again through it. A host that sends no base in `init` never sends this |
 | `hostCapabilitiesChanged { capabilities }` | Replaces the capability list the page is running under, leaving the arrangements and the shortcuts as declared. For a host whose user can move a capability; see the profile section above for which ones may |
 | `editorCommand { command }` | Runs an editor command by id (`shared/editorCommands.ts`), which is how a host's own menu or key reaches the editor |
 | `setFontSize`, `setFontFamily`, `setContentWidth`, `setTocVisibility`, `toolbarConfig`, and the other `set*` and `*Changed` messages | A setting changed under the editor while it is open. Each corresponds to one field of the boot blob, and a host that never changes a setting never sends one |

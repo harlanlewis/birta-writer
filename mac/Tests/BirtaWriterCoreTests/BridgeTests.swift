@@ -233,6 +233,14 @@ final class BridgeTests: XCTestCase {
                                            viewStateJSON: #"{"scrollY":3}"#, scrollToLine: 12).jsonString(),
                        ##"{"content":"# a","frontmatter":"","lineOffset":0,"scrollToLine":12,"syncVersion":0,"type":"init","viewState":{"scrollY":3}}"##)
         XCTAssertEqual(HostMessage.scrollToLine(line: 12).jsonString(), #"{"line":12,"type":"scrollToLine"}"#)
+        XCTAssertEqual(HostMessage.documentBase(DocumentBase(url: "birta://app/~doc/b/", scope: "birta://app/~doc/")).jsonString(),
+                       #"{"base":{"scope":"birta:\/\/app\/~doc\/","url":"birta:\/\/app\/~doc\/b\/"},"type":"documentBase"}"#)
+        XCTAssertEqual(HostMessage.documentBase(nil).jsonString(), #"{"base":null,"type":"documentBase"}"#)
+        // The document base rides on `init` under the name and shape the
+        // page's `DocumentBase` reads (shared/messages.ts).
+        XCTAssertEqual(HostMessage.initDoc(content: "", frontmatter: "", lineOffset: 0, syncVersion: 0, viewStateJSON: nil,
+                                           documentBase: DocumentBase(url: "birta://app/~doc/a/", scope: "birta://app/~doc/")).jsonString(),
+                       #"{"content":"","documentBase":{"scope":"birta:\/\/app\/~doc\/","url":"birta:\/\/app\/~doc\/a\/"},"frontmatter":"","lineOffset":0,"syncVersion":0,"type":"init"}"#)
         // The panel's half of a document, on both messages that carry one. A
         // host that sends only `content` sends the panel nothing to draw, and
         // an offset the page never hears leaves every document line it reports

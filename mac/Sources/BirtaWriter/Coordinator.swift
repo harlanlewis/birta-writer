@@ -1289,6 +1289,13 @@ final class Coordinator {
             holdsNoFile = false
             host.schemeHandler.roots =
                 host.schemeHandler.roots.rebound(toDocument: boundURL.deletingLastPathComponent())
+            // A page that stays (a move, Save As) is told the folder's new URL
+            // so its relative images follow the file. Told, never reloaded:
+            // the page can hold edits the buffer has not heard yet. A page
+            // still loading learns it from `init`.
+            if state == .warm {
+                host.send(.documentBase(host.schemeHandler.roots.documentBase(origin: BirtaSchemeHandler.pageURL)))
+            }
             refreshTitle()
             // Both files join the recents list: the one being left and the one
             // arriving, oldest first.
@@ -2650,7 +2657,8 @@ final class Coordinator {
             pendingRevealLine = nil
             host.send(.initDoc(content: doc.body, frontmatter: doc.frontmatter,
                                lineOffset: doc.lineOffset, syncVersion: guardState.version,
-                               viewStateJSON: mountedViewStateJSON, scrollToLine: revealLine))
+                               viewStateJSON: mountedViewStateJSON, scrollToLine: revealLine,
+                               documentBase: host.schemeHandler.roots.documentBase(origin: BirtaSchemeHandler.pageURL)))
             state = .warm
             // The two app-wide page settings, sent again now that the page
             // can hear them. The boot script carried them as they stood when
@@ -3041,9 +3049,10 @@ final class Coordinator {
     /// the reference to put in it.
     ///
     /// The reply carries the store's RELATIVE reference, which is both what the
-    /// document should say and, because the page is served from a scheme handler
-    /// rooted at the document's folder, a URL the editor can render as-is. One
-    /// string doing both jobs is the reason no `imageUriMap` is needed here.
+    /// document should say and, because the page resolves a relative path
+    /// against the note folder's `documentBase`, a path the editor can render
+    /// as-is. One string doing both jobs is the reason no `imageUriMap` is
+    /// needed here.
     private func saveAttachment(id: String, data: Data, mimeType: String) {
         do {
             let reference = try attachments.save(data, mimeType: mimeType, besideDocument: boundURL)
