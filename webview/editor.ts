@@ -94,6 +94,7 @@ import {
     listMergeSuggestPlugin,
     listSpreadNormalizePlugin,
     noteMarkersPlugin,
+    templateDirectivesPlugin,
     emptyLineHintPlugin,
     pendingRangePlugin,
     slashArgumentHintPlugin,
@@ -1359,6 +1360,9 @@ export async function createEditor(
         // is the same kind of thing: a view-only decoration layer that settles
         // in after first paint and never reaches the serialized markdown.
         .use(noteMarkersPlugin)
+        // Template directives ({{< x >}}, {% tag %}) drawn as source: the same
+        // kind of view-only layer, windowed and settled in after first paint.
+        .use(templateDirectivesPlugin)
         .use(proofreadPlugin)
         .create();
     mark("create-end");
