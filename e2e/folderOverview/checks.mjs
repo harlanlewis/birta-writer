@@ -112,7 +112,8 @@ export async function run({ page, check, baseUrl }) {
         const s = document.querySelector(sel);
         const stage = r(s.querySelector(".lg-stage"));
         const rows = [...s.querySelectorAll(".fo-row")].map(r);
-        const dots = [...s.querySelectorAll(".lg-dot")].map(r);
+        // Each note's own box: its name, or its dot where the name has no room.
+        const dots = [...s.querySelectorAll(".lg-node:not(.lg-node--tier)")].map(r);
         return { stage, rows, dots, vh: innerHeight, vw: innerWidth, active: document.activeElement?.dataset?.path ?? null };
     }, OVERVIEW);
     check("the drawing is a square inside the window's width",
@@ -122,7 +123,7 @@ export async function run({ page, check, baseUrl }) {
     check("every recent file sits above the drawing and above the fold of a short window",
         geo.rows.length === 4 && lastRow.bottom <= geo.stage.top + 1 && lastRow.bottom <= geo.vh,
         JSON.stringify({ stageTop: geo.stage.top, lastBottom: lastRow?.bottom, vh: geo.vh }));
-    check("every dot lies inside the drawing",
+    check("every note lies inside the drawing",
         geo.dots.every((d) => d.left >= geo.stage.left - 8 && d.right <= geo.stage.right + 8 && d.top >= geo.stage.top - 8 && d.bottom <= geo.stage.bottom + 8),
         `dots=${geo.dots.length}`);
     check("focus lands on the first recent file", geo.active === "notes/standup.md", String(geo.active));

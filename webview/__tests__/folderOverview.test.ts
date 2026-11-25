@@ -196,7 +196,7 @@ describe("createFolderOverview", () => {
         // hub.md, a.md and the rest were last written over a year ago: faded.
         expect(view.element.querySelector('.lg-node[data-id="a.md"]')!.classList.contains("lg-node--dormant")).toBe(true);
         expect(view.element.querySelector('.lg-node[data-id="d.md"]')!.classList.contains("lg-node--dormant")).toBe(false);
-        expect(view.element.querySelector(".fo-caption")!.textContent).toContain("Faded dots");
+        expect(view.element.querySelector(".fo-caption")!.textContent).toContain("Faded names");
     });
 
     it("a subject row should draw its subject in the square and press again to go back", () => {
