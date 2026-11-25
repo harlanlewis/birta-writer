@@ -73,16 +73,25 @@ final class NoteSimilarityTests: XCTestCase {
             var v = [Float](repeating: 0, count: 6)
             v[axes[name]!] = 1
             v[axes[name]! + 1] = name.hasSuffix("1") ? 0.1 : 0
-            return v
+            return NoteSimilarity.Embedding(language: "en", vector: v)
         })
-        let first = indexer.build()
+        // Reading the folder never waits on the model: the index comes back
+        // with no vectors made, and the pairs follow.
+        let read = indexer.build()
+        XCTAssertEqual(embedded, 0)
+        XCTAssertEqual(read.similar, [])
+        let first = try XCTUnwrap(indexer.completeSimilarity())
         XCTAssertEqual(Set(first.similar.map { "\($0.a)+\($0.b)" }), ["a1.md+a2.md", "b1.md+b2.md", "c1.md+c2.md"])
         XCTAssertEqual(embedded, 6)
+        XCTAssertNil(indexer.completeSimilarity(), "nothing left to make, nothing to re-send")
+        // A rebuild with nothing changed keeps the vectors, and the pairs, at once.
+        XCTAssertEqual(indexer.build().similar, first.similar)
         let json = first.jsonObject
         let wire = try XCTUnwrap(json["similar"] as? [[String: Any]])
         XCTAssertEqual(wire.first?["a"] as? String, "a1.md")
         XCTAssertTrue(JSONSerialization.isValidJSONObject(json))
         _ = indexer.build()
+        XCTAssertNil(indexer.completeSimilarity())
         XCTAssertEqual(embedded, 6, "an unchanged note is not embedded again")
     }
 
@@ -90,7 +99,8 @@ final class NoteSimilarityTests: XCTestCase {
     /// pair, and no note should pair with one on an unrelated subject, once
     /// centred against a few others. Skipped on a Mac without the model.
     func testTheSystemEmbeddingShouldPutTwoNotesOnOneSubjectCloserThanToAnUnrelatedOne() throws {
-        guard let embed = NoteSimilarity.systemEmbedder() else { throw XCTSkip("no English contextual embedding installed on this Mac") }
+        let embed = NoteSimilarity.systemEmbedder()
+        guard embed("A note about the voice assistant") != nil else { throw XCTSkip("no English contextual embedding installed on this Mac") }
         let texts = [
             "voice1.md": "Transcription overeager acting as agent. The voice transcriber took actions instead of writing down what I said.",
             "voice2.md": "Voice recording feedback on agentic actions. The assistant should confirm before doing anything.",
@@ -102,11 +112,36 @@ final class NoteSimilarityTests: XCTestCase {
         // body's words.
         var vectors: [String: [Float]] = [:]
         for (path, text) in texts {
-            vectors[path] = try XCTUnwrap(embed(NoteSimilarity.excerpt(title: String(path.dropLast(3)), text: text)))
+            vectors[path] = try XCTUnwrap(embed(NoteSimilarity.excerpt(title: String(path.dropLast(3)), text: text))).vector
         }
         let pairs = NoteSimilarity.pairs(vectors)
         XCTAssertTrue(pairs.contains { $0.a == "voice1.md" && $0.b == "voice2.md" }, "\(pairs)")
         XCTAssertTrue(pairs.allSatisfy { $0.a.hasPrefix("voice") && $0.b.hasPrefix("voice") },
                       "only the two voice notes are alike: \(pairs)")
+    }
+
+    /// Two languages, each with a pair of its own: notes are paired within a
+    /// language and never across, whatever their vectors say.
+    func testNotesShouldBeComparedOnlyWithinTheirLanguage() {
+        func e(_ lang: String, _ v: [Float]) -> NoteSimilarity.Embedding { .init(language: lang, vector: v) }
+        let embeddings: [String: NoteSimilarity.Embedding] = [
+            "en1.md": e("en", [1, 0, 0, 0]), "en2.md": e("en", [0.9, 0.1, 0, 0]), "en3.md": e("en", [0, 0, 1, 0]),
+            "fr1.md": e("fr", [1, 0, 0, 0]), "fr2.md": e("fr", [0.95, 0.05, 0, 0]), "fr3.md": e("fr", [0, 0, 0, 1]),
+        ]
+        let pairs = NoteSimilarity.pairs(grouped: embeddings)
+        XCTAssertTrue(pairs.contains { $0.a == "en1.md" && $0.b == "en2.md" })
+        XCTAssertTrue(pairs.contains { $0.a == "fr1.md" && $0.b == "fr2.md" })
+        XCTAssertFalse(pairs.contains { $0.a.prefix(2) != $0.b.prefix(2) }, "\(pairs)")
+    }
+
+    /// The real model, for a language other than English where this Mac has
+    /// it: French notes get vectors, tagged French.
+    func testTheSystemEmbeddingShouldReadANoteInItsOwnLanguage() throws {
+        let embed = NoteSimilarity.systemEmbedder()
+        guard let french = embed("L'assistant vocal doit confirmer avant d'agir en mon nom, et demander la permission") else {
+            throw XCTSkip("no French contextual embedding installed on this Mac")
+        }
+        XCTAssertEqual(french.language, "fr")
+        XCTAssertNil(embed(""), "an empty text has no language and no vector")
     }
 }

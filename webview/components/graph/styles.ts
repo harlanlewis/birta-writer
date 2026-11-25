@@ -7,13 +7,17 @@
  * `.css` file in this lazy chunk would be paid on every launch
  * (components/fileExplorer/styles.ts has the same note).
  *
- * The drawing vocabulary, declared once so it cannot accumulate: a dot's SIZE
- * says how connected the note is; its HUE says its OKF `type`, from the
- * theme's chart colours with the two warning hues last so a type does not read
- * as an alarm; an OUTLINED dot is a reference that resolves to no note. This
- * note is the one drawn in the focus colour, at the centre. Staleness and
- * status stay out of the drawing: words carry them elsewhere
- * (components/frontmatter/provenance.ts gives the reason).
+ * The drawing vocabulary, declared once so it cannot accumulate. A note is
+ * its NAME. The name's size and weight say how connected the note is; an
+ * underline in a HUE says its OKF `type`, from the theme's chart colours with
+ * the two warning hues last so a type does not read as an alarm; faded words
+ * say nothing has touched it in months; a dashed edge says it is there only
+ * because a model found it alike; grey italics say a reference resolves to
+ * no note. The centre carries the focus colour. A note whose name has no room
+ * is a dot in those same colours. Where a note SITS is meaning too
+ * (./localGraph.ts `layoutRings`). OKF staleness and status stay out of the
+ * drawing: words carry them elsewhere (components/frontmatter/provenance.ts
+ * gives the reason).
  */
 
 const STYLE_ID = "local-graph-styles";

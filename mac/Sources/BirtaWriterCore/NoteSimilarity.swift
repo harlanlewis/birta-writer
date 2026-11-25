@@ -7,13 +7,21 @@ import NaturalLanguage
 /// (`FolderIndex.similar`, `FolderSimilarity` in shared/folderIndex.ts).
 ///
 /// Each note is turned into a vector by Apple's contextual embedding
-/// (NaturalLanguage's `NLContextualEmbedding`, English, a transformer that
-/// runs on this Mac), averaged over the note's words. Only when its model is
-/// already on the Mac: the app never asks macOS to fetch it (`systemEmbedder`),
-/// since that download would be a request the reader did not make. Nothing
-/// is sent anywhere. What is embedded is a note's title and the opening of its
-/// body (`excerpt`), never more, so a vector says what a note is about rather
-/// than everything in it.
+/// (NaturalLanguage's `NLContextualEmbedding`, a transformer that runs on
+/// this Mac), averaged over the note's words, in the note's own language:
+/// macOS has one model per family of scripts (one covers some twenty
+/// Latin-script languages), so the language is detected first and the note
+/// is read by the model for it. Only a model already on the Mac is used: the
+/// app never asks macOS to fetch one (`systemEmbedder`), since that download
+/// would be a request the reader did not make, so a language whose model is
+/// not installed gets no vectors. Nothing is sent anywhere. What is embedded
+/// is a note's title and the opening of its body (`excerpt`), never more, so
+/// a vector says what a note is about rather than everything in it.
+///
+/// Notes are compared only with notes in the same language (`Embedding`'s
+/// `language`, `pairs(grouped:)`): the model places two notes saying the same
+/// thing in two languages no nearer each other than two unrelated notes, so a
+/// comparison across languages would only add noise.
 ///
 /// Not the older `NLEmbedding.sentenceEmbedding`, which is quicker and
 /// always present: on notes it was tried against, it called unrelated
@@ -21,16 +29,16 @@ import NaturalLanguage
 /// that is not one costs more than a likeness left out.
 ///
 /// Raw cosine similarity between these vectors is a poor ranking on its own:
-/// every note shares a large common component (it is English, it is a note),
-/// so unrelated notes score as high as related ones. So the folder's mean
-/// vector is subtracted first, which leaves what distinguishes each note
-/// from the rest of its folder (`pairs`). A pair is kept only when it clears
-/// `threshold` and each note is among the other's `perNote` closest, so a
-/// note alike to nothing in particular is joined to nothing.
+/// every note shares a large common component (its language, that it is a
+/// note), so unrelated notes score as high as related ones. So the mean
+/// vector of the notes compared is subtracted first, which leaves what
+/// distinguishes each note from the rest (`pairs`). A pair is kept only when
+/// it clears `threshold` and each note is among the other's `perNote`
+/// closest, so a note alike to nothing in particular is joined to nothing.
 ///
 /// These are claims the reader did not make, so the page draws and weighs
-/// them apart from links: dashed, a weaker tie, and never a reason to call a
-/// note relied on (webview/components/graph).
+/// them apart from links: dashed, credited to the model, a weaker tie, and
+/// never a reason to call a note relied on (webview/components/graph).
 public enum NoteSimilarity {
     /// The least centred cosine a pair is kept at. Centred, unrelated notes
     /// sit near zero or below with this model, so the line is drawn a little
@@ -43,25 +51,70 @@ public enum NoteSimilarity {
     /// How much of a note's body, in characters, joins its title.
     public static let excerptLength = 400
 
-    /// A vector per text, or nil where none can be made.
-    public typealias Embedder = (String) -> [Float]?
+    /// A note's vector, and the language it was read in: only notes of one
+    /// language are compared.
+    public struct Embedding: Equatable, Sendable {
+        public let language: String
+        public let vector: [Float]
 
-    /// The embedder the app uses: the English contextual embedding, its
-    /// token vectors averaged into one per text. Nil on a Mac whose model is
-    /// not already installed, or that cannot load it, which leaves the index
-    /// with no `similar` pairs.
-    public static func systemEmbedder() -> Embedder? {
-        guard let embedding = NLContextualEmbedding(language: .english),
-              embedding.hasAvailableAssets,
-              (try? embedding.load()) != nil else { return nil }
-        let dimension = embedding.dimension
-        // Not documented as safe across threads, and the index is built off
-        // the main thread: one lock, held per text.
+        public init(language: String, vector: [Float]) {
+            self.language = language
+            self.vector = vector
+        }
+    }
+
+    /// An embedding per text, or nil where none can be made.
+    public typealias Embedder = (String) -> Embedding?
+
+    /// The embedder the app shares across every folder: `systemEmbedder`,
+    /// made the first time it is asked for a vector rather than when the app
+    /// starts, and so on whatever thread first asks, which is the folder
+    /// index's queue and never the main thread.
+    public static let system: Embedder = {
+        let lock = NSLock()
+        var made: Embedder?
+        return { text in
+            lock.lock()
+            if made == nil { made = systemEmbedder() }
+            let embed = made!
+            lock.unlock()
+            return embed(text)
+        }
+    }()
+
+    /// The embedder the app uses. Each text's language is detected, and the
+    /// text read by the contextual model for that language, loaded the first
+    /// time a text in it is seen, if macOS has it installed; its token vectors
+    /// are averaged into one. A text whose language cannot be told, or whose
+    /// model is not installed or will not load, gets no vector, and is then
+    /// compared with nothing rather than read by a model that does not know
+    /// its language.
+    public static func systemEmbedder() -> Embedder {
+        // Models by identifier: several languages share one, and loading it
+        // once serves them all. Not documented as safe across threads, and
+        // the index is built off the main thread: one lock, held per text.
+        var models: [String: NLContextualEmbedding] = [:]
+        var refused: Set<String> = []
         let lock = NSLock()
         return { text in
             lock.lock()
             defer { lock.unlock() }
-            guard !text.isEmpty, let result = try? embedding.embeddingResult(for: text, language: .english) else { return nil }
+            guard !text.isEmpty, let language = NLLanguageRecognizer.dominantLanguage(for: text),
+                  !refused.contains(language.rawValue) else { return nil }
+            guard let model = NLContextualEmbedding(language: language), model.hasAvailableAssets else {
+                refused.insert(language.rawValue)
+                return nil
+            }
+            let loaded: NLContextualEmbedding
+            if let known = models[model.modelIdentifier] {
+                loaded = known
+            } else {
+                guard (try? model.load()) != nil else { refused.insert(language.rawValue); return nil }
+                models[model.modelIdentifier] = model
+                loaded = model
+            }
+            guard let result = try? loaded.embeddingResult(for: text, language: language) else { return nil }
+            let dimension = loaded.dimension
             var sum = [Float](repeating: 0, count: dimension)
             var count: Float = 0
             result.enumerateTokenVectors(in: text.startIndex..<text.endIndex) { vector, _ in
@@ -69,8 +122,17 @@ public enum NoteSimilarity {
                 count += 1
                 return true
             }
-            return count > 0 ? sum.map { $0 / count } : nil
+            return count > 0 ? Embedding(language: language.rawValue, vector: sum.map { $0 / count }) : nil
         }
+    }
+
+    /// The pairs among `embeddings` (by note path), each language compared
+    /// on its own (`pairs`), merged and sorted by path.
+    public static func pairs(grouped embeddings: [String: Embedding]) -> [Pair] {
+        var byLanguage: [String: [String: [Float]]] = [:]
+        for (path, e) in embeddings { byLanguage[e.language, default: [:]][path] = e.vector }
+        return byLanguage.values.flatMap { pairs($0) }
+            .sorted { $0.a != $1.a ? $0.a < $1.a : $0.b < $1.b }
     }
 
     /// What a note is embedded from: its title, then the opening of its body

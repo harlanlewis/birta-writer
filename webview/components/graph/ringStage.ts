@@ -3,10 +3,10 @@
  *
  * The drawing of a ring-laid graph (./localGraph.ts), shared by the review
  * sidebar's Graph tab (./index.ts) and the folder overview
- * (./folderOverview.ts): the lines, the dots, their labels, and the legend.
+ * (./folderOverview.ts): the names, the lines, and the legend.
  * What differs between the two is only what the centre is. In the Graph tab
  * it is the note on screen, which opens nothing; in the overview it is the
- * folder's hub, which is a note like any other and opens.
+ * note chosen by activity, which is a note like any other and opens.
  *
  * Nodes are buttons laid over an SVG that draws only the lines: a button has
  * focus, a keyboard and a click of its own, and the roving helper walks them
@@ -131,6 +131,9 @@ export function tierFor(laid: LocalGraph): Set<string> {
 export function createRingStage(host: RingStageHost): RingStage {
     const stage = document.createElement("div");
     stage.className = "lg-stage";
+    stage.addEventListener("mouseleave", () => {
+        if (!stage.contains(document.activeElement)) { lightFor(null); }
+    });
     const nodeRoving = wireRoving({
         container: stage,
         // A waiting tier note is reachable once its parent has opened it.
@@ -218,17 +221,22 @@ export function createRingStage(host: RingStageHost): RingStage {
         const described = node.dangling
             ? fill(t("{0} (not a note in this folder)"), node.label)
             : node.alike
-                ? fill(t("{0} (alike in content, not linked)"), node.label)
+                ? fill(t("{0} (not linked; the on-device model finds it alike in content)"), node.label)
                 : node.type !== null ? `${node.label} (${node.type})` : node.label;
         btn.title = node.dangling || current ? described : node.id;
         btn.setAttribute("aria-label", described);
         if (node.dangling) { btn.disabled = true; }
         else if (current) { btn.setAttribute("aria-current", "page"); }
         else { bindActivate(btn, () => host.openNote(node.id)); }
+        // Lit until another note is, or the pointer leaves the drawing
+        // (below): leaving a note for the empty space between it and one of
+        // the outer notes it opened must not close them, or the pointer can
+        // never reach them.
         btn.addEventListener("mouseenter", () => lightFor(node.id));
-        btn.addEventListener("mouseleave", () => lightFor(null));
         btn.addEventListener("focus", () => lightFor(node.id));
-        btn.addEventListener("blur", () => lightFor(null));
+        btn.addEventListener("blur", (e) => {
+            if (!(e.relatedTarget instanceof Node && stage.contains(e.relatedTarget))) { lightFor(null); }
+        });
         return btn;
     }
 
@@ -294,7 +302,23 @@ export function createRingStage(host: RingStageHost): RingStage {
             }
             svg.append(el);
         }
-        stage.replaceChildren(svg, ...laid.nodes.map((n) => {
+        // In the order the arrow keys walk: the centre, then round the first
+        // ring, each note followed by the outer notes that hang from it, so
+        // the next key after a note that opened its arc goes into the arc.
+        const kids = new Map<string, GraphNode[]>();
+        for (const n of laid.nodes) {
+            if (n.parent === undefined) { continue; }
+            if (!kids.has(n.parent)) { kids.set(n.parent, []); }
+            kids.get(n.parent)!.push(n);
+        }
+        const around = (n: GraphNode): number => (Math.atan2(n.y - RING_SIZE / 2, n.x - RING_SIZE / 2) + Math.PI * 2.5) % (Math.PI * 2);
+        const walk: GraphNode[] = [
+            ...laid.nodes.filter((n) => n.ring === 0),
+            ...laid.nodes.filter((n) => n.ring === 1).sort((a, b) => around(a) - around(b))
+                .flatMap((n) => [n, ...(kids.get(n.id) ?? []).sort((a, b) => around(a) - around(b))]),
+            ...laid.nodes.filter((n) => n.ring === 2 && n.parent === undefined),
+        ];
+        stage.replaceChildren(svg, ...walk.map((n) => {
             const btn = nodeButton(n, laid);
             if (n.parent !== undefined) { btn.dataset["parent"] = n.parent; }
             if (waiting.has(n.id) && n.parent !== undefined) {

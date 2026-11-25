@@ -685,10 +685,6 @@ final class WindowSet {
     /// next build reads only what changed, and the index it last built. Both
     /// go with the root's watcher (`releaseUnwatchedRoots`).
     private var folderIndexers: [String: FolderIndexer] = [:]
-    /// The on-device sentence embedding every root's index shares, loaded on
-    /// first use: nil on a Mac without it, which leaves every index with no
-    /// `similar` pairs (`NoteSimilarity`).
-    private lazy var noteEmbedder: NoteSimilarity.Embedder? = NoteSimilarity.systemEmbedder()
     private var folderIndexes: [String: FolderIndex] = [:]
     /// Roots with a build in flight, and those whose tree moved during one:
     /// at most one build per root runs, and a change in the middle of it buys
@@ -745,10 +741,23 @@ final class WindowSet {
             folderIndexStale.insert(key)
             return
         }
-        let indexer = folderIndexers[key] ?? FolderIndexer(root: root, embed: noteEmbedder)
+        let indexer = folderIndexers[key] ?? FolderIndexer(root: root, embed: NoteSimilarity.system)
         folderIndexers[key] = indexer
         folderIndexQueue.async {
             let built = indexer.build()
+            // The likeness pairs follow the index rather than hold it up
+            // (`FolderIndexer.completeSimilarity`): made after this send is
+            // queued, so a page has its links first and its dashed ties when
+            // the model has read the notes it had not read yet.
+            defer {
+                if let completed = indexer.completeSimilarity() {
+                    DispatchQueue.main.async { [weak self] in
+                        guard let self, self.roots[key] != nil, self.folderIndexes[key] != completed else { return }
+                        self.folderIndexes[key] = completed
+                        self.windows(rootedAt: root).forEach { $0.sendFolderIndex(completed) }
+                    }
+                }
+            }
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
                 self.folderIndexBuilding.remove(key)

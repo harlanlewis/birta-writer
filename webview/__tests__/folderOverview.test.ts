@@ -270,7 +270,9 @@ describe("createFolderOverview", () => {
         await Promise.resolve(); await Promise.resolve();
         expect(view.element.querySelector(".fo-subject .fg-row-label")!.textContent).toBe("Named by host");
         // A model's names say whose they are; the notes' own need no credit.
-        expect(view.element.querySelector<HTMLElement>(".fo-credit")!.hidden).toBe(false);
+        const row = view.element.querySelector<HTMLElement>(".fo-subject")!;
+        expect(row.classList.contains("fo-subject--model-named")).toBe(true);
+        expect(row.querySelector(".fg-row-detail")!.textContent).toMatch(/named by the on-device model$/);
         view.render({ index: VAULT, self: null }, []);
         expect(names).toHaveBeenCalledTimes(1);
         // A second overview of the same folder asks nothing: the page keeps
@@ -287,7 +289,8 @@ describe("createFolderOverview", () => {
         failing.render({ index: VAULT, self: null }, []);
         await Promise.resolve(); await Promise.resolve();
         expect(failing.element.querySelector(".fo-subject .fg-row-label")!.textContent).not.toBe("");
-        expect(failing.element.querySelector<HTMLElement>(".fo-credit")!.hidden).toBe(true);
+        expect(failing.element.querySelector(".fo-subject--model-named")).toBeNull();
+        expect(failing.element.querySelector(".fo-subject .fg-row-detail")!.textContent).not.toMatch(/model/);
     });
 
     it("a fading note should be listed with its age and open on a press", () => {
@@ -657,6 +660,21 @@ describe("a centre joined only by likeness", () => {
         const centre = overviewCentre(idx, null, activityOf(idx, null, now));
         expect(centre?.graph.nodes[0]!.id).toBe("fresh.md");
         expect(centre?.graph.nodes.find((n) => n.id === "alike.md")?.alike).toBe(true);
+    });
+});
+
+describe("a folder gone quiet", () => {
+    it("a centre that is itself dormant should be called the note touched most recently, not current work", () => {
+        const now = Date.UTC(2026, 10, 24);
+        const old = now - 400 * 86_400_000;
+        const dated: FolderIndex = { ...VAULT, nodes: VAULT.nodes.map((n) => ({ ...n, modified: old })) };
+        const view = createFolderOverview({ defer: (run) => run(), openNote: () => {}, onEscape: () => {}, now: () => now });
+        document.body.append(view.element);
+        view.render({ index: dated, self: null }, null);
+        const caption = view.element.querySelector(".fo-caption")!.textContent!;
+        expect(caption).toContain("nothing here has been touched in months");
+        expect(caption).not.toContain("where you have been working");
+        view.element.remove();
     });
 });
 

@@ -254,7 +254,10 @@ public final class FolderIndexer: @unchecked Sendable {
         var size: Int?
     }
 
-    private var readings: [String: (stamp: Stamp, reading: NoteLinks.Reading?, vector: [Float]?)] = [:]
+    private var readings: [String: (stamp: Stamp, reading: NoteLinks.Reading?, excerpt: String?, vector: NoteSimilarity.Embedding?)] = [:]
+    /// The last index `build` returned, so `completeSimilarity` can hand the
+    /// same index back with its pairs filled in.
+    private var lastIndex: FolderIndex?
     /// The pairs last compared, and the notes and stamps they were compared
     /// over: a build in which no note changed reuses them.
     private var lastSimilar: (key: [String: Stamp], pairs: [NoteSimilarity.Pair])?
@@ -265,9 +268,9 @@ public final class FolderIndexer: @unchecked Sendable {
     /// cache; what a test asks to see that a save re-reads one file.
     public private(set) var lastReadCount = 0
 
-    /// `embed` makes each note's vector for `NoteSimilarity`; nil, the
-    /// default, leaves the index with no `similar` pairs. The app passes
-    /// `NoteSimilarity.systemEmbedder()`.
+    /// `embed` makes each note's vector for `NoteSimilarity`, in
+    /// `completeSimilarity` and never in `build`; nil, the default, leaves the
+    /// index with no `similar` pairs. The app passes `NoteSimilarity.system`.
     public init(root: URL, cap: Int = FolderIndex.cap, fileCap: Int = FolderIndex.fileCap,
                 read: @escaping (String) -> String? = { try? String(contentsOfFile: $0, encoding: .utf8) },
                 embed: NoteSimilarity.Embedder? = nil) {
@@ -323,7 +326,7 @@ public final class FolderIndexer: @unchecked Sendable {
         let (kept, truncated) = notes.finish()
         let files = fileSelection.finish().kept.map(\.path)
 
-        var fresh: [String: (stamp: Stamp, reading: NoteLinks.Reading?, vector: [Float]?)] = [:]
+        var fresh: [String: (stamp: Stamp, reading: NoteLinks.Reading?, excerpt: String?, vector: NoteSimilarity.Embedding?)] = [:]
         var current: [String: NoteLinks.Reading] = [:]
         lastReadCount = 0
         for (path, stamp) in kept {
@@ -333,31 +336,20 @@ public final class FolderIndexer: @unchecked Sendable {
                 lastReadCount += 1
                 let text = read(path)
                 let reading = text.map(NoteLinks.readNote)
-                // Embedded with the reading, so an unchanged note is never
-                // embedded again: the vector lives and dies with its stamp.
-                let vector = text.flatMap { body -> [Float]? in
-                    guard let embed else { return nil }
+                // What the note will be embedded from, kept with its reading;
+                // the vector itself is made later (`completeSimilarity`), so
+                // reading a folder never waits on a model.
+                let excerpt = text.map { body -> String in
                     let base = NoteLinkResolver.basename(path)
                     let stem = String(base.dropLast(NoteLinkResolver.extname(base).count))
-                    return embed(NoteSimilarity.excerpt(title: reading?.meta.title ?? stem, text: body))
+                    return NoteSimilarity.excerpt(title: reading?.meta.title ?? stem, text: body)
                 }
-                fresh[path] = (stamp, reading, vector)
+                fresh[path] = (stamp, reading, excerpt, nil)
             }
             if let reading = fresh[path]?.reading { current[path] = reading }
         }
         readings = fresh
-
-        // The pairs, compared again only when some note changed.
-        let key = Dictionary(uniqueKeysWithValues: kept.map { ($0.path, $0.value) })
-        let similar: [NoteSimilarity.Pair]
-        if let last = lastSimilar, last.key == key {
-            similar = last.pairs
-        } else {
-            var vectors: [String: [Float]] = [:]
-            for (path, entry) in fresh { if let v = entry.vector, let rel = DirectoryListing.relativePath(of: URL(fileURLWithPath: path), in: root) { vectors[rel] = v } }
-            similar = NoteSimilarity.pairs(vectors)
-            lastSimilar = (key, similar)
-        }
+        let similar = similarPairs()
 
         // What the resolver is built from: the file list and the notes, which
         // the list may not hold once it is past its own cap.
@@ -371,6 +363,48 @@ public final class FolderIndexer: @unchecked Sendable {
         var index = FolderIndex.assemble(root: rootPath, notes: kept.map(\.path), readings: current,
                                          files: files, truncated: truncated, modified: modified, memo: &memo)
         index.similar = similar
+        lastIndex = index
+        return index
+    }
+
+    /// The pairs among the vectors held now, compared again only when the set
+    /// of notes that have one changed: a note gaining or losing its vector,
+    /// or being written (a new stamp drops its vector until it is made again).
+    private func similarPairs() -> [NoteSimilarity.Pair] {
+        var key: [String: Stamp] = [:]
+        var vectors: [String: NoteSimilarity.Embedding] = [:]
+        for (path, entry) in readings {
+            guard let v = entry.vector, let rel = DirectoryListing.relativePath(of: URL(fileURLWithPath: path), in: root) else { continue }
+            key[path] = entry.stamp
+            vectors[rel] = v
+        }
+        if let last = lastSimilar, last.key == key { return last.pairs }
+        let pairs = NoteSimilarity.pairs(grouped: vectors)
+        lastSimilar = (key, pairs)
+        return pairs
+    }
+
+    /// Make the vectors `build` left for later, and hand back the last index
+    /// with its `similar` pairs brought up to date; nil when nothing was left
+    /// to make or the pairs did not change, so the caller re-sends nothing.
+    ///
+    /// The second half of a build, on purpose. Embedding is the one cost here
+    /// that grows with the folder past what reading it costs, and the links,
+    /// backlinks and drawing must not wait on it: the caller sends `build`'s
+    /// index at once and this one when it lands. Blocking, like `build`, and
+    /// run on the same queue, which is what keeps the two from interleaving.
+    public func completeSimilarity() -> FolderIndex? {
+        guard let embed, var index = lastIndex else { return nil }
+        var made = 0
+        for (path, entry) in readings where entry.vector == nil {
+            guard let excerpt = entry.excerpt, let vector = embed(excerpt) else { continue }
+            readings[path] = (entry.stamp, entry.reading, entry.excerpt, vector)
+            made += 1
+        }
+        let pairs = similarPairs()
+        guard made > 0, pairs != index.similar else { return nil }
+        index.similar = pairs
+        lastIndex = index
         return index
     }
 }
