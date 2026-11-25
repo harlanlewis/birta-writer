@@ -20,11 +20,11 @@ import NaturalLanguage
 ///
 /// Notes are compared only with notes read by the same model (`Embedding`'s
 /// `space`, `pairs(grouped:)`), since two models' vectors share no space at
-/// all. Within one model, notes in two languages are compared too: the model
-/// places one meaning in two languages no nearer each other than unrelated
-/// notes, so a pair across languages does not form, and grouping by the
-/// model rather than by the detected language is what keeps a short note
-/// whose language was guessed wrong among its real neighbours.
+/// all. Within one model each note is centred on its own language's mean
+/// before the comparison (`pairs(grouped:)` says why), so a language shared
+/// is not mistaken for a subject shared; grouping by the model rather than
+/// by the detected language is what keeps a short note whose language was
+/// guessed wrong among its real neighbours.
 ///
 /// Not the older `NLEmbedding.sentenceEmbedding`, which is quicker and
 /// always present: on notes it was tried against, it called unrelated
@@ -136,12 +136,43 @@ public enum NoteSimilarity {
     public static let minimumGroup = 3
 
     /// The pairs among `embeddings` (by note path), each model's space
-    /// compared on its own (`pairs`), merged and sorted by path.
+    /// compared on its own, merged and sorted by path.
+    ///
+    /// Within a space each note is centred on its own LANGUAGE's mean, where
+    /// that language has at least `minimumGroup` notes in the space, and on
+    /// the space's mean otherwise. A language is a large shared component of
+    /// every vector in it, so centring a minority language on a mean the
+    /// majority dominates would leave its notes that component in common,
+    /// and three notes in French in an English folder would pair for being
+    /// French. A language too thin for a mean of its own (a short note whose
+    /// language was guessed wrong, often) falls back to the space's, which
+    /// keeps it comparable with its real neighbours.
     public static func pairs(grouped embeddings: [String: Embedding]) -> [Pair] {
-        var bySpace: [String: [String: [Float]]] = [:]
-        for (path, e) in embeddings { bySpace[e.space, default: [:]][path] = e.vector }
-        return bySpace.values.filter { $0.count >= minimumGroup }.flatMap { pairs($0) }
-            .sorted { $0.a != $1.a ? $0.a < $1.a : $0.b < $1.b }
+        var bySpace: [String: [String: Embedding]] = [:]
+        for (path, e) in embeddings { bySpace[e.space, default: [:]][path] = e }
+        var out: [Pair] = []
+        for space in bySpace.values where space.count >= minimumGroup {
+            guard let dim = space.first?.value.vector.count, space.values.allSatisfy({ $0.vector.count == dim }) else { continue }
+            let spaceMean = mean(space.values.map(\.vector), dim)
+            var byLanguage: [String: [[Float]]] = [:]
+            for e in space.values { byLanguage[e.language, default: []].append(e.vector) }
+            let languageMean = byLanguage.filter { $0.value.count >= minimumGroup }.mapValues { mean($0, dim) }
+            var centred: [String: [Float]] = [:]
+            for (path, e) in space {
+                let m = languageMean[e.language] ?? spaceMean
+                centred[path] = zip(e.vector, m).map { $0 - $1 }
+            }
+            out += compare(centred)
+        }
+        return out.sorted { $0.a != $1.a ? $0.a < $1.a : $0.b < $1.b }
+    }
+
+    private static func mean(_ vectors: [[Float]], _ dim: Int) -> [Float] {
+        var sum = [Float](repeating: 0, count: dim)
+        for v in vectors { vDSP_vadd(sum, 1, v, 1, &sum, 1, vDSP_Length(dim)) }
+        var inv = 1 / Float(max(vectors.count, 1))
+        vDSP_vsmul(sum, 1, &inv, &sum, 1, vDSP_Length(dim))
+        return sum
     }
 
     /// What a note is embedded from: its title, then the opening of its body
@@ -185,22 +216,26 @@ public enum NoteSimilarity {
     /// top-`perNote` neighbours at or above `threshold`. Sorted by path so
     /// the same folder gives the same list.
     public static func pairs(_ vectors: [String: [Float]]) -> [Pair] {
+        guard let dim = vectors.first?.value.count, dim > 0, vectors.values.allSatisfy({ $0.count == dim }) else { return [] }
+        let m = mean(Array(vectors.values), dim)
+        return compare(vectors.mapValues { zip($0, m).map { $0 - $1 } })
+    }
+
+    /// The kept pairs among vectors already centred: scaled to unit length,
+    /// compared all at once, filtered to mutual top-`perNote` at or above
+    /// `threshold`, sorted by path.
+    static func compare(_ vectors: [String: [Float]]) -> [Pair] {
         let paths = vectors.keys.sorted()
         let n = paths.count
         guard n >= 2, let dim = vectors[paths[0]]?.count, dim > 0,
               paths.allSatisfy({ vectors[$0]!.count == dim }) else { return [] }
 
-        // Rows of the matrix, centred and scaled to unit length, so a row
-        // times a row is a cosine.
+        // Rows of the matrix, scaled to unit length, so a row times a row is
+        // a cosine.
         var m = [Float](repeating: 0, count: n * dim)
         for (i, p) in paths.enumerated() { m.replaceSubrange(i * dim..<(i + 1) * dim, with: vectors[p]!) }
-        var mean = [Float](repeating: 0, count: dim)
-        for i in 0..<n { vDSP_vadd(mean, 1, Array(m[i * dim..<(i + 1) * dim]), 1, &mean, 1, vDSP_Length(dim)) }
-        var inv = 1 / Float(n)
-        vDSP_vsmul(mean, 1, &inv, &mean, 1, vDSP_Length(dim))
         for i in 0..<n {
             var row = Array(m[i * dim..<(i + 1) * dim])
-            vDSP_vsub(mean, 1, row, 1, &row, 1, vDSP_Length(dim))
             var norm: Float = 0
             vDSP_svesq(row, 1, &norm, vDSP_Length(dim))
             norm = norm.squareRoot()

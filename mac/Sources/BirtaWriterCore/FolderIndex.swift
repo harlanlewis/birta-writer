@@ -256,9 +256,11 @@ public final class FolderIndexer: @unchecked Sendable {
 
     /// Per note: its reading, what it is embedded from, its vector, and
     /// whether that vector was made for THIS stamp (`tried`). A note written
-    /// since keeps the vector of what it was until a new one is made, so a
-    /// save that changes no link changes no pair either and sends nothing; a
-    /// note that could not be embedded is not asked again until it changes.
+    /// since keeps the vector of what it was until a new one is made, so the
+    /// index `build` sends after a save that changes no link is the one
+    /// already sent; a note that could not be embedded is not asked again
+    /// until it changes, so a model macOS installs while the app runs reaches
+    /// a note at its next change or the next launch.
     private var readings: [String: (stamp: Stamp, reading: NoteLinks.Reading?, excerpt: String?, vector: NoteSimilarity.Embedding?, tried: Bool)] = [:]
     /// The last index `build` returned, so `completeSimilarity` can hand the
     /// same index back with its pairs filled in.
@@ -373,9 +375,10 @@ public final class FolderIndexer: @unchecked Sendable {
         return index
     }
 
-    /// The pairs among the vectors held now, compared again only when the set
-    /// of notes that have one changed: a note gaining or losing its vector,
-    /// or being written (a new stamp drops its vector until it is made again).
+    /// The pairs among the vectors held now, compared again when a note's
+    /// stamp or its having a vector changed, and whenever `completeSimilarity`
+    /// made a vector (which clears the memo, since a vector made for a note
+    /// already in the key changes what it holds without changing the key).
     private func similarPairs() -> [NoteSimilarity.Pair] {
         var key: [String: Stamp] = [:]
         var vectors: [String: NoteSimilarity.Embedding] = [:]
@@ -411,6 +414,7 @@ public final class FolderIndexer: @unchecked Sendable {
             readings[path] = (entry.stamp, entry.reading, entry.excerpt, vector, true)
             made += 1
         }
+        if made > 0 { lastSimilar = nil }
         let pairs = similarPairs()
         guard made > 0, pairs != index.similar else { return nil }
         index.similar = pairs
