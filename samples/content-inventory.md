@@ -294,13 +294,13 @@ https://github.com/microsoft/vscode/blob/main/README.md
 
 #### Google Docs, Slides, and Sheets
 
-Google URLs split by **sharing mode**, and the card is honest about which one you pasted. A **publish-to-web** link (File → Share → Publish to web - the `/d/e/…` form) is the only form Google allows inside a frame, so those get a click-to-load preview. All three below are really published, so the document, the deck, and the sheet each render inside the frame:
+Google URLs split by **sharing mode**, and the card is honest about which one you pasted. A **publish-to-web** link (File → Share → Publish to web - the `/d/e/…` form) is the only form Google allows inside a frame, so those get a click-to-load preview. All three below are published that way by Birta Labs for this sample, so the document, the deck, and the sheet each render inside the frame:
 
-https://docs.google.com/document/d/e/2PACX-1vSn1zSNNO5is_6Wc-0V7XTCxOBuhPAu63pJ-NCUrTlqDu8KCtL5k3D3xm3JLa1kmE6-b4X9eCJahTgb/pub
+https://docs.google.com/document/d/e/2PACX-1vR6mUm-QwMYDbWANxp7Ffn8Lp2H6K9RObiok9RNqFWjlKh5IOLIkmPVlN0OsMzdP8aToJlyshD6ugIY/pub
 
-https://docs.google.com/presentation/d/e/2PACX-1vShiXR-dpEfn5BVMK88BM0RAIKGIFlW2c-t5uYmV8ne27Y8LYvhWnb1zbb3AvbYdWl28W_ixUc9Hys2/pub
+https://docs.google.com/presentation/d/e/2PACX-1vRZDHjz_-vkEtowTTUIsgYrX8CxTyiGKjamKwch9SjRflYoFKkyXyAK2pGF4Ni2Qc_-e8GrLYipZE3c/pub
 
-https://docs.google.com/spreadsheets/d/e/2PACX-1vQvfslN3Xa7nMYeC2fhPTEPIyjsbTzi_8F9pX-4zpqwjXLab5qXhiFhA_JvZT-Si6fF67mE-WlWesbL/pubhtml
+https://docs.google.com/spreadsheets/d/e/2PACX-1vTkASyUJDkvw8lXt6JpcBDF6xbhkG_Z-O_hjYy3ZAAnx35qq_iuS5OJJXZjudDe1EuxckZD39A2sTAr/pubhtml
 
 An **ordinary** Docs/Slides/Sheets link (the `/edit` URL you copy from the address bar) refuses to be framed - Google answers with `X-Frame-Options: SAMEORIGIN` - so it gets a compact info card instead of a doomed iframe. Like the GitHub card with the network off, it is built from the URL alone and never asks Google anything. This one is a real public spreadsheet, so ↗ opens the sheet rather than a sign-in wall:
 
