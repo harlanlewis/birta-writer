@@ -294,7 +294,7 @@ https://github.com/microsoft/vscode/blob/main/README.md
 
 #### Google Docs, Slides, and Sheets
 
-Google URLs split by **sharing mode**, and the card is honest about which one you pasted. A **publish-to-web** link (File → Share → Publish to web - the `/d/e/…` form) is the only form Google allows inside a frame, so those get a click-to-load preview. All three below are Birta-owned files published that way, so the document, the deck, and the sheet each render inside the frame:
+Google URLs split by **sharing mode**, and the card is honest about which one you pasted. A **publish-to-web** link (File → Share → Publish to web - the `/d/e/…` form) is the only form Google allows inside a frame, so those get a click-to-load preview. All three below are published that way by Birta Labs for this sample, so the document, the deck, and the sheet each render inside the frame:
 
 https://docs.google.com/document/d/e/2PACX-1vR6mUm-QwMYDbWANxp7Ffn8Lp2H6K9RObiok9RNqFWjlKh5IOLIkmPVlN0OsMzdP8aToJlyshD6ugIY/pub
 
