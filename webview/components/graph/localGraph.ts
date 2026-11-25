@@ -13,9 +13,15 @@
  * vendored Graphviz engine is the whole-folder view's (MAR-482), where the
  * node count is the problem a spring model solves.
  *
- * Direction is kept on every edge and drawn, because "this note cites that
- * one" and "that one cites this" are different claims, and the Backlinks tab
- * beside this is exactly the second half.
+ * Direction is kept on every edge in the model, because "this note cites
+ * that one" and "that one cites this" are different claims and the Backlinks
+ * tab beside this is exactly the second half; the drawing does not show it
+ * (./ringStage.ts), which keeps the picture to who is near whom.
+ *
+ * The rings are not drawn as perfect circles. Each note is nudged off its
+ * ring and along it by an amount fixed by its own path (`nudge`), so the
+ * picture reads as grown rather than plotted, and the same folder is still
+ * drawn the same way every time.
  */
 import type { FolderEdge, FolderIndex } from "../../../shared/folderIndex";
 
@@ -28,6 +34,8 @@ export interface GraphNode {
     label: string;
     /** 0 for this note, 1 for its neighbours, 2 for theirs. */
     ring: 0 | 1 | 2;
+    /** A second-ring note's first-ring neighbour, whose arc it is drawn in (`layoutRings`). */
+    parent?: string;
     /** OKF `type`, null when the note carries none (and always for a dangling node). */
     type: string | null;
     /** A reference that resolves to no note: drawn, never opened. */
@@ -167,7 +175,9 @@ export function layoutRings(graph: LocalGraph, size: number): LocalGraph {
     const ring1 = graph.nodes.filter((n) => n.ring === 1).sort((a, b) => a.label.localeCompare(b.label) || a.id.localeCompare(b.id));
     const angle = new Map<string, number>();
     const step = ring1.length > 0 ? (2 * Math.PI) / ring1.length : 0;
-    ring1.forEach((n, i) => { angle.set(n.id, -Math.PI / 2 + i * step); });
+    // Each slides along its own share of the ring, less than half of it, so
+    // the order round the ring holds; its second-ring notes follow it.
+    ring1.forEach((n, i) => { angle.set(n.id, -Math.PI / 2 + i * step + (nudge(n.id, 1) - 0.5) * 2 * ARC_WOBBLE * step); });
 
     // A second-ring note hangs from the first-ring neighbour that comes first
     // round the ring, and shares that neighbour's arc with its siblings.
@@ -200,11 +210,31 @@ export function layoutRings(graph: LocalGraph, size: number): LocalGraph {
     const nodes = graph.nodes.map((n) => {
         if (n.ring === 0) { return { ...n, x: c, y: c }; }
         const a = angle.get(n.id) ?? 0;
-        const r = n.ring === 1 ? r1 : r2;
-        return { ...n, x: c + r * Math.cos(a), y: c + r * Math.sin(a) };
+        const r = (n.ring === 1 ? r1 : r2) * (1 + (nudge(n.id, 2) - 0.5) * 2 * RING_WOBBLE);
+        const parent = n.ring === 2 ? parentOf.get(n.id) : undefined;
+        return { ...n, x: c + r * Math.cos(a), y: c + r * Math.sin(a), ...(parent !== undefined ? { parent } : {}) };
     });
     return { ...graph, nodes };
 }
+
+/**
+ * A number in [0, 1) fixed by `id` and `salt`: FNV-1a over the UTF-16 units.
+ * What makes a nudge the same on every drawing and every host.
+ */
+export function nudge(id: string, salt: number): number {
+    let h = 0x811c9dc5 ^ salt;
+    for (let i = 0; i < id.length; i++) {
+        h ^= id.charCodeAt(i);
+        h = Math.imul(h, 0x01000193);
+    }
+    return (h >>> 0) / 0x1_0000_0000;
+}
+
+/** How far a note may sit off its ring, as a fraction of the ring's radius, either way. */
+export const RING_WOBBLE = 0.07;
+
+/** How far a first-ring note may slide along its ring, as a fraction of its share of the ring, either way. */
+const ARC_WOBBLE = 0.2;
 
 /** The hue slot a node's type draws in: 0 to TYPE_HUES - 1, or null for none. */
 export function hueOf(types: readonly string[], type: string | null): number | null {

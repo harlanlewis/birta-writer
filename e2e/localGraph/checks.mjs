@@ -82,7 +82,13 @@ export async function run({ page, check, baseUrl }) {
         const dotOf = (id) => r(document.querySelector(`.lg-node[data-id="${CSS.escape(id)}"] .lg-dot`));
         const misses = [...document.querySelectorAll(".lg-line")].flatMap((l) => {
             const px = (v, axis) => (axis === "x" ? svg.left + (v / 100) * svg.width : svg.top + (v / 100) * svg.height);
-            const ends = [[l.dataset.from, +l.getAttribute("x1"), +l.getAttribute("y1")], [l.dataset.to, +l.getAttribute("x2"), +l.getAttribute("y2")]];
+            // The curve's own first and last points, from the engine's
+            // geometry. A curve runs from the pair's first note by path order
+            // to its second (`curveThrough`), whichever names the other.
+            const start = l.getPointAtLength(0);
+            const end = l.getPointAtLength(l.getTotalLength());
+            const [p, q] = [l.dataset.from, l.dataset.to].sort();
+            const ends = [[p, start.x, start.y], [q, end.x, end.y]];
             return ends.filter(([id, x, y]) => {
                 const d = dotOf(id);
                 return Math.abs(px(x, "x") - (d.left + d.right) / 2) > 1.5 || Math.abs(px(y, "y") - (d.top + d.bottom) / 2) > 1.5;
