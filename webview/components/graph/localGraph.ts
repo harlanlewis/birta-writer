@@ -35,7 +35,7 @@ export interface GraphNode {
     /** References touching the note anywhere in the index, both directions. */
     degree: number;
     /**
-     * How alive the note is, 0 to 1 (`activityOf` in ./folderSignals.ts), or
+     * How alive the note is, from 0 (`activityOf` in ./folderSignals.ts), or
      * null when unknown. Absent on a drawing that does not weigh activity,
      * which is every one but the folder overview's.
      */

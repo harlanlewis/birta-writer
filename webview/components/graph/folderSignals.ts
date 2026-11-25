@@ -11,10 +11,11 @@
  * questions are asked here, because they are the ones a reader opening a
  * folder actually has:
  *
- * - ACTIVITY: what is alive now. A note is active when it was written
- *   recently or opened recently, or when a note that is active refers to it;
- *   that last term is what keeps a reference note alive while it is being
- *   used rather than edited (`activityOf`).
+ * - ACTIVITY: what is alive now. A note is active when it was written or
+ *   opened recently, and it gains from every active note that refers to it,
+ *   flowing along references as personalized PageRank does; that last term
+ *   is what keeps a reference note alive while it is being used rather than
+ *   edited, and counts ten notes relying on it above one (`activityOf`).
  * - FADING: what used to matter and no longer does. A note that was among
  *   the folder's most connected, has not been written in months, and that
  *   nothing written recently refers to (`fadingNotes`). It is the dimension
@@ -39,10 +40,19 @@ const DAY = 86_400_000;
 /** A write this long ago counts half as much as one today. */
 export const ACTIVITY_HALF_LIFE_DAYS = 30;
 
-/** What an active note passes to a note it refers to: a fraction of its own activity. */
-export const REFERENCE_CARRY = 0.6;
+/**
+ * The share of a note's activity passed on to the notes it refers to, split
+ * among them. Under 1 so the flow settles; a half keeps it near the work.
+ */
+export const REFERENCE_CARRY = 0.5;
 
-/** Below this a note with a known date is drawn as dormant. */
+/** Most rounds the flow runs; each passes on at most half, so far fewer are needed. */
+const FLOW_ROUNDS = 60;
+
+/** A round that moves no note by more than this has settled. */
+const FLOW_SETTLED = 1e-6;
+
+/** Below this a note's activity is drawn as dormant: no own write in about three months, and little flowing in. */
 export const DORMANT_BELOW = 0.15;
 
 /** A note unwritten this long, and referred to by nothing written in it, can be fading. */
@@ -70,19 +80,36 @@ export const TAG_WEIGHT = 0.5;
 // ── Activity ───────────────────────────────────────────────────────────────
 
 /**
- * How alive each note is, 0 to 1, or null when nothing is known about it.
+ * How alive each note is: 0 upward, or null when nothing is known about it.
+ * A note written today that nothing refers to is 1.
  *
- * Its own term is the larger of how recently it was written (halving every
- * `ACTIVITY_HALF_LIFE_DAYS`) and how high it sits in the recent files (the
- * first is 1, the last a half). Then one step along the references: a note
- * named by an active note gets `REFERENCE_CARRY` of that note's own term,
- * and keeps the larger of the two. One step and not a propagation to a
- * fixed point, on purpose: a fixed point lets one busy note light up every
- * note two or three references away, and the answer stops being about what
- * the reader touches.
+ * Nothing is tracked for it. It reads three things the hosts already have:
+ * when each file was last written (`FolderNode.modified`, the file system's
+ * date), the recent files list where the host keeps one (an order, with no
+ * times and no counts), and the references between notes.
  *
- * Null for a note with no date, not in the recent files and named by no
- * active note: unknown, which every reader here treats as "no claim".
+ * Each note's OWN term is the larger of how recently it was written (halving
+ * every `ACTIVITY_HALF_LIFE_DAYS`) and how high it sits in the recent files
+ * (the first is 1, the last a half). Then activity flows along references,
+ * as personalized PageRank does: every note passes `REFERENCE_CARRY` of its
+ * activity on, split evenly among the notes it refers to, and the flow is
+ * repeated until it settles, so
+ *
+ *     activity(n) = own(n) + REFERENCE_CARRY × Σ activity(m) / refs(m)
+ *
+ * over every note m that refers to n. Three things follow, and they are the
+ * reasons for the shape. Ten active notes referring to a note give it ten
+ * shares, not the largest one. A note two references from the work still
+ * gets some, halved again for each step. And a note that refers to fifty
+ * others vouches for each of them a fiftieth as much as a note that refers
+ * to one, so a daily note's list of links does not light up the folder.
+ *
+ * Not normalized, on purpose. A folder nobody has written in for a year is
+ * dormant as a whole, and dividing by its busiest note would call that note
+ * active. The flow converges because every step passes on at most half.
+ *
+ * Null for a note with no date, not in the recent files, and reached by no
+ * flow: unknown, which every reader here treats as "no claim".
  */
 export function activityOf(index: FolderIndex, recents: readonly string[] | null, now: number): Map<string, number | null> {
     const own = new Map<string, number | null>();
@@ -97,16 +124,32 @@ export function activityOf(index: FolderIndex, recents: readonly string[] | null
         const opened = r === undefined ? null : 1 - 0.5 * (list.length > 1 ? r / (list.length - 1) : 0);
         own.set(node.path, written === null && opened === null ? null : Math.max(written ?? 0, opened ?? 0));
     }
-    const activity = new Map(own);
+
+    // Who each note refers to, once per pair: a note naming another twice
+    // vouches for it once.
+    const refersTo = new Map<string, Set<string>>();
     for (const e of index.edges) {
-        if (e.to === null || e.to === e.from) { continue; }
-        const from = own.get(e.from);
-        if (from === null || from === undefined) { continue; }
-        const carried = from * REFERENCE_CARRY;
-        const current = activity.get(e.to);
-        if (current === null || current === undefined || carried > current) { activity.set(e.to, carried); }
+        if (e.to === null || e.to === e.from || !own.has(e.from) || !own.has(e.to)) { continue; }
+        let set = refersTo.get(e.from);
+        if (!set) { set = new Set(); refersTo.set(e.from, set); }
+        set.add(e.to);
     }
-    return activity;
+    const flows = [...refersTo].map(([from, to]) => ({ from, to: [...to], share: REFERENCE_CARRY / to.size }));
+
+    let activity = new Map([...own].map(([path, a]) => [path, a ?? 0]));
+    for (let round = 0; round < FLOW_ROUNDS; round++) {
+        const next = new Map([...own].map(([path, a]) => [path, a ?? 0]));
+        for (const { from, to, share } of flows) {
+            const passed = activity.get(from)! * share;
+            if (passed === 0) { continue; }
+            for (const n of to) { next.set(n, next.get(n)! + passed); }
+        }
+        let moved = 0;
+        for (const [path, a] of next) { moved = Math.max(moved, Math.abs(a - activity.get(path)!)); }
+        activity = next;
+        if (moved < FLOW_SETTLED) { break; }
+    }
+    return new Map([...activity].map(([path, a]) => [path, own.get(path) === null && a === 0 ? null : a]));
 }
 
 // ── Fading ─────────────────────────────────────────────────────────────────
