@@ -9,7 +9,8 @@ final class PathBarTests: XCTestCase {
     private func name(_ path: String) -> String {
         switch path {
         case "/": return "Macintosh HD"
-        case "/Users/ada/Library/Mobile Documents/iCloud~md~obsidian": return "Obsidian"
+        case "/Users/ada/Library/Mobile Documents/iCloud~md~obsidian",
+             "/Users/ada/Library/Mobile Documents/iCloud~md~obsidian/Documents": return "Obsidian"
         default: return (path as NSString).lastPathComponent
         }
     }
@@ -61,5 +62,22 @@ final class PathBarTests: XCTestCase {
             PathBarMenuEntry(name: "Elsewhere", path: "/etc"),
         ], for: file, home: home)
         XCTAssertEqual(rows.map(\.name), ["Drafts", "Notes"])
+    }
+
+    /// A folder that IS a vault's `Documents` (a recent folder, a vault opened
+    /// at its root) folds into the container as a deeper one does; left alone,
+    /// the two display names put the app in the line twice.
+    func testAPathEndingAtAContainersDocumentsShouldNameTheAppOnce() {
+        let s = segments("/Users/ada/Library/Mobile Documents/iCloud~md~obsidian/Documents")
+        XCTAssertEqual(s.map(\.name), ["iCloud Drive", "Obsidian"])
+        XCTAssertEqual(s.last?.path, "/Users/ada/Library/Mobile Documents/iCloud~md~obsidian/Documents")
+    }
+
+    func testALocationShouldReadAsTheBarDoesForAVaultAndForHome() {
+        let vault = URL(fileURLWithPath: "/Users/ada/Library/Mobile Documents/iCloud~md~obsidian/Documents/Harlan/Evidence")
+        XCTAssertEqual(PathBar.location(of: vault, home: home, displayName: name),
+                       "iCloud Drive \u{203A} Obsidian \u{203A} Harlan \u{203A} Evidence")
+        XCTAssertEqual(PathBar.location(of: URL(fileURLWithPath: "/Users/ada/Code/site"), home: home, displayName: name),
+                       "ada \u{203A} Code \u{203A} site")
     }
 }

@@ -4,6 +4,11 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Folder Overview now opens in the document's space, under the toolbar and beside the file list and outline, instead of over the whole window. The toolbar and the file list stay usable while it is up. The folder's recent files come first, with the drawing under them, so the list is no longer pushed down by a large graph.
+- Folder Overview's drawing now centres on the most recent note you opened in the folder that links to another, instead of the folder's most connected note, which in an older folder was usually unrelated to what you were working on. A folder where none of your recent notes links anywhere shows no drawing. The most connected note is still the centre when nothing in the folder has been opened yet.
+
 ---
 
 ## [2026.1112.0] - 2026, November 12

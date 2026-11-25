@@ -54,8 +54,12 @@ export interface RingStageHost {
 export interface RingStage {
     /** The square the drawing is laid out in. */
     element: HTMLElement;
-    /** Draw a graph already placed by `layoutRings`. */
-    draw: (laid: LocalGraph) => void;
+    /**
+     * Draw a graph already placed by `layoutRings`. `centreIsCurrent`, when
+     * given, overrides the host's for this drawing: a view whose centre is
+     * chosen per drawing knows only then whether it is the note on screen.
+     */
+    draw: (laid: LocalGraph, centreIsCurrent?: boolean) => void;
     /** Empty the square. */
     clear: () => void;
     /** Move keyboard focus onto the first node that can be reached. */
@@ -98,10 +102,12 @@ export function createRingStage(host: RingStageHost): RingStage {
         }
     }
 
+    let centreIsCurrent = host.centreIsCurrent;
+
     function nodeButton(node: GraphNode, graph: LocalGraph): HTMLButtonElement {
         const btn = document.createElement("button");
         const hue = hueOf(graph.types, node.type);
-        const current = node.ring === 0 && host.centreIsCurrent;
+        const current = node.ring === 0 && centreIsCurrent;
         btn.className = [
             "lg-node",
             `lg-size-${sizeStep(node.degree)}`,
@@ -169,7 +175,8 @@ export function createRingStage(host: RingStageHost): RingStage {
         }
     }
 
-    function draw(laid: LocalGraph): void {
+    function draw(laid: LocalGraph, current?: boolean): void {
+        centreIsCurrent = current ?? host.centreIsCurrent;
         const at = new Map(laid.nodes.map((n) => [n.id, n]));
         const svg = document.createElementNS(SVG_NS, "svg");
         svg.setAttribute("class", "lg-lines");

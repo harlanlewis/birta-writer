@@ -3,10 +3,10 @@
  * measure, because it has no layout, and the command route a host menu takes.
  *
  * Covers: nothing is asked for and nothing opens until the command runs; the
- * command opens the overview over the page, centred on the folder's hub (not
- * the open note), asking for the recent files once; the drawing and the recent
- * files both fit the window at a short height, the list under the drawing and
- * above the fold; focus lands on the first recent file; Escape closes it and
+ * command opens the overview in the document's area (under the top bar),
+ * centred on the most recent note that links rather than on the folder's hub,
+ * asking for the recent files once; the recent files sit above the drawing
+ * and above the fold of a short window; focus lands on the first recent file; Escape closes it and
  * hands focus back to the editor; a dot and a row each close it and open their
  * note; a host with no recent files list shows no section for one; with the
  * folder graph off the command is reported idle and runs nothing; and the
@@ -73,18 +73,39 @@ export async function run({ page, check, baseUrl }) {
             nodes: s.querySelectorAll(".lg-node").length,
             rows: [...s.querySelectorAll(".fo-row")].map((r) => r.dataset.path),
             asks: window.__posted.filter((m) => m.type === "requestFolderRecents").length,
-            title: s.querySelector(".fs-title")?.textContent,
+            title: s.querySelector(".fo-title")?.textContent,
+            label: s.getAttribute("aria-label"),
+            top: s.getBoundingClientRect().top,
+            barBottom: document.querySelector(".editor-topbar").getBoundingClientRect().bottom,
         };
     }, OVERVIEW);
-    check("the overview centres on the folder's hub, not the open note", drawn.centre === "index.md", JSON.stringify(drawn));
-    // The hub, its twelve namers, and two steps out the four details and the
-    // open note (which names a topic, not the hub).
-    check("two rings are drawn around it", drawn.nodes === 1 + 12 + 4 + 1, `nodes=${drawn.nodes}`);
+    check("the overview centres on the most recent note that links, not the folder's hub",
+        drawn.centre === "notes/standup.md", JSON.stringify(drawn));
+    // Standup names topic 1; two steps out, the hub and topic 1's detail.
+    check("two rings are drawn around it", drawn.nodes === 1 + 1 + 2, `nodes=${drawn.nodes}`);
+    check("it sits under the top bar rather than over it", drawn.top >= drawn.barBottom - 1, JSON.stringify(drawn));
+    // Beside a docked drawer rather than over it: the classes and variables
+    // are the ones the side panel shell writes, set here because this page
+    // serves no listing for the explorer to open on.
+    const beside = await page.evaluate((sel) => {
+        const s = document.querySelector(sel);
+        document.documentElement.style.setProperty("--files-width", "230px");
+        document.documentElement.style.setProperty("--toc-width", "250px");
+        document.body.classList.add("files-open", "toc-open", "toc-right");
+        // The computed edges rather than the box: the opening animation
+        // scales the surface, which moves its box by a pixel or two.
+        const cs = getComputedStyle(s);
+        const edges = { left: parseFloat(cs.left), right: parseFloat(cs.right) };
+        document.body.classList.remove("files-open", "toc-open", "toc-right");
+        return edges;
+    }, OVERVIEW);
+    check("it starts after a docked file list and stops before a docked outline",
+        Math.abs(beside.left - 230) < 1 && Math.abs(beside.right - 250) < 1, JSON.stringify(beside));
     check("the recent files are listed in the host's order",
         JSON.stringify(drawn.rows) === JSON.stringify(["notes/standup.md", "deep/detail-2.md", "topics/topic-5.md", "loose.txt"]),
         JSON.stringify(drawn.rows));
     check("opening asks for the recent files once", drawn.asks === 1, `asks=${drawn.asks}`);
-    check("the title names the folder", drawn.title === "Folder: vault", drawn.title);
+    check("the column is headed by the folder's name", drawn.title === "vault" && drawn.label === "Folder: vault", JSON.stringify(drawn));
 
     const geo = await page.evaluate((sel) => {
         const r = (el) => { const b = el.getBoundingClientRect(); return { left: b.left, right: b.right, top: b.top, bottom: b.bottom, width: b.width, height: b.height }; };
@@ -94,13 +115,13 @@ export async function run({ page, check, baseUrl }) {
         const dots = [...s.querySelectorAll(".lg-dot")].map(r);
         return { stage, rows, dots, vh: innerHeight, vw: innerWidth, active: document.activeElement?.dataset?.path ?? null };
     }, OVERVIEW);
-    check("the drawing is a square inside the window",
-        Math.abs(geo.stage.width - geo.stage.height) < 2 && geo.stage.width > 100 && geo.stage.bottom <= geo.vh && geo.stage.right <= geo.vw,
+    check("the drawing is a square inside the window's width",
+        Math.abs(geo.stage.width - geo.stage.height) < 2 && geo.stage.width > 100 && geo.stage.right <= geo.vw,
         JSON.stringify(geo.stage));
     const lastRow = geo.rows[geo.rows.length - 1];
-    check("every recent file sits under the drawing and above the fold of a short window",
-        geo.rows.length === 4 && geo.rows[0].top >= geo.stage.bottom - 1 && lastRow.bottom <= geo.vh,
-        JSON.stringify({ stageBottom: geo.stage.bottom, firstTop: geo.rows[0]?.top, lastBottom: lastRow?.bottom, vh: geo.vh }));
+    check("every recent file sits above the drawing and above the fold of a short window",
+        geo.rows.length === 4 && lastRow.bottom <= geo.stage.top + 1 && lastRow.bottom <= geo.vh,
+        JSON.stringify({ stageTop: geo.stage.top, lastBottom: lastRow?.bottom, vh: geo.vh }));
     check("every dot lies inside the drawing",
         geo.dots.every((d) => d.left >= geo.stage.left - 8 && d.right <= geo.stage.right + 8 && d.top >= geo.stage.top - 8 && d.bottom <= geo.stage.bottom + 8),
         `dots=${geo.dots.length}`);
@@ -117,19 +138,18 @@ export async function run({ page, check, baseUrl }) {
 
     // ── A dot opens its note ─────────────────────────────────────────────
     await openOverview(page);
-    await page.locator(`${OVERVIEW} .lg-node[data-id="deep/detail-3.md"]`).dispatchEvent("mousedown");
+    await page.locator(`${OVERVIEW} .lg-node[data-id="index.md"]`).dispatchEvent("mousedown");
     const dotClosed = await closed(page);
     const dotOpened = await page.evaluate(() => window.__posted.filter((m) => m.type === "openProjectFile").map((m) => m.path));
     check("a second-ring dot closes the overview and opens its note in this window",
-        dotClosed.closed && JSON.stringify(dotOpened) === JSON.stringify(["deep/detail-3.md"]), JSON.stringify({ dotClosed, dotOpened }));
+        dotClosed.closed && JSON.stringify(dotOpened) === JSON.stringify(["index.md"]), JSON.stringify({ dotClosed, dotOpened }));
 
-    // ── The hub opens too ────────────────────────────────────────────────
+    // ── The centre is the note on screen here ────────────────────────────
     await openOverview(page);
-    await page.locator(`${OVERVIEW} .lg-node--self`).click();
-    const hubClosed = await closed(page);
-    const hubOpened = await page.evaluate(() => window.__posted.filter((m) => m.type === "openProjectFile").map((m) => m.path).at(-1));
-    check("the hub at the centre is a note to open, not the current one",
-        hubClosed.closed && hubOpened === "index.md", JSON.stringify({ hubClosed, hubOpened }));
+    const centreOpens = await page.evaluate((sel) => document.querySelector(`${sel} .lg-node--self`).classList.contains("lg-node--opens"), OVERVIEW);
+    check("a centre that is the note already on screen is drawn current, not as a note to open", !centreOpens, String(centreOpens));
+    await page.keyboard.press("Escape");
+    await closed(page);
 
     // ── A recent row opens its file ──────────────────────────────────────
     await openOverview(page);
@@ -182,8 +202,8 @@ export async function run({ page, check, baseUrl }) {
         centre: document.querySelector(sel)?.querySelector(".lg-node--self")?.dataset.id ?? null,
         overviews: document.querySelectorAll(sel).length,
     }), OVERVIEW);
-    check("a command sent behind the init of a new tab opens one overview, on the folder's hub",
-        tab.centre === "index.md" && tab.overviews === 1, JSON.stringify(tab));
+    check("a command sent behind the init of a new tab opens one overview, on the most recent note that links",
+        tab.centre === "notes/standup.md" && tab.overviews === 1, JSON.stringify(tab));
     await page.keyboard.press("Escape");
     const tabEscaped = await closed(page);
     const tabFocused = await page.evaluate(() => !!document.activeElement?.closest(".ProseMirror"));
@@ -215,7 +235,10 @@ export async function run({ page, check, baseUrl }) {
         const actions = [...s.querySelectorAll(".fo-action")];
         return {
             buttons: actions.map((b) => b.textContent),
-            buttonsAbove: actions.every((b) => box(b).bottom <= box(s.querySelector(".lg-stage")).top && box(b).height > 0),
+            buttonsAbove: actions.every((b) => box(b).bottom <= box(s.querySelector(".fo-recents")).top && box(b).height > 0),
+            // The primitive has no padding of its own; a text button that took
+            // none drew its fill tight to the glyphs.
+            buttonsPadded: actions.every((b) => parseFloat(getComputedStyle(b).paddingLeft) >= 8 && box(b).height >= 24),
             buttonsOnScreen: actions.every((b) => box(b).top >= 0 && box(b).bottom <= innerHeight),
             files: s.querySelectorAll(".fo-file").length,
             last: s.querySelector(".fo-files").lastElementChild.textContent,
@@ -225,8 +248,8 @@ export async function run({ page, check, baseUrl }) {
     }, OVERVIEW);
     check("with the buttons above it, the folder's own first file is still above the fold at a short height",
         start.folderRowOnScreen, JSON.stringify(start));
-    check("over a folder the start view leads with New Note and Open… above the graph, on screen",
-        start.buttons.join("|") === "New Note|Open…" && start.buttonsAbove && start.buttonsOnScreen, JSON.stringify(start));
+    check("over a folder the start view leads with New Note and Open… above the lists, on screen, as padded buttons",
+        start.buttons.join("|") === "New Note|Open…" && start.buttonsAbove && start.buttonsOnScreen && start.buttonsPadded, JSON.stringify(start));
     check("it lists six of the reader's recent files and closes the list with Open Recent…",
         start.files === 6 && start.last === "Open Recent…" && start.headings.join("|") === "In this folder|Recent",
         JSON.stringify(start));
@@ -251,18 +274,22 @@ export async function run({ page, check, baseUrl }) {
     const empty = await page.evaluate((sel) => {
         const s = document.querySelector(sel);
         return {
-            title: s.querySelector(".fs-title").textContent,
+            title: s.getAttribute("aria-label"),
+            pill: !!s.querySelector(".fs-title")?.textContent,
             // The two class names the Mac app's focus script reads
             // (`WebHost.focusEditor`): the pinned surface, and its first button.
             hooks: s.classList.contains("fs-surface--pinned") && s.querySelector(".fo-action")?.textContent === "New Note",
             graph: !!s.querySelector(".lg-stage"),
             close: !s.querySelector(".fs-actions__group--close") || s.querySelector(".fs-actions__group--close").hidden,
+            // With Close gone the action card holds nothing, and an empty card
+            // still drew its border and shadow as a speck in the corner.
+            card: (() => { const a = s.querySelector(".fs-actions"); return !!a && a.getBoundingClientRect().width > 0; })(),
             focused: document.activeElement?.textContent ?? null,
             asked: window.__posted.map((m) => m.type).filter((t) => t === "requestFolderRecents" || t === "requestRecentFiles"),
         };
     }, OVERVIEW);
     check("a window holding no file shows the start view with no folder in it, focus on New Note",
-        empty.title === "No File Open" && empty.hooks && !empty.graph && empty.close && empty.focused === "New Note"
+        empty.title === "No File Open" && !empty.pill && !empty.card && empty.hooks && !empty.graph && empty.close && empty.focused === "New Note"
         && empty.asked.join("|") === "requestRecentFiles", JSON.stringify(empty));
     await page.keyboard.press("Escape");
     await page.mouse.click(5, 300);

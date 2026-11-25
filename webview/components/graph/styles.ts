@@ -209,18 +209,17 @@ export const LOCAL_GRAPH_CSS = `
 
 /* ── The folder overview (folderOverview.ts) ── */
 
-/* On the fullscreen surface: one column from the top, under the title's band,
-   scrolled only when the window is too short for even the capped list. */
+/* On its surface, which is set in the document's area: one column, a little
+   way down the window rather than against the bar, so the view reads as a
+   page and not as a menu hanging off the toolbar. The air shrinks with the
+   window and the column scrolls only when even that is too short. */
 .fo-surface .fs-content {
     align-items: flex-start;
     overflow-y: auto;
     box-sizing: border-box;
-    padding: var(--fs-band) var(--ui-space-4) var(--ui-space-4);
+    padding: clamp(var(--ui-space-4), 8vh, 72px) var(--ui-space-4) var(--ui-space-5);
 }
 
-/* The square is as wide as the column allows and never taller than a little
-   over half the viewport, so the recent files under it stay above the fold
-   in a short window. */
 .fo {
     display: flex;
     flex-direction: column;
@@ -231,13 +230,27 @@ export const LOCAL_GRAPH_CSS = `
     font-size: var(--ui-fs-s);
 }
 
+/* The folder's name, inset with the rows so the column has one left edge. */
+.fo-title {
+    margin: 0 0 var(--ui-space-3);
+    padding-inline: var(--ui-space-2);
+    font-size: var(--ui-fs-l);
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* The drawing comes last, after the lists, and is never taller than a
+   little over half the viewport. */
 .fo .lg-stage {
     width: min(100%, 55vh);
     align-self: center;
+    margin-block-start: var(--ui-space-5);
 }
 
 .fo-heading {
-    margin-block-start: var(--ui-space-3);
+    margin-block-start: var(--ui-space-4);
     padding-inline: var(--ui-space-2);
 }
 
@@ -251,12 +264,45 @@ export const LOCAL_GRAPH_CSS = `
     padding: var(--ui-space-1) var(--ui-space-2);
 }
 
-/* The start view's two ways to a document, above everything else. */
+/* The start view's two ways to a document, on the column's left edge with
+   the rows under them. The primitive carries no padding (it is sized for
+   icons), so a text button states its own. */
 .fo-actions {
     display: flex;
-    justify-content: center;
-    gap: var(--ui-space-4);
-    margin-block-end: var(--ui-space-5);
+    gap: var(--ui-space-2);
+    padding-inline: var(--ui-space-2);
+}
+
+.fo-action {
+    min-height: 28px;
+    padding: 0 var(--ui-space-5);
+    font-size: var(--ui-fs-m);
+}
+
+/* A row's name is what it is for, so the name keeps its room and the place
+   gives way: the place shrinks first, losing its START, since the folders
+   nearest the file are the ones that tell two of a name apart. */
+.fo .fg-row-label {
+    flex: 0 1 auto;
+    min-width: 4em;
+}
+
+.fo .fo-row-where {
+    flex: 0 1000 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    /* Right to left only so the overflow, and the ellipsis, fall at the
+       start; the text itself is an isolated left-to-right run (the span
+       inside), or a leading neutral such as a tilde would be moved to the
+       far end of the line. */
+    direction: rtl;
+}
+
+.fo .fo-row-where > span {
+    direction: ltr;
+    unicode-bidi: isolate;
 }
 
 /* Open Recent… closes the reader's list, in the list's own row shape and set

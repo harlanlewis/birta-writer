@@ -131,15 +131,16 @@ final class TitlePopoverController: NSViewController {
         buildWhereMenu(for: url.deletingLastPathComponent())
     }
 
-    /// The containing folder, then each one above it up to the volume, and
-    /// Other… last. The same walk the Cmd-click path menu makes, taken from
-    /// `WindowTitle` rather than repeated here: `ancestry` standardizes every
-    /// step, without which a path holding `..` climbs forever.
+    /// The containing folder, then each one above it as far as the path bar
+    /// goes, and Other… last. The same rows the Cmd-click path menu lists,
+    /// taken from `WindowTitle.pathRows` rather than repeated here; a folder
+    /// past the top of them is one Other… reaches.
     private func buildWhereMenu(for directory: URL) {
         let menu = NSMenu()
         whereTargets = [:]
-        for target in WindowTitle.ancestry(of: directory) {
-            let item = menu.addItem(withTitle: WindowTitle.displayName(of: target),
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        for (name, target) in WindowTitle.pathRows(of: directory, home: home, displayName: { WindowTitle.displayName(of: URL(fileURLWithPath: $0)) }) {
+            let item = menu.addItem(withTitle: name,
                                     action: nil, keyEquivalent: "")
             let icon = NSWorkspace.shared.icon(forFile: target.path)
             icon.size = NSSize(width: 16, height: 16)

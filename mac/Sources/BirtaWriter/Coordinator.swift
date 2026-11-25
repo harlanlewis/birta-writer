@@ -480,12 +480,17 @@ final class Coordinator {
     /// files with one name a row is.
     private func startViewRecents() -> [RecentFileRow] {
         let here = boundURL.standardizedFileURL.path
+        let home = FileManager.default.homeDirectoryForCurrentUser
         return RecentFiles.rows(from: Prefs.recentDocuments)
             .filter { $0.url.standardizedFileURL.path != here }
             .prefix(Self.startViewRecentCount)
             .map { row in
+                // Where it is as the path bar says it, so a note in an iCloud
+                // vault reads `iCloud Drive › Obsidian › Vault` rather than
+                // spelling out `Library/Mobile Documents/iCloud~md~obsidian`.
                 RecentFileRow(path: row.url.path, name: row.title,
-                              detail: (row.url.deletingLastPathComponent().path as NSString).abbreviatingWithTildeInPath)
+                              detail: PathBar.location(of: row.url.deletingLastPathComponent(), home: home,
+                                                       displayName: { WindowTitle.displayName(of: URL(fileURLWithPath: $0)) }))
             }
     }
 

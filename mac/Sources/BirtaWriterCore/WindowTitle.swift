@@ -7,7 +7,7 @@ import Foundation
 /// without a screen is here, because that is the line this package's two
 /// targets are drawn along, and because the parts worth getting exactly right
 /// are all on this side: whether the suffix appears, what separates it, and
-/// where the popup's list of folders stops.
+/// where the popup's list of folders stops (`pathRows`).
 public enum WindowTitle {
     /// One stretch of the title, and whether it is the quiet half. macOS draws
     /// the document's name in the title ink and everything after it in a
@@ -112,19 +112,27 @@ public enum WindowTitle {
         hasUnwrittenBytes && !autosaveEnabled
     }
 
-    /// `url` and every directory above it, nearest first, ending at the volume.
+    /// The rows of the title's path popup and of the title popover's Where
+    /// menu: `url`, then each folder above it, nearest first, as far as the
+    /// path bar goes (`PathBar.segments`) and named as it names them.
     ///
-    /// This is the list the Cmd-click popup shows, in the order it shows them.
-    /// The walk stops where a path is its own parent, which is what `/` is, so
-    /// a relative path or a root reaches an end rather than spinning.
-    public static func ancestry(of url: URL) -> [URL] {
-        var chain: [URL] = []
-        var current = url.standardizedFileURL
-        while true {
-            chain.append(current)
-            let parent = current.deletingLastPathComponent().standardizedFileURL
-            if parent.path == current.path { return chain }
-            current = parent
+    /// Not every directory up to the volume, which is what a bare walk gives
+    /// and what the platform's own popup lists. Under iCloud that walk spends
+    /// five rows on `Mobile Documents`, `Library`, the home folder, `Users`
+    /// and the volume, none of which the Finder shows as a place a note is,
+    /// and it lists an app's container twice, since the container and the
+    /// `Documents` folder inside it both display under the app's name. So
+    /// the popup stops where the path bar starts, and the two can never
+    /// disagree about where a note is.
+    ///
+    /// A directory `url` (the Where menu's) is named by `displayName`, as the
+    /// folders above it are; a file keeps its name as written.
+    public static func pathRows(of url: URL, home: URL,
+                                displayName: (String) -> String) -> [(name: String, url: URL)] {
+        let directory = url.hasDirectoryPath
+        return PathBar.segments(for: url, home: home, displayName: displayName).reversed().map { segment in
+            let name = segment.kind == .file && directory ? displayName(segment.path) : segment.name
+            return (name, URL(fileURLWithPath: segment.path, isDirectory: segment.kind != .file || directory))
         }
     }
 
