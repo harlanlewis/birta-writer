@@ -18,10 +18,15 @@ import type { LintOptions } from "harper.js" with { "resolution-mode": "import" 
 /**
  * The markup harper parses a block as, typed from harper's own declaration so
  * a value it does not know fails the build rather than falling back to
- * markdown at runtime with a console warning per call. Whether the webview's
- * extracted text should be linted as `"plaintext"` instead is MAR-508.
+ * markdown at runtime with a console warning per call.
+ *
+ * Plain text, because a block arrives as the webview's extracted text
+ * (`blockPlainText`), with the Markdown already gone. Read as Markdown, a
+ * paragraph that happens to begin `1.`, `#` or `>` would be linted as
+ * structure it does not have. On the text the webview actually sends, the
+ * two modes flag the same things but for a literal `[TODO]` (MAR-508).
  */
-const LINT_LANGUAGE: NonNullable<LintOptions["language"]> = "markdown";
+const LINT_LANGUAGE: NonNullable<LintOptions["language"]> = "plaintext";
 
 type HarperLinter = {
     setup(): Promise<void>;
