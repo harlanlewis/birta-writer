@@ -1,5 +1,5 @@
 diff --git a/lib/index.js b/lib/index.js
-index aa0cf0da162c5e4d20568180115de410068f8da3..0b1ece90bfbbcd684fce2a37e4034ab62ab39c2b 100644
+index a3ad082c8dee919a34c4d977fe80df065d59def0..86037227da045809d8ea88245c41e557695151d8 100644
 --- a/lib/index.js
 +++ b/lib/index.js
 @@ -63,11 +63,19 @@ var ParserState = class extends Stack {
