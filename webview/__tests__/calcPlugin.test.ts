@@ -1,7 +1,7 @@
 /**
  * Inline-calc plugin tests, driving the REAL Milkdown editor: the advisory
- * `=` and `=>` caret suggestions and their Tab confirmation (Return stays a
- * newline), the opt-in auto-insert input rule, and the enabled gating. The
+ * `=` and `=>` caret suggestions and their Return or Tab confirmation, the
+ * opt-in auto-insert input rule, and the enabled gating. The
  * pure engine is covered in calc.test.ts; the refresh/cascade/withdrawal
  * engine in calcRefresh.test.ts.
  */
@@ -114,26 +114,32 @@ describe("advisory inline calc", () => {
         expect(v.state.doc.textContent).toBe("x 2+3= 5");
     });
 
-    it("Enter after the menu appears should keep its newline meaning (not insert)", async () => {
+    it("Enter while the answer is offered should insert it, and not split the block", async () => {
         typeText(v, " 6*7=");
         await vi.advanceTimersByTimeAsync(250);
         expect(optionTexts()).toEqual(["42"]);
 
-        // Enter must NOT be captured by the pre-highlighted calc row: a
-        // suggestion applies only on explicit consent (Tab), so the first Enter
-        // proceeds to ProseMirror as a real newline. The result is never
-        // inserted, the menu closes so it can't outlive the block, and the
-        // paragraph splits (a new block appears) — proof Enter kept its meaning.
         const blocksBefore = v.state.doc.childCount;
-        const ev = new KeyboardEvent("keydown", {
-            key: "Enter",
-            bubbles: true,
-            cancelable: true,
-        });
+        const ev = new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true });
         v.dom.dispatchEvent(ev);
 
-        expect(v.state.doc.textContent).toBe("x 6*7=");
+        expect(v.state.doc.textContent).toBe("x 6*7= 42");
+        expect(ev.defaultPrevented).toBe(true);
+        expect(v.state.doc.childCount).toBe(blocksBefore);
+    });
+
+    it("Escape and then Enter should give a newline without the answer", async () => {
+        typeText(v, " 6*7=");
+        await vi.advanceTimersByTimeAsync(250);
+        expect(optionTexts()).toEqual(["42"]);
+
+        v.dom.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
         expect(optionTexts()).toEqual([]);
+        const blocksBefore = v.state.doc.childCount;
+        v.dom.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+
+        // No answer, and the block split: Enter reached ProseMirror as a newline.
+        expect(v.state.doc.textContent).toBe("x 6*7=");
         expect(v.state.doc.childCount).toBe(blocksBefore + 1);
     });
 
@@ -157,14 +163,14 @@ describe("advisory inline calc", () => {
         expect(v.state.doc.textContent).toBe("x 12=5+7");
     });
 
-    it("the result row should carry a Tab confirm hint", async () => {
+    it("the result row should carry a Return confirm hint", async () => {
         typeText(v, " 2+3=");
         await vi.advanceTimersByTimeAsync(250);
 
         const hint = document.querySelector(
             ".fm-suggest-menu .fm-suggest-item .fm-suggest-item__hint",
         );
-        expect(hint?.textContent).toBe("Tab");
+        expect(hint?.textContent).toBe("↵");
     });
 
     it("the 'Always insert result' action row should enable auto-insert AND answer the current ask", async () => {
@@ -433,6 +439,17 @@ describe("`=>` living calculations (variables + units)", () => {
         typeText(v, " 2+3 =>");
         await vi.advanceTimersByTimeAsync(250);
         v.dom.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", bubbles: true }));
+
+        expect(v.state.doc.textContent).toBe("x 2+3 => 5");
+    });
+
+    it("Enter should write the result after the =>, as Tab does", async () => {
+        editor = await makeArrowEditor("x\n");
+        v = view(editor);
+        placeCursorAtEnd(v);
+        typeText(v, " 2+3 =>");
+        await vi.advanceTimersByTimeAsync(250);
+        v.dom.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
 
         expect(v.state.doc.textContent).toBe("x 2+3 => 5");
     });

@@ -119,11 +119,10 @@ public enum FirstRunNote {
     ///     told to type. `340 + 12 =` plus a typed `=` is `==`, which computes
     ///     nothing.
     ///
-    /// The calc line says to press Tab, because the answer is ADVISORY: the
-    /// `=` offers a result and Tab confirms it, while Enter deliberately stays
-    /// a newline (`webview/plugins/calc.ts`). A tour promising the answer
-    /// simply arrives would be describing the auto-insert setting rather than
-    /// the default.
+    /// The calc line says to press Return, because the answer is ADVISORY: the
+    /// `=` offers a result and Return or Tab confirms it
+    /// (`webview/plugins/calc.ts`). A tour promising the answer simply arrives
+    /// would be describing the auto-insert setting rather than the default.
     ///
     /// Every operator here avoids `*`, which the serializer escapes mid-line:
     /// `340 * 12` reaches the user's own file as `340 \* 12`, which is a
@@ -214,7 +213,7 @@ public enum FirstRunNote {
     ## Numbers that answer themselves
 
     Put the caret at the end of the next line, type an equals sign, then press
-    Tab to take the answer it offers.
+    Return to take the answer it offers.
 
     340 + 12
 

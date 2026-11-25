@@ -85,15 +85,23 @@ export interface CaretSuggestSpec {
     pick(view: EditorView, match: CaretMatch, picked: string): void;
     /**
      * Pre-highlight the first row the moment the menu opens, so Tab picks it
-     * without an arrow-key first. Used by the inline calc suggestion, where the
-     * menu is a single advisory result the user confirms with Tab; Enter is
-     * deliberately NOT an accept key for an autoActivate menu — it keeps its
-     * newline meaning (see handleKeydown), so a pre-highlighted row can never
-     * capture the user's first Enter. An autocomplete list (link/wikilink)
-     * leaves this off so plain Enter keeps its normal editing meaning until the
-     * user deliberately selects a row (and Tab then accepts that row).
+     * without an arrow-key first. Used by single-result advisories (inline
+     * calc, the list-merge offer). Enter is NOT an accept key for such a menu
+     * unless `enterAccepts` says so, because a pre-highlighted row would
+     * otherwise capture the user's first Enter. An autocomplete list
+     * (link/wikilink) leaves this off so plain Enter keeps its normal editing
+     * meaning until the user deliberately selects a row (and Enter or Tab then
+     * accepts that row).
      */
     autoActivate?: boolean;
+    /**
+     * For an `autoActivate` menu: Enter accepts the pre-highlighted row too,
+     * as Tab does. Only for a menu that appears because the user just typed
+     * the thing that asks for it (calc's `=` and `=>`), where Enter right then
+     * means "yes". Never for one that appears where the caret merely rests
+     * (the list-merge offer), where Enter is somebody starting a new line.
+     */
+    enterAccepts?: boolean;
     /**
      * Decorate the live construct (match.start → caret) with this class while
      * the menu is open — the slash menu's "/query" pill affordance, shared:
@@ -430,25 +438,26 @@ class CaretSuggestController {
             return;
         }
 
-        if (e.key === "Enter" && this.spec.autoActivate) {
-            // An autoActivate menu (calc) pre-highlights its lone row, but Enter
-            // must keep its editing meaning — a newline, not a confirm. The repo
-            // principle is that a suggestion applies only on explicit consent, and
-            // a pre-highlighted row would make the FIRST Enter after the menu
-            // appears silently insert the result. So here Enter is NOT captured:
-            // close the menu (it must not outlive the block it anchored in) and
-            // return without preventDefault, letting Enter reach ProseMirror.
-            // Explicit acceptance for autoActivate is Tab, handled below.
+        if (e.key === "Enter" && this.spec.autoActivate && !this.spec.enterAccepts) {
+            // An autoActivate menu pre-highlights its lone row, and unless the
+            // spec opts in (`enterAccepts`), Enter keeps its editing meaning: a
+            // newline, not a confirm. A suggestion applies only on explicit
+            // consent, and for a menu that appears where the caret merely rests
+            // a pre-highlighted row would make the FIRST Enter silently apply
+            // it. So here Enter is NOT captured: close the menu (it must not
+            // outlive the block it anchored in) and return without
+            // preventDefault, letting Enter reach ProseMirror. Tab accepts,
+            // below.
             this.closeMenu();
             return;
         }
 
         if (e.key === "Enter" || e.key === "Tab") {
             if (this.menu.pickActive()) {
-                // A highlighted row exists (always so for an autoActivate menu,
-                // where only Tab reaches here now; for a link/wikilink list only
-                // after an arrow key or hover). Tab accepts it, and for a
-                // non-autoActivate list Enter accepts a user-highlighted row.
+                // A highlighted row exists (always so for an autoActivate menu;
+                // for a link/wikilink list only after an arrow key or hover).
+                // Tab accepts it, and so does Enter, except on an autoActivate
+                // menu that did not opt in (handled above).
                 e.preventDefault();
                 e.stopPropagation();
                 e.stopImmediatePropagation();
