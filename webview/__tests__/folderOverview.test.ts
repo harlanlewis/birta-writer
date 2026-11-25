@@ -7,10 +7,14 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import type { FolderEdge, FolderIndex, FolderNode } from "../../shared/folderIndex";
 import { commandAvailable, idleCommandIds, setCommandsIdle } from "../../shared/commandAvailability";
 import { folderHub } from "../components/graph/folderGraph";
+import { activityOf } from "../components/graph/folderSignals";
 import {
     createFolderOverview,
     openFolderOverview,
     OVERVIEW_RECENTS,
+    overviewCentre,
+    resetSubjectNamesForTests,
+    sinceWritten,
     START_RECENTS,
     type StartLauncher,
 } from "../components/graph/folderOverview";
@@ -75,7 +79,7 @@ describe("createFolderOverview", () => {
     });
 
     function mount() {
-        const view = createFolderOverview({ openNote, onEscape: () => {} });
+        const view = createFolderOverview({ defer: (run) => run(), openNote, onEscape: () => {} });
         document.body.append(view.element);
         return view;
     }
@@ -166,7 +170,7 @@ describe("createFolderOverview", () => {
         // lone.md links to nothing, so the next recent note is the centre.
         view.render({ index: VAULT, self: null }, ["lone.md", "sub/far.md", "hub.md"]);
         expect(view.element.querySelector<HTMLElement>(".lg-node--self")!.dataset["id"]).toBe("sub/far.md");
-        expect(view.element.querySelector(".fo-caption")!.textContent).toContain("the note you opened here most recently");
+        expect(view.element.querySelector(".fo-caption")!.textContent).toContain("where you have been working");
     });
 
     it("recent notes none of which links should draw nothing rather than fall back to the hub", () => {
@@ -180,6 +184,123 @@ describe("createFolderOverview", () => {
         const view = mount();
         view.render({ index: VAULT, self: null }, null);
         expect(view.element.querySelector<HTMLElement>(".lg-node--self")!.dataset["id"]).toBe("hub.md");
+    });
+
+    it("with no recent files, the most recently written linked note should be the centre, not the hub", () => {
+        const now = Date.UTC(2026, 10, 24);
+        const dated: FolderIndex = { ...VAULT, nodes: VAULT.nodes.map((n) => ({ ...n, modified: n.path === "d.md" ? now - 86_400_000 : now - 400 * 86_400_000 })) };
+        const view = createFolderOverview({ defer: (run) => run(), openNote, onEscape: () => {}, now: () => now });
+        document.body.append(view.element);
+        view.render({ index: dated, self: null }, null);
+        expect(view.element.querySelector<HTMLElement>(".lg-node--self")!.dataset["id"]).toBe("d.md");
+        // hub.md, a.md and the rest were last written over a year ago: faded.
+        expect(view.element.querySelector('.lg-node[data-id="a.md"]')!.classList.contains("lg-node--dormant")).toBe(true);
+        expect(view.element.querySelector('.lg-node[data-id="d.md"]')!.classList.contains("lg-node--dormant")).toBe(false);
+        expect(view.element.querySelector(".fo-caption")!.textContent).toContain("Faded dots");
+    });
+
+    it("a subject row should draw its subject in the square and press again to go back", () => {
+        const view = mount();
+        view.render({ index: VAULT, self: null }, ["sub/far.md"]);
+        const row = view.element.querySelector<HTMLElement>(".fo-subject")!;
+        expect(row).not.toBeNull();
+        const before = view.element.querySelector<HTMLElement>(".lg-node--self")!.dataset["id"];
+        row.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+        const pressed = view.element.querySelector<HTMLElement>(".fo-subject")!;
+        expect(pressed.getAttribute("aria-pressed")).toBe("true");
+        expect(view.element.querySelector(".fo-caption")!.textContent).toMatch(/notes, around/);
+        pressed.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+        expect(view.element.querySelector<HTMLElement>(".fo-subject")!.getAttribute("aria-pressed")).toBe("false");
+        expect(view.element.querySelector<HTMLElement>(".lg-node--self")!.dataset["id"]).toBe(before);
+    });
+
+    it("pressing a subject from the keyboard should leave focus on its row", () => {
+        const view = mount();
+        view.render({ index: VAULT, self: null }, ["sub/far.md"]);
+        const row = view.element.querySelector<HTMLElement>(".fo-subject")!;
+        const id = row.dataset["subject"];
+        row.focus();
+        row.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+        row.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+        expect((document.activeElement as HTMLElement).dataset["subject"]).toBe(id);
+    });
+
+    it("a folder that changes under the view should keep its subjects listed until the new ones are found", () => {
+        const pending: Array<() => void> = [];
+        const view = createFolderOverview({ openNote, onEscape: () => {}, defer: (run) => pending.push(run) });
+        document.body.append(view.element);
+        view.render({ index: VAULT, self: null }, []);
+        pending.shift()!();
+        const before = view.element.querySelectorAll(".fo-subject").length;
+        expect(before).toBeGreaterThan(0);
+        view.render({ index: { ...VAULT, edges: [...VAULT.edges] }, self: null }, []);
+        expect(view.element.querySelectorAll(".fo-subject")).toHaveLength(before);
+    });
+
+    it("a detached view should find nothing when its deferred work comes round", () => {
+        const pending: Array<() => void> = [];
+        const names = vi.fn(async () => new Map<string, string>());
+        const view = createFolderOverview({ openNote, onEscape: () => {}, defer: (run) => pending.push(run), nameSubjects: names });
+        document.body.append(view.element);
+        view.render({ index: VAULT, self: null }, []);
+        view.element.remove();
+        pending.shift()!();
+        expect(names).not.toHaveBeenCalled();
+    });
+
+    it("subjects should be found after the view is drawn, not while it is drawn", () => {
+        const pending: Array<() => void> = [];
+        const view = createFolderOverview({ openNote, onEscape: () => {}, defer: (run) => pending.push(run) });
+        document.body.append(view.element);
+        view.render({ index: VAULT, self: null }, ["sub/far.md"]);
+        expect(view.element.querySelector(".lg-node--self")).not.toBeNull();
+        expect(view.element.querySelectorAll(".fo-subject")).toHaveLength(0);
+        expect(view.element.querySelector<HTMLElement>(".fo-subjects")!.hidden).toBe(true);
+        expect(pending).toHaveLength(1);
+        pending.shift()!();
+        expect(view.element.querySelectorAll(".fo-subject").length).toBeGreaterThan(0);
+    });
+
+    it("a host's names should replace the subjects' own, and a failing namer should leave them", async () => {
+        resetSubjectNamesForTests();
+        const names = vi.fn(async (subjects: readonly { id: string }[]) => new Map(subjects.map((s) => [s.id, "Named by host"])));
+        const view = createFolderOverview({ defer: (run) => run(), openNote, onEscape: () => {}, nameSubjects: names });
+        document.body.append(view.element);
+        view.render({ index: VAULT, self: null }, []);
+        await Promise.resolve(); await Promise.resolve();
+        expect(view.element.querySelector(".fo-subject .fg-row-label")!.textContent).toBe("Named by host");
+        // A model's names say whose they are; the notes' own need no credit.
+        expect(view.element.querySelector<HTMLElement>(".fo-credit")!.hidden).toBe(false);
+        view.render({ index: VAULT, self: null }, []);
+        expect(names).toHaveBeenCalledTimes(1);
+        // A second overview of the same folder asks nothing: the page keeps
+        // what the host's model already said.
+        const again = createFolderOverview({ defer: (run) => run(), openNote, onEscape: () => {}, nameSubjects: names });
+        document.body.append(again.element);
+        again.render({ index: VAULT, self: null }, []);
+        expect(names).toHaveBeenCalledTimes(1);
+        expect(again.element.querySelector(".fo-subject .fg-row-label")!.textContent).toBe("Named by host");
+        resetSubjectNamesForTests();
+
+        const failing = createFolderOverview({ defer: (run) => run(), openNote, onEscape: () => {}, nameSubjects: () => Promise.reject(new Error("no model")) });
+        document.body.append(failing.element);
+        failing.render({ index: VAULT, self: null }, []);
+        await Promise.resolve(); await Promise.resolve();
+        expect(failing.element.querySelector(".fo-subject .fg-row-label")!.textContent).not.toBe("");
+        expect(failing.element.querySelector<HTMLElement>(".fo-credit")!.hidden).toBe(true);
+    });
+
+    it("a fading note should be listed with its age and open on a press", () => {
+        const now = Date.UTC(2026, 10, 24);
+        const old = now - 200 * 86_400_000;
+        const dated: FolderIndex = { ...VAULT, nodes: VAULT.nodes.map((n) => ({ ...n, modified: old })) };
+        const view = createFolderOverview({ defer: (run) => run(), openNote, onEscape: () => {}, now: () => now });
+        document.body.append(view.element);
+        view.render({ index: dated, self: null }, []);
+        const row = view.element.querySelector<HTMLElement>('.fo-fading[data-fading="hub.md"]')!;
+        expect(row.querySelector(".fg-row-detail")!.textContent).toBe("4 links, written 6 months ago");
+        row.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+        expect(openNote).toHaveBeenCalledWith("hub.md");
     });
 
     it("a centre that is the note on screen should be drawn current and open nothing", () => {
@@ -234,7 +355,7 @@ describe("the Graph tab on the shared ring stage", () => {
 
 describe("createFolderOverview with a host that keeps no recent files", () => {
     it("null recents should draw no recent files section at all, heading included", () => {
-        const view = createFolderOverview({ openNote: () => {}, onEscape: () => {} });
+        const view = createFolderOverview({ defer: (run) => run(), openNote: () => {}, onEscape: () => {} });
         document.body.replaceChildren(view.element);
         view.render({ index: VAULT, self: null }, ["a.md"]);
         view.render({ index: VAULT, self: null }, null);
@@ -403,7 +524,7 @@ describe("the start view", () => {
 
     it("with no folder it should draw the two buttons and the recent files, and no folder section", () => {
         const launcher = launcherSpy();
-        const view = createFolderOverview({ openNote: () => {}, onEscape: () => {}, launcher, folder: false });
+        const view = createFolderOverview({ defer: (run) => run(), openNote: () => {}, onEscape: () => {}, launcher, folder: false });
         document.body.append(view.element);
         view.render(null, null, FILES);
         expect([...view.element.querySelectorAll(".fo-action")].map((b) => b.textContent)).toEqual(["New Note", "Open…"]);
@@ -416,7 +537,7 @@ describe("the start view", () => {
     });
 
     it("Open Recent… should close the list, drawn even before the files arrive", () => {
-        const view = createFolderOverview({ openNote: () => {}, onEscape: () => {}, launcher: launcherSpy(), folder: false });
+        const view = createFolderOverview({ defer: (run) => run(), openNote: () => {}, onEscape: () => {}, launcher: launcherSpy(), folder: false });
         view.render(null, null, null);
         const list = view.element.querySelector(".fo-files")!;
         expect([...list.children].map((c) => c.textContent)).toEqual(["Open Recent…"]);
@@ -427,7 +548,7 @@ describe("the start view", () => {
 
     it("each control should run the launcher gesture it names", () => {
         const launcher = launcherSpy();
-        const view = createFolderOverview({ openNote: () => {}, onEscape: () => {}, launcher, folder: false });
+        const view = createFolderOverview({ defer: (run) => run(), openNote: () => {}, onEscape: () => {}, launcher, folder: false });
         document.body.append(view.element);
         view.render(null, null, FILES);
         const [newNote, open] = [...view.element.querySelectorAll(".fo-action")];
@@ -442,7 +563,8 @@ describe("the start view", () => {
     });
 
     it("in a folder it should put the name and buttons first, the two lists next, and the drawing last", () => {
-        const view = createFolderOverview({ openNote: () => {}, onEscape: () => {}, launcher: launcherSpy() });
+        const view = createFolderOverview({ defer: (run) => run(), openNote: () => {}, onEscape: () => {}, launcher: launcherSpy() });
+        document.body.append(view.element);
         view.render({ index: VAULT, self: null }, ["a.md"], FILES);
         const children = [...view.element.children];
         const at = (selector: string): number => children.indexOf(view.element.querySelector(selector)!);
@@ -452,12 +574,12 @@ describe("the start view", () => {
         expect(at(".fo-recents:not(.fo-files)")).toBeGreaterThan(at(".fo-actions"));
         expect(at(".fo-files")).toBeGreaterThan(at(".fo-recents:not(.fo-files)"));
         expect(at(".lg-stage")).toBeGreaterThan(at(".fo-files"));
-        const headings = [...view.element.querySelectorAll(".fo-heading")].map((h) => h.textContent);
-        expect(headings).toEqual(["In this folder", "Recent"]);
+        const headings = [...view.element.querySelectorAll<HTMLElement>(".fo-heading")].filter((h) => !h.hidden).map((h) => h.textContent);
+        expect(headings).toEqual(["In this folder", "Recent", "Subjects"]);
     });
 
     it("without a launcher the overview should be as it was: no buttons, no reader's list", () => {
-        const view = createFolderOverview({ openNote: () => {}, onEscape: () => {} });
+        const view = createFolderOverview({ defer: (run) => run(), openNote: () => {}, onEscape: () => {} });
         view.render({ index: VAULT, self: null }, ["a.md"], FILES);
         expect(view.element.querySelector(".fo-actions")).toBeNull();
         expect(view.element.querySelector(".fo-files")).toBeNull();
@@ -503,5 +625,33 @@ describe("the start view", () => {
         expect(launcher.newNote).toHaveBeenCalledTimes(1);
         expect(onDismiss).toHaveBeenCalledTimes(1);
         expect(surface.classList.contains("lb-closing") || !surface.isConnected).toBe(true);
+    });
+});
+
+describe("overviewCentre", () => {
+    it("recent notes that link nowhere should not hide an older note that does", () => {
+        const now = Date.UTC(2026, 10, 24);
+        const daily = Array.from({ length: 60 }, (_, i) => node(`daily/${i}.md`));
+        const idx: FolderIndex = {
+            ...VAULT,
+            nodes: [
+                ...VAULT.nodes.map((n) => ({ ...n, modified: now - 300 * 86_400_000 })),
+                ...daily.map((n, i) => ({ ...n, modified: now - i * 86_400_000 })),
+            ],
+        };
+        const centre = overviewCentre(idx, null, activityOf(idx, null, now));
+        expect(centre?.reason).toBe("active");
+        expect(VAULT.nodes.map((n) => n.path)).toContain(centre!.graph.nodes[0]!.id);
+    });
+});
+
+describe("sinceWritten", () => {
+    const now = Date.UTC(2026, 10, 24);
+    const DAY = 86_400_000;
+    it("an age should read in days, then whole months, then years, and never as one year at under two", () => {
+        expect(sinceWritten(now - 10 * DAY, now)).toBe("10 days ago");
+        expect(sinceWritten(now - 200 * DAY, now)).toBe("6 months ago");
+        expect(sinceWritten(now - 720 * DAY, now)).toBe("23 months ago");
+        expect(sinceWritten(now - 800 * DAY, now)).toBe("2 years ago");
     });
 });

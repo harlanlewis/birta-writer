@@ -233,7 +233,22 @@ export type HostCapability =
      * editor, and its recent files are its own, so a second set drawn in the
      * page would be a copy of the window around it.
      */
-    | "fileLauncher";
+    | "fileLauncher"
+    /**
+     * A model the host can ask, on the machine, to name a folder's subjects
+     * (`requestSubjectNames`, `subjectNames` in shared/messages.ts): what the
+     * folder overview's Subjects list is titled with when it answers, over
+     * the names the notes' own words give (components/graph/folderSignals.ts).
+     *
+     * The host's because the model is: the Mac app asks Apple's on-device
+     * model, and sends nothing off the machine. Declared by a host that can
+     * ask one, not only by one that can ask one NOW: the model can be
+     * switched off, still downloading, or absent on this Mac, and such a host
+     * answers with no names, which leaves the page's own. App-only: the
+     * extension has no model of its own, and asking one would be sending the
+     * reader's note names somewhere (docs/NETWORK_POSTURE.md, rung 3).
+     */
+    | "subjectNames";
 
 export const ALL_HOST_CAPABILITIES: readonly HostCapability[] = [
     "textEditor",
@@ -253,6 +268,7 @@ export const ALL_HOST_CAPABILITIES: readonly HostCapability[] = [
     "folderIndex",
     "stripTooltip",
     "fileLauncher",
+    "subjectNames",
 ];
 
 /**
@@ -272,7 +288,7 @@ export const ALL_HOST_CAPABILITIES: readonly HostCapability[] = [
  * feature". A member here MUST be declared by some other profile, or it
  * names nothing at all; `hostProfile.test.ts` checks both directions.
  */
-export const APP_ONLY_CAPABILITIES: readonly HostCapability[] = ["appPreferences", "projectFiles", "stripTooltip", "fileLauncher"];
+export const APP_ONLY_CAPABILITIES: readonly HostCapability[] = ["appPreferences", "projectFiles", "stripTooltip", "fileLauncher", "subjectNames"];
 
 /**
  * The capabilities a host may withdraw or offer while the page is UP, handed
@@ -305,7 +321,7 @@ export const HOST_PROFILES = {
     // and the e2e mac page restate this list as a literal, because neither
     // Swift nor an HTML bootstrap can import it. They are not free to drift:
     // shared/__tests__/hostProfile.test.ts parses both and fails.
-    mac: ["spellAndGrammar", "imageUpload", "toc", "contentMeasure", "appPreferences", "projectFiles", "folderIndex", "stripTooltip", "fileLauncher"] as readonly HostCapability[],
+    mac: ["spellAndGrammar", "imageUpload", "toc", "contentMeasure", "appPreferences", "projectFiles", "folderIndex", "stripTooltip", "fileLauncher", "subjectNames"] as readonly HostCapability[],
 } as const satisfies Record<string, readonly HostCapability[]>;
 
 /**

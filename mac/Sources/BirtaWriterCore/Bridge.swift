@@ -154,6 +154,9 @@ public enum WebviewMessage: Equatable {
     /// A row of the start view's recent files, by the path `recentFiles`
     /// gave it. The host refuses a path its own list does not hold.
     case openRecentFile(path: String)
+    /// Names for the folder overview's subjects (`subjectNames` capability),
+    /// answered once with `subjectNames` under the same id.
+    case requestSubjectNames(requestId: Int, subjects: [SubjectNames.Request])
     /// A segment of the path bar was clicked, by the absolute path the host
     /// handed it in `pathBar`. The host shows that folder (or selects that
     /// file) in the Finder, and refuses a path its own bar did not draw.
@@ -337,6 +340,15 @@ public enum WebviewMessage: Equatable {
                                 y: (dict["y"] as? NSNumber)?.doubleValue)
         case "requestRecentFiles": return .requestRecentFiles
         case "openRecentFile": return str("path").map { .openRecentFile(path: $0) } ?? .other(type: type)
+        case "requestSubjectNames":
+            // A request with no id cannot be answered; a subject missing its
+            // id is dropped rather than failing the rest.
+            guard let requestId = int("requestId") else { return .other(type: type) }
+            let subjects = (dict["subjects"] as? [Any] ?? []).compactMap { entry -> SubjectNames.Request? in
+                guard let row = entry as? [String: Any], let id = row["id"] as? String else { return nil }
+                return SubjectNames.Request(id: id, notes: row["notes"] as? [String] ?? [], tags: row["tags"] as? [String] ?? [])
+            }
+            return .requestSubjectNames(requestId: requestId, subjects: subjects)
         case "revealPath": return str("path").map { .revealPath($0) } ?? .other(type: type)
         case "pathBarMenu":
             guard let raw = dict["segments"] as? [[String: Any]],
@@ -543,6 +555,9 @@ public enum HostMessage: Equatable {
     /// folders, most recent first, by absolute path, with what each row says
     /// and where it is.
     case recentFiles([RecentFileRow])
+    /// The answer to `requestSubjectNames`: a name per subject id that could
+    /// be named. Empty is an answer: the model is off, absent or declined.
+    case subjectNames(requestId: Int, names: [String: String])
     /// The window holds no file: the page shows its start view, pinned.
     case showStartView
     /// The hidden-files setting moved, from this window's row or another's.
@@ -700,6 +715,8 @@ public enum HostMessage: Equatable {
                     "files": rows.map { ["path": $0.path, "name": $0.name, "detail": $0.detail] }]
         case .showStartView:
             return ["type": "showStartView"]
+        case let .subjectNames(requestId, names):
+            return ["type": "subjectNames", "requestId": requestId, "names": names]
         case let .fileExplorerConfig(showHidden):
             return ["type": "fileExplorerConfig", "showHidden": showHidden]
         case let .fileExplorerFloor(width):

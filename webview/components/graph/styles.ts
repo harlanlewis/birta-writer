@@ -100,6 +100,14 @@ export const LOCAL_GRAPH_CSS = `
     box-sizing: border-box;
 }
 
+/* A note nothing has touched in a long while (folderSignals.ts, activity
+   under DORMANT_BELOW): the same dot, faded, so a drawing of a folder shows
+   which of its corners are still in use without a second mark to learn.
+   Hover and focus bring it back to full ink, since then it is being looked at. */
+.lg-node--dormant:not(:hover, :focus-visible) :is(.lg-dot, .lg-label) {
+    opacity: 0.4;
+}
+
 .lg-size-2 .lg-dot { width: 10px; height: 10px; }
 .lg-size-3 .lg-dot { width: 12px; height: 12px; }
 .lg-size-4 .lg-dot { width: 14px; height: 14px; }
@@ -303,6 +311,19 @@ export const LOCAL_GRAPH_CSS = `
 .fo .fo-row-where > span {
     direction: ltr;
     unicode-bidi: isolate;
+}
+
+/* The subject drawn in the square below. A state that sets a background sets
+   its foreground in the same rule (DESIGN_PRINCIPLES.md), since a theme may
+   fill a selection solidly. Inactive selection, not active: the row says
+   which subject is drawn, while keyboard focus may be anywhere. */
+.fo-subject[aria-pressed="true"] {
+    background: var(--vscode-list-inactiveSelectionBackground);
+    color: var(--vscode-list-inactiveSelectionForeground);
+}
+
+.fo-subject[aria-pressed="true"] .fg-row-label {
+    font-weight: 600;
 }
 
 /* Open Recent… closes the reader's list, in the list's own row shape and set

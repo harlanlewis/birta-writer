@@ -51,6 +51,18 @@ export function receiveRecentFiles(files: RecentFile[]): void {
     window.dispatchEvent(new CustomEvent(RECENT_FILES_CHANGED, { detail: files }));
 }
 
+/**
+ * Dispatched on `window` whenever the host answers `requestSubjectNames`, the
+ * message as its `detail`. The one reader is the overview that asked, which
+ * matches the answer to its question by `requestId`.
+ */
+export const SUBJECT_NAMES_ANSWERED = "birta:subject-names-answered";
+
+/** The host's answer: the `subjectNames` message handler calls this. */
+export function receiveSubjectNames(requestId: number, names: Record<string, string>): void {
+    window.dispatchEvent(new CustomEvent(SUBJECT_NAMES_ANSWERED, { detail: { requestId, names } }));
+}
+
 /** The command that opens the folder overview (components/graph/folderOverview.ts). */
 export const FOLDER_OVERVIEW_COMMAND = "showFolderOverview";
 

@@ -119,7 +119,7 @@ describe("HOST_PROFILES", () => {
         // no agent, because `/ai` is the extension's alone.
         expect(HOST_PROFILES.mac).toEqual(
             ["spellAndGrammar", "imageUpload", "toc", "contentMeasure", "appPreferences",
-             "projectFiles", "folderIndex", "stripTooltip", "fileLauncher"]);
+             "projectFiles", "folderIndex", "stripTooltip", "fileLauncher", "subjectNames"]);
     });
 
     it("every capability named on a command should be in ALL_HOST_CAPABILITIES", () => {

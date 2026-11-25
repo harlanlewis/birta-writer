@@ -185,8 +185,13 @@ final class FolderIndexTests: XCTestCase {
         let json = index.jsonObject
         XCTAssertEqual(Set(json.keys), ["rootName", "nodes", "edges", "truncated"])
         let node = try XCTUnwrap((json["nodes"] as? [[String: Any]])?.first)
-        XCTAssertEqual(Set(node.keys), ["path", "name", "type", "tags", "status", "trust", "staleAfter"])
+        XCTAssertEqual(Set(node.keys), ["path", "name", "type", "tags", "status", "trust", "staleAfter", "modified"])
         XCTAssertEqual(node["status"] as? String, "draft")
+        // The day the walk saw it written, whole: a save later the same day
+        // must not change the wire form (`toIndexDay`).
+        let modified = try XCTUnwrap(node["modified"] as? Double)
+        XCTAssertEqual(modified.truncatingRemainder(dividingBy: 86_400_000), 0)
+        XCTAssertEqual(modified, FolderIndex.toIndexDay(Date()), accuracy: 86_400_000)
         XCTAssertTrue(node["type"] is NSNull, "an absent field is null, not missing")
         let edge = try XCTUnwrap((json["edges"] as? [[String: Any]])?.first)
         XCTAssertEqual(Set(edge.keys), ["from", "to", "target", "kind", "text", "line"])
@@ -274,5 +279,12 @@ final class SmallestByPathTests: XCTestCase {
         // code unit and follows it by code point; a locale puts "é" by "e".
         XCTAssertEqual(select(["/v/\u{FFFD}.md", "/v/\u{1D49C}.md"], cap: 1).kept, ["/v/\u{1D49C}.md"])
         XCTAssertEqual(select(["/v/\u{E9}.md", "/v/z.md"], cap: 1).kept, ["/v/z.md"])
+    }
+
+    func testADayShouldBeTheStartOfItsUTCDayOnBothSidesOfIt() {
+        let start = Date(timeIntervalSince1970: 1_795_478_400) // 2026-11-24T00:00:00Z
+        XCTAssertEqual(FolderIndex.toIndexDay(start), 1_795_478_400_000)
+        XCTAssertEqual(FolderIndex.toIndexDay(start.addingTimeInterval(86_399)), 1_795_478_400_000)
+        XCTAssertEqual(FolderIndex.toIndexDay(start.addingTimeInterval(-1)), 1_795_392_000_000)
     }
 }

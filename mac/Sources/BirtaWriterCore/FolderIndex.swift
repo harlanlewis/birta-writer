@@ -37,6 +37,16 @@ public struct FolderIndex: Equatable, Sendable {
         public var status: String?
         public var trust: String?
         public var staleAfter: String?
+        /// The day the file was last written, `toIndexDay`; nil when the walk
+        /// had no date for it. `modified` in shared/folderIndex.ts.
+        public var modified: Double? = nil
+    }
+
+    /// Epoch milliseconds rounded down to a whole UTC day: what `Node.modified`
+    /// carries, and why a day is in `FolderNode.modified` (shared/folderIndex.ts).
+    public static func toIndexDay(_ date: Date) -> Double {
+        let ms = (date.timeIntervalSince1970 * 1000).rounded(.down)
+        return (ms / 86_400_000).rounded(.down) * 86_400_000
     }
 
     public struct Edge: Equatable, Sendable {
@@ -87,7 +97,8 @@ public struct FolderIndex: Equatable, Sendable {
     /// `FolderIndexer`'s. `memo` carries resolutions between two assemblies
     /// over the same file list, and the caller empties it when the list moves.
     public static func assemble(root: String, notes: [String], readings: [String: NoteLinks.Reading],
-                                files: [String], truncated: Bool, memo: inout ResolutionMemo) -> FolderIndex {
+                                files: [String], truncated: Bool, modified: [String: Date] = [:],
+                                memo: inout ResolutionMemo) -> FolderIndex {
         let sorted = notes.sorted { $0.utf16.lexicographicallyPrecedes($1.utf16) }
         // Every note the walk read exists, whatever the file list reached.
         var allFiles = files
@@ -120,7 +131,8 @@ public struct FolderIndex: Equatable, Sendable {
             let stem = JSText.string(Array(base.utf16.dropLast(ext.utf16.count)))
             let meta = reading?.meta
             nodes.append(Node(path: rel, name: meta?.title ?? stem, type: meta?.type, tags: meta?.tags ?? [],
-                              status: meta?.status, trust: meta?.trust, staleAfter: meta?.staleAfter))
+                              status: meta?.status, trust: meta?.trust, staleAfter: meta?.staleAfter,
+                              modified: modified[note].map(toIndexDay)))
             for link in reading?.links ?? [] where !link.path.isEmpty {
                 let abs = resolve(note, link.path, wiki: link.kind == .wiki)
                 let inRoot = abs.flatMap { relative($0, to: root) }
@@ -155,7 +167,8 @@ public struct FolderIndex: Equatable, Sendable {
             "truncated": truncated,
             "nodes": nodes.map { n -> [String: Any] in
                 ["path": n.path, "name": n.name, "type": orNull(n.type), "tags": n.tags,
-                 "status": orNull(n.status), "trust": orNull(n.trust), "staleAfter": orNull(n.staleAfter)]
+                 "status": orNull(n.status), "trust": orNull(n.trust), "staleAfter": orNull(n.staleAfter),
+                 "modified": n.modified.map { $0 as Any } ?? NSNull()]
             },
             "edges": edges.map { e -> [String: Any] in
                 ["from": e.from, "to": orNull(e.to), "target": e.target, "kind": e.kind.rawValue,
@@ -318,7 +331,9 @@ public final class FolderIndexer: @unchecked Sendable {
             memo.removeAll()
             lastFiles = resolvable
         }
+        var modified: [String: Date] = [:]
+        for (path, stamp) in kept { if let date = stamp.modified { modified[path] = date } }
         return FolderIndex.assemble(root: rootPath, notes: kept.map(\.path), readings: current,
-                                    files: files, truncated: truncated, memo: &memo)
+                                    files: files, truncated: truncated, modified: modified, memo: &memo)
     }
 }

@@ -156,6 +156,34 @@ describe("FolderIndexer: the cap", () => {
     });
 });
 
+describe("FolderIndexer: when a note was written", () => {
+    beforeEach(() => { vi.clearAllMocks(); });
+
+    it("each note should carry the day its IO reports, and a save should be re-asked with the reading", async () => {
+        const { io, files } = folder({ [`${ROOT}/a.md`]: "", [`${ROOT}/b.md`]: "" });
+        const DAY = Date.UTC(2026, 10, 24);
+        const times: Record<string, number | null> = { [`${ROOT}/a.md`]: DAY, [`${ROOT}/b.md`]: null };
+        const modified = vi.fn(async (fsPath: string) => times[fsPath] ?? null);
+        const indexer = new FolderIndexer({ ...io, modified });
+        const first = await indexer.indexFor(ROOT);
+        expect(first.nodes.map((n) => [n.path, n.modified])).toEqual([["a.md", DAY], ["b.md", null]]);
+
+        modified.mockClear();
+        times[`${ROOT}/a.md`] = DAY + 86_400_000;
+        files[`${ROOT}/a.md`] = "edited\n";
+        indexer.fileChanged(`${ROOT}/a.md`);
+        const second = await indexer.indexFor(ROOT);
+        expect(modified.mock.calls.map(([p]) => p)).toEqual([`${ROOT}/a.md`]);
+        expect(second.nodes.find((n) => n.path === "a.md")!.modified).toBe(DAY + 86_400_000);
+    });
+
+    it("an IO that cannot say should index every note with no time, which a view reads as unknown", async () => {
+        const { io } = folder({ [`${ROOT}/a.md`]: "" });
+        const index = await new FolderIndexer(io).indexFor(ROOT);
+        expect(index.nodes[0]!.modified).toBeNull();
+    });
+});
+
 describe("smallestPaths", () => {
     const sortedPrefix = (paths: string[], cap: number) => [...paths].sort().slice(0, cap);
 

@@ -52,6 +52,12 @@ export interface FolderIndexIo {
     listNotes(root: string): Promise<readonly string[]>;
     /** A note's text, or null when it cannot be read. */
     readText(fsPath: string): Promise<string | null>;
+    /**
+     * When a note was last written, in epoch milliseconds, or null when the
+     * file system will not say. Optional: an IO without it indexes every note
+     * with no time, which a view reads as unknown.
+     */
+    modified?(fsPath: string): Promise<number | null>;
     /** Every file in the workspace (absolute fsPaths): what a reference resolves against. */
     fileIndex(): Promise<readonly string[]>;
     /** `birta.smartLinks` for documents under `root`. */
@@ -150,6 +156,8 @@ interface RootState {
     truncated: boolean;
     /** Readings per note fsPath; an entry is dropped when its file changes. */
     readings: Map<string, NoteReading | null>;
+    /** Modification times per note fsPath, read with the reading and dropped with it. */
+    modified: Map<string, number | null>;
     /** Resolved targets by (kind, naming directory, target, smartLinks); dropped when the file set changes. */
     resolutions: Map<string, string | null>;
     /** The last assembled index; dropped on any change under the root. */
@@ -176,7 +184,7 @@ export class FolderIndexer {
     private state(root: string): RootState {
         let s = this.roots.get(root);
         if (!s) {
-            s = { notes: null, truncated: false, readings: new Map(), resolutions: new Map(), index: null, building: null, previous: null, generation: 0 };
+            s = { notes: null, truncated: false, readings: new Map(), modified: new Map(), resolutions: new Map(), index: null, building: null, previous: null, generation: 0 };
             this.roots.set(root, s);
         }
         return s;
@@ -202,6 +210,7 @@ export class FolderIndexer {
         let touched = false;
         for (const s of this.rootsOf(fsPath)) {
             s.readings.delete(fsPath);
+            s.modified.delete(fsPath);
             s.index = null;
             s.generation++;
             touched = true;
@@ -226,6 +235,7 @@ export class FolderIndexer {
             s.notes = null;
             s.resolutions.clear();
             s.readings.delete(fsPath);
+            s.modified.delete(fsPath);
             s.index = null;
             s.generation++;
             touched = true;
@@ -276,14 +286,17 @@ export class FolderIndexer {
         // Readings made by this build, kept apart so one taken before a change
         // can serve this build without being cached past it.
         const readings = new Map<string, NoteReading | null>();
+        const times = new Map<string, number | null>();
         await Promise.all(notes.map(async (fsPath) => {
             if (s.readings.has(fsPath)) { return; }
-            const text = await this.io.readText(fsPath);
+            const [text, modified] = await Promise.all([this.io.readText(fsPath), this.io.modified?.(fsPath) ?? null]);
             const reading = text === null ? null : readNote(text);
             readings.set(fsPath, reading);
-            if (live()) { s.readings.set(fsPath, reading); }
+            times.set(fsPath, modified);
+            if (live()) { s.readings.set(fsPath, reading); s.modified.set(fsPath, modified); }
         }));
         const readingOf = (fsPath: string) => s.readings.get(fsPath) ?? readings.get(fsPath) ?? null;
+        const modifiedOf = (fsPath: string) => s.modified.get(fsPath) ?? times.get(fsPath) ?? null;
 
         // Every note the walk listed exists, whether or not the workspace file
         // index (capped on its own) reached it, so both answer `isFile`.
@@ -332,6 +345,7 @@ export class FolderIndexer {
                 status: meta?.status ?? null,
                 trust: meta?.trust ?? null,
                 staleAfter: meta?.staleAfter ?? null,
+                modified: modifiedOf(fsPath),
             });
             for (const link of reading?.links ?? []) {
                 if (link.path === "") { continue; }

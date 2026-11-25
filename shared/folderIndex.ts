@@ -27,6 +27,26 @@ export interface FolderNode {
     status: OkfStatus | null;
     trust: OkfTrust | null;
     staleAfter: string | null;
+    /**
+     * The day the file was last written: epoch milliseconds rounded down to a
+     * whole UTC day (`toIndexDay`), null when the file system would not say.
+     * Optional on the wire: a host that does not stat leaves it out, and every
+     * reader treats absent as unknown rather than as old.
+     *
+     * A day and not the instant because the index is re-sent only when its
+     * content changes (`previous` in src/folderIndex.ts), and an instant would
+     * change on every save; to the day, a save that touches no reference
+     * re-sends nothing but the first time that day. What reads it weighs
+     * weeks and months, where a day is no loss.
+     */
+    modified?: number | null;
+}
+
+export const INDEX_DAY_MS = 86_400_000;
+
+/** `ms` rounded down to the start of its UTC day, as `FolderNode.modified` carries it. */
+export function toIndexDay(ms: number): number {
+    return Math.floor(ms / INDEX_DAY_MS) * INDEX_DAY_MS;
 }
 
 /** One reference from a note to another, directed from the note that names it. */

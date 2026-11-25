@@ -464,6 +464,11 @@ export function notifyRequestRecentFiles(): void {
     vscode.postMessage({ type: "requestRecentFiles" });
 }
 
+/** Ask the host to name a folder's subjects (`subjectNames`); it answers `subjectNames` with the same id. */
+export function notifyRequestSubjectNames(requestId: number, subjects: { id: string; notes: string[]; tags: string[] }[]): void {
+    vscode.postMessage({ type: "requestSubjectNames", requestId, subjects });
+}
+
 /** Open one of the recent files the host listed, by the path it gave. */
 export function notifyOpenRecentFile(path: string): void {
     vscode.postMessage({ type: "openRecentFile", path });

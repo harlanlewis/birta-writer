@@ -77,6 +77,10 @@ Paste-unfurl in the Mac app writes on the same terms as in the extension: the fe
 
 `shared/embedProviders.ts` enumerates the hosts an embed card can reach, and the same table generates the content-security-policy grants on both surfaces: directly in `src/webviewHtml.ts`, and through the Swift restatement in `EmbedHosts` for the Mac app.
 
+### The Mac app naming subjects: a model, and no request
+
+Folder Overview's subjects can be named by Apple's on-device model (`OnDeviceSubjectNamer`, the `subjectNames` capability), on a Mac with Apple Intelligence turned on. It is on no rung of the ladder because nothing leaves the machine: `SystemLanguageModel` runs on the Mac, and the app makes no request to name anything. What the model is given is the least a name can be made from, each subject's note names and its commonest tags, and never a note's text (`SubjectNames.prompt`). The extension has no such capability, and a hosted model in its place would be rung 3: the reader's note names, uploaded by Birta, to a destination Birta chose.
+
 ### The Mac App Store build: the same ladder, with rungs removed
 
 The copy the Mac App Store installs is the same program as the direct download, run inside the App Sandbox, and `Distribution` (`mac/Sources/BirtaWriterCore/Distribution.swift`) reads which one it is off the sandbox at launch. For this document the difference is only subtraction: the store build makes no request the direct build does not make, and some the direct build makes it never does.

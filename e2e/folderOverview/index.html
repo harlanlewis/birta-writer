@@ -62,7 +62,7 @@
     tocVisibility: "hidden",
     proofread: { grammarCheck: false, spellCheck: false },
     host: {
-      capabilities: ["toc", "contentMeasure", ...(EMPTY ? [] : ["projectFiles", "folderIndex"]), ...(LAUNCHER ? ["fileLauncher"] : [])],
+      capabilities: ["toc", "contentMeasure", ...(EMPTY ? [] : ["projectFiles", "folderIndex"]), ...(LAUNCHER ? ["fileLauncher", "subjectNames"] : [])],
       arrangements: [], shortcuts: [],
     },
   };
@@ -100,6 +100,13 @@
       if (msg.type === "requestRecentFiles" && LAUNCHER) {
         const files = Array.from({ length: 9 }, (_, i) => ({ path: `/Users/r/notes/recent-${i + 1}.md`, name: `recent-${i + 1}.md`, detail: "~/notes" }));
         window.postMessage({ type: "recentFiles", files }, "*");
+      }
+      // The Mac app's on-device namer, answered at once: every subject gets
+      // a name built from its first note, so a check can tell a host's name
+      // from the page's own.
+      if (msg.type === "requestSubjectNames") {
+        const names = Object.fromEntries(msg.subjects.map((s) => [s.id, `Named: ${s.notes[0]}`]));
+        window.postMessage({ type: "subjectNames", requestId: msg.requestId, names }, "*");
       }
       if (msg.type === "requestFolderRecents" && RECENTS) {
         window.postMessage({ type: "folderRecents", paths: window.__recents }, "*");

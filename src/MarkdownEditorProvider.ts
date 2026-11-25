@@ -7,7 +7,7 @@ import { computeLineMap, sourceLineCount } from "../shared/lineMap";
 import { extractFrontmatter, restoreContentForSave } from "../shared/contentTransform";
 import { SuggestionProviders } from "./suggestionProviders";
 import { FolderIndexer, NOTE_GLOB, noteWalkExclude } from "./folderIndex";
-import type { FolderIndex } from "../shared/folderIndex";
+import { toIndexDay, type FolderIndex } from "../shared/folderIndex";
 import { DiskDriftController } from "./diskDrift";
 import { settlePhantomDirty } from "./phantomDirty";
 import { judgeReplacement } from "../shared/destructiveGuard";
@@ -342,6 +342,13 @@ export class MarkdownEditorProvider
                 return Buffer.from(await vscode.workspace.fs.readFile(vscode.Uri.file(fsPath))).toString("utf8");
             } catch {
                 return null; // unreadable: indexed as a note with no references
+            }
+        },
+        modified: async (fsPath) => {
+            try {
+                return toIndexDay((await vscode.workspace.fs.stat(vscode.Uri.file(fsPath))).mtime);
+            } catch {
+                return null; // unknown, which a view reads as unknown rather than as old
             }
         },
         fileIndex: async () => (await this._suggestions.getLinkFileIndex()).map((u) => u.fsPath),

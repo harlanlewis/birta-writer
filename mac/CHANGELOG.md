@@ -12,6 +12,10 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ## [Unreleased]
 
+### Added
+
+- On a Mac with Apple Intelligence turned on (macOS 26 or later), Birta Writer for Mac names Folder Overview's subjects with Apple's on-device model: a short topic name in place of a name made from the notes' shared words or tags. The model sees each subject's note names and its commonest tags, never a note's text, and runs on the Mac, so nothing is sent anywhere. Without Apple Intelligence the subjects keep the names their notes give them.
+
 ### Fixed
 
 - In Birta Writer for Mac, Folder Overview no longer covers the titlebar. Its title no longer sits under the titlebar buttons, and the file list stays open beside it.
