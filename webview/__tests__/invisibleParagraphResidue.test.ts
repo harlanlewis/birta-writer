@@ -87,11 +87,12 @@ describe("invisible top-level paragraphs serialize to nothing (MAR-360)", () => 
         // down and the stock spelling ("") survives.
         expect(editor.action(getMarkdown())).toBe("");
 
-        // Still all-invisible with two: stock spelling again ("\n\n"), and
-        // above all no childless-root crash in remark's root handler.
+        // Still all-invisible with two: the stock spelling again, "", which
+        // reparses to the empty document, and above all no childless-root
+        // crash in remark's root handler.
         const v = view(editor);
         v.dispatch(v.state.tr.insert(0, v.state.schema.nodes.paragraph.createChecked(null)));
-        expect(editor.action(getMarkdown())).toBe("\n\n");
+        expect(editor.action(getMarkdown())).toBe("");
     });
 
     it("serializing an all-invisible doc while the VIEW holds content should not throw", async () => {

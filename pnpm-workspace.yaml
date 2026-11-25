@@ -9,22 +9,21 @@ packages:
 overrides:
     # One KaTeX in the tree, which katexSingleVersion.test.ts requires since
     # 0.18 prefixed its CSS classes. micromark-extension-math still asks for
-    # ^0.16. Retires when it asks for ^0.18.
-    katex: ^0.18.11
+    # ^0.16 and mermaid for ^0.18. Retires when both ask for ^0.19.
+    katex: ^0.19.1
     # GHSA-g3hv-75wg-m249 (below 11.0.1, no fixed 10.x). mocha 12 and vsce ask
     # for ^10. Scoped to 10.x on purpose: 9.x has no fixed release, and glob 10
     # matches nothing under minimatch 11. Retires when both ask for ^11.
     "minimatch@>=10 <11.0.1": ^11.0.1
 
 patchedDependencies:
-    "@milkdown/transformer@7.22.1": patches/@milkdown__transformer@7.22.1.patch
+    "@milkdown/transformer@7.23.0": patches/@milkdown__transformer@7.23.0.patch
 
 # Every dependency that ships an install script is named, because an
-# undeclared one fails the install. All three are denied, which is how every
+# undeclared one fails the install. Both are denied, which is how every
 # install and release has run: esbuild resolves its platform binary as an
-# optional dependency, and keytar and vsce-sign arrive with vsce. Allowing one
-# is a change to what an install executes, so it gets its own reason here.
+# optional dependency, and vsce-sign arrives with vsce. Allowing one is a
+# change to what an install executes, so it gets its own reason here.
 allowBuilds:
     "@vscode/vsce-sign": false
     esbuild: false
-    keytar: false

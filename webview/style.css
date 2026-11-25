@@ -1149,6 +1149,13 @@ body:not(.editor-width-auto) {
         }
     }
 
+    /* How far a bw-full block shifts left out of the column: the breakout
+       target's left edge, from the column's. Never positive, so a pane too
+       tight for a breakout leaves the block in the column. */
+    #editor {
+        --bw-breakout-ml: min(0px, calc(var(--bw-target-left) - var(--bw-col-ml) - var(--editor-content-left-padding, 76px)));
+    }
+
     :is(
         .ProseMirror > .code-block-wrapper.bw-full,
         .ProseMirror > .mw-table.bw-full,
@@ -1159,7 +1166,21 @@ body:not(.editor-width-auto) {
         /* The image wrapper's base max-width: 100% would clamp the breakout
            width right back to the column — lift caps for any bw-full block. */
         max-width: none;
-        margin-left: min(0px, calc(var(--bw-target-left) - var(--bw-col-ml) - var(--editor-content-left-padding, 76px)));
+        margin-left: var(--bw-breakout-ml);
+    }
+
+    /* A standalone image's or an embed's gutter belongs to its PARAGRAPH,
+       which stays the column, while the box inside it breaks out. The image
+       wrapper is positioned, so it paints over the marker left at the
+       column's edge, further the wider the pane (MAR-506); the embed card
+       leaves it stranded inside its frame. The gutter takes the same shift
+       the box does. A code block and a table carry their gutter inside the
+       box that breaks out, so theirs follows already. */
+    :is(
+        .ProseMirror > p.img-block:has(> .image-wrapper.bw-full),
+        .ProseMirror > p.embed-host:has(> .embed-card-host.bw-full)
+    ) .heading-fold-gutter--block {
+        left: calc(var(--gutter-left, var(--gutter-column)) + var(--bw-breakout-ml));
     }
 }
 

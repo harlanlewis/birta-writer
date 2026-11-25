@@ -8,6 +8,11 @@
  * land in the webview state bag.
  */
 export async function run({ page, check, baseUrl }) {
+    // Wider than the runner's default on purpose: how far a full-width block
+    // reaches under its own gutter grows with the pane, and at the default
+    // width only WebKit's narrower column showed the image covering its
+    // marker. The later checks set their own size where they need one.
+    await page.setViewportSize({ width: 1600, height: 900 });
     await page.goto(`${baseUrl}/index.html`);
     await page.waitForSelector(".milkdown .ProseMirror", { timeout: 10000 });
     // The embed decoration pass and the img-block pass arm on idle (≤1s).
@@ -25,6 +30,26 @@ export async function run({ page, check, baseUrl }) {
                 pane: document.documentElement.clientWidth,
             };
         });
+
+    // A full-width block breaks out LEFT of the column, which is where its
+    // own gutter marker sits. The marker has to move out with it (MAR-506):
+    // left behind, it is painted over by the image or stranded inside the
+    // embed's frame, further the wider the window.
+    const markerOnTop = (selector) =>
+        page.evaluate((sel) => {
+            const block = document.querySelector(sel)?.closest(".ProseMirror > *");
+            const marker = block?.querySelector(".heading-fold-marker--block");
+            if (!marker) return { ok: false, detail: `no marker for ${sel}` };
+            const r = marker.getBoundingClientRect();
+            const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+            const host = document.querySelector(sel).getBoundingClientRect();
+            // On top, and in the margin beside the block rather than inside it.
+            const ok = Boolean(hit && marker.contains(hit)) && r.right <= host.left + 1;
+            return {
+                ok,
+                detail: `marker=[${r.left.toFixed(0)},${r.right.toFixed(0)}] block.left=${host.left.toFixed(0)} hit=${hit?.tagName}.${hit?.className?.baseVal ?? hit?.className}`,
+            };
+        }, selector);
 
     check(
         "--bw-pane publishes the pane's client width",
@@ -186,6 +211,8 @@ export async function run({ page, check, baseUrl }) {
         `host.right=${fullEmbed.right.toFixed(0)} column.right=${geo.contentRight.toFixed(0)}`,
     );
     check("the breakout never creates horizontal overflow", fullEmbed.overflow === false);
+    const embedMarker = await markerOnTop(".embed-card-host");
+    check("a full-width embed leaves its own marker clickable", embedMarker.ok, embedMarker.detail);
     check(
         "the embed width preference persists to the state bag",
         fullEmbed.stored?.["embed:https://www.youtube.com/watch?v=dQw4w9WgXcQ"] === "full",
@@ -271,6 +298,8 @@ export async function run({ page, check, baseUrl }) {
             && !fullImage.overflow,
         `left=${fullImage.left.toFixed(0)} col=[${geo.contentLeft.toFixed(0)},${geo.contentRight.toFixed(0)}] cls=${fullImage.cls}`,
     );
+    const imageMarker = await markerOnTop(".ProseMirror p.img-block .image-wrapper");
+    check("a full-width image leaves its own marker clickable", imageMarker.ok, imageMarker.detail);
 
     await page.locator(".img-tb-width").dispatchEvent("click");
     await page.waitForTimeout(50);
@@ -310,6 +339,8 @@ export async function run({ page, check, baseUrl }) {
             && !fullCode.overflow,
         `left=${fullCode.left.toFixed(0)} col=[${geo.contentLeft.toFixed(0)},${geo.contentRight.toFixed(0)}]`,
     );
+    const codeMarker = await markerOnTop(".code-block-wrapper");
+    check("a full-width code block leaves its own marker clickable", codeMarker.ok, codeMarker.detail);
     check(
         "the code width preference persists, anchored on the first line",
         fullCode.stored?.["code:const answer = 42;"] === "full",

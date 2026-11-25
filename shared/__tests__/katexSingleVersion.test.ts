@@ -1,23 +1,18 @@
 /**
  * Exactly one KaTeX in the tree.
  *
- * `katex` is not only ours. `mermaid` and `micromark-extension-math` depend on
- * it too, and both declare `^0.16`, as does mermaid 12. Today everything meets
- * at one version and this passes for free; the moment the direct dependency
- * leaves `^0.16` it stops being free, because the other two do not follow and
- * the tree resolves two copies.
+ * `katex` is not only ours. `micromark-extension-math` asks for `^0.16` and
+ * `mermaid` for `^0.18`, neither of which admits our direct dependency's
+ * version, so left alone the tree resolves more than one copy. The `katex`
+ * override in `pnpm-workspace.yaml` is what holds them together, and its
+ * comment says what retires it.
  *
  * Two copies is the state to refuse, and the bytes are the smaller half of why.
  * `dist/katex.css` is emitted from OUR KaTeX alone, and 0.18 prefixed 21
  * generic class names (`.base` to `.katex-base`, and `.accent`, `.hline`,
- * `.strut` and the rest). Math rendered by the other copy carries the names
+ * `.strut` and the rest). Math rendered by another copy carries the names
  * that stylesheet no longer has rules for, so one document would render math
  * through two engines against a stylesheet written for one of them.
- *
- * Forcing them together with a pnpm override is the obvious escape and it is
- * measured, not theoretical: it puts `micromark-extension-math` on 0.18, whose
- * work lands on the parse path, and `corpusMoveSampling` and `roundTripCorpus`
- * then exceed their 30s budget on a 58 KB document. See MAR-452.
  *
  * So this reads the lockfile rather than any one mechanism: one resolved
  * version is the requirement, and how it is achieved is the open question.
