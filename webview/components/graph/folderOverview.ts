@@ -519,11 +519,14 @@ export function createFolderOverview(host: FolderOverviewHost): FolderOverview {
             notes.push(fill(t("{0} more not shown"), String(laid.omitted)));
         }
         if (laid.nodes.some((n) => n.activity !== null && n.activity !== undefined && n.activity < DORMANT_BELOW)) {
-            notes.push(t("Faded dots have not been touched in months"));
+            notes.push(t("Faded names have not been touched in months"));
         }
         if (state.index.truncated) {
             notes.push(t("This folder has more notes than its index reads"));
         }
+        // Lines are drawn only for the note pointed at (ringStage.ts), so say
+        // how to see them.
+        notes.push(t("Point at a note to see how it connects"));
         caption.textContent = notes.join(". ");
         fillLegend(legend, laid);
     }

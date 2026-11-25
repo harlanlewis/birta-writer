@@ -268,6 +268,35 @@ describe("the tier on screen", () => {
         stage.element.remove();
     });
 
+    it("no line should be lit at rest; a note should light its way back to the centre and out to its own children", () => {
+        // a and b are first-ring and refer to each other; kid hangs from a.
+        const idx = index(["self.md", "a.md", "b.md", "kid.md"].map((p) => node(p)),
+            [edge("self.md", "a.md"), edge("self.md", "b.md"), edge("a.md", "b.md"), edge("a.md", "kid.md")]);
+        const stage = createRingStage({ openNote: () => {}, onEscape: () => {}, centreIsCurrent: true });
+        document.body.append(stage.element);
+        stage.draw(layoutRings(buildLocalGraph(idx, "self.md", 2)!, 100));
+        const lit = () => [...stage.element.querySelectorAll<SVGElement>(".lg-line.lg-lit")]
+            .map((l) => [l.dataset["from"], l.dataset["to"]].join(">")).sort();
+        const hover = (id: string, on: boolean) => stage.element.querySelector<HTMLElement>(`.lg-node[data-id="${id}"]`)!
+            .dispatchEvent(new MouseEvent(on ? "mouseenter" : "mouseleave"));
+        expect(lit()).toEqual([]);
+        // An outer note: the centre to its parent, and its parent to it.
+        hover("kid.md", true);
+        expect(lit()).toEqual(["a.md>kid.md", "self.md>a.md"]);
+        hover("kid.md", false);
+        // A first-ring note: back to the centre and out to its child, and not
+        // its tie to its neighbour b, which sitting beside it already says.
+        hover("a.md", true);
+        expect(lit()).toEqual(["a.md>kid.md", "self.md>a.md"]);
+        hover("a.md", false);
+        // The centre: its whole first ring.
+        hover("self.md", true);
+        expect(lit()).toEqual(["self.md>a.md", "self.md>b.md"]);
+        hover("self.md", false);
+        expect(lit()).toEqual([]);
+        stage.element.remove();
+    });
+
     it("a pair of notes naming each other should be drawn as one line, with no arrowheads", () => {
         const idx = index([node("self.md"), node("a.md")], [edge("self.md", "a.md"), edge("a.md", "self.md")]);
         const stage = createRingStage({ openNote: () => {}, onEscape: () => {}, centreIsCurrent: true });

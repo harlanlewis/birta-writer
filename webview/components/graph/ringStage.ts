@@ -138,15 +138,42 @@ export function createRingStage(host: RingStageHost): RingStage {
         onEscape: host.onEscape,
     });
 
+    /**
+     * Lines are not drawn at rest: where a note sits already says how bound
+     * and how related it is (./localGraph.ts `layoutRings`), and a web of
+     * lines over that says it again, louder, and buries the names. A note
+     * pointed at or focused shows its place in the tree the rings draw: the
+     * way back to the centre (for an outer-ring note, the centre to the note
+     * it hangs from, and that note to it), and the way out to its own first
+     * layer of children (for the centre, its ring; for a first-ring note, the
+     * outer notes that hang from it). Ties between neighbours are left out:
+     * that two notes sit side by side already says it.
+     */
     function lightFor(id: string | null): void {
         stage.classList.toggle("lg-stage--lit", id !== null);
-        for (const el of stage.querySelectorAll<SVGElement>("[data-from]")) {
-            el.classList.toggle("lg-lit", id !== null && (el.dataset["from"] === id || el.dataset["to"] === id));
+        const nodes = [...stage.querySelectorAll<HTMLElement>(".lg-node")];
+        const up = new Map<string, string>();
+        const centre = nodes.find((n) => n.classList.contains("lg-node--self"))?.dataset["id"];
+        for (const n of nodes) {
+            const nid = n.dataset["id"]!;
+            if (n.dataset["parent"] !== undefined) { up.set(nid, n.dataset["parent"]); }
+            else if (n.dataset["ring"] === "1" && centre !== undefined) { up.set(nid, centre); }
         }
+        // The tree's edges to light: each step from `id` back to the centre,
+        // and each from `id` out to a note one layer further.
+        const lit = new Set<string>();
+        const key = (a: string, b: string): string => (a < b ? `${a}\u0000${b}` : `${b}\u0000${a}`);
+        if (id !== null) {
+            for (let at = id, next = up.get(at); next !== undefined; at = next, next = up.get(at)) { lit.add(key(at, next)); }
+            for (const [child, parent] of up) { if (parent === id) { lit.add(key(child, id)); } }
+        }
+        for (const el of stage.querySelectorAll<SVGElement>("[data-from]")) {
+            el.classList.toggle("lg-lit", lit.has(key(el.dataset["from"]!, el.dataset["to"]!)));
+        }
+        const parent = id === null ? undefined : nodes.find((n) => n.dataset["id"] === id)?.dataset["parent"];
         // The tier a node opens: its own arc, or, for a tier note, the arc it
         // is in, so moving from a parent onto one of its notes keeps it open.
-        const node = id === null ? null : [...stage.querySelectorAll<HTMLElement>(".lg-node")].find((n) => n.dataset["id"] === id) ?? null;
-        const open = node?.dataset["parent"] ?? id;
+        const open = parent ?? id;
         for (const el of stage.querySelectorAll<HTMLElement | SVGElement>("[data-tier]")) {
             el.classList.toggle("lg-tier-open", open !== null && el.dataset["tier"] === open);
         }
@@ -173,6 +200,7 @@ export function createRingStage(host: RingStageHost): RingStage {
         btn.style.top = `${node.y}%`;
         btn.tabIndex = -1;
         btn.dataset["id"] = node.id;
+        btn.dataset["ring"] = String(node.ring);
         // The name is the mark; the dot is what a note falls back to where
         // the drawing has no room for its name (`declutterLabels`).
         const dot = document.createElement("span");

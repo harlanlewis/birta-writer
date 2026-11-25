@@ -45,35 +45,37 @@ export const LOCAL_GRAPH_CSS = `
     pointer-events: none;
 }
 
+/* Not drawn at rest (ringStage.ts \`lightFor\`): placement carries the
+   structure, and a note's lines come out while it is pointed at or focused. */
 .lg-line {
-    stroke: var(--vscode-editorWidget-border);
+    stroke: var(--vscode-focusBorder);
     stroke-width: 1;
     vector-effect: non-scaling-stroke;
     fill: none;
+    opacity: 0;
+    transition: opacity 0.12s ease;
 }
 
-.lg-stage--lit .lg-line {
-    opacity: 0.25;
-}
-
-.lg-stage--lit .lg-line.lg-lit {
+.lg-line.lg-lit {
     opacity: 1;
-    stroke: var(--vscode-focusBorder);
 }
 
 /* The outer tier waiting for its parent (ringStage.ts \`tierFor\`): drawn,
    so it can fade in where it belongs, and out of the way until then. */
-.lg-node--tier,
-.lg-line--tier {
+.lg-node--tier {
     opacity: 0;
     pointer-events: none;
     transition: opacity 0.15s ease;
 }
 
-.lg-node--tier.lg-tier-open,
-.lg-stage--lit .lg-line--tier.lg-tier-open {
+.lg-node--tier.lg-tier-open {
     opacity: 1;
     pointer-events: auto;
+}
+
+/* A lit line to a waiting note stays out until the note is out with it. */
+.lg-line--tier:not(.lg-tier-open) {
+    opacity: 0;
 }
 
 /* A note IS its name: a small chip on the paper, centred on the layout point,
