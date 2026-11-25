@@ -6,6 +6,7 @@
 
 ### Added
 
+- Template directives that site generators and docs tools put in Markdown are drawn as source, in a muted monospace face, so they no longer read as part of the sentence around them. That covers Hugo and Quarto shortcodes (`{{< shots >}}`, `{{% notice %}}`), Liquid, Jekyll, Eleventy and Jinja tags and output (`{% include note.html %}`, `{{ page.title }}`), and Mustache and Handlebars. A directive written on its own line now keeps that line instead of running into the text or images beside it, so a paired shortcode reads as the start and end of what it wraps. Drawing them changes nothing in the file, and inline code and code blocks are left alone.
 - Folder Overview lists the folder's Subjects: groups of notes that belong together by their links and shared tags, whichever folders they sit in, with the liveliest first. A note can sit in more than one subject. Pressing a subject draws it, around the note most bound into it; pressing it again goes back to your own work.
 - Folder Overview lists what is Fading: notes that were among the folder's most connected but that you have not written in three months and that nothing written since refers to, with how long ago each was written. A note you still rely on stays off the list as long as something recent refers to it.
 

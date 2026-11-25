@@ -70,11 +70,15 @@ export type {
 // and `liftTarget` the inverse "may this range come back out?" — the schema
 // itself deciding, which is what lets editing/wrapBlocks climb to the depth
 // where a quote is legal instead of hard-coding where lists and tables sit.
+// The mark steps let a decoration redo what a mark-only edit touched, since
+// their step maps are empty (plugins/templateDirectiveDecorations.ts).
 export {
+    AddMarkStep,
     canJoin,
     findWrapping,
     liftTarget,
     Mapping,
+    RemoveMarkStep,
     ReplaceAroundStep,
     ReplaceStep,
 } from "@milkdown/prose/transform";

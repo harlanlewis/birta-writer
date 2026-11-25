@@ -85,6 +85,7 @@ export { activeBlockPlugin } from "./activeBlock";
 export { hiddenSelectionPlugin } from "./hiddenSelection";
 export { noteMarkersEnabled, noteMarkersPlugin, regateNoteMarkers } from "./noteMarkers";
 export { pendingRangePlugin, setPendingRange } from "./pendingRange";
+export { templateDirectivesPlugin } from "./templateDirectives";
 export { slashArgumentHintPlugin, setSlashArgumentHint } from "./slashArgumentHint";
 export { emptyLineHintPlugin } from "./emptyLineHint";
 export { getProofreadConfig, proofreadPlugin, setProofreadConfig } from "./proofread";

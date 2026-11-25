@@ -34,6 +34,14 @@ The markers a writer leaves for themselves (`[TK]`, `TODO:`, `FIXME:`, custom st
 
 One hue for every kind. Color still encodes the source, here the Notes scanner, never severity: a FIXME does not shout louder than a TK, because triage belongs in the sidebar rather than in the prose. HTML comments are left alone, since they already render as their own distinct node. (`note-marker`, `webview/plugins/noteMarkers.ts`.)
 
+### Muted monospace means "source another program reads"
+
+Text that is addressed to a tool rather than to the reader is drawn in the editor's monospace face, in the description colour, with no background: an html tag atom beside the text it styles (`html-tag--paired`, `webview/plugins/htmlLivePairs.ts`), and a template directive a site generator will expand, such as `{{< shots >}}` or `{% include note.html %}` (`tpl-directive`, `webview/plugins/templateDirectives.ts`). No background, because a chip on a code ground is inline code, which the writer typed as content. No hue, because hue is spoken for. The drawing is the whole treatment: the file does not change, and the editor never expands what it draws.
+
+A directive that is the whole of its line keeps the line. A paired directive marks where a region starts and ends, and the paragraph join that would put it beside the first image it wraps hides exactly that.
+
+Directives are recognized by their delimiters (`{{ }}`, `{% %}`, `{# #}`), never by a table of tag names, so a tool nobody listed is covered too. Code is never a directive.
+
 ### One treatment per meaning, and no more
 
 Don't stack a second visual channel onto a decoration to say the same thing. iA Writer can lean on hue alone because its canvas is otherwise undecorated. Ours already spends color and underlines on links, highlights, and marks, so proofreading gets exactly one treatment per meaning.
