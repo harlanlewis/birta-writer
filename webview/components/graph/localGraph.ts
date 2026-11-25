@@ -215,13 +215,16 @@ export function hueOf(types: readonly string[], type: string | null): number | n
 
 /**
  * A subject (./folderSignals.ts `FolderSubject`) as a ring drawing: its core
- * at the centre, the notes linked to the core on the first ring, and the
- * rest of the subject, the notes leaning in from elsewhere included, on the
- * second, each capped as a note's own rings are. Lines are every reference
- * between two drawn notes; a reference out of the subject is not drawn, since
- * the drawing is OF the subject.
+ * at the centre, the notes tied to the core on the first ring (`near`, the
+ * subject's own answer, which counts a shared tag as a tie; the notes linked
+ * to the core when it is not given), and the rest of the subject, the notes
+ * leaning in from elsewhere included, on the second, each capped as a note's
+ * own rings are. Lines are every reference between two drawn notes; a
+ * reference out of the subject is not drawn, since the drawing is OF the
+ * subject, and a tie by tag has no line, since no note names the other.
  */
-export function buildSubjectGraph(index: FolderIndex, core: string, notes: readonly string[]): LocalGraph | null {
+export function buildSubjectGraph(index: FolderIndex, core: string, notes: readonly string[],
+                                  near?: readonly string[]): LocalGraph | null {
     const nodesByPath = new Map(index.nodes.map((n) => [n.path, n]));
     if (!nodesByPath.has(core)) { return null; }
     const inSubject = new Set([core, ...notes.filter((n) => nodesByPath.has(n))]);
@@ -237,9 +240,10 @@ export function buildSubjectGraph(index: FolderIndex, core: string, notes: reado
     const name = (id: string): string => nodesByPath.get(id)!.name;
     const order = byDegreeThenName(degree, name);
     const rest = [...inSubject].filter((n) => n !== core);
-    const ring1All = rest.filter((n) => touchesCore.has(n)).sort(order);
+    const tied = near ? new Set(near) : touchesCore;
+    const ring1All = rest.filter((n) => tied.has(n)).sort(order);
     const ring1 = ring1All.slice(0, RING_CAPACITY[1]);
-    const ring2All = rest.filter((n) => !touchesCore.has(n)).sort(order);
+    const ring2All = rest.filter((n) => !tied.has(n)).sort(order);
     const ring2 = ring1.length > 0 ? ring2All.slice(0, RING_CAPACITY[2]) : [];
     const omitted = ring1All.length - ring1.length + ring2All.length - ring2.length;
     const drawn = new Set([core, ...ring1, ...ring2]);

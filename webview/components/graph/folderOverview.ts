@@ -88,9 +88,6 @@ export interface OverviewCentre {
     reason: "active" | "hub";
 }
 
-/** How many of the most active notes are tried for a centre before giving up on them. */
-const CENTRE_CANDIDATES = 50;
-
 /**
  * The note the overview's drawing centres on: the most active note that
  * links or is linked to, with its two rings. Activity is `activityOf`'s:
@@ -110,11 +107,21 @@ export function overviewCentre(index: FolderIndex, recents: readonly string[] | 
         return graph && graph.nodes.length >= 2 ? graph : null;
     };
     const rank = new Map([...new Set(recents ?? [])].map((p, i) => [p, i]));
+    // Only a note something references, or that references anything, can be
+    // drawn: tried in order of activity, the first is drawable, where trying
+    // the most active notes whatever their links could reach a cut-off
+    // before reaching a note that links (a month of daily notes, say).
+    const linked = new Set<string>();
+    for (const e of index.edges) {
+        if (e.to === e.from) { continue; }
+        linked.add(e.from);
+        if (e.to !== null) { linked.add(e.to); }
+    }
     const known = [...activity.entries()]
-        .filter((e): e is [string, number] => typeof e[1] === "number")
+        .filter((e): e is [string, number] => typeof e[1] === "number" && linked.has(e[0]))
         .sort((a, b) => b[1] - a[1] || (rank.get(a[0]) ?? Infinity) - (rank.get(b[0]) ?? Infinity) || a[0].localeCompare(b[0]));
-    if (known.length > 0) {
-        for (const [path] of known.slice(0, CENTRE_CANDIDATES)) {
+    if ([...activity.values()].some((a) => typeof a === "number")) {
+        for (const [path] of known) {
             const graph = drawable(path);
             if (graph) { return { graph, reason: "active" }; }
         }
@@ -132,7 +139,7 @@ export type SubjectNamer = (subjects: readonly FolderSubject[], index: FolderInd
 export function sinceWritten(modified: number, now: number): string {
     const days = Math.max(0, Math.floor((now - modified) / 86_400_000));
     if (days < 60) { return fill(t("{0} days ago"), String(days)); }
-    const months = Math.round(days / 30.4);
+    const months = Math.floor(days / 30.4);
     if (months < 24) { return fill(t("{0} months ago"), String(months)); }
     return fill(t("{0} years ago"), String(Math.floor(days / 365)));
 }
@@ -171,6 +178,22 @@ export const NAMED_FROM_NOTES = 12;
 export const SUBJECT_NAMES_TIMEOUT_MS = 30_000;
 
 let nextNamesRequest = 1;
+
+/**
+ * Names a host gave, by subject and members (`subjectKey`), and the subjects
+ * it has been asked about, for the life of the page rather than of one view:
+ * a host's model takes a moment per subject, and the same folder opened twice
+ * is the same question twice. A subject whose members change is a new key.
+ */
+const hostNames = new Map<string, string>();
+const askedNames = new Set<string>();
+/** Forget every host name and question, for tests that each start from a page that asked nothing. */
+export function resetSubjectNamesForTests(): void {
+    hostNames.clear();
+    askedNames.clear();
+}
+
+const subjectKey = (subject: FolderSubject): string => `${subject.id}\u0000${subject.members.join("\u0000")}`;
 
 /**
  * The host's subject namer, when it declares one (`subjectNames`). What it is
@@ -378,10 +401,7 @@ export function createFolderOverview(host: FolderOverviewHost): FolderOverview {
     const defer = host.defer ?? afterPaint;
     /** The subject drawn in the square, by id; null for the reader's own work. */
     let chosenSubject: string | null = null;
-    /** Names the host gave, by subject id and members, so a redraw keeps them. */
-    const hostNames = new Map<string, string>();
-    const asked = new Set<string>();
-    const nameKey = (subject: FolderSubject): string => `${subject.id}\u0000${subject.members.join("\u0000")}`;
+    const nameKey = subjectKey;
 
     /**
      * Activity and fading at once, since the drawing's centre and the Fading
@@ -393,11 +413,15 @@ export function createFolderOverview(host: FolderOverviewHost): FolderOverview {
     function signalsFor(index: FolderIndex, recents: readonly string[] | null) {
         if (signals && signals.index === index && signals.recents === recents) { return signals; }
         const activity = activityOf(index, recents, now());
-        const mine = { index, recents, activity, subjects: null as FolderSubject[] | null, fading: fadingNotes(index, recents, now()) };
+        // The last answer's subjects stay up while this one's are found: a
+        // folder that changes under an open overview would otherwise blank
+        // its Subjects list, and drop the focus and the choice held in it.
+        const mine = { index, recents, activity, subjects: signals?.subjects ?? null, fading: fadingNotes(index, recents, now()) };
         signals = mine;
         defer(() => {
-            // Superseded meanwhile: a newer index or list has its own on the way.
-            if (signals !== mine) { return; }
+            // Superseded meanwhile (a newer index or list has its own on the
+            // way), or the view has gone: nothing is left to draw it into.
+            if (signals !== mine || !element.isConnected) { return; }
             mine.subjects = folderSubjects(index, activity);
             askNames(mine.subjects, index);
             drawSubjects();
@@ -408,9 +432,9 @@ export function createFolderOverview(host: FolderOverviewHost): FolderOverview {
 
     /** Ask the host, once per subject as it stands, for names; draw them as they come. */
     function askNames(subjects: readonly FolderSubject[], index: FolderIndex): void {
-        const fresh = subjects.filter((s) => !asked.has(nameKey(s)));
+        const fresh = subjects.filter((s) => !askedNames.has(nameKey(s)));
         if (!host.nameSubjects || fresh.length === 0) { return; }
-        fresh.forEach((s) => asked.add(nameKey(s)));
+        fresh.forEach((s) => askedNames.add(nameKey(s)));
         void host.nameSubjects(fresh, index).then((names) => {
             let changed = false;
             for (const s of fresh) {
@@ -450,16 +474,19 @@ export function createFolderOverview(host: FolderOverviewHost): FolderOverview {
         title.textContent = state?.index?.rootName ?? "";
         title.hidden = !state?.index;
         if (!state) {
+            signals = null;
             stage.element.hidden = true;
             caption.textContent = t("Reading the folder…");
             return;
         }
         if (recents === null && host.recentsAwaited) {
+            signals = null;
             stage.element.hidden = true;
             caption.textContent = "";
             return;
         }
         if (!state.index) {
+            signals = null;
             stage.element.hidden = true;
             caption.textContent = t("This folder has no notes to draw");
             return;
@@ -470,7 +497,7 @@ export function createFolderOverview(host: FolderOverviewHost): FolderOverview {
         // are still being found stays chosen and is drawn when they land.
         if (chosenSubject !== null && subjects !== null && !subject) { chosenSubject = null; }
         const centre = subject
-            ? { graph: buildSubjectGraph(state.index, subject.core, [...subject.members, ...subject.also])!, reason: "subject" as const }
+            ? { graph: buildSubjectGraph(state.index, subject.core, [...subject.members, ...subject.also], subject.nearCore)!, reason: "subject" as const }
             : overviewCentre(state.index, recents, activity);
         if (!centre) {
             stage.element.hidden = true;
@@ -507,6 +534,11 @@ export function createFolderOverview(host: FolderOverviewHost): FolderOverview {
      * subject already drawn, goes back to the reader's own work.
      */
     function drawSubjects(): void {
+        // The rows are rebuilt, so the one holding focus is found again by
+        // its subject rather than dropped to the body with the arrows and
+        // Escape going nowhere.
+        const held = document.activeElement instanceof HTMLElement && subjectsList.contains(document.activeElement)
+            ? document.activeElement.dataset["subject"] ?? null : null;
         const subjects = signals?.subjects ?? [];
         subjectsHead.hidden = subjects.length === 0;
         subjectsList.hidden = subjects.length === 0;
@@ -537,6 +569,9 @@ export function createFolderOverview(host: FolderOverviewHost): FolderOverview {
         subjectsList.replaceChildren(...rows);
         subjectsCredit.hidden = !subjects.some((subject) => hostNames.has(nameKey(subject)));
         subjectsRoving.refresh();
+        if (held !== null) {
+            rows.find((row) => row.dataset["subject"] === held)?.focus();
+        }
     }
 
     /** The notes the folder has moved past: a row opens its note. */

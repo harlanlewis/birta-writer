@@ -176,6 +176,13 @@ export interface FolderSubject {
      * Listed with it, drawn in it, counted in neither total.
      */
     also: string[];
+    /**
+     * The notes of `members` and `also` tied to the core directly, by a link
+     * or a shared tag: the drawing's first ring. A tag is a tie here as it is
+     * in finding the subject, so a subject held together by tags alone still
+     * draws as rings rather than as one dot.
+     */
+    nearCore: string[];
     /** The mean activity of its three most active members, or null when none is known. */
     activity: number | null;
 }
@@ -391,12 +398,14 @@ export function folderSubjects(index: FolderIndex, activity: ReadonlyMap<string,
         }).sort();
         const known = members.map((m) => activity.get(m)).filter((a): a is number => typeof a === "number")
             .sort((a, b) => b - a).slice(0, 3);
+        const coreTies = w.get(core) ?? new Map<string, number>();
         subjects.push({
             id: core,
             name: nameSubject(index, members, core),
             core,
             members,
             also,
+            nearCore: [...members, ...also].filter((n) => n !== core && coreTies.has(n)),
             activity: known.length > 0 ? known.reduce((a, b) => a + b, 0) / known.length : null,
         });
     }

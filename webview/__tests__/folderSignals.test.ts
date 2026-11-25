@@ -17,6 +17,7 @@ import {
     nameSubject,
     subjectWeights,
 } from "../components/graph/folderSignals";
+import { buildSubjectGraph } from "../components/graph/localGraph";
 
 const DAY = 86_400_000;
 const NOW = Date.UTC(2026, 10, 24);
@@ -190,6 +191,17 @@ describe("folderSubjects", () => {
         expect(subjects[0]!.also).toEqual(["bridge.md"]);
         expect(subjects[1]!.members).toContain("bridge.md");
         expect(subjects[0]!.activity!).toBeGreaterThan(subjects[1]!.activity!);
+    });
+
+    it("a subject held together by tags alone should still have notes tied to its core, for the drawing's first ring", () => {
+        const idx = index(["t1.md", "t2.md", "t3.md", "t4.md"].map((p) => node(p, { tags: ["garden"] })), []);
+        const [subject] = folderSubjects(idx, activityOf(idx, null, NOW));
+        expect(subject!.members).toHaveLength(4);
+        expect(subject!.nearCore.sort()).toEqual(subject!.members.filter((m) => m !== subject!.core).sort());
+        // Drawn as rings, not as the core alone with "3 more not shown".
+        const graph = buildSubjectGraph(idx, subject!.core, subject!.members, subject!.nearCore)!;
+        expect(graph.nodes.filter((n) => n.ring === 1)).toHaveLength(3);
+        expect(graph.omitted).toBe(0);
     });
 
     it("a group smaller than the minimum, or a note with no ties, should be no subject", () => {

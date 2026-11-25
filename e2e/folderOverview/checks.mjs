@@ -128,6 +128,11 @@ export async function run({ page, check, baseUrl }) {
     check("focus lands on the first recent file", geo.active === "notes/standup.md", String(geo.active));
 
     // ── Subjects: a row draws its subject, and pressing it again goes back ──
+    // Found after the overview paints (`afterPaint`), so waited for. A wait
+    // that times out falls through to the check below, which reports the
+    // empty list it then reads, rather than aborting the suite unreported.
+    await page.waitForFunction((sel) => document.querySelectorAll(`${sel} .fo-subject`).length > 0, OVERVIEW, { timeout: 5000 })
+        .catch(() => {});
     const subjects = await page.evaluate((sel) => [...document.querySelectorAll(`${sel} .fo-subject`)]
         .map((r) => ({ id: r.dataset.subject, label: r.querySelector(".fg-row-label").textContent })), OVERVIEW);
     check("the folder's subjects are listed, the hub's group among them", subjects.length >= 1 && subjects.some((s) => s.id === "index.md"),
@@ -252,6 +257,9 @@ export async function run({ page, check, baseUrl }) {
     await page.waitForTimeout(300);
     await page.evaluate(() => window.__runCommand("showFolderOverview"));
     await page.waitForFunction((sel) => document.querySelectorAll(`${sel} .fo-file`).length > 0, OVERVIEW, { timeout: 5000 });
+    // The subjects are found after the overview paints (`afterPaint`), and the
+    // host's names after that: wait for both, as a reader's eye would.
+    await page.waitForFunction((sel) => [...document.querySelectorAll(`${sel} .fo-subject .fg-row-label`)].some((l) => l.textContent.startsWith("Named: ")), OVERVIEW, { timeout: 5000 });
     const start = await page.evaluate((sel) => {
         const s = document.querySelector(sel);
         const box = (el) => { const r = el.getBoundingClientRect(); return { top: r.top, bottom: r.bottom, height: r.height }; };
