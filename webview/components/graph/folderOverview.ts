@@ -107,8 +107,8 @@ export function overviewCentre(index: FolderIndex, recents: readonly string[] | 
         return graph && graph.nodes.length >= 2 ? graph : null;
     };
     const rank = new Map([...new Set(recents ?? [])].map((p, i) => [p, i]));
-    // Only a note something references, or that references anything, can be
-    // drawn: tried in order of activity, the first is drawable, where trying
+    // Only a note something references, that references anything, or that
+    // the host found alike to another, can be drawn: tried in order of activity, the first is drawable, where trying
     // the most active notes whatever their links could reach a cut-off
     // before reaching a note that links (a month of daily notes, say).
     const linked = new Set<string>();
@@ -117,6 +117,9 @@ export function overviewCentre(index: FolderIndex, recents: readonly string[] | 
         linked.add(e.from);
         if (e.to !== null) { linked.add(e.to); }
     }
+    // A note joined to others only by likeness still has a drawing: its
+    // alike notes on the first ring (./localGraph.ts).
+    for (const p of index.similar ?? []) { linked.add(p.a); linked.add(p.b); }
     const known = [...activity.entries()]
         .filter((e): e is [string, number] => typeof e[1] === "number" && linked.has(e[0]))
         .sort((a, b) => b[1] - a[1] || (rank.get(a[0]) ?? Infinity) - (rank.get(b[0]) ?? Infinity) || a[0].localeCompare(b[0]));
@@ -523,6 +526,9 @@ export function createFolderOverview(host: FolderOverviewHost): FolderOverview {
         }
         if (state.index.truncated) {
             notes.push(t("This folder has more notes than its index reads"));
+        }
+        if (laid.nodes.some((n) => n.alike)) {
+            notes.push(t("Dashed names are alike in content but not linked"));
         }
         // Lines are drawn only for the note pointed at (ringStage.ts), so say
         // how to see them.

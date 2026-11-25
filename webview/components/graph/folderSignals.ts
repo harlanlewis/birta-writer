@@ -21,7 +21,8 @@
  *   nothing written recently refers to (`fadingNotes`). It is the dimension
  *   a link count hides most completely, since the count never goes down.
  * - SUBJECTS: what the folder is about, as groups rather than as a tree.
- *   Communities in the graph of links and shared tags (`folderSubjects`),
+ *   Communities in the graph of links, shared tags and, where the host
+ *   found them, notes alike in content (`folderSubjects`),
  *   found by modularity (Louvain), with a note that leans into a second
  *   group listed in that one too. Folders are a hierarchy someone chose
  *   once; a subject is what the links say now, and it crosses folders.
@@ -76,6 +77,9 @@ export const TAG_PAIR_LIMIT = 40;
 
 /** What two notes sharing a tag weigh, against a link's 1. */
 export const TAG_WEIGHT = 0.5;
+
+/** What two notes alike in content weigh, per point of their score (`FolderIndex.similar`). */
+export const ALIKE_WEIGHT = 0.5;
 
 // ── Activity ───────────────────────────────────────────────────────────────
 
@@ -245,8 +249,10 @@ function addWeight(w: Weights, a: string, b: string, weight: number): void {
 /**
  * The graph subjects are found in: every resolved reference between two
  * notes is 1 (both directions folded into one tie, so two notes citing each
- * other weigh 2), and every pair of notes sharing a tag carried by no more
- * than `TAG_PAIR_LIMIT` notes adds `TAG_WEIGHT`.
+ * other weigh 2), every pair of notes sharing a tag carried by no more
+ * than `TAG_PAIR_LIMIT` notes adds `TAG_WEIGHT`, and every pair the host
+ * found alike in content adds `ALIKE_WEIGHT` of its score, so notes on one
+ * subject that never link each other can still be one subject.
  */
 export function subjectWeights(index: FolderIndex): Weights {
     const w: Weights = new Map();
@@ -267,6 +273,11 @@ export function subjectWeights(index: FolderIndex): Weights {
         for (let i = 0; i < holders.length; i++) {
             for (let j = i + 1; j < holders.length; j++) { addWeight(w, holders[i]!, holders[j]!, TAG_WEIGHT); }
         }
+    }
+    // Likeness the host found, weaker than a tag: it is the host's guess,
+    // where a tag is the reader's own word for what a note is about.
+    for (const p of index.similar ?? []) {
+        if (known.has(p.a) && known.has(p.b)) { addWeight(w, p.a, p.b, ALIKE_WEIGHT * p.score); }
     }
     return w;
 }

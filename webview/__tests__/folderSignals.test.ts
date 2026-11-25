@@ -186,6 +186,30 @@ describe("louvain", () => {
     });
 });
 
+describe("likeness the host found", () => {
+    const sim = (a: string, b: string, score: number) => ({ a, b, score });
+
+    it("notes alike in content and linked by nothing should still form a subject", () => {
+        // Four notes all alike to one another, and two more alike to each
+        // other only, so modularity has a group worth keeping and one too
+        // small to be a subject.
+        const notes = ["v1.md", "v2.md", "v3.md", "v4.md"];
+        const pairs = notes.flatMap((x, i) => notes.slice(i + 1).map((y) => sim(x, y, 0.4)));
+        const idx = { ...index([...notes, "o1.md", "o2.md"].map((p) => node(p)), []),
+            similar: [...pairs, sim("o1.md", "o2.md", 0.4)] };
+        const subjects = folderSubjects(idx, activityOf(idx, null, NOW));
+        expect(subjects).toHaveLength(1);
+        expect([...subjects[0]!.members].sort()).toEqual(notes);
+    });
+
+    it("a likeness should carry no activity: reliance is what a reference says, not a guess", () => {
+        const idx = { ...index([node("busy.md", { modified: NOW }), node("alike.md", { modified: ago(3650) })], []),
+            similar: [sim("alike.md", "busy.md", 0.9)] };
+        const a = activityOf(idx, null, NOW);
+        expect(a.get("alike.md")!).toBeLessThan(DORMANT_BELOW);
+    });
+});
+
 describe("nameSubject", () => {
     it("a tag most members carry should name the subject", () => {
         const idx = index([node("a.md", { tags: ["hiring"] }), node("b.md", { tags: ["Hiring"] }), node("c.md")], []);

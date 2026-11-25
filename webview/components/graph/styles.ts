@@ -60,6 +60,12 @@ export const LOCAL_GRAPH_CSS = `
     opacity: 1;
 }
 
+/* A tie of likeness the host found, not a reference anyone wrote: dashed,
+   so it never passes for a link. */
+.lg-line--alike {
+    stroke-dasharray: 3 3;
+}
+
 /* The outer tier waiting for its parent (ringStage.ts \`tierFor\`): drawn,
    so it can fade in where it belongs, and out of the way until then. */
 .lg-node--tier {
@@ -219,6 +225,13 @@ export const LOCAL_GRAPH_CSS = `
 .lg-node--dangling .lg-label {
     color: var(--vscode-descriptionForeground);
     font-style: italic;
+}
+
+/* On the drawing for likeness alone: its chip edged in dashes, the mark its
+   line carries, so the name says it before the line is drawn. */
+.lg-node--alike .lg-label {
+    outline: 1px dashed var(--vscode-descriptionForeground);
+    outline-offset: -1px;
 }
 
 /* A note nothing has touched in a long while (folderSignals.ts, activity

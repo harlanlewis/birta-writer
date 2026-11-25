@@ -685,6 +685,10 @@ final class WindowSet {
     /// next build reads only what changed, and the index it last built. Both
     /// go with the root's watcher (`releaseUnwatchedRoots`).
     private var folderIndexers: [String: FolderIndexer] = [:]
+    /// The on-device sentence embedding every root's index shares, loaded on
+    /// first use: nil on a Mac without it, which leaves every index with no
+    /// `similar` pairs (`NoteSimilarity`).
+    private lazy var noteEmbedder: NoteSimilarity.Embedder? = NoteSimilarity.systemEmbedder()
     private var folderIndexes: [String: FolderIndex] = [:]
     /// Roots with a build in flight, and those whose tree moved during one:
     /// at most one build per root runs, and a change in the middle of it buys
@@ -741,7 +745,7 @@ final class WindowSet {
             folderIndexStale.insert(key)
             return
         }
-        let indexer = folderIndexers[key] ?? FolderIndexer(root: root)
+        let indexer = folderIndexers[key] ?? FolderIndexer(root: root, embed: noteEmbedder)
         folderIndexers[key] = indexer
         folderIndexQueue.async {
             let built = indexer.build()

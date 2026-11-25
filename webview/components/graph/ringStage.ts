@@ -191,6 +191,7 @@ export function createRingStage(host: RingStageHost): RingStage {
             node.ring === 0 ? "lg-node--self" : "",
             node.ring === 0 && !current ? "lg-node--opens" : "",
             node.dangling ? "lg-node--dangling" : "",
+            node.alike ? "lg-node--alike" : "",
             // Known and low: a note nothing has touched in a long while. An
             // unknown activity draws as it always has, since it claims nothing.
             typeof node.activity === "number" && node.activity < DORMANT_BELOW ? "lg-node--dormant" : "",
@@ -216,7 +217,9 @@ export function createRingStage(host: RingStageHost): RingStage {
         btn.append(dot, label);
         const described = node.dangling
             ? fill(t("{0} (not a note in this folder)"), node.label)
-            : node.type !== null ? `${node.label} (${node.type})` : node.label;
+            : node.alike
+                ? fill(t("{0} (alike in content, not linked)"), node.label)
+                : node.type !== null ? `${node.label} (${node.type})` : node.label;
         btn.title = node.dangling || current ? described : node.id;
         btn.setAttribute("aria-label", described);
         if (node.dangling) { btn.disabled = true; }
@@ -279,7 +282,7 @@ export function createRingStage(host: RingStageHost): RingStage {
             if (drawn.has(pair)) { continue; }
             drawn.add(pair);
             const el = document.createElementNS(SVG_NS, "path");
-            el.setAttribute("class", "lg-line");
+            el.setAttribute("class", line.alike ? "lg-line lg-line--alike" : "lg-line");
             el.setAttribute("d", curveThrough(a, b));
             el.dataset["from"] = line.from;
             el.dataset["to"] = line.to;

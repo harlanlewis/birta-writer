@@ -62,6 +62,9 @@ public struct FolderIndex: Equatable, Sendable {
     public let nodes: [Node]
     public let edges: [Edge]
     public let truncated: Bool
+    /// Notes alike in what they say, linked or not (`NoteSimilarity`): empty
+    /// where no embedding is available, which the page reads as no claim.
+    public var similar: [NoteSimilarity.Pair] = []
 
     /// How many notes one index holds: the extension's `FOLDER_INDEX_CAP`,
     /// so the two hosts cut a large folder at the same size, and by the
@@ -174,6 +177,7 @@ public struct FolderIndex: Equatable, Sendable {
                 ["from": e.from, "to": orNull(e.to), "target": e.target, "kind": e.kind.rawValue,
                  "text": e.text, "line": e.line]
             },
+            "similar": similar.map { ["a": $0.a, "b": $0.b, "score": Double($0.score)] },
         ]
     }
 }
@@ -243,13 +247,17 @@ public final class FolderIndexer: @unchecked Sendable {
     private let cap: Int
     private let fileCap: Int
     private let read: (String) -> String?
+    private let embed: NoteSimilarity.Embedder?
 
     private struct Stamp: Equatable {
         var modified: Date?
         var size: Int?
     }
 
-    private var readings: [String: (stamp: Stamp, reading: NoteLinks.Reading?)] = [:]
+    private var readings: [String: (stamp: Stamp, reading: NoteLinks.Reading?, vector: [Float]?)] = [:]
+    /// The pairs last compared, and the notes and stamps they were compared
+    /// over: a build in which no note changed reuses them.
+    private var lastSimilar: (key: [String: Stamp], pairs: [NoteSimilarity.Pair])?
     private var lastFiles: [String]?
     private var memo = FolderIndex.ResolutionMemo()
 
@@ -257,12 +265,17 @@ public final class FolderIndexer: @unchecked Sendable {
     /// cache; what a test asks to see that a save re-reads one file.
     public private(set) var lastReadCount = 0
 
+    /// `embed` makes each note's vector for `NoteSimilarity`; nil, the
+    /// default, leaves the index with no `similar` pairs. The app passes
+    /// `NoteSimilarity.systemEmbedder()`.
     public init(root: URL, cap: Int = FolderIndex.cap, fileCap: Int = FolderIndex.fileCap,
-                read: @escaping (String) -> String? = { try? String(contentsOfFile: $0, encoding: .utf8) }) {
+                read: @escaping (String) -> String? = { try? String(contentsOfFile: $0, encoding: .utf8) },
+                embed: NoteSimilarity.Embedder? = nil) {
         self.root = root
         self.cap = cap
         self.fileCap = fileCap
         self.read = read
+        self.embed = embed
     }
 
     /// What enumerates `root`, given the resource keys each entry is asked
@@ -310,7 +323,7 @@ public final class FolderIndexer: @unchecked Sendable {
         let (kept, truncated) = notes.finish()
         let files = fileSelection.finish().kept.map(\.path)
 
-        var fresh: [String: (stamp: Stamp, reading: NoteLinks.Reading?)] = [:]
+        var fresh: [String: (stamp: Stamp, reading: NoteLinks.Reading?, vector: [Float]?)] = [:]
         var current: [String: NoteLinks.Reading] = [:]
         lastReadCount = 0
         for (path, stamp) in kept {
@@ -318,11 +331,33 @@ public final class FolderIndexer: @unchecked Sendable {
                 fresh[path] = cached
             } else {
                 lastReadCount += 1
-                fresh[path] = (stamp, read(path).map(NoteLinks.readNote))
+                let text = read(path)
+                let reading = text.map(NoteLinks.readNote)
+                // Embedded with the reading, so an unchanged note is never
+                // embedded again: the vector lives and dies with its stamp.
+                let vector = text.flatMap { body -> [Float]? in
+                    guard let embed else { return nil }
+                    let base = NoteLinkResolver.basename(path)
+                    let stem = String(base.dropLast(NoteLinkResolver.extname(base).count))
+                    return embed(NoteSimilarity.excerpt(title: reading?.meta.title ?? stem, text: body))
+                }
+                fresh[path] = (stamp, reading, vector)
             }
             if let reading = fresh[path]?.reading { current[path] = reading }
         }
         readings = fresh
+
+        // The pairs, compared again only when some note changed.
+        let key = Dictionary(uniqueKeysWithValues: kept.map { ($0.path, $0.value) })
+        let similar: [NoteSimilarity.Pair]
+        if let last = lastSimilar, last.key == key {
+            similar = last.pairs
+        } else {
+            var vectors: [String: [Float]] = [:]
+            for (path, entry) in fresh { if let v = entry.vector, let rel = DirectoryListing.relativePath(of: URL(fileURLWithPath: path), in: root) { vectors[rel] = v } }
+            similar = NoteSimilarity.pairs(vectors)
+            lastSimilar = (key, similar)
+        }
 
         // What the resolver is built from: the file list and the notes, which
         // the list may not hold once it is past its own cap.
@@ -333,7 +368,9 @@ public final class FolderIndexer: @unchecked Sendable {
         }
         var modified: [String: Date] = [:]
         for (path, stamp) in kept { if let date = stamp.modified { modified[path] = date } }
-        return FolderIndex.assemble(root: rootPath, notes: kept.map(\.path), readings: current,
-                                    files: files, truncated: truncated, modified: modified, memo: &memo)
+        var index = FolderIndex.assemble(root: rootPath, notes: kept.map(\.path), readings: current,
+                                         files: files, truncated: truncated, modified: modified, memo: &memo)
+        index.similar = similar
+        return index
     }
 }
