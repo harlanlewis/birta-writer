@@ -19,6 +19,8 @@ import {
 } from "@/ui/suggestList";
 import { getFileIcon } from "../pathLink/fileIcons";
 import type { PathSuggestionItem } from "../../../shared/messages";
+import { isImagePath } from "../../../shared/imageExtensions";
+import { hasDocumentBase, imageDisplaySrc } from "./documentBase";
 
 // ─── resolveImagePath async mechanism ────────────────────────
 const _pendingResolve = new Map<string, (uri: string) => void>();
@@ -125,10 +127,23 @@ export function attachImgPathComplete(
         }
     }
 
+    /**
+     * The thumbnail a file row draws, or undefined for a file that is not an
+     * image. A host that rewrites paths marks its images with `webviewUri`; a
+     * host that declared a document base sends plain paths, so its images are
+     * told by extension and drawn through the base. Never stored on the row:
+     * the base's URL is for drawing, and the document keeps the path.
+     */
+    function thumbnailSrc(item: PathSuggestionItem): string | undefined {
+        if (item.webviewUri) { return item.webviewUri; }
+        if (hasDocumentBase() && isImagePath(item.path)) { return imageDisplaySrc(item.path) || undefined; }
+        return undefined;
+    }
+
     function showDropdown(items: PathSuggestionItem[]): void {
         closeDropdown();
-        // Keep only directories and image files (entries that have a webviewUri)
-        const filtered = items.filter(item => item.isDir || item.webviewUri !== undefined);
+        // Keep only directories and image files
+        const filtered = items.filter(item => item.isDir || thumbnailSrc(item) !== undefined);
         if (filtered.length === 0) { return; }
         lastItems = filtered;
 
@@ -144,10 +159,11 @@ export function attachImgPathComplete(
                 title: item.path,
                 render: (li) => {
                     // Left: a thumbnail (image) or folder icon (directory)
-                    if (item.webviewUri) {
+                    const thumbSrc = item.isDir ? undefined : thumbnailSrc(item);
+                    if (thumbSrc) {
                         const thumb = document.createElement("img");
                         thumb.className = "img-complete-thumb";
-                        thumb.src = item.webviewUri;
+                        thumb.src = thumbSrc;
                         thumb.alt = "";
                         li.appendChild(thumb);
                     } else {

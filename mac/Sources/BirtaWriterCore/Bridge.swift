@@ -444,8 +444,11 @@ public enum HostMessage: Equatable {
     /// `init` reads it before it reads the remembered offset, so a line here
     /// outranks whatever `viewStateJSON` carries; omitted from the wire when
     /// nil, so an unasked open is the message it always was.
+    ///
+    /// `documentBase` is where the page resolves a relative image path
+    /// (`ResourceRoots.documentBase`); omitted when nil.
     case initDoc(content: String, frontmatter: String, lineOffset: Int, syncVersion: Int, viewStateJSON: String?,
-                 scrollToLine: Int? = nil)
+                 scrollToLine: Int? = nil, documentBase: DocumentBase? = nil)
     case externalUpdate(content: String, frontmatter: String, lineOffset: Int, syncVersion: Int)
     /// Put the caret on a document line and scroll it into view, on a page
     /// that is already showing the file: a backlink whose note is open in
@@ -525,6 +528,9 @@ public enum HostMessage: Equatable {
     /// (`fileExplorerExpanded`), handed back so the tree survives the window
     /// moving to another file.
     case projectRoot(name: String?, path: String?, showHidden: Bool, expanded: [String] = [])
+    /// The note's folder moved under a page that stays (a move, Save As): the
+    /// `documentBase` `init` carries, sent again so relative images follow.
+    case documentBase(DocumentBase?)
     /// Reply to `listDirectory`, carrying its `id`. `entries` nil with an
     /// `error` is a folder that could not be read, or a path that would leave
     /// the root; the page draws the error where the rows would be.
@@ -624,7 +630,7 @@ public enum HostMessage: Equatable {
             return object
         case let .raw(json):
             return (json.data(using: .utf8).flatMap { try? JSONSerialization.jsonObject(with: $0) } as? [String: Any]) ?? [:]
-        case let .initDoc(content, frontmatter, lineOffset, syncVersion, viewStateJSON, scrollToLine):
+        case let .initDoc(content, frontmatter, lineOffset, syncVersion, viewStateJSON, scrollToLine, documentBase):
             var o: [String: Any] = ["type": "init", "content": content, "frontmatter": frontmatter,
                                     "lineOffset": lineOffset, "syncVersion": syncVersion]
             if let vs = viewStateJSON, let d = vs.data(using: .utf8),
@@ -632,6 +638,7 @@ public enum HostMessage: Equatable {
                 o["viewState"] = obj
             }
             if let scrollToLine { o["scrollToLine"] = scrollToLine }
+            if let documentBase { o["documentBase"] = ["url": documentBase.url, "scope": documentBase.scope] }
             return o
         case let .externalUpdate(content, frontmatter, lineOffset, syncVersion):
             return ["type": "externalUpdate", "content": content, "frontmatter": frontmatter,
@@ -685,6 +692,9 @@ public enum HostMessage: Equatable {
                     "diagnostics": diagnostics.jsonObject]
         case let .getPerfMarks(id):
             return ["type": "__getPerfMarks", "id": id]
+        case let .documentBase(base):
+            let value: Any = base.map { ["url": $0.url, "scope": $0.scope] } ?? NSNull()
+            return ["type": "documentBase", "base": value]
         case let .projectRoot(name, path, showHidden, expanded):
             var root: Any = NSNull()
             if let name, let path { root = ["name": name, "path": path] }

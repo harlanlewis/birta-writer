@@ -55,6 +55,7 @@ import "./htmlView.css";
 import type { EditorView } from "@/pm";
 import { NodeSelection } from "@/pm";
 import { sanitizeInto } from "@/utils/sanitizeLoader";
+import { imageDisplaySrc } from "../imageView/documentBase";
 import { ensureGrammars, highlight } from "@/highlighter";
 import { getVisualLineCounts, updateLineNumbers } from "../codeBlock/lineNumbers";
 import { openBlockSource } from "@/plugins/blockSource";
@@ -133,6 +134,12 @@ function paint(dom: HTMLElement, raw: string): Promise<boolean> {
     }).then(() => {
         for (const el of dom.querySelectorAll(FOCUSABLE)) {
             el.setAttribute("tabindex", "-1");
+        }
+        // A relative `<img src>` is read from the note's folder, the way a
+        // Markdown image is (imageView/documentBase.ts); the text is untouched.
+        for (const img of dom.querySelectorAll("img")) {
+            const src = img.getAttribute("src");
+            if (src) { img.setAttribute("src", imageDisplaySrc(src)); }
         }
         return true;
     });

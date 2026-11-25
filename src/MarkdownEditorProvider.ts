@@ -1,4 +1,5 @@
 import * as path from "path";
+import { IMAGE_EXTENSIONS } from "../shared/imageExtensions";
 import * as vscode from "vscode";
 import { computeReplaceRange } from "../shared/textEdit";
 import { DOCUMENT_EXT_REGEX } from "../shared/documentExtensions";
@@ -2805,7 +2806,6 @@ export class MarkdownEditorProvider
         id: string,
     ): Promise<void> {
         const customPath = readBirtaSetting("imageLocalPath", document.uri).trim();
-        const IMAGE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.bmp', '.tiff', '.ico']);
         const CANDIDATE_DIRS = ['images', 'imgs', 'assets/images', 'assets'];
 
         let targetDir: vscode.Uri | null = null;
@@ -2848,7 +2848,7 @@ export class MarkdownEditorProvider
                 for (const [name, type] of entries) {
                     if (type !== vscode.FileType.File) { continue; }
                     const ext = path.extname(name).toLowerCase();
-                    if (!IMAGE_EXTS.has(ext)) { continue; }
+                    if (!IMAGE_EXTENSIONS.has(ext)) { continue; }
                     const fileUri = vscode.Uri.joinPath(targetDir, name);
                     const wvUri = panel.webview.asWebviewUri(fileUri).toString();
                     let relPath = name;

@@ -26,6 +26,7 @@ import { foldPluginKey, type FoldMeta } from "./plugins/foldState";
 import { bankOpenHtmlPanel } from "./components/htmlView";
 import { bankOpenBlockSourcePanel } from "./components/blockSource";
 import { setImageUriMap } from "./components/imageView";
+import { setDocumentBase } from "./components/imageView/documentBase";
 import { dispatchPathSuggestions } from "./components/pathLink/pathComplete";
 import { dispatchLinkTargetSuggestions, dispatchLinkTargetPicked, dispatchLinkTargetResolved } from "./components/pathLink/linkTargetComplete";
 import { dispatchImgPathSuggestions, dispatchImagePathResolved } from "./components/imageView/imgPathComplete";
@@ -293,6 +294,7 @@ export function createMessageHandlers(
             if (msg.imageUriMap) {
                 setImageUriMap(msg.imageUriMap);
             }
+            setDocumentBase(msg.documentBase);
             if (msg.tableWrap) {
                 applyTableWrap(msg.tableWrap);
             }
@@ -843,6 +845,9 @@ export function createMessageHandlers(
         },
         projectRoot(msg) {
             actions.setProjectRoot(msg.root, msg.showHidden, msg.expanded);
+        },
+        documentBase(msg) {
+            setDocumentBase(msg.base);
         },
         directoryListing(msg) {
             actions.applyDirectoryListing(msg);

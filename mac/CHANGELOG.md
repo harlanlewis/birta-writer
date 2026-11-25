@@ -20,6 +20,7 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ### Fixed
 
+- In a folder opened in Birta Writer for Mac, a note in a subfolder shows the images beside it, including ones pasted into it, and a path such as `../images/a.png` reaches the folder above. A relative image path is read from the note's own folder first, then from the folder the window is opened on; it used to be read from that folder alone, and a leading `../` was dropped, which showed "Image not found". A path that climbs out of the opened folder still shows as missing. The same reading applies to an `@/` path, which starts at the top of the opened folder, and to an `<img>` in an HTML block. Images keep showing after the note is moved or saved elsewhere, and the image path field's suggestions now list a folder's images, not only its subfolders.
 - In Birta Writer for Mac, Folder Overview no longer covers the titlebar. Its title no longer sits under the titlebar buttons, and the file list stays open beside it.
 - The New Note and Open… buttons in Birta Writer for Mac's start view and Folder Overview are full-size buttons, instead of a fill drawn tight around the words.
 - Cmd-clicking the window title in Birta Writer for Mac lists the folders as the path bar shows them, ending at iCloud Drive or your home folder. A note in an iCloud vault such as Obsidian's no longer lists the vault's app twice, or lists `Mobile Documents`, `Library` and `Users`. The Where menu in the title's popover lists the same folders.

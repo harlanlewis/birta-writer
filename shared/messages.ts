@@ -85,6 +85,17 @@ export interface ProjectRoot {
     path: string;
 }
 
+/**
+ * Where the document's relative image paths are served, for a host that does
+ * not rewrite them (`webview/components/imageView/documentBase.ts`). `url` is
+ * the document folder's URL, ending in `/`; `scope` is the prefix every
+ * document resource URL keeps, so a path climbing out of it can be refused.
+ */
+export interface DocumentBase {
+    url: string;
+    scope: string;
+}
+
 /** One row of a directory listing. */
 export interface ProjectEntry {
     name: string;
@@ -898,7 +909,7 @@ export type ToWebviewMessage =
     // per-webview state does not survive the round trip. The extension keeps
     // the last bag per URI (in memory, session-scoped) and hands it back here;
     // the webview seeds its bag from it only when the bag is empty.
-    | { type: "init"; content: string; format?: DocumentFormat; lineMap?: number[]; lineOffset?: number; scrollToLine?: number; scrollToColumn?: number; scrollToAnchorLine?: number; scrollToAnchorColumn?: number; frontmatter?: string; imageUriMap?: Record<string, string>; tableWrap?: TableWrapMode; syncVersion: number; viewState?: Record<string, unknown> }
+    | { type: "init"; content: string; format?: DocumentFormat; lineMap?: number[]; lineOffset?: number; scrollToLine?: number; scrollToColumn?: number; scrollToAnchorLine?: number; scrollToAnchorColumn?: number; frontmatter?: string; imageUriMap?: Record<string, string>; documentBase?: DocumentBase; tableWrap?: TableWrapMode; syncVersion: number; viewState?: Record<string, unknown> }
     | { type: "externalUpdate"; content: string; lineMap?: number[]; lineOffset?: number; frontmatter?: string; imageUriMap?: Record<string, string>; tableWrap?: TableWrapMode; syncVersion: number }
     // `line`/`column` is the caret; `anchorLine`/`anchorColumn`, when present,
     // carry the raw editor's selection anchor so the WYSIWYG editor restores
@@ -1078,6 +1089,10 @@ export type ToWebviewMessage =
     // tab spawned beside it) shows the tree as the reader left it rather
     // than only the path to the open file.
     | { type: "projectRoot"; root: ProjectRoot | null; showHidden: boolean; expanded?: string[] }
+    // The document's folder moved under a page that stays (a move, Save As):
+    // the same `DocumentBase` `init` carries, sent again so relative images
+    // follow the file. A host that sends no base never sends this.
+    | { type: "documentBase"; base: DocumentBase | null }
     // The answer to one `listDirectory`, by its `id`. `entries: null` with an
     // `error` is a folder the host could not read (the page draws the message
     // as a row and offers a retry); `entries` in any order, the page sorts.

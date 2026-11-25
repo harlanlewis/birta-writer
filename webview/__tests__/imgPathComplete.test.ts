@@ -16,6 +16,7 @@ import {
     attachImgPathComplete,
     dispatchImgPathSuggestions,
 } from "../components/imageView/imgPathComplete";
+import { setDocumentBase } from "../components/imageView/documentBase";
 import type { PathSuggestionItem } from "../../shared/messages";
 
 const URI = "https://vscode.test/img/cats.jpeg";
@@ -132,6 +133,36 @@ describe("image path autocompletion", () => {
             "img/nested/",
             "img/cats.jpeg",
         ]);
+    });
+
+    describe("under a host that declared a document base", () => {
+        const PLAIN: PathSuggestionItem[] = [
+            { path: "img/nested/", isDir: true },
+            { path: "img/cats.JPEG", isDir: false },
+            { path: "img/readme.md", isDir: false },
+        ];
+
+        beforeEach(() => setDocumentBase({ url: "birta://app/~doc/post/", scope: "birta://app/~doc/" }));
+        afterEach(() => setDocumentBase(null));
+
+        it("plain image paths should be listed with a thumbnail drawn through the base", async () => {
+            await type("img/");
+            reply(PLAIN);
+
+            expect(rowEls().map((li) => li.title)).toEqual(["img/nested/", "img/cats.JPEG"]);
+            const thumb = rowEls()[1].querySelector<HTMLImageElement>("img.img-complete-thumb");
+            expect(thumb?.getAttribute("src")).toBe("birta://app/~doc/post/img/cats.JPEG");
+        });
+
+        it("picking a plain image should fill the path and record no URL for the document", async () => {
+            await type("img/");
+            reply(PLAIN);
+            press("ArrowDown");
+            press("Enter");
+
+            expect(input.value).toBe("img/cats.JPEG");
+            expect(input.dataset.imgWebviewUri).toBeUndefined();
+        });
     });
 
     it("rendered rows should compose the ui-menu-row primitive", async () => {

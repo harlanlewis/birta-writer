@@ -26,6 +26,7 @@ import { setupApplyOnBlur } from "@/ui/dom";
 import { applyTooltip } from "@/ui/tooltip";
 import { createBlockControlsColumn, makeBlockControlButton } from "@/ui/blockControls";
 import { attachImgPathComplete, resolveToWebviewUri } from './imgPathComplete';
+import { hasDocumentBase, imageDisplaySrc, onDocumentBaseChange } from './documentBase';
 import { attachInputUndo } from "@/utils/inputUndo";
 import { isReadOnly, lockWithDocument } from "@/readOnly";
 import { openFullscreenSurface, type FullscreenSurface } from "@/ui/fullscreenSurface";
@@ -103,11 +104,11 @@ function showGlobalLightbox(src: string, alt: string): void {
  * Keyboard path into the lightbox (MAR-118): the block menu's "View
  * Fullscreen" row opens the SAME surface the NodeView's zoom button does —
  * Escape closes it through the shared escape layer. `src` is the image
- * node's `src` attr, which already holds the renderable (webview) URI; the
- * NodeView feeds its own `img.src` through the identical value.
+ * node's `src` attr, mapped through `imageDisplaySrc` exactly as the NodeView
+ * maps its own `img.src`, so both paths load the same URL.
  */
 export function openImageLightbox(src: string, alt: string): void {
-    showGlobalLightbox(src, alt);
+    showGlobalLightbox(imageDisplaySrc(src), alt);
 }
 
 // ─── Keyboard path into the toolbar inputs (MAR-118) ───────
@@ -243,7 +244,7 @@ export function createImageView(
     // ── Image ─────────────────────────────────────────────────
     const img = document.createElement("img");
     img.className = "image-node";
-    img.src = (node.attrs["src"] as string) ?? "";
+    img.src = imageDisplaySrc((node.attrs["src"] as string) ?? "");
     img.alt = (node.attrs["alt"] as string) ?? "";
     // The markdown title (`![alt](src "title")`) is a hover tooltip in
     // published HTML — surface it the same way here
@@ -484,6 +485,18 @@ export function createImageView(
 
     // ── Initialize the info area, caption, title row, and width ──────
     let rawSrc = (node.attrs["src"] as string) ?? "";
+
+    /** Load `rawSrc` as the page resolves it now, clearing a failure so the
+     *  browser retries. Run on a src edit and when the document's base moves. */
+    function showSrc(): void {
+        img.src = imageDisplaySrc(rawSrc);
+        if (imgErrored) {
+            imgErrored = false;
+            img.style.display = "";
+            errorPlaceholder.style.display = "none";
+        }
+    }
+    const offDocumentBase = onDocumentBaseChange(showSrc);
     // Occurrence-disambiguated (blockWidth.ts): the same file referenced twice
     // is two images, so sizing one leaves the other where the author put it.
     // Re-resolved on every use rather than cached: an ordinal is a fact about
@@ -576,8 +589,10 @@ export function createImageView(
                 // Mapping hit (mappedUri is a webviewUri, different from displayVal)
                 applyUri(mappedUri);
             } else if (displayVal && displayVal !== toDisplayPath(rawSrc)) {
-                // A new path typed manually: ask the Extension to resolve it
-                resolveToWebviewUri(displayVal).then(applyUri);
+                // A new path typed manually. A host that declared a document
+                // base serves the path as written; otherwise ask it to resolve.
+                if (hasDocumentBase()) { applyUri(displayVal); }
+                else { resolveToWebviewUri(displayVal).then(applyUri); }
             } else if (refocus) {
                 view.focus();
             }
@@ -630,13 +645,7 @@ export function createImageView(
             const newAlt = (updatedNode.attrs["alt"] as string) ?? "";
             if (rawSrc !== newSrc) {
                 rawSrc = newSrc;
-                img.src = newSrc;
-                // Reset the error state so the browser retries loading the new src
-                if (imgErrored) {
-                    imgErrored = false;
-                    img.style.display = "";
-                    errorPlaceholder.style.display = "none";
-                }
+                showSrc();
                 // Carry a stored width preference across the src edit.
                 const newBase = imageWidthAnchor(toDisplayPath(newSrc));
                 if (newBase !== widthBase) {
@@ -714,6 +723,7 @@ export function createImageView(
         destroy(): void {
             reflowOff?.();
             reflowOff = null;
+            offDocumentBase();
             detachCaptionUndo();
             detachTitleUndo();
             dismissLightboxFor(img.src);

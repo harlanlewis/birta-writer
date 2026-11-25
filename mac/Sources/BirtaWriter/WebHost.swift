@@ -71,9 +71,9 @@ final class BirtaSchemeHandler: NSObject, WKURLSchemeHandler {
     /// Whether the page may reach the network (Preferences opt-in).
     var networkEnabled = false
 
-    init(webRoot: URL, documentDirectory: URL?) {
+    init(webRoot: URL, documentDirectory: URL?, projectRoot: URL? = nil) {
         self.webRoot = webRoot
-        self._roots = ResourceRoots(bundle: webRoot, document: documentDirectory)
+        self._roots = ResourceRoots(bundle: webRoot, document: documentDirectory, project: projectRoot)
     }
 
     private static let mime: [String: String] = [
@@ -88,6 +88,8 @@ final class BirtaSchemeHandler: NSObject, WKURLSchemeHandler {
         "jpg": "image/jpeg",
         "jpeg": "image/jpeg",
         "gif": "image/gif",
+        "webp": "image/webp",
+        "avif": "image/avif",
         "woff": "font/woff",
         "woff2": "font/woff2",
         "ttf": "font/ttf",
@@ -226,8 +228,8 @@ final class WebHost: NSObject, WKScriptMessageHandler, WKNavigationDelegate, WKU
     /// gets the current prefs.
     var bootConfig: () -> BootConfig = { BootConfig() }
 
-    init(webRoot: URL, documentDirectory: URL?) {
-        schemeHandler = BirtaSchemeHandler(webRoot: webRoot, documentDirectory: documentDirectory)
+    init(webRoot: URL, documentDirectory: URL?, projectRoot: URL? = nil) {
+        schemeHandler = BirtaSchemeHandler(webRoot: webRoot, documentDirectory: documentDirectory, projectRoot: projectRoot)
         let config = WKWebViewConfiguration()
         config.setURLSchemeHandler(schemeHandler, forURLScheme: BirtaSchemeHandler.scheme)
         config.userContentController = controller
