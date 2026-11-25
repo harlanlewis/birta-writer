@@ -39,6 +39,11 @@ export interface GraphNode {
     type: string | null;
     /** A reference that resolves to no note: drawn, never opened. */
     dangling: boolean;
+    /**
+     * On the drawing only because its content is alike (`FolderIndex.similar`),
+     * not because either note refers to the other.
+     */
+    alike?: boolean;
     /** References touching the note anywhere in the index, both directions. */
     degree: number;
     /**
@@ -56,6 +61,29 @@ export interface GraphLine {
     to: string;
     /** How many references `from` makes to `to`: what a tie's strength is counted in (`layoutRings`). */
     weight: number;
+    /**
+     * A tie of likeness, not a reference (`FolderIndex.similar`): drawn
+     * dashed, and its `weight` is `ALIKE_PULL` of its score, so it places a
+     * note further out than any reference would.
+     */
+    alike?: boolean;
+}
+
+/** Most first-ring notes that are there for likeness alone. */
+export const ALIKE_CAP = 4;
+
+/** What a likeness weighs against a reference's 1, per point of its score. */
+export const ALIKE_PULL = 0.5;
+
+/**
+ * The lines of likeness among `drawn` notes that no reference already joins:
+ * a pair the reader linked is a link, and saying it is also alike adds
+ * nothing.
+ */
+function alikeLines(index: FolderIndex, drawn: ReadonlySet<string>, linked: ReadonlySet<string>): GraphLine[] {
+    return (index.similar ?? [])
+        .filter((p) => drawn.has(p.a) && drawn.has(p.b) && !linked.has(`${p.a}\u0000${p.b}`) && !linked.has(`${p.b}\u0000${p.a}`))
+        .map((p) => ({ from: p.a, to: p.b, weight: p.score * ALIKE_PULL, alike: true }));
 }
 
 export interface LocalGraph {
@@ -127,13 +155,26 @@ export function buildLocalGraph(index: FolderIndex, self: string, depth: GraphDe
         omitted += all.length - ring2.length;
     }
 
-    const drawn = new Set([self, ...ring1, ...ring2]);
-    const typeOf = (id: string): string | null => nodesByPath.get(id)?.type ?? null;
-    const types = [...new Set([self, ...ring1, ...ring2].map(typeOf).filter((t): t is string => t !== null))].sort();
+    // Notes alike to this one in what they say and joined to it by no
+    // reference, most alike first: on the first ring, for likeness alone.
+    // Added after the outer ring is chosen, so the outer ring is still the
+    // notes this one's references reach, never neighbours of a guess.
+    const placed = new Set([self, ...ring1, ...ring2]);
+    const alike = (index.similar ?? [])
+        .filter((p) => (p.a === self || p.b === self) && !placed.has(p.a === self ? p.b : p.a) && nodesByPath.has(p.a === self ? p.b : p.a))
+        .sort((x, y) => y.score - x.score || (x.a === self ? x.b : x.a).localeCompare(y.a === self ? y.b : y.a))
+        .slice(0, ALIKE_CAP)
+        .map((p) => (p.a === self ? p.b : p.a));
 
+    const drawn = new Set([self, ...ring1, ...alike, ...ring2]);
+    const typeOf = (id: string): string | null => nodesByPath.get(id)?.type ?? null;
+    const types = [...new Set([...drawn].map(typeOf).filter((t): t is string => t !== null))].sort();
+
+    const alikeSet = new Set(alike);
     const nodes: GraphNode[] = [
         ...[self].map((id) => ({ id, ring: 0 as const })),
         ...ring1.map((id) => ({ id, ring: 1 as const })),
+        ...alike.map((id) => ({ id, ring: 1 as const })),
         ...ring2.map((id) => ({ id, ring: 2 as const })),
     ].map(({ id, ring }) => ({
         id,
@@ -142,6 +183,7 @@ export function buildLocalGraph(index: FolderIndex, self: string, depth: GraphDe
         type: typeOf(id),
         dangling: id.startsWith(DANGLING),
         degree: degree.get(id) ?? 0,
+        ...(alikeSet.has(id) ? { alike: true } : {}),
         x: 0,
         y: 0,
     }));
@@ -160,6 +202,7 @@ export function buildLocalGraph(index: FolderIndex, self: string, depth: GraphDe
         lineSeen.set(key, line);
         lines.push(line);
     }
+    lines.push(...alikeLines(index, drawn, new Set(lineSeen.keys())));
     return { nodes, lines, omitted, types };
 }
 
@@ -359,5 +402,6 @@ export function buildSubjectGraph(index: FolderIndex, core: string, notes: reado
         seen.set(key, line);
         lines.push(line);
     }
+    lines.push(...alikeLines(index, drawn, new Set(seen.keys())));
     return { nodes, lines, omitted, types };
 }

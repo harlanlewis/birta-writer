@@ -5,7 +5,7 @@
  */
 import { describe, it, expect } from "vitest";
 import type { FolderEdge, FolderIndex, FolderNode } from "../../shared/folderIndex";
-import { BAND, buildLocalGraph, GAP, hueOf, layoutRings, nudge, RING_CAPACITY, TYPE_HUES } from "../components/graph/localGraph";
+import { ALIKE_CAP, BAND, buildLocalGraph, GAP, hueOf, layoutRings, nudge, RING_CAPACITY, TYPE_HUES } from "../components/graph/localGraph";
 import { createRingStage, curveThrough, TIER_SHOWN, tierFor } from "../components/graph/ringStage";
 
 const node = (path: string, type: string | null = null): FolderNode =>
@@ -304,5 +304,49 @@ describe("the tier on screen", () => {
         expect(stage.element.querySelectorAll(".lg-line")).toHaveLength(1);
         expect(stage.element.querySelectorAll("polygon")).toHaveLength(0);
         expect(stage.element.querySelector(".lg-line")!.tagName.toLowerCase()).toBe("path");
+    });
+});
+
+describe("notes alike in content", () => {
+    const sim = (a: string, b: string, score: number) => ({ a, b, score });
+
+    it("a note alike to this one and linked to it by nothing should join the first ring, marked, with a likeness line", () => {
+        const idx = { ...index(["self.md", "linked.md", "alike.md", "far.md"].map((p) => node(p)),
+            [edge("self.md", "linked.md"), edge("alike.md", "far.md")]),
+            similar: [sim("alike.md", "self.md", 0.4), sim("linked.md", "self.md", 0.6)] };
+        const g = buildLocalGraph(idx, "self.md", 2)!;
+        const alike = g.nodes.find((n) => n.id === "alike.md")!;
+        expect(alike).toMatchObject({ ring: 1, alike: true });
+        expect(g.nodes.find((n) => n.id === "linked.md")!.alike).toBeUndefined();
+        // A pair the reader linked is a link, not also a likeness.
+        expect(g.lines.filter((l) => l.alike).map((l) => `${l.from}>${l.to}`)).toEqual(["alike.md>self.md"]);
+        // The outer ring is what references reach: far.md hangs only from a guess, so it is not drawn.
+        expect(g.nodes.some((n) => n.id === "far.md")).toBe(false);
+    });
+
+    it("no more than the cap of alike notes should join, the most alike first", () => {
+        const others = Array.from({ length: ALIKE_CAP + 3 }, (_, i) => `o${i}.md`);
+        const idx = { ...index(["self.md", ...others].map((p) => node(p)), []),
+            similar: others.map((o, i) => sim(o, "self.md", 0.9 - i * 0.05)) };
+        const g = buildLocalGraph(idx, "self.md", 1)!;
+        expect(g.nodes.filter((n) => n.alike).map((n) => n.id)).toEqual(others.slice(0, ALIKE_CAP));
+    });
+
+    it("a note there for likeness should sit further out than one linked once", () => {
+        const idx = { ...index(["self.md", "linked.md", "alike.md"].map((p) => node(p)), [edge("self.md", "linked.md")]),
+            similar: [sim("alike.md", "self.md", 0.9)] };
+        const g = layoutRings(buildLocalGraph(idx, "self.md", 1)!, 100);
+        const d = (id: string) => { const n = g.nodes.find((m) => m.id === id)!; return Math.hypot(n.x - 50, n.y - 50); };
+        expect(d("alike.md")).toBeGreaterThan(d("linked.md"));
+    });
+
+    it("a likeness line should be drawn dashed and its note named as alike, not linked", () => {
+        const idx = { ...index(["self.md", "alike.md"].map((p) => node(p)), []), similar: [sim("alike.md", "self.md", 0.5)] };
+        const stage = createRingStage({ openNote: () => {}, onEscape: () => {}, centreIsCurrent: true });
+        stage.draw(layoutRings(buildLocalGraph(idx, "self.md", 1)!, 100));
+        expect(stage.element.querySelector(".lg-line")!.classList.contains("lg-line--alike")).toBe(true);
+        const n = stage.element.querySelector<HTMLElement>('.lg-node[data-id="alike.md"]')!;
+        expect(n.classList.contains("lg-node--alike")).toBe(true);
+        expect(n.getAttribute("aria-label")).toBe("alike (alike in content, not linked)");
     });
 });

@@ -69,11 +69,30 @@ export interface FolderEdge {
     line: number;
 }
 
+/**
+ * Two notes alike in what they say, whether or not either links the other:
+ * a claim the HOST makes from the notes' text, never one the reader made.
+ * `a` sorts before `b`; `score` is how alike, from the host's threshold up
+ * to 1. The Mac app makes them on the machine (`NoteSimilarity`); a host
+ * that makes none leaves the list out.
+ */
+export interface FolderSimilarity {
+    a: string;
+    b: string;
+    score: number;
+}
+
 export interface FolderIndex {
     /** The folder's own name, as a header says it. */
     rootName: string;
     nodes: FolderNode[];
     edges: FolderEdge[];
+    /**
+     * Notes alike in content (`FolderSimilarity`). Drawn and weighed apart
+     * from references, and never read as reliance: activity and fading
+     * follow references alone.
+     */
+    similar?: FolderSimilarity[];
     /**
      * The folder holds more notes than the cap, so the index is a cut (the
      * first `cap` by path) and an absence can mean "not reached" rather than

@@ -645,6 +645,21 @@ describe("overviewCentre", () => {
     });
 });
 
+describe("a centre joined only by likeness", () => {
+    it("the most active note should be the centre when likeness is all that joins it", () => {
+        const now = Date.UTC(2026, 10, 24);
+        const idx: FolderIndex = {
+            rootName: "v", truncated: false,
+            nodes: [node("fresh.md"), node("alike.md"), node("old.md"), node("older.md")].map((n, i) => ({ ...n, modified: now - (i === 0 ? 0 : 300) * 86_400_000 })),
+            edges: [edge("old.md", "older.md")],
+            similar: [{ a: "alike.md", b: "fresh.md", score: 0.4 }],
+        };
+        const centre = overviewCentre(idx, null, activityOf(idx, null, now));
+        expect(centre?.graph.nodes[0]!.id).toBe("fresh.md");
+        expect(centre?.graph.nodes.find((n) => n.id === "alike.md")?.alike).toBe(true);
+    });
+});
+
 describe("sinceWritten", () => {
     const now = Date.UTC(2026, 10, 24);
     const DAY = 86_400_000;

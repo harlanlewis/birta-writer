@@ -183,7 +183,7 @@ final class FolderIndexTests: XCTestCase {
         try write("a.md", "---\nstatus: draft\n---\n[[b]]\n")
         let index = FolderIndexer(root: root).build()
         let json = index.jsonObject
-        XCTAssertEqual(Set(json.keys), ["rootName", "nodes", "edges", "truncated"])
+        XCTAssertEqual(Set(json.keys), ["rootName", "nodes", "edges", "truncated", "similar"])
         let node = try XCTUnwrap((json["nodes"] as? [[String: Any]])?.first)
         XCTAssertEqual(Set(node.keys), ["path", "name", "type", "tags", "status", "trust", "staleAfter", "modified"])
         XCTAssertEqual(node["status"] as? String, "draft")
