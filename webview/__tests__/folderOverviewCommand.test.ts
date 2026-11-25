@@ -155,7 +155,8 @@ describe("a name holding a replacement pattern (finding 5)", () => {
         (window as I18n).__i18n = { translations: {}, isMac: true, folderGraph: true };
         await showFolderOverview({ focusEditor: () => {} });
         receiveFolderIndex({ ...VAULT, rootName: "a$&b$'c" }, null);
-        expect(document.querySelector(".fo-surface .fs-title")!.textContent).toBe("Folder: a$&b$'c");
+        expect(document.querySelector(".fo-surface")!.getAttribute("aria-label")).toBe("Folder: a$&b$'c");
+        expect(document.querySelector(".fo-surface .fo-title")!.textContent).toBe("a$&b$'c");
     });
 });
 
@@ -174,7 +175,7 @@ describe("the start view, from the host's showStartView", () => {
         await showStartView();
         await showStartView();
         expect(document.querySelectorAll(".fo-surface")).toHaveLength(1);
-        expect(document.querySelector(".fo-surface .fs-title")!.textContent).toBe("No File Open");
+        expect(document.querySelector(".fo-surface")!.getAttribute("aria-label")).toBe("No File Open");
         expect(posted().filter((m) => m.type === "requestRecentFiles")).toHaveLength(1);
     });
 

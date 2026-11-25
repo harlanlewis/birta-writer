@@ -12,6 +12,13 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ## [Unreleased]
 
+### Fixed
+
+- In Birta Writer for Mac, Folder Overview no longer covers the titlebar. Its title no longer sits under the titlebar buttons, and the file list stays open beside it.
+- The New Note and Open… buttons in Birta Writer for Mac's start view and Folder Overview are full-size buttons, instead of a fill drawn tight around the words.
+- Cmd-clicking the window title in Birta Writer for Mac lists the folders as the path bar shows them, ending at iCloud Drive or your home folder. A note in an iCloud vault such as Obsidian's no longer lists the vault's app twice, or lists `Mobile Documents`, `Library` and `Users`. The Where menu in the title's popover lists the same folders.
+- Birta Writer for Mac's recent files list in the start view says where each file is the way the path bar does, as in iCloud Drive › Obsidian › Vault. A file's name now stays readable when its location is long; the location is cut from the front.
+
 ---
 
 ## [2026.1112.0] - 2026, November 12

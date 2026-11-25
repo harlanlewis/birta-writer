@@ -80,7 +80,11 @@ public enum PathBar {
         var out: [PathSegment] = []
         var index: Int
         let mobile = homeParts + components(mobileDocuments)
-        if parts.starts(with: mobile), parts.count > mobile.count + 1 {
+        // `>=`/`>` against the root itself, not one below it: a FOLDER can
+        // be the root (the Where menu's walk starts at a note's folder, and a
+        // recent row names a file's folder), and it then reads as that root
+        // alone rather than falling through to the next branch's.
+        if parts.starts(with: mobile), parts.count > mobile.count {
             let containerIndex = mobile.count
             let cloudPath = join(mobile + [cloudDocs])
             out.append(PathSegment(name: cloudTitle, path: cloudPath, kind: .cloud))
@@ -88,15 +92,18 @@ public enum PathBar {
                 index = containerIndex + 1
             } else {
                 // An app's container, under the app's name, with the
-                // `Documents` folder the Finder hides folded into it.
+                // `Documents` folder the Finder hides folded into it, the
+                // path that ends AT that folder included: the container and
+                // its `Documents` both display as the app's name, so leaving
+                // either unfolded names the app twice.
                 var containerEnd = containerIndex + 1
-                if parts.count > containerEnd + 1, parts[containerEnd] == "Documents" { containerEnd += 1 }
+                if parts.count > containerEnd, parts[containerEnd] == "Documents" { containerEnd += 1 }
                 let containerPath = join(Array(parts[..<containerEnd]))
                 out.append(PathSegment(name: displayName(join(Array(parts[...containerIndex]))),
                                        path: containerPath, kind: .folder))
                 index = containerEnd
             }
-        } else if parts.starts(with: homeParts), parts.count > homeParts.count, !homeParts.isEmpty {
+        } else if parts.starts(with: homeParts), parts.count >= homeParts.count, !homeParts.isEmpty {
             out.append(PathSegment(name: displayName(join(homeParts)), path: join(homeParts), kind: .home))
             index = homeParts.count
         } else {
@@ -115,6 +122,21 @@ public enum PathBar {
         }
         return out
     }
+
+    /// Where `folder` is, as one line: the bar's segment names root first,
+    /// between chevrons. For a row that names a file and has to
+    /// say where it is beside the name (the start view's recent files), so the
+    /// place reads the way the path bar under the document reads it rather
+    /// than as a POSIX path through `Library/Mobile Documents`.
+    public static func location(of folder: URL, home: URL,
+                                displayName: (String) -> String) -> String {
+        segments(for: folder, home: home, displayName: displayName)
+            .map { $0.kind == .file ? displayName($0.path) : $0.name }
+            .joined(separator: separator)
+    }
+
+    /// What `location` puts between two names.
+    public static let separator = " \u{203A} "
 
     /// Whether `path` is one the bar for `file` drew, which is the only kind
     /// a page may ask to have shown: a page naming a path of its own choosing

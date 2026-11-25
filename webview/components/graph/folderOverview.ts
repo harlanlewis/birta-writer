@@ -1,34 +1,41 @@
 /**
  * components/graph/folderOverview.ts
  *
- * The folder as a whole (MAR-488): its hub, the most connected note
- * (./folderGraph.ts `folderHub`), with two rings of the notes around it, and
- * under that the folder's recent files. A dot or a row opens its note. It is
- * opened on demand, by the `showFolderOverview` command, and never by itself:
- * opening a folder still opens a note.
+ * The folder as a whole (MAR-488): the files the reader has been working in
+ * here, and under them a drawing of the notes around the one they opened most
+ * recently. A row or a dot opens its note. It is opened on demand, by the
+ * `showFolderOverview` command, and never by itself: opening a folder still
+ * opens a note.
  *
  * Two layers. `createFolderOverview` builds an element and draws into it, asks
  * the host for nothing, and is handed the index and the recent files, so it can
  * be mounted in any surface. `openFolderOverview` is the one surface that
- * mounts it today, the fullscreen surface over the page, and is what asks.
+ * mounts it today, a fullscreen surface set in the document's area (under the
+ * top bar, beside a docked file list: `inContent`), and is what asks.
  *
- * The recent files must never be pushed below the fold by the drawing. The
- * square is sized against the viewport's height as well as its width
- * (`.fo .lg-stage` in ./styles.ts), which leaves the list its room in any
- * window, and the list is capped rather than scrolled.
+ * The lists come before the drawing. They are what the reader came for, a way
+ * back into what they were doing; the drawing is a way to wander from there,
+ * and drawn first it pushed the lists below the fold of any short window.
  *
- * The centre opens like any other dot. In the Graph tab the centre is the note
- * on screen and opens nothing; here the centre is the folder's hub, which is
- * usually some other note, and it is a note to go to.
+ * The drawing centres on the most recently opened note here that links to
+ * anything (`overviewCentre`), not on the folder's most connected note. A
+ * hub is a fact about the folder's history, and in a vault of any age it is
+ * one cluster of old notes that has nothing to do with today's work; the
+ * recent list is the one signal of what today's work is. Only a host that
+ * keeps no recent files list, or one with nothing opened here yet, falls back
+ * to the hub, because it is then the only centre there is. The centre opens
+ * like any other dot, unless it is the note already on screen.
  *
  * It is also the START VIEW, on a host that declares `fileLauncher`: the empty
  * state of a window holding no file, and the same buttons and recent files in
  * a folder's overview:
  *
+ *     Folder name  (a folder)
  *     [New Note]  [Open…]
- *     (a folder)   the graph, and the folder's own recent files
+ *     In this folder  (a folder) the folder's own recent files
  *     Recent       the reader's recent files, app-wide
  *     Open Recent…
+ *     (a folder)   the drawing
  *
  * A window with no folder draws the same view with no folder sections, pinned
  * (`openStartView`): a Mac window holding no file, which New Window and moving
@@ -55,7 +62,8 @@ import { bindActivate } from "@/ui/dom";
 import { openFullscreenSurface } from "@/ui/fullscreenSurface";
 import { wireRoving } from "../sidePanel/keyboardNav";
 import { folderHub } from "./folderGraph";
-import { buildLocalGraph, layoutRings } from "./localGraph";
+import { buildLocalGraph, layoutRings, type LocalGraph } from "./localGraph";
+import type { FolderIndex } from "../../../shared/folderIndex";
 import { createRingStage, fill, fillLegend, RING_SIZE } from "./ringStage";
 import { ensureLocalGraphStyles } from "./styles";
 
@@ -64,6 +72,39 @@ export const OVERVIEW_RECENTS = 8;
 
 /** Most of the reader's recent files the start view lists before Open Recent…. */
 export const START_RECENTS = 6;
+
+/** Where the drawing centres, and why, for its caption. */
+export interface OverviewCentre {
+    graph: LocalGraph;
+    /** `recent`: the reader's most recent note here with a link; `hub`: the folder's most connected. */
+    reason: "recent" | "hub";
+}
+
+/**
+ * The note the overview's drawing centres on: the first of `recents` (the
+ * folder's recent files, most recent first) that the index holds and that
+ * links or is linked to, with its two rings. With no recent files to go on
+ * (`recents` null from a host that keeps none, or empty) it is the folder's
+ * hub. Null when the recent files are there and none of them links to
+ * anything: the hub would be a drawing of somewhere else, which is the one
+ * thing this view exists not to show.
+ */
+export function overviewCentre(index: FolderIndex, recents: readonly string[] | null): OverviewCentre | null {
+    const drawable = (path: string): LocalGraph | null => {
+        const graph = buildLocalGraph(index, path, 2);
+        return graph && graph.nodes.length >= 2 ? graph : null;
+    };
+    if (recents !== null && recents.length > 0) {
+        for (const path of new Set(recents)) {
+            const graph = drawable(path);
+            if (graph) { return { graph, reason: "recent" }; }
+        }
+        return null;
+    }
+    const hub = folderHub(index);
+    const graph = hub !== null ? drawable(hub) : null;
+    return graph ? { graph, reason: "hub" } : null;
+}
 
 /** The host's ways to a document, for the start view's buttons and rows. */
 export interface StartLauncher {
@@ -105,14 +146,20 @@ export interface FolderOverviewHost {
     launcher?: StartLauncher;
     /** Whether the view is of a folder: false draws no graph and no folder list. */
     folder?: boolean;
+    /**
+     * Whether a `null` recents list means NOT YET rather than never: the
+     * drawing then waits for it, because the centre is chosen from it and a
+     * drawing made without it would be the hub's, replaced a moment later.
+     */
+    recentsAwaited?: boolean;
 }
 
 export interface FolderOverview {
     element: HTMLElement;
     /**
      * Draw the folder. `state` is the folder index (null while it has not
-     * arrived; its `self` is not read, because the overview is of the folder
-     * rather than of the note under it). `recents` are root-relative paths,
+     * arrived; its `self`, the note on screen, is read only to draw that note
+     * current should it be the centre). `recents` are root-relative paths,
      * most recent first, or null from a host that keeps no recent files list,
      * which draws no section for them at all.
      */
@@ -130,6 +177,10 @@ export function createFolderOverview(host: FolderOverviewHost): FolderOverview {
     const launcher = host.launcher;
 
     const stage = createRingStage({ openNote: host.openNote, onEscape: host.onEscape, centreIsCurrent: false });
+    // The folder's name, in the column rather than in a pill over it: the
+    // pill floated in the corner the Mac app's titlebar controls sit in.
+    const title = document.createElement("h2");
+    title.className = "fo-title";
     const caption = document.createElement("div");
     caption.className = "lg-caption fo-caption";
     const legend = document.createElement("div");
@@ -168,9 +219,11 @@ export function createFolderOverview(host: FolderOverviewHost): FolderOverview {
     moreRow.textContent = t("Open Recent…");
     bindActivate(moreRow, () => launcher?.openRecentMenu(moreRow.getBoundingClientRect()));
 
+    if (folder) { element.append(title); }
     if (launcher) { element.append(actions); }
-    if (folder) { element.append(stage.element, caption, legend, recentHead, recentList, recentEmpty); }
+    if (folder) { element.append(recentHead, recentList, recentEmpty); }
     if (launcher) { element.append(filesHead, filesList); }
+    if (folder) { element.append(stage.element, caption, legend); }
 
     const recentRoving = wireRoving({
         container: recentList,
@@ -183,6 +236,13 @@ export function createFolderOverview(host: FolderOverviewHost): FolderOverview {
         onEscape: host.onEscape,
     });
 
+    /** A row's place, as the run its cell elides from the start (./styles.ts). */
+    function where(text: string): HTMLSpanElement {
+        const span = document.createElement("span");
+        span.textContent = text;
+        return span;
+    }
+
     function launchButton(label: string, kind: string, run: () => void): HTMLButtonElement {
         const btn = document.createElement("button");
         btn.type = "button";
@@ -192,27 +252,37 @@ export function createFolderOverview(host: FolderOverviewHost): FolderOverview {
         return btn;
     }
 
-    function drawGraph(state: FolderIndexState | null): void {
+    function drawGraph(state: FolderIndexState | null, recents: readonly string[] | null): void {
         stage.clear();
         legend.replaceChildren();
+        title.textContent = state?.index?.rootName ?? "";
+        title.hidden = !state?.index;
         if (!state) {
             stage.element.hidden = true;
             caption.textContent = t("Reading the folder…");
             return;
         }
-        const hub = state.index ? folderHub(state.index) : null;
-        const graph = hub !== null ? buildLocalGraph(state.index!, hub, 2) : null;
-        if (!graph || graph.nodes.length < 2) {
+        if (recents === null && host.recentsAwaited) {
             stage.element.hidden = true;
-            caption.textContent = state.index
-                ? t("No note in this folder links to another")
-                : t("This folder has no notes to draw");
+            caption.textContent = "";
+            return;
+        }
+        const centre = state.index ? overviewCentre(state.index, recents) : null;
+        if (!centre) {
+            stage.element.hidden = true;
+            caption.textContent = !state.index
+                ? t("This folder has no notes to draw")
+                : recents !== null && recents.length > 0
+                    ? t("None of the notes you opened here links to another")
+                    : t("No note in this folder links to another");
             return;
         }
         stage.element.hidden = false;
-        const laid = layoutRings(graph, RING_SIZE);
-        stage.draw(laid);
-        const notes = [fill(t("Centred on {0}, the most connected note here"), laid.nodes[0]!.label)];
+        const laid = layoutRings(centre.graph, RING_SIZE);
+        stage.draw(laid, laid.nodes[0]!.id === state.self);
+        const notes = [fill(centre.reason === "recent"
+            ? t("Around {0}, the note you opened here most recently")
+            : t("Centred on {0}, the most connected note here"), laid.nodes[0]!.label)];
         if (laid.omitted > 0) {
             notes.push(fill(t("{0} more not shown"), String(laid.omitted)));
         }
@@ -250,7 +320,7 @@ export function createFolderOverview(host: FolderOverviewHost): FolderOverview {
             if (parts.length > 0) {
                 const detail = document.createElement("span");
                 detail.className = "fg-row-detail fo-row-where";
-                detail.textContent = parts.join("/");
+                detail.append(where(parts.join("/")));
                 btn.append(detail);
             }
             bindActivate(btn, () => host.openNote(path));
@@ -281,7 +351,7 @@ export function createFolderOverview(host: FolderOverviewHost): FolderOverview {
             if (file.detail) {
                 const detail = document.createElement("span");
                 detail.className = "fg-row-detail fo-row-where";
-                detail.textContent = file.detail;
+                detail.append(where(file.detail));
                 btn.append(detail);
             }
             bindActivate(btn, () => launcher?.openRecent(file.path));
@@ -295,7 +365,7 @@ export function createFolderOverview(host: FolderOverviewHost): FolderOverview {
         element,
         render: (state, recents, files = null) => {
             if (folder) {
-                drawGraph(state);
+                drawGraph(state, recents);
                 drawRecents(state, recents);
             }
             if (launcher) { drawFiles(files); }
@@ -333,9 +403,10 @@ export interface FolderOverviewHandle {
 }
 
 /**
- * Open the overview over the page, on the fullscreen surface the whole-folder
- * graph uses. Escape, Close or a click on the ground puts the page back as it
- * was; a dot or a row closes it and opens that note. It asks the host for the
+ * Open the overview in place of the document, on the fullscreen surface the
+ * whole-folder graph uses, set in the document's area (`inContent`) so the top
+ * bar and a docked file list stay usable beside it. Escape, Close or a click
+ * on the ground puts the page back as it was; a dot or a row closes it and opens that note. It asks the host for the
  * index (once per page, as every view of it does) and for the recent files
  * (every opening), and redraws as either arrives.
  */
@@ -348,16 +419,19 @@ export function openFolderOverview(host: FolderOverviewSurfaceHost): FolderOverv
     // The reader's recent files, likewise this opening's answer.
     let files: readonly RecentFile[] | null = null;
     const empty = host.empty === true;
-    const titleFor = (state: FolderIndexState | null): string => empty
+    // What the region is called, for a screen reader: the folder's own name
+    // is drawn in the column, and the window's title already says a window
+    // holding nothing is Birta Writer.
+    const labelFor = (state: FolderIndexState | null): string => empty
         ? t("No File Open")
         : state?.index
             ? fill(t("Folder: {0}"), state.index.rootName)
             : t("Folder");
     const surface = openFullscreenSurface({
         ground: "canvas",
-        title: titleFor(readFolderIndex()),
         className: "fo-surface",
         pinned: empty,
+        inContent: true,
         onClose: () => {
             open = false;
             window.removeEventListener(FOLDER_INDEX_CHANGED, redraw);
@@ -366,6 +440,7 @@ export function openFolderOverview(host: FolderOverviewSurfaceHost): FolderOverv
             if (!openingNote) { host.onDismiss(); }
         },
     });
+    surface.overlay.setAttribute("aria-label", labelFor(readFolderIndex()));
     surface.setCanvasColor("var(--vscode-editor-background)");
     // A button that goes somewhere else leaves the view as a row does: a new
     // note or an opened file is the next thing on screen, and the view would
@@ -391,6 +466,9 @@ export function openFolderOverview(host: FolderOverviewSurfaceHost): FolderOverv
         onEscape: () => { if (!empty) { surface.close(); } },
         ...(launcher ? { launcher } : {}),
         folder: !empty,
+        // A host with a launcher keeps the reader's recent files, so it
+        // answers this opening's request; one without may never answer.
+        recentsAwaited: !empty && launcher !== undefined,
     });
     surface.content.append(view.element);
 
@@ -404,7 +482,7 @@ export function openFolderOverview(host: FolderOverviewSurfaceHost): FolderOverv
     surface.overlay.addEventListener("mousedown", touch, true);
     function redraw(): void {
         const state = readFolderIndex();
-        surface.setTitle(titleFor(state));
+        surface.overlay.setAttribute("aria-label", labelFor(state));
         // A redraw rebuilds every row and dot, so the one holding focus is
         // found again by what it names rather than dropped to the body.
         const held = document.activeElement instanceof HTMLElement && view.element.contains(document.activeElement)

@@ -129,21 +129,31 @@ export function openFullscreenSurface(opts: {
      * that holds no file), where dismissing it would leave a blank page that
      * can hold nothing. `close()` still works, for its owner.
      *
-     * It starts under the page's top bar rather than over it. A surface the
-     * reader can dismiss may take the whole viewport, because Escape gives
-     * the bar back; one they cannot would take the bar's controls with it for
-     * as long as the state lasts, the Settings gear among them, which on a
-     * panel with no Dock icon is the way to preferences.
+     * A pinned surface is also placed `inContent`, because one the reader
+     * cannot put away must not take the bar's controls with it for as long as
+     * the state lasts, the Settings gear among them, which on a panel with no
+     * Dock icon is the way to preferences.
      */
     pinned?: boolean;
+    /**
+     * Set in the document's own area rather than over the whole page: under
+     * the top bar and beside any drawer docked open, so the bar and the file
+     * list stay the reader's while it is up. For a surface that stands in for
+     * the document (a folder's overview, a window's start view) rather than
+     * enlarging something in it: the document is what it replaces, so the
+     * document's area is the room it has. Not modal, since the chrome beside
+     * it still works.
+     */
+    inContent?: boolean;
 }): FullscreenSurface {
+    const inContent = opts.inContent === true || opts.pinned === true;
     const overlay = document.createElement("div");
-    overlay.className = `fs-surface fs-surface--${opts.ground}${opts.pinned ? " fs-surface--pinned" : ""}${opts.className ? ` ${opts.className}` : ""}`;
+    overlay.className = `fs-surface fs-surface--${opts.ground}${opts.pinned ? " fs-surface--pinned" : ""}${inContent ? " fs-surface--in-content" : ""}${opts.className ? ` ${opts.className}` : ""}`;
     // The overlay takes focus on open so the editor behind it stops receiving
     // keystrokes (MAR-267). It is a surface, not a control — no focus ring.
     overlay.tabIndex = -1;
-    overlay.setAttribute("role", "dialog");
-    overlay.setAttribute("aria-modal", "true");
+    overlay.setAttribute("role", inContent ? "region" : "dialog");
+    if (!inContent) overlay.setAttribute("aria-modal", "true");
     if (opts.title) overlay.setAttribute("aria-label", opts.title);
 
     const content = document.createElement("div");
@@ -194,11 +204,16 @@ export function openFullscreenSurface(opts: {
      * a mode change must take its divider with it.
      */
     function syncDividers(): void {
-        const visible = [...actions.querySelectorAll<HTMLElement>(".fs-actions__group")]
-            .filter((group) => !group.hidden && group !== closeGroup);
+        const groups = [...actions.querySelectorAll<HTMLElement>(".fs-actions__group")];
+        const visible = groups.filter((group) => !group.hidden && group !== closeGroup);
         visible.forEach((group, i) => group.toggleAttribute("data-divided", i > 0));
+        // The cluster is a card, and a card with nothing in it still draws its
+        // border and shadow: a pinned surface with no actions of its own put a
+        // speck in the corner where Close would have been.
+        actions.hidden = groups.every((group) => group.hidden);
     }
 
+    syncDividers();
     overlay.append(content, title, actions, nav);
     document.body.appendChild(overlay);
     overlay.focus();

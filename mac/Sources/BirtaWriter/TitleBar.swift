@@ -1046,13 +1046,14 @@ final class TitleBarView: NSView {
         syncHoverChrome()
     }
 
-    /// The file, then each folder above it up to the volume, top to bottom,
-    /// which is the order macOS lists them in. Every row reveals itself in
-    /// Finder, including the file's own.
+    /// The file, then each folder above it as far as the path bar goes
+    /// (`WindowTitle.pathRows`), top to bottom, which is the order macOS lists
+    /// them in. Every row reveals itself in Finder, including the file's own.
     private func showPathMenu(for url: URL) {
         let menu = NSMenu()
-        for target in WindowTitle.ancestry(of: url) {
-            let item = menu.addItem(withTitle: WindowTitle.displayName(of: target),
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        for (name, target) in WindowTitle.pathRows(of: url, home: home, displayName: { WindowTitle.displayName(of: URL(fileURLWithPath: $0)) }) {
+            let item = menu.addItem(withTitle: name,
                                     action: #selector(revealMenuItem(_:)),
                                     keyEquivalent: "")
             item.target = self

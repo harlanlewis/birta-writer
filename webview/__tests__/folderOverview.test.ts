@@ -106,13 +106,13 @@ describe("createFolderOverview", () => {
         expect(openNote).toHaveBeenCalledWith("sub/far.md");
     });
 
-    it("recent files should list under the drawing, in the order given, named from the index", () => {
+    it("recent files should list above the drawing, in the order given, named from the index", () => {
         const view = mount();
         view.render({ index: VAULT, self: null }, ["lone.md", "sub/far.md", "notes.txt"]);
         expect(rows(view.element)).toEqual(["lone.md", "sub/far.md", "notes.txt"]);
         const children = [...view.element.children];
-        expect(children.indexOf(view.element.querySelector(".lg-stage")!))
-            .toBeLessThan(children.indexOf(view.element.querySelector(".fo-recents")!));
+        expect(children.indexOf(view.element.querySelector(".fo-recents")!))
+            .toBeLessThan(children.indexOf(view.element.querySelector(".lg-stage")!));
         const far = view.element.querySelector<HTMLElement>('.fo-row[data-path="sub/far.md"]')!;
         expect(far.querySelector(".fg-row-label")!.textContent).toBe("far");
         expect(far.querySelector(".fo-row-where")!.textContent).toBe("sub");
@@ -152,11 +152,55 @@ describe("createFolderOverview", () => {
     it("a folder with no links should say so and keep the recent files", () => {
         const flat = index([node("a.md"), node("b.md")], []);
         const view = mount();
-        view.render({ index: flat, self: null }, ["a.md"]);
+        view.render({ index: flat, self: null }, []);
         expect(view.element.querySelectorAll(".lg-node")).toHaveLength(0);
         expect(view.element.querySelector<HTMLElement>(".lg-stage")!.hidden).toBe(true);
         expect(view.element.querySelector(".fo-caption")!.textContent).toBe("No note in this folder links to another");
+        view.render({ index: flat, self: null }, ["a.md"]);
+        expect(view.element.querySelector(".fo-caption")!.textContent).toBe("None of the notes you opened here links to another");
         expect(rows(view.element)).toEqual(["a.md"]);
+    });
+
+    it("the drawing should centre on the most recent note that links, not on the hub", () => {
+        const view = mount();
+        // lone.md links to nothing, so the next recent note is the centre.
+        view.render({ index: VAULT, self: null }, ["lone.md", "sub/far.md", "hub.md"]);
+        expect(view.element.querySelector<HTMLElement>(".lg-node--self")!.dataset["id"]).toBe("sub/far.md");
+        expect(view.element.querySelector(".fo-caption")!.textContent).toContain("the note you opened here most recently");
+    });
+
+    it("recent notes none of which links should draw nothing rather than fall back to the hub", () => {
+        const view = mount();
+        view.render({ index: VAULT, self: null }, ["lone.md", "notes.txt"]);
+        expect(view.element.querySelectorAll(".lg-node")).toHaveLength(0);
+        expect(view.element.querySelector<HTMLElement>(".lg-stage")!.hidden).toBe(true);
+    });
+
+    it("a host keeping no recent files list should centre on the hub", () => {
+        const view = mount();
+        view.render({ index: VAULT, self: null }, null);
+        expect(view.element.querySelector<HTMLElement>(".lg-node--self")!.dataset["id"]).toBe("hub.md");
+    });
+
+    it("a centre that is the note on screen should be drawn current and open nothing", () => {
+        const view = mount();
+        view.render({ index: VAULT, self: "a.md" }, ["a.md"]);
+        const centre = view.element.querySelector<HTMLElement>(".lg-node--self")!;
+        expect(centre.dataset["id"]).toBe("a.md");
+        expect(centre.classList.contains("lg-node--opens")).toBe(false);
+        centre.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+        expect(openNote).not.toHaveBeenCalled();
+    });
+
+    it("the folder's name should head the column once the index arrives", () => {
+        const view = mount();
+        view.render(null, null);
+        expect(view.element.querySelector<HTMLElement>(".fo-title")!.hidden).toBe(true);
+        view.render({ index: VAULT, self: null }, []);
+        const title = view.element.querySelector<HTMLElement>(".fo-title")!;
+        expect(title.hidden).toBe(false);
+        expect(title.textContent).toBe("v");
+        expect(view.element.firstElementChild).toBe(title);
     });
 
     it("a truncated index should say the drawing may be missing notes", () => {
@@ -229,9 +273,13 @@ describe("openFolderOverview", () => {
         expect(surface.querySelector(".fo-caption")!.textContent).toBe("Reading the folder…");
         receiveFolderIndex(VAULT, "lone.md");
         receiveFolderRecents(["sub/far.md", "a.md"]);
-        expect(surface.querySelector(".lg-node--self")!.getAttribute("data-id")).toBe("hub.md");
+        expect(surface.querySelector(".lg-node--self")!.getAttribute("data-id")).toBe("sub/far.md");
         expect(rows(surface)).toEqual(["sub/far.md", "a.md"]);
-        expect(surface.querySelector(".fs-title")!.textContent).toBe("Folder: v");
+        expect(surface.getAttribute("aria-label")).toBe("Folder: v");
+        expect(surface.querySelector(".fo-title")!.textContent).toBe("v");
+        // Set in the document's area, beside the chrome, not a modal over it.
+        expect(surface.classList.contains("fs-surface--in-content")).toBe(true);
+        expect(surface.getAttribute("aria-modal")).toBeNull();
         close();
     });
 
@@ -393,16 +441,17 @@ describe("the start view", () => {
         expect(launcher.openRecentMenu).toHaveBeenCalledTimes(1);
     });
 
-    it("in a folder it should put the buttons first, the folder's own list next, and the reader's last", () => {
+    it("in a folder it should put the name and buttons first, the two lists next, and the drawing last", () => {
         const view = createFolderOverview({ openNote: () => {}, onEscape: () => {}, launcher: launcherSpy() });
         view.render({ index: VAULT, self: null }, ["a.md"], FILES);
         const children = [...view.element.children];
         const at = (selector: string): number => children.indexOf(view.element.querySelector(selector)!);
-        expect(at(".fo-actions")).toBe(0);
-        expect(at(".lg-stage")).toBeGreaterThan(0);
+        expect(at(".fo-title")).toBe(0);
+        expect(at(".fo-actions")).toBe(1);
         expect(at(".fo-row")).toBe(-1); // a row is inside its list, not a child
-        expect(at(".fo-recents:not(.fo-files)")).toBeGreaterThan(at(".lg-stage"));
-        expect(at(".fo-files")).toBe(children.length - 1);
+        expect(at(".fo-recents:not(.fo-files)")).toBeGreaterThan(at(".fo-actions"));
+        expect(at(".fo-files")).toBeGreaterThan(at(".fo-recents:not(.fo-files)"));
+        expect(at(".lg-stage")).toBeGreaterThan(at(".fo-files"));
         const headings = [...view.element.querySelectorAll(".fo-heading")].map((h) => h.textContent);
         expect(headings).toEqual(["In this folder", "Recent"]);
     });
@@ -422,7 +471,8 @@ describe("the start view", () => {
         expect(types).toContain("requestRecentFiles");
         expect(types).not.toContain("requestFolderRecents");
         const surface = document.querySelector<HTMLElement>(".fo-surface")!;
-        expect(surface.querySelector(".fs-title")!.textContent).toBe("No File Open");
+        expect(surface.getAttribute("aria-label")).toBe("No File Open");
+        expect(surface.querySelector(".fo-title")).toBeNull();
         expect(surface.querySelector<HTMLElement>(".fs-actions__group--close")!.hidden).toBe(true);
         document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
         expect(onDismiss).not.toHaveBeenCalled();
@@ -430,6 +480,15 @@ describe("the start view", () => {
         receiveRecentFiles(FILES.slice(0, 1));
         expect(surface.querySelectorAll(".fo-file")).toHaveLength(1);
         expect(document.activeElement!.textContent).toBe("New Note");
+    });
+
+    it("over a folder, the drawing should wait for the recent files rather than draw the hub first", () => {
+        receiveFolderIndex(VAULT, null);
+        openFolderOverview({ openNote: () => {}, onDismiss: () => {}, launcher: launcherSpy() });
+        const surface = document.querySelector<HTMLElement>(".fo-surface")!;
+        expect(surface.querySelectorAll(".lg-node")).toHaveLength(0);
+        receiveFolderRecents(["sub/far.md"]);
+        expect(surface.querySelector<HTMLElement>(".lg-node--self")!.dataset["id"]).toBe("sub/far.md");
     });
 
     it("New Note over a folder should put the overview away before the host acts; Open should leave it up", () => {

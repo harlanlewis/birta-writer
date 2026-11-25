@@ -1,11 +1,11 @@
 /**
  * webview/links/folderOverviewCommand.ts — what running `showFolderOverview`
  * does (MAR-488): load the graph's lazy chunk and open the folder overview
- * over the page, once.
+ * in place of the document, once.
  *
  * Once, because the command is reached from outside the page as well as from
  * inside it: a host palette and the Mac app's View menu are not under the
- * overview's modal surface, so a second run while one is open is an ordinary
+ * overview's surface, so a second run while one is open is an ordinary
  * gesture. It focuses the open one rather than stacking a second, and two runs
  * that both start before the chunk has loaded open one between them.
  *

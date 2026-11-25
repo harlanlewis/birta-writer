@@ -111,38 +111,68 @@ final class WindowTitleTests: XCTestCase {
         XCTAssertEqual(runs[0].text, "abcdefghij" + WindowTitle.ellipsis)
     }
 
-    func testAFileShouldListItselfFirstThenEveryFolderUpToTheRoot() {
-        let chain = WindowTitle.ancestry(of: URL(fileURLWithPath: "/Users/x/Notes/Scratchpad.md"))
-        XCTAssertEqual(chain.map(\.path), [
-            "/Users/x/Notes/Scratchpad.md",
-            "/Users/x/Notes",
-            "/Users/x",
-            "/Users",
-            "/",
-        ])
-    }
+    // MARK: pathRows
 
-    func testTheRootItselfShouldBeASingleEntryRatherThanAnEndlessWalk() {
-        XCTAssertEqual(WindowTitle.ancestry(of: URL(fileURLWithPath: "/")).map(\.path), ["/"])
-    }
+    private let home = URL(fileURLWithPath: "/Users/x")
 
-    /// `deletingLastPathComponent` leaves `..` behind on an unstandardized
-    /// path, which walks upward forever. Standardizing each step is what stops
-    /// it, and this is the case that proves the standardize is load-bearing.
-    func testARelativelySpelledPathShouldBeStandardizedBeforeWalking() {
-        let chain = WindowTitle.ancestry(of: URL(fileURLWithPath: "/Users/x/Notes/../Scratchpad.md"))
-        XCTAssertEqual(chain.first?.path, "/Users/x/Scratchpad.md")
-        XCTAssertEqual(chain.last?.path, "/")
-        // Every step really is the previous one's parent, which is the whole
-        // claim the popup makes about the list it draws.
-        for (child, parent) in zip(chain, chain.dropFirst()) {
-            XCTAssertEqual(child.deletingLastPathComponent().standardizedFileURL.path, parent.path)
+    /// The names `FileManager.displayName` gives the folders these cases
+    /// cross: an app's iCloud container AND the `Documents` folder inside it
+    /// both display as the app, which is what put "Obsidian" in the popup twice.
+    private func shown(_ path: String) -> String {
+        switch path {
+        case "/": return "Macintosh HD"
+        case "/Users/x/Library/Mobile Documents/iCloud~md~obsidian",
+             "/Users/x/Library/Mobile Documents/iCloud~md~obsidian/Documents": return "Obsidian"
+        default: return (path as NSString).lastPathComponent
         }
     }
 
-    func testATrailingSlashShouldNotProduceARepeatedEntry() {
-        let chain = WindowTitle.ancestry(of: URL(fileURLWithPath: "/Users/x/Notes/", isDirectory: true))
-        XCTAssertEqual(chain.map(\.path), ["/Users/x/Notes", "/Users/x", "/Users", "/"])
+    private func rows(_ url: URL) -> [(name: String, url: URL)] {
+        WindowTitle.pathRows(of: url, home: home, displayName: shown)
+    }
+
+    func testAFileUnderHomeShouldListItselfThenEachFolderUpToHome() {
+        let r = rows(URL(fileURLWithPath: "/Users/x/Notes/Scratchpad.md"))
+        XCTAssertEqual(r.map(\.name), ["Scratchpad.md", "Notes", "x"])
+        XCTAssertEqual(r.map(\.url.path), ["/Users/x/Notes/Scratchpad.md", "/Users/x/Notes", "/Users/x"])
+    }
+
+    func testANoteInAnICloudVaultShouldNameTheAppOnceAndStopAtICloudDrive() {
+        let r = rows(URL(fileURLWithPath: "/Users/x/Library/Mobile Documents/iCloud~md~obsidian/Documents/Harlan/Note.md"))
+        XCTAssertEqual(r.map(\.name), ["Note.md", "Harlan", "Obsidian", "iCloud Drive"])
+        XCTAssertEqual(r.map(\.url.path), [
+            "/Users/x/Library/Mobile Documents/iCloud~md~obsidian/Documents/Harlan/Note.md",
+            "/Users/x/Library/Mobile Documents/iCloud~md~obsidian/Documents/Harlan",
+            "/Users/x/Library/Mobile Documents/iCloud~md~obsidian/Documents",
+            "/Users/x/Library/Mobile Documents/com~apple~CloudDocs",
+        ])
+    }
+
+    /// The Where menu's walk starts at a folder, and a folder is named the way
+    /// the folders above it are, not as a file's name is written.
+    func testAFolderShouldBeNamedByTheFileSystemAndNotListedTwice() {
+        let r = rows(URL(fileURLWithPath: "/Users/x/Library/Mobile Documents/iCloud~md~obsidian/Documents/", isDirectory: true))
+        XCTAssertEqual(r.map(\.name), ["Obsidian", "iCloud Drive"])
+        XCTAssertTrue(r[0].url.hasDirectoryPath)
+    }
+
+    /// A note at the top of iCloud Drive: the Where menu starts at the iCloud
+    /// Drive folder itself, and lists it once.
+    func testTheWhereMenuForANoteAtTheTopOfICloudDriveShouldListICloudDriveAlone() {
+        let r = rows(URL(fileURLWithPath: "/Users/x/Library/Mobile Documents/com~apple~CloudDocs/", isDirectory: true))
+        XCTAssertEqual(r.map(\.name), ["iCloud Drive"])
+        XCTAssertEqual(r.map(\.url.path), ["/Users/x/Library/Mobile Documents/com~apple~CloudDocs"])
+    }
+
+    /// `deletingLastPathComponent` leaves `..` behind on an unstandardized
+    /// path; the rows are standardized, so the walk names real folders.
+    func testARelativelySpelledPathShouldBeStandardizedBeforeWalking() {
+        let r = rows(URL(fileURLWithPath: "/Users/x/Notes/../Scratchpad.md"))
+        XCTAssertEqual(r.map(\.url.path), ["/Users/x/Scratchpad.md", "/Users/x"])
+    }
+
+    func testAFileOutsideHomeShouldEndAtTheVolume() {
+        XCTAssertEqual(rows(URL(fileURLWithPath: "/tmp/a.md")).map(\.name), ["a.md", "tmp", "Macintosh HD"])
     }
 
     // MARK: displayName

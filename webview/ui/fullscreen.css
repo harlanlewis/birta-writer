@@ -35,14 +35,39 @@
     --fs-band: 44px;
 }
 
-/* Pinned (`pinned` in fullscreenSurface.ts): under the page's top bar, which
-   stays the reader's while the surface cannot be dismissed. Below the bar in
-   the stack as well as on screen: the bar's menus hang below it inside its
-   own stacking context (`.editor-topbar`, 10002), so a surface above that
-   would draw over the gear's menu the moment it opened. */
-.fs-surface--pinned {
+/* In the document's area (`inContent` in fullscreenSurface.ts): under the
+   page's top bar and beside a drawer docked open, both of which stay the
+   reader's while the surface is up. The edges read the same variables and
+   body classes the content column's own margins do (style.css,
+   `--files-reserve` and `--toc-width`), so the surface and the column it
+   stands in for cannot disagree about where a drawer ends.
+
+   Below the bar in the stack as well as on screen: the bar's menus hang below
+   it inside its own stacking context (`.editor-topbar`, 10002), so a surface
+   above that would draw over the gear's menu the moment it opened. Below a
+   drawer's flyout too (`.side-panel--flyout`), which opens over the content
+   area by design; and under an OVERLAY drawer (`.side-panel`'s own layer) it
+   drops beneath it, since a drawer opened over the content is opened over
+   this as well. */
+.fs-surface--in-content {
     top: var(--editor-topbar-height, 40px);
-    z-index: 10001;
+    z-index: 9998;
+}
+
+body.files-open .fs-surface--in-content {
+    left: var(--files-reserve, 0px);
+}
+
+body.toc-open:not(.toc-right) .fs-surface--in-content {
+    left: calc(var(--files-reserve, 0px) + var(--toc-width, 260px));
+}
+
+body.toc-open.toc-right .fs-surface--in-content {
+    right: var(--toc-width, 260px);
+}
+
+body:is(.files-overlay-open, .toc-overlay-open) .fs-surface--in-content {
+    z-index: 98;
 }
 
 .fs-surface.lb-closing {
