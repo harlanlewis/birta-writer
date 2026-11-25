@@ -36,6 +36,7 @@ import {
     type ReplacementKeys,
     type RoundTripProtection,
 } from "@birta/minimal-diff";
+import { findDirectives } from "./templateDirectives";
 
 export type { RoundTripProtection };
 
@@ -1381,6 +1382,74 @@ function carrySavedTableCells(saved: string, serial: string): string {
     return indentOf(serial) + "|" + merged.join("|") + "|";
 }
 
+// Keep the SAVED bytes of every template directive whose text the edit left
+// alone (MAR-505). The serializer escapes inside a directive as it does in any
+// phrasing (`last_modified` becomes `last\_modified`, `{{</*` becomes
+// `{{\</\*`), and a template engine reads those backslashes literally, so
+// without this an edit anywhere on the line breaks the directive in the file.
+//
+// A directive is paired by its UNESCAPED text, the text the parser gives both
+// spellings, and each saved span is used at most once, in order. That is an
+// equivalence the parser already holds rather than a new one, but it is a
+// claim about each span in isolation: context on the edited line can still
+// change what the restored bytes parse as (an emphasis the user removed around
+// a `*`, a bracket that now meets a definition). `mergeVerified` reparses
+// every merge and writes the serializer's text when the merge is the dirty
+// one, so a wrong restore costs canonical bytes, never content; that gate is
+// what this rule leans on, and it must not be bypassed for it.
+//
+// Only a line the merge pairs in place with one saved line reaches this hook,
+// so a join or a split, which arrives as a run of deletions and insertions,
+// keeps the serializer's escapes (MAR-507). So does a directive whose text the
+// user changed, which has no saved counterpart. Dropping its escapes would be
+// a guess the merge cannot check from bytes: an html block's line is spelled
+// exactly as typed, and the same backslash there is the user's.
+const MARKDOWN_ESCAPE_RE = /\\([!-/:-@[-`{-~])/g;
+const unescapeMarkdown = (span: string): string => span.replace(MARKDOWN_ESCAPE_RE, "$1");
+
+/** Directive spans of a line outside its inline code spans, as raw slices. */
+function lineDirectives(line: string): Array<{ from: number; to: number; text: string }> {
+    const out: Array<{ from: number; to: number; text: string }> = [];
+    let at = 0;
+    for (const segment of splitCodeSpans(line)) {
+        if (!segment.code) {
+            for (const span of findDirectives(segment.text)) {
+                out.push({
+                    from: at + span.from,
+                    to: at + span.to,
+                    text: segment.text.slice(span.from, span.to),
+                });
+            }
+        }
+        at += segment.text.length;
+    }
+    return out;
+}
+
+function carrySavedDirectives(saved: string, serial: string, structural: boolean): string {
+    if (!structural || saved.indexOf("{") < 0 || serial.indexOf("{") < 0) return serial;
+    const savedSpans = lineDirectives(saved).map((span) => ({
+        bytes: span.text,
+        key: unescapeMarkdown(span.text),
+        used: false,
+    }));
+    if (savedSpans.length === 0) return serial;
+    let out = "";
+    let at = 0;
+    for (const span of lineDirectives(serial)) {
+        const key = unescapeMarkdown(span.text);
+        const match = savedSpans.find((s) => !s.used && s.key === key);
+        if (!match) continue;
+        match.used = true;
+        // Either side may carry an escape the other lacks: the serializer
+        // adds `\_`, and drops a saved `\.` it does not need.
+        if (match.bytes === span.text) continue;
+        out +=serial.slice(at, span.from) + match.bytes;
+        at = span.to;
+    }
+    return at === 0 ? serial : out + serial.slice(at);
+}
+
 /**
  * Does this replacement pair consist of two lines whose indentation is OUTLINE
  * STRUCTURE, rather than bytes the user authored?
@@ -1421,9 +1490,11 @@ function reconcileReplacement(
     keys: ReplacementKeys,
 ): string {
     const baseline = asBaselineFacts(facts)?.rendered ?? null;
-    return carrySavedTableCells(
+    const structural = isStructuralPair(keys);
+    return carrySavedDirectives(
         saved,
-        carrySavedIndent(saved, serial, baseline, isStructuralPair(keys)),
+        carrySavedTableCells(saved, carrySavedIndent(saved, serial, baseline, structural)),
+        structural,
     );
 }
 

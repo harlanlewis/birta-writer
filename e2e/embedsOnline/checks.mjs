@@ -542,7 +542,14 @@ export async function run({ page, check, baseUrl }) {
         input.value = url;
     }, newLoom);
     await page.keyboard.press("Enter");
-    await page.waitForTimeout(300);
+    // The update posts when the sync scheduler fires, which a loaded machine
+    // delays past any fixed sleep: wait for the post itself, bounded, and let
+    // the check below report what was missing.
+    await page.waitForFunction(
+        (url) => (window.__posted ?? []).some((m) => m.type === "update" && typeof m.content === "string" && m.content.includes(url)),
+        newLoom,
+        { timeout: 3000 },
+    ).catch(() => {});
     const editedState = await page.evaluate((url) => ({
         stillSelected: !!document.querySelector(".embed-host--selected .embed-card[data-embed-kind='loom']"),
         // The rebuilt card carries the NEW url in its identity strip.
