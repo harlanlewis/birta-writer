@@ -210,8 +210,8 @@ importers:
         specifier: ^3.4.17
         version: 3.4.17
       harper.js:
-        specifier: ^2.10.0
-        version: 2.10.0
+        specifier: ^3.2.0
+        version: 3.2.0
       katex:
         specifier: ^0.19.1
         version: 0.19.1
@@ -1889,8 +1889,8 @@ packages:
   hachure-fill@0.5.2:
     resolution: {integrity: sha512-3GKBOn+m2LX9iq+JC1064cSFprJY4jL1jCXTcpnfER5HYE2l/4EfWSGzkPa/ZDBmYI0ZOEj5VHV/eKnPGkHuOg==}
 
-  harper.js@2.10.0:
-    resolution: {integrity: sha512-s6BDuqtRbX8M/5exH1G5M7VzAuv6l0TagbRxMY37OsrT/1kWFjWmqHydWrkYFqTUW+fFhu4Hj2yUxvChp862Pg==}
+  harper.js@3.2.0:
+    resolution: {integrity: sha512-TDsvGAavw1G0tDNzAkzDkv2Q/Z0kRSXgA4cJepdiiqJ9AJH2dr68D40W7W5uKiskZES/u3mjfgIdOEXVZCdhtA==}
 
   has-flag@4.0.0:
     resolution: {integrity: sha512-EykJT/Q1KjTWctppgIAgfSO0tKVuZUjhgMr17kqTumMl6Afv3EISleU7qZUzoXDFTAHTDC4NOoG/ZxU3EvlMPQ==}
@@ -4578,7 +4578,7 @@ snapshots:
 
   hachure-fill@0.5.2: {}
 
-  harper.js@2.10.0:
+  harper.js@3.2.0:
     dependencies:
       fflate: 0.8.3
 

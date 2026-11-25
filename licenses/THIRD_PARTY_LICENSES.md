@@ -3906,7 +3906,7 @@ SOFTWARE.
 
 </details>
 
-### harper.js@2.10.0
+### harper.js@3.2.0
 
 - License: Apache-2.0
 - Source: https://writewithharper.com
