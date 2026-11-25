@@ -1120,9 +1120,10 @@ final class Coordinator {
     /// never rebound: a root is what a window IS, the way its file is what it
     /// is on, and a tab opened from its explorer is a window with the same
     /// root. It is what the page is told in `projectRoot`, what the page's
-    /// listings are resolved against, and the folder the page may read images
-    /// from (`ResourceRoots.document`), because a note in a rooted window
-    /// refers to images anywhere under the root rather than only beside it.
+    /// listings are resolved against, and the second folder the page may read
+    /// images from (`ResourceRoots.project`), after the note's own folder: a
+    /// note in a rooted window may refer to images anywhere under the root as
+    /// well as beside it.
     let explorerRoot: URL?
     private var autosaveTimer: Timer?
     private var autosaveDeadline: Date?
@@ -1287,7 +1288,7 @@ final class Coordinator {
             // state names its new file, not the app.
             holdsNoFile = false
             host.schemeHandler.roots =
-                host.schemeHandler.roots.rebound(toDocument: explorerRoot ?? boundURL.deletingLastPathComponent())
+                host.schemeHandler.roots.rebound(toDocument: boundURL.deletingLastPathComponent(), project: explorerRoot)
             refreshTitle()
             // Both files join the recents list: the one being left and the one
             // arriving, oldest first.
@@ -1543,7 +1544,7 @@ final class Coordinator {
                              bundleID: AppFlavor.current.bundleID,
                              root: explorerRoot?.standardizedFileURL.path))
         let webRoot = Coordinator.locateWebRoot()
-        host = WebHost(webRoot: webRoot, documentDirectory: explorerRoot ?? url.deletingLastPathComponent())
+        host = WebHost(webRoot: webRoot, documentDirectory: url.deletingLastPathComponent(), projectRoot: explorerRoot)
         let failures = WriteFailureLog()
         writeFailureLog = failures
         writer = CoalescingWriter(onError: { error in

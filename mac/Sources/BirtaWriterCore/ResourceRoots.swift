@@ -20,15 +20,21 @@ public struct ResourceRoots: Sendable {
     /// The folder of the document being edited, or nil when there is none.
     /// Serves the images that document references, and nothing above it.
     public let document: URL?
+    /// The folder a rooted window is opened on, or nil for a loose file.
+    /// Tried after `document`, so a note in a subfolder finds the image beside
+    /// it (what every Markdown renderer means by a relative path) and an
+    /// image written relative to the root still resolves.
+    public let project: URL?
 
-    public init(bundle: URL, document: URL?) {
+    public init(bundle: URL, document: URL?, project: URL? = nil) {
         self.bundle = bundle
         self.document = document
+        self.project = project
     }
 
     /// Same roots, pointed at a different document.
-    public func rebound(toDocument document: URL?) -> ResourceRoots {
-        ResourceRoots(bundle: bundle, document: document)
+    public func rebound(toDocument document: URL?, project: URL? = nil) -> ResourceRoots {
+        ResourceRoots(bundle: bundle, document: document, project: project)
     }
 
     /// The file a request path names, or nil when no root will serve it.
@@ -41,7 +47,7 @@ public struct ResourceRoots: Sendable {
         // Refuse before touching the disk: an encoded traversal is a request
         // about a path, not about a file, and there is nothing to resolve.
         guard !relative.split(separator: "/").contains("..") else { return nil }
-        for root in [bundle, document].compactMap({ $0 }) {
+        for root in [bundle, document, project].compactMap({ $0 }) {
             if let file = Self.contained(relative, in: root) { return file }
         }
         return nil

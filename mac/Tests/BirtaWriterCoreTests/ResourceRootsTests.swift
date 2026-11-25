@@ -83,4 +83,25 @@ final class ResourceRootsTests: XCTestCase {
         XCTAssertNotNil(moved.resolve("/b.png"))
         XCTAssertNil(moved.resolve("/Attachments/a.png"), "the old document's folder is no longer served")
     }
+
+    func testARootedWindowServesTheImageBesideANoteInASubfolder() throws {
+        let note = docDir.appendingPathComponent("write/post")
+        try FileManager.default.createDirectory(at: note, withIntermediateDirectories: true)
+        try Data("shot".utf8).write(to: note.appendingPathComponent("shot.webp"))
+        let rooted = ResourceRoots(bundle: bundle, document: note, project: docDir)
+
+        XCTAssertEqual(rooted.resolve("/shot.webp")?.lastPathComponent, "shot.webp")
+        // Root-relative references still resolve through the project root.
+        XCTAssertEqual(rooted.resolve("/Attachments/a.png")?.lastPathComponent, "a.png")
+        XCTAssertNil(rooted.resolve("/../secret.txt"))
+    }
+
+    func testTheNotesFolderWinsOverTheProjectRoot() throws {
+        let note = docDir.appendingPathComponent("post")
+        try FileManager.default.createDirectory(at: note.appendingPathComponent("Attachments"), withIntermediateDirectories: true)
+        try Data("beside".utf8).write(to: note.appendingPathComponent("Attachments/a.png"))
+        let rooted = ResourceRoots(bundle: bundle, document: note, project: docDir)
+
+        XCTAssertEqual(try Data(contentsOf: XCTUnwrap(rooted.resolve("/Attachments/a.png"))), Data("beside".utf8))
+    }
 }
