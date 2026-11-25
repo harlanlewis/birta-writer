@@ -8,6 +8,7 @@ import type { FolderEdge, FolderIndex, FolderNode } from "../../shared/folderInd
 import { toIndexDay } from "../../shared/folderIndex";
 import {
     ACTIVITY_HALF_LIFE_DAYS,
+    DORMANT_BELOW,
     FADING_AFTER_DAYS,
     REFERENCE_CARRY,
     activityOf,
@@ -68,15 +69,49 @@ describe("activityOf", () => {
         expect(a.get("c.md")).toBeCloseTo(0.5);
     });
 
-    it("a note an active note refers to should carry part of its activity, one step and no further", () => {
+    it("a note an active note refers to should gain from it, halving again each step further", () => {
         const idx = index(
-            [node("busy.md", { modified: NOW }), node("ref.md", { modified: ago(365) }), node("far.md", { modified: ago(365) })],
+            [node("busy.md", { modified: NOW }), node("ref.md", { modified: ago(3650) }), node("far.md", { modified: ago(3650) })],
             [edge("busy.md", "ref.md"), edge("ref.md", "far.md")],
         );
         const a = activityOf(idx, null, NOW);
+        expect(a.get("busy.md")).toBeCloseTo(1);
         expect(a.get("ref.md")).toBeCloseTo(REFERENCE_CARRY);
-        // far.md is two steps from the busy note: it keeps only its own old write.
-        expect(a.get("far.md")!).toBeLessThan(0.01);
+        expect(a.get("far.md")).toBeCloseTo(REFERENCE_CARRY * REFERENCE_CARRY);
+    });
+
+    it("many active notes referring to a note should add up, not count as the strongest one", () => {
+        const referrers = Array.from({ length: 5 }, (_, i) => node(`r${i}.md`, { modified: NOW }));
+        const idx = index(
+            [...referrers, node("relied.md", { modified: ago(3650) }), node("once.md", { modified: ago(3650) })],
+            [...referrers.map((r) => edge(r.path, "relied.md")), edge("r0.md", "once.md")],
+        );
+        const a = activityOf(idx, null, NOW);
+        // r0 splits its share between the two notes it names; r1..r4 give all theirs.
+        expect(a.get("relied.md")).toBeCloseTo(4 * REFERENCE_CARRY + REFERENCE_CARRY / 2);
+        expect(a.get("once.md")).toBeCloseTo(REFERENCE_CARRY / 2);
+        expect(a.get("relied.md")!).toBeGreaterThan(a.get("once.md")! * 5);
+    });
+
+    it("a note referring to many others should vouch for each a share as small as their number", () => {
+        const targets = Array.from({ length: 10 }, (_, i) => node(`t${i}.md`));
+        const idx = index([node("daily.md", { modified: NOW }), ...targets], targets.map((t) => edge("daily.md", t.path)));
+        const a = activityOf(idx, null, NOW);
+        expect(a.get("t3.md")).toBeCloseTo(REFERENCE_CARRY / 10);
+    });
+
+    it("notes referring to each other should settle rather than grow without bound", () => {
+        const idx = index([node("a.md", { modified: NOW }), node("b.md", { modified: NOW })], [edge("a.md", "b.md"), edge("b.md", "a.md")]);
+        const a = activityOf(idx, null, NOW);
+        // a = 1 + a/2 at the fixed point: 2, for both.
+        expect(a.get("a.md")).toBeCloseTo(2, 4);
+        expect(a.get("b.md")).toBeCloseTo(2, 4);
+    });
+
+    it("a folder nobody has written in for a year should read dormant throughout, its busiest note included", () => {
+        const idx = index([node("a.md", { modified: ago(365) }), node("b.md", { modified: ago(400) })], [edge("b.md", "a.md")]);
+        const a = activityOf(idx, null, NOW);
+        expect(Math.max(...[...a.values()].map((v) => v ?? 0))).toBeLessThan(DORMANT_BELOW);
     });
 });
 
