@@ -4,7 +4,8 @@ import Foundation
 /// answered.
 ///
 /// The page needs two kinds of file: its own bundle, and the images the open
-/// document references. The second one is document-controlled input, so it is
+/// document references, read from the note's folder and, in a rooted window,
+/// from the folder the window is opened on. The second one is document-controlled input, so it is
 /// the reason this type exists rather than a `webRoot + path` join: a document
 /// can say `![](../../.ssh/id_rsa)`, and the handler must be able to answer
 /// "not yours" without thinking about it at the call site.
