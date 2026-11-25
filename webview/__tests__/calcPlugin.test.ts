@@ -143,6 +143,78 @@ describe("advisory inline calc", () => {
         expect(v.state.doc.childCount).toBe(blocksBefore + 1);
     });
 
+    // Return takes the answer only where it answers the offer. Each case below
+    // is one way Return reaches an open calc menu without that being so, and
+    // each must split the line and leave the text alone.
+    const pressEnter = (init: KeyboardEventInit = {}): void => {
+        v.dom.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true, ...init }));
+    };
+
+    it("Enter pressed before the offer appears should still take the answer", async () => {
+        // `=` then Return in quick succession: inside the debounce, with no
+        // menu drawn yet, the line must not split under an answer about to appear.
+        typeText(v, " 6*7=");
+        pressEnter();
+
+        expect(v.state.doc.textContent).toBe("x 6*7= 42");
+        expect(v.state.doc.childCount).toBe(1);
+    });
+
+    it("Shift+Enter with an answer on offer should not take it", async () => {
+        typeText(v, " 6*7=");
+        await vi.advanceTimersByTimeAsync(250);
+        expect(optionTexts()).toEqual(["42"]);
+
+        pressEnter({ shiftKey: true });
+
+        expect(v.state.doc.textContent).not.toContain("42");
+        expect(optionTexts()).toEqual([]);
+    });
+
+    it("Enter on an offer raised by moving the caret onto an old line should split it", async () => {
+        await editor.destroy();
+        editor = await makeEditor("Budget check: 120+80=\n");
+        v = view(editor);
+        placeCursorAtEnd(v); // a selection change only: nothing typed
+        await vi.advanceTimersByTimeAsync(250);
+        expect(optionTexts()).toEqual(["200"]);
+
+        const blocksBefore = v.state.doc.childCount;
+        pressEnter();
+
+        expect(v.state.doc.textContent).toBe("Budget check: 120+80=");
+        expect(v.state.doc.childCount).toBe(blocksBefore + 1);
+    });
+
+    it("Enter where a number already follows the = should split the line, not replace it", async () => {
+        await editor.destroy();
+        editor = await makeEditor("2+3 7\n");
+        v = view(editor);
+        // Type the `=` between the expression and the writer's own 7.
+        v.dispatch(v.state.tr.setSelection(TextSelection.create(v.state.doc, 4)));
+        typeText(v, "=");
+        await vi.advanceTimersByTimeAsync(250);
+        expect(optionTexts()).toEqual(["5"]);
+
+        const blocksBefore = v.state.doc.childCount;
+        pressEnter();
+
+        expect(v.state.doc.textContent).toBe("2+3= 7");
+        expect(v.state.doc.childCount).toBe(blocksBefore + 1);
+    });
+
+    it("Enter after the leading form should split the line, not answer it", async () => {
+        typeText(v, " enter =10/2");
+        await vi.advanceTimersByTimeAsync(250);
+        expect(optionTexts()).toEqual(["5"]);
+
+        const blocksBefore = v.state.doc.childCount;
+        pressEnter();
+
+        expect(v.state.doc.textContent).toBe("x enter =10/2");
+        expect(v.state.doc.childCount).toBe(blocksBefore + 1);
+    });
+
     it("clicking the suggestion row should insert the result", async () => {
         typeText(v, " (3+4)/2=");
         await vi.advanceTimersByTimeAsync(250);
@@ -441,6 +513,22 @@ describe("`=>` living calculations (variables + units)", () => {
         v.dom.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", bubbles: true }));
 
         expect(v.state.doc.textContent).toBe("x 2+3 => 5");
+    });
+
+    it("Enter on an answer the expression has since outgrown should not write it", async () => {
+        editor = await makeArrowEditor("x\n");
+        v = view(editor);
+        placeCursorAtEnd(v);
+        typeText(v, " 2+3 =>");
+        await vi.advanceTimersByTimeAsync(250);
+        expect(optionTexts()).toEqual(["5"]);
+
+        // Edit the expression, caret still after the `=>`: the `=>` fetch is
+        // asynchronous, so the menu on screen still offers the old 5.
+        v.dispatch(v.state.tr.insertText("1", 3));
+        v.dom.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+
+        expect(v.state.doc.textContent).not.toContain("=> 5");
     });
 
     it("Enter should write the result after the =>, as Tab does", async () => {

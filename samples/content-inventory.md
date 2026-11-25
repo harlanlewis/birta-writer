@@ -105,7 +105,7 @@ Start or end a math equation with `=` to automatically compute it. For example, 
 
 -2 ^ 2
 
-The answer appears as a suggestion - confirm with **Tab** (Return stays a newline), or pick "Always insert result" in the menu (also the **Toggle Calc Auto-Insert** palette command, `birta.calc.autoInsert`) to have every future trailing `=` answered instantly; the `=`-before form always stays a suggestion, since you may still be typing digits. The result inserts as plain text, so nothing calc-specific ever persists in the file.
+The answer appears as a suggestion - confirm with **Return** or **Tab** (Escape first if you want a newline without it), or pick "Always insert result" in the menu (also the **Toggle Calc Auto-Insert** palette command, `birta.calc.autoInsert`) to have every future trailing `=` answered instantly; the `=`-before form always stays a suggestion, since you may still be typing digits. The result inserts as plain text, so nothing calc-specific ever persists in the file.
 
 Functions and constants count as arithmetic here: `3+log10(2²+3²*2.3303)/π^2=` answers, as do `sqrt(9)=`, `round(2.7)=` and `2*pi=`. They mean one thing in any document, so `=` can read them without knowing what is defined above. A *variable* is the other kind of name, and stays with `=>` below.
 

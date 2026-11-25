@@ -16,10 +16,12 @@
  *   span, where a backticked expression is exactly where a writer puts
  *   arithmetic and the answer is plain digits either way. The `=>` spec
  *   deliberately does not — see the note on `calcArrowSpec`, which is the whole
- *   argument. `autoActivate` pre-selects the lone result so Return or Tab
- *   confirms it (`enterAccepts`: the menu appears only because the user just
- *   typed `=` or `=>`, so Return right then means yes; Escape first, then
- *   Return, for a newline without the answer), and accepting at a stale answer
+ *   argument. `autoActivate` pre-selects the lone result so Tab confirms
+ *   it, and so does Return where it answers the offer: right after the `=` or
+ *   `=>` the writer just typed, at the end of the line (`asksAtCaret`, and the
+ *   controller's own gates in caretSuggest.ts). Anywhere else Return keeps its
+ *   newline, and Escape first gives a newline without the answer. Accepting
+ *   at a stale answer
  *   REPLACES the old number (staleResultLengthAfter). The `=` fetch is
  *   synchronous; the `=>` fetch awaits the lazy unit engine.
  * - Auto-insert mode is a plain input rule: when the `=` is typed to
@@ -72,10 +74,28 @@ function alwaysInsertLabel(): string {
 
 /**
  * The confirm key a result row shows. Return, because that is the key a
- * writer reaches for; Tab works too, and the menu's footer says so where a
- * menu has one.
+ * writer reaches for; Tab works too, and always, including in the cases
+ * `asksAtCaret` refuses Return.
  */
 const ACCEPT_HINT = "↵";
+
+/**
+ * Whether Return at the caret is the answer to the offer: the text right
+ * before the caret ends in the trigger the writer just typed (`=` or `=>`),
+ * and nothing but whitespace follows it in the block. That refuses the
+ * leading form (`=5+7` has no finishing keystroke, and its offer shows while
+ * digits are still being typed) and an equation whose answer is already
+ * there (Return beside `2+3= 7` must split the line, not replace the 7).
+ */
+function asksAtCaret(trigger: RegExp) {
+    return (state: EditorState): boolean => {
+        const $caret = state.selection.$from;
+        const block = $caret.parent;
+        const before = block.textBetween(0, $caret.parentOffset, undefined, "￼");
+        const after = block.textBetween($caret.parentOffset, block.content.size, undefined, "￼");
+        return trigger.test(before) && /^\s*$/.test(after);
+    };
+}
 
 const calcSuggestKey = new PluginKey("MD_CALC_SUGGEST");
 
@@ -150,9 +170,9 @@ const calcSuggestSpec: CaretSuggestSpec = {
     },
 
     // The lone advisory result is pre-selected so Return or Tab confirms it
-    // without an arrow key (see the module header for why Return may).
+    // without an arrow key (see the module header for when Return may).
     autoActivate: true,
-    enterAccepts: true,
+    enterAccepts: asksAtCaret(/=[ \t]*$/),
     // `` `3+7=` `` computes: see the module header.
     allowInlineCode: true,
 };
@@ -381,7 +401,7 @@ const calcArrowSpec: CaretSuggestSpec = {
     // Pre-select the lone advisory result so Return or Tab confirms it (the
     // module header has the reasoning for Return).
     autoActivate: true,
-    enterAccepts: true,
+    enterAccepts: asksAtCaret(/=>[ \t]*$/),
     // Deliberately NOT allowInlineCode, unlike the `=` path above. An accepted
     // `=>` answer is a MAINTAINED artifact: the refresh engine keeps it true
     // and calcStale cues it when it can't — and both read blockCalcText, which

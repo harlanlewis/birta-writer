@@ -95,13 +95,16 @@ export interface CaretSuggestSpec {
      */
     autoActivate?: boolean;
     /**
-     * For an `autoActivate` menu: Enter accepts the pre-highlighted row too,
-     * as Tab does. Only for a menu that appears because the user just typed
-     * the thing that asks for it (calc's `=` and `=>`), where Enter right then
-     * means "yes". Never for one that appears where the caret merely rests
-     * (the list-merge offer), where Enter is somebody starting a new line.
+     * For an `autoActivate` menu: when Enter accepts the pre-highlighted row
+     * too, as Tab does. Asked only for a bare Enter, on a match the user's
+     * own typing produced (a menu raised by moving the caret onto an old line
+     * never qualifies), whose open menu shows the construct as it stands now.
+     * The spec answers the rest: whether the caret sits where the asking
+     * keystroke just landed. Absent means never, which is right for a menu
+     * that appears where the caret merely rests (the list-merge offer), where
+     * Enter is somebody starting a new line.
      */
-    enterAccepts?: boolean;
+    enterAccepts?: (state: EditorState, match: CaretMatch) => boolean;
     /**
      * Decorate the live construct (match.start → caret) with this class while
      * the menu is open — the slash menu's "/query" pill affordance, shared:
@@ -155,6 +158,12 @@ class CaretSuggestController {
     // Set by Escape; stays set until the caret leaves the match context, so
     // the menu does not pop right back while typing in the same construct.
     private suppressed = false;
+    // Whether the current match is the user's own typing: set by a
+    // doc-changing transaction, cleared by one that only moves the caret. The
+    // gate `enterAccepts` needs, because update() re-evaluates the match on
+    // selection changes too, so a menu also opens where the caret is merely
+    // put down on an old line.
+    private armed = false;
 
     private readonly onKeydown = (e: KeyboardEvent): void => {
         this.handleKeydown(e);
@@ -174,11 +183,18 @@ class CaretSuggestController {
     }
 
     /** Plugin-view update: re-evaluate the match context on every transaction. */
-    update(view: EditorView): void {
+    update(view: EditorView, prevState?: EditorState): void {
         this.view = view;
         if (view.composing) { return; } // IME: never react mid-composition
 
         const match = this.matchContext();
+        if (!match) {
+            this.armed = false;
+        } else if (prevState && prevState.doc !== view.state.doc) {
+            this.armed = true;
+        } else if (prevState && !prevState.selection.eq(view.state.selection)) {
+            this.armed = false;
+        }
         if (!match) {
             // Leaving the construct also lifts an Escape dismissal.
             this.suppressed = false;
@@ -425,10 +441,42 @@ class CaretSuggestController {
 
     // ── Keyboard ─────────────────────────────────────────────────────────
 
+    /**
+     * Whether this Enter may accept on an `enterAccepts` menu, the freshness
+     * of the open menu aside: a bare Enter, on a match the user's typing
+     * produced, that the spec says is the moment it asks about.
+     */
+    private enterMayAccept(e: KeyboardEvent): CaretMatch | null {
+        if (!this.spec.enterAccepts || !this.armed) { return null; }
+        if (e.shiftKey || e.metaKey || e.ctrlKey || e.altKey) { return null; }
+        const match = this.matchContext();
+        return match && this.spec.enterAccepts(this.view.state, match) ? match : null;
+    }
+
+    /** `enterMayAccept`, and the open menu shows the construct as it stands. */
+    private enterAcceptsNow(e: KeyboardEvent): boolean {
+        const match = this.enterMayAccept(e);
+        const shown = this.shownFor;
+        return Boolean(
+            match && shown &&
+            match.start === shown.start && match.caret === shown.caret && match.query === shown.query,
+        );
+    }
+
     private handleKeydown(e: KeyboardEvent): void {
-        // Only ever intercept while the menu is open with options, and never
-        // during IME composition.
-        if (!this.menu || e.isComposing) { return; }
+        if (e.isComposing) { return; }
+        // Enter that lands inside the debounce, on a match it may accept,
+        // resolves the menu now rather than splitting the line under an
+        // answer about to appear: `=` then Return in quick succession is
+        // exactly what a writer does. A spec whose fetch is asynchronous
+        // simply has no menu yet, and Enter keeps its newline.
+        if (e.key === "Enter" && this.debounceTimer && this.enterMayAccept(e)) {
+            clearTimeout(this.debounceTimer);
+            this.debounceTimer = null;
+            this.request();
+        }
+        // Only ever intercept while the menu is open with options.
+        if (!this.menu) { return; }
 
         if (e.key === "ArrowDown" || e.key === "ArrowUp") {
             e.preventDefault();
@@ -438,16 +486,16 @@ class CaretSuggestController {
             return;
         }
 
-        if (e.key === "Enter" && this.spec.autoActivate && !this.spec.enterAccepts) {
-            // An autoActivate menu pre-highlights its lone row, and unless the
-            // spec opts in (`enterAccepts`), Enter keeps its editing meaning: a
-            // newline, not a confirm. A suggestion applies only on explicit
-            // consent, and for a menu that appears where the caret merely rests
-            // a pre-highlighted row would make the FIRST Enter silently apply
-            // it. So here Enter is NOT captured: close the menu (it must not
-            // outlive the block it anchored in) and return without
-            // preventDefault, letting Enter reach ProseMirror. Tab accepts,
-            // below.
+        if (e.key === "Enter" && this.spec.autoActivate && !this.enterAcceptsNow(e)) {
+            // An autoActivate menu pre-highlights its lone row, and unless
+            // `enterAccepts` says this Enter is the answer to it, Enter keeps
+            // its editing meaning: a newline, not a confirm. A suggestion
+            // applies only on explicit consent, and a pre-highlighted row
+            // would otherwise make the FIRST Enter silently apply it. So here
+            // Enter is NOT captured: close the menu (it must not outlive the
+            // block it anchored in) and return without preventDefault,
+            // letting Enter (with any modifier) reach ProseMirror. Tab
+            // accepts, below.
             this.closeMenu();
             return;
         }
@@ -489,7 +537,7 @@ export function caretSuggestPlugin(key: PluginKey, spec: CaretSuggestSpec): Plug
         view: (editorView) => {
             const controller = new CaretSuggestController(editorView, spec);
             return {
-                update: (view) => controller.update(view),
+                update: (view, prevState) => controller.update(view, prevState),
                 destroy: () => controller.destroy(),
             };
         },
