@@ -14,6 +14,12 @@ Versions are shared. Both files are stamped with the same release version, and a
 
 ---
 
+## [2026.1126.0] - 2026, November 26
+
+_No user-visible changes; internal work only._
+
+---
+
 ## [2026.1125.0] - 2026, November 25
 
 ### Added
